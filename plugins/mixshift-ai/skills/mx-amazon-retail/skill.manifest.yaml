@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-retail
 display_name: Amazon Retail Lookups (live SP-API)
-version: "0.3.0"
+version: "0.4.0"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. The retail-operations analogue of mx-amazon-report:
@@ -10,11 +10,13 @@ description: >
   rather than generating a report document. The headline use is the
   title/brand/sales-rank source for ASINs missing from the warehouse's
   mws_items (catalog.search_items). Covers Catalog Items, Product Fees, FBA
-  Inventory, Sales metrics, Sellers, Finances, Orders, Product Pricing offer
-  depth, Listings Items, Data Kiosk (GraphQL), Vendor Orders (1P), Amazon
-  Warehousing & Distribution (AWD), and Promotions (the seller's live deals,
-  coupons, price discounts, and basket-building offers). Read-only, routes
-  through the bundled harness CLI. Does not require brand
+  Inventory, FBA inbound shipments, Sales metrics, Sellers, Finances, Orders,
+  Product Pricing offer depth, Listings Items, Product Type Definitions, Data
+  Kiosk (GraphQL), Vendor Orders (1P), Subscribe & Save (Replenishment),
+  customer review topics (Customer Feedback), Amazon Warehousing &
+  Distribution (AWD), and Promotions (the seller's live deals, coupons, price
+  discounts, and basket-building offers). Read-only, routes through the
+  bundled harness CLI. Does not require brand
   setup, only that the user has signed in (`mixshift auth login`).
 
 # Tier 1 = informational, read-only against Amazon and the service.
@@ -81,6 +83,11 @@ trigger_phrases:
   - list our deals
   - promotion details
   - which asins are in this promotion
+  - fba inbound shipments
+  - inbound shipment status
+  - subscribe and save metrics
+  - review topics for an asin
+  - product type requirements
 notes: >
   Live SP-API call surface: 40 cataloged operations across 17 families,
   reached via `mixshift amazon operations` (discovery) and
@@ -101,7 +108,19 @@ notes: >
   the search result); DEAL and PRICE_DISCOUNT carry it per item. issues and
   customerSegments are opt-in via includedData; revision defaults to
   PUBLISHED. Response nextToken goes back as paginationToken; empty pages can
-  occur mid-stream. No warehouse coverage.
+  occur mid-stream. No warehouse coverage. Live-verified 2026-09-29: a vendor
+  call fails restricted_report (403; the API is seller-only, not a re-auth
+  case); a bad enum value fails bad_request.
+
+  All 17 catalog families are toured in SKILL.md. Fulfillment Inbound is v0
+  (PascalCase; QueryType required; DATE_RANGE also needs ShipmentStatusList;
+  result nested under payload.payload). Replenishment is POST with
+  marketplaceId in the BODY and offset paging on list_offers; its metrics come
+  back as several rows, each with its OWN timeInterval that can differ from
+  the requested window, so report each metric with its row's interval.
+  Customer Feedback needs a CHILD ASIN; a success with an empty payload means
+  no review data. Product Type Definitions returns schema download links
+  (schema.link.resource), not inline JSON.
 
   Headline use: catalog.search_items is the title/brand/sales-rank source for
   ASINs missing from the warehouse's mws_items (which only holds listed SKUs).

@@ -8,15 +8,17 @@ description: >
   questions about your catalog, inventory, orders, finances, listings, and
   fulfillment. The headline use is the title/brand/sales-rank source for ASINs
   that are missing from the warehouse's mws_items (catalog.search_items). Covers
-  Catalog Items, Product Fees, FBA Inventory, Sales metrics, Sellers, Finances,
-  Orders, Product Pricing offer depth, Listings Items, Data Kiosk (GraphQL),
-  Vendor Orders (1P), Amazon Warehousing & Distribution (AWD), and Promotions
-  (the seller's live deals, coupons, price discounts, and basket-building
-  offers). Read-only, routes through the bundled harness CLI.
+  Catalog Items, Product Fees, FBA Inventory, FBA inbound shipments, Sales
+  metrics, Sellers, Finances, Orders, Product Pricing offer depth, Listings
+  Items, Product Type Definitions, Data Kiosk (GraphQL), Vendor Orders (1P),
+  Subscribe & Save (Replenishment), customer review topics (Customer
+  Feedback), Amazon Warehousing & Distribution (AWD), and Promotions (the
+  seller's live deals, coupons, price discounts, and basket-building offers).
+  Read-only, routes through the bundled harness CLI.
   Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -54,6 +56,11 @@ trigger_phrases:
   - list our deals
   - promotion details
   - which asins are in this promotion
+  - fba inbound shipments
+  - inbound shipment status
+  - subscribe and save metrics
+  - review topics for an asin
+  - product type requirements
 ---
 
 # Amazon Retail Lookups (live SP-API)
@@ -156,6 +163,12 @@ Other live questions this surface answers:
 - "Show the purchase orders Amazon placed with this vendor." (vendor_orders, 1P)
 - "Which coupons and deals are running or scheduled on our ASINs, and at what
   discount?" (promotions, sellers only)
+- "Where are our FBA inbound shipments: shipped, receiving, or closed?"
+  (fulfillment_inbound)
+- "What do customers praise and complain about on this ASIN?"
+  (customer_feedback)
+- "How is our Subscribe & Save program doing?" (replenishment)
+- "What attributes does Amazon require for this product type?" (definitions)
 
 ### Warehouse-first: check, reason, and ask (courtesy, not a gate)
 
@@ -333,10 +346,7 @@ mixshift amazon call <operation>
 ## A family tour
 
 Run `amazon operations` for the live catalog; this is the map plus the
-per-family gotchas that bite. Every operation toured here is read-only. Four
-live families are not toured yet: Fulfillment Inbound, Product Type
-Definitions, Replenishment, and Customer Feedback. They are callable the same
-way; read their `notes` in `amazon operations` before using them.
+per-family gotchas that bite. Every operation toured here is read-only.
 
 ### Catalog Items (2022-04-01) - titles, brands, ranks
 
@@ -392,6 +402,44 @@ Gotchas:
   get only the top-line counts).
 - Optional `--query sellerSkus=<csv,max 50>` or `--query startDateTime=<iso>` to
   scope; paginate with `nextToken`.
+
+### Fulfillment Inbound (v0) - FBA inbound shipments by stage
+
+- `fulfillment_inbound.get_shipments` - inbound shipments to FBA with their
+  status (working, shipped, in transit, receiving, closed, and so on).
+- `fulfillment_inbound.get_shipment_items` - line items and quantities across
+  inbound shipments updated in a date range.
+- `fulfillment_inbound.get_shipment_items_by_shipment` - expected vs received
+  quantities per SKU for one shipment (`--path shipmentId=`).
+
+Use this to answer "is the stock on its way, and where is it stuck?", for
+example when an ASIN went out of stock and you need to know whether a
+replenishment shipment was already inbound. It is the FBA counterpart of the
+AWD inbound shipments below.
+
+Gotchas:
+
+- **v0 API: PascalCase query params**, and the result is nested one level
+  deeper: read `payload.payload.ShipmentData` (or `ItemData`) and
+  `payload.payload.NextToken`.
+- **`MarketplaceId` and `QueryType` are both required** on `get_shipments` and
+  `get_shipment_items`. `MarketplaceId` is filled in for you from the merchant
+  row; you pass `QueryType`.
+- **`QueryType=DATE_RANGE` also needs `ShipmentStatusList`** on
+  `get_shipments` (Amazon's reference shows it as optional, but the call is
+  rejected without it). Pass `LastUpdatedAfter` / `LastUpdatedBefore` (ISO 8601)
+  and a status list such as `SHIPPED,IN_TRANSIT,RECEIVING,CLOSED`. Statuses:
+  `WORKING, READY_TO_SHIP, SHIPPED, RECEIVING, CANCELLED, DELETED, CLOSED, ERROR,
+  IN_TRANSIT, DELIVERED, CHECKED_IN`.
+- **`QueryType=SHIPMENT` filters by `ShipmentStatusList` and/or
+  `ShipmentIdList`, with no dates.** `ShipmentStatusList=SHIPPED,IN_TRANSIT,RECEIVING`
+  alone is the "what is inbound right now" call. Keep `ShipmentIdList` to
+  about 100 ids. `get_shipment_items` takes `DATE_RANGE` or `NEXT_TOKEN` only.
+- **Paging:** pass the response's `NextToken` back with `QueryType=NEXT_TOKEN`
+  and `NextToken=<token>`. A `NextToken` on
+  `get_shipment_items_by_shipment` means its item list is PARTIAL; continue
+  through `get_shipment_items` with `QueryType=NEXT_TOKEN`, since that
+  operation has no paging parameter of its own.
 
 ### Sales (v1) - units, orders, sales aggregates
 
@@ -516,6 +564,32 @@ Gotchas:
 - **Read-only here.** Listing writes stay in the MixShift platform; this surface
   reads listing state only.
 
+### Product Type Definitions (2020-09-01) - what Amazon requires to list a product
+
+- `definitions.search_product_types` - find product types by keyword, or get a
+  recommendation from a candidate item name.
+- `definitions.get_product_type` - one product type's requirements
+  (`--path productType=`).
+
+Gotchas:
+
+- **Search first, then fetch.** `search_product_types` takes `keywords` (csv)
+  or `itemName` (a title, for a recommendation), at most one of the two, and
+  returns `productTypes[] { name, displayName, marketplaceIds }`. Feed `name`
+  into `get_product_type`.
+- **`get_product_type` returns links, not the schema itself.** The response
+  carries `schema` and `metaSchema` whose download URL is at
+  `schema.link.resource` (and `metaSchema.link.resource`), plus
+  `propertyGroups`. Fetch that URL directly (no auth header) and save it to a
+  file; it is large.
+- Optional on `get_product_type`: `requirements` (`LISTING` default,
+  `LISTING_PRODUCT_ONLY`, `LISTING_OFFER_ONLY`), `requirementsEnforced`
+  (`ENFORCED` default, or `NOT_ENFORCED`), `productTypeVersion`
+  (`LATEST` default), `parentageLevel` (`CHILD`, `PARENT`, `NONE`), `locale`,
+  and `sellerId` for seller-specific requirements.
+- Use it to answer "what attributes does Amazon need for this kind of
+  product?" or to explain a listing issue. It changes nothing.
+
 ### Data Kiosk (2023-11-15) - GraphQL datasets
 
 - `data_kiosk.create_query` - submit a GraphQL query (POST, body required).
@@ -560,6 +634,64 @@ Gotchas:
   `--query createdBefore=` (ISO 8601); optional `limit` (max 100), `nextToken`,
   `includeDetails`, `sortOrder`, `purchaseOrderState` (New, Acknowledged,
   Closed).
+
+### Replenishment (2022-11-07) - Subscribe & Save
+
+- `replenishment.get_selling_partner_metrics` - account-level Subscribe & Save
+  metrics over a window (subscriber lifetime value by cohort, S&S revenue,
+  revenue lost to out-of-stocks, and more), or a forecast.
+- `replenishment.list_offers` - per-offer Subscribe & Save detail (eligibility,
+  discount funding, subscription count, inventory).
+
+Gotchas:
+
+- **Both are POST searches with a JSON body (`--body-file`), camelCase, and
+  `marketplaceId` goes IN THE BODY**, not the query; nothing is filled in for
+  you. Use the `marketplaceId` from the merchant row in `amazon merchants`.
+  Neither changes anything.
+- `get_selling_partner_metrics` body:
+  `{ timeInterval: { startDate, endDate }, timePeriodType: "PERFORMANCE" | "FORECAST", programTypes: ["SUBSCRIBE_AND_SAVE"], marketplaceId, aggregationFrequency }`.
+  **`aggregationFrequency` (`DAY, WEEK, MONTH, QUARTER, YEAR`) is required for
+  `PERFORMANCE`.** Optional `metrics` (omit for all) and `filters` (`asins`,
+  `skus`, `fulfillmentChannelTypes`).
+- **Read every row's own `timeInterval`.** `payload.metrics[]` comes back as
+  several rows, each holding a GROUP of metrics (lifetime value; subscriptions
+  and revenue; out-of-stock losses; retention; sign-up conversion; and so on)
+  plus its own `timeInterval` and `currencyCode`. Amazon computes some groups
+  over its own window, not the one you asked for: in a live check, a one-month
+  request returned lifetime value over two years, retention and conversion
+  over the trailing twelve months, and some rows ending after the requested end
+  date. Report each metric with the interval on its row; never label them all
+  with the requested window, and do not count rows as periods.
+- `list_offers` body: `{ pagination: { limit, offset }, filters: { marketplaceId, programTypes: ["SUBSCRIBE_AND_SAVE"], asins?, skus?, eligibilities? }, sort? }`.
+  `limit` and `offset` are both required. **Paging is offset-based** (raise
+  `offset` by `limit`), not a token.
+- `SUBSCRIBE_AND_SAVE` is the only program type today.
+
+### Customer Feedback (2024-06-01) - what reviewers praise and complain about
+
+- `customer_feedback.get_item_review_topics` - one ASIN's most positive and most
+  negative review topics, with their effect on star rating
+  (`--path asin=`).
+- `customer_feedback.get_item_review_trends` - how those topics trended over
+  the past six months (`--path asin=`).
+
+Gotchas:
+
+- **Use a CHILD ASIN**, not a parent.
+- **`get_item_review_topics` requires `--query sortBy=MENTIONS` or
+  `sortBy=STAR_RATING_IMPACT`.** `marketplaceId` is filled in for you. No
+  paging.
+- Topics come back as `payload.topics.positiveTopics[]` / `negativeTopics[]`,
+  each with ASIN, parent, child-ASIN, and category-level metrics, review
+  snippets, and subtopics. Trends come back as
+  `payload.reviewTrends.positiveTopics[]` / `negativeTopics[]` with monthly
+  `trendMetrics[]`.
+- **A success with an empty `payload` (`{}`, no `topics` or `reviewTrends`)
+  means Amazon has no review data for that ASIN.** Report it as "no review
+  insights yet", not as an error.
+- It sits under the Brand Analytics (or Selling Partner Insights) role; a
+  merchant whose authorization covers neither gets `restricted_report`.
 
 ### Amazon Warehousing & Distribution (AWD, 2024-05-09) - upstream bulk stock
 
@@ -612,7 +744,10 @@ Gotchas:
 Gotchas:
 
 - **Sellers only.** Amazon does not serve this API to Vendor (1P) merchants.
-  Check the merchant `type` is `Seller` in `amazon merchants` first.
+  Check the merchant `type` is `Seller` in `amazon merchants` first. A vendor
+  call fails with `restricted_report` (403) and a message that mentions roles;
+  the real reason is that the API is seller-only, so do not send the user to
+  re-authorize.
 - **Four promotion types, and the discount lives in different places.**
   `COUPON` and `BASKET_BUILDING` carry one promotion-level `benefit` (discount,
   per-customer uses, stacking, tiers) and `budget`, and the search results
@@ -647,18 +782,26 @@ Gotchas:
   (whole catalog, with exclusions) usually has no `selectionId`; its
   exclusions show in `get_promotion`'s `selection.selectionDetails.rules`.
   A `BASKET_BUILDING` promotion also names the items a shopper must buy in
-  `purchaseRequirements.selection`, which has its own `selectionId` and
-  `revisionId`; if `get_selection` rejects those ids, say the must-buy list is
-  not available rather than guessing it.
+  `purchaseRequirements.selection`. In the promotions checked so far it has
+  been the same selection as the discounted items (same `selectionId`), and
+  `get_selection` serves it. If the ids ever differ and `get_selection` rejects them, say the
+  must-buy list is not available rather than guessing it.
 - **Problems and targeting are opt-in.** Validation problems (`issues`) and
   customer targeting (`customerSegments`) are returned only when you ask:
   add `--query includedData=ISSUES` (or `ISSUES,CUSTOMER_SEGMENTS`) to the
   search or to `get_promotion`, and `includedData=ISSUES` to `get_selection`
   for per-item problems.
 - **Reading the fields.** `promotionTitle` is the seller's internal name (buyers
-  never see it). `schedule.eventId` names an event such as Prime Day (older
-  event promotions may just say `EVENT`). `latestRevision` appears only when an
-  edit is still processing or was rejected; the published version stays live.
+  never see it). `schedule.eventId`, when present, ties a promotion to a
+  shopping event. Values seen so far read `<event>/<year>/<marketplace>`
+  (e.g. `Black Friday/2026/US`), but Amazon only promises an event name, and
+  older event promotions may just say `EVENT`. In the accounts checked, most
+  promotions had none.
+  `latestRevision` appears only when an edit is still processing or was
+  rejected; the published version stays live.
+- **A wrong filter value fails as `bad_request`** with Amazon's message listing
+  the allowed values (for example a `statuses` value outside the list above).
+  Fix the value; do not retry unchanged.
 - **Read-only.** These operations cannot create, edit, or cancel a promotion.
 - **Configured and running here; performance lives in reports.** For how a
   promotion performed over a window (units, sales, redemptions), use the
@@ -856,7 +999,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 |---|---|---|
 | `not_authenticated` | 2 | Not signed in. Run `mixshift auth login`. |
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
-| `restricted_report` | 4 | Amazon needs a Restricted Data Token / PII role MixShift does not hold (e.g. an Orders PII element). Drop the restricted field and re-run the non-PII form. Do NOT retry the same request unchanged. |
+| `restricted_report` | 4 | Amazon needs a Restricted Data Token / PII role MixShift does not hold (e.g. an Orders PII element), or the operation is not served to this merchant type (Promotions on a Vendor). Drop the restricted field and re-run the non-PII form, or stop for the wrong merchant type. Do NOT retry the same request unchanged. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
 | `reauth_required` | 5 | This merchant's SP-API grant lapsed. Re-connect the account in the MixShift app, then retry. |
 | `spapi_not_configured` | 6 | Live SP-API operations are not enabled for this MixShift account. Contact MixShift ops. |
