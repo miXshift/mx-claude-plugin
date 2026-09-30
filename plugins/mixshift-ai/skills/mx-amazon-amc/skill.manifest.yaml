@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.2.2"
+version: "0.3.0"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
@@ -12,22 +12,29 @@ description: >
   (`amazon_retail_purchases`), which covers every Amazon store purchase whether
   or not an ad was involved and across a far longer history than the
   ad-attributed tables: use it for customer lifetime value, revenue and repeat
-  rate by ASIN, acquisition cohorts, and repeat-purchase analysis. Read-only:
-  running a query mutates nothing advertiser-facing and needs no write scope.
-  Routes through the bundled harness CLI. Does not require brand setup,
-  only that the user has signed in (`mixshift auth login`).
+  rate by ASIN, acquisition cohorts, and repeat-purchase analysis. Also builds
+  AMC audiences: rule-based audiences written as SQL over the instance's
+  audience tables and activated on a DSP advertiser or a sponsored-ads
+  account, with list, status, fix-and-resubmit and delete for failed ones.
+  Reporting is read-only; audience creation is a write, dry-run first and
+  `--commit` only after the user confirms. Routes through the bundled harness
+  CLI. Does not require brand setup, only that the user has signed in
+  (`mixshift auth login`).
 
-# Tier 1 = informational, read-only against Amazon and the service. Submitting
-# and running an AMC workflow returns aggregated clean-room results and mutates
-# nothing advertiser-facing, so no write scope and no --commit. Modeled as
-# per_account because every call targets a specific merchant
-# (legacySellerId / amazonSellerId), though no brand context is consumed.
+# Reporting is tier-1 informational: submitting and running an AMC workflow
+# returns aggregated clean-room results and mutates nothing advertiser-facing.
+# Audiences are the write side (tier 2): a create activates a real audience on
+# the destination advertiser account, so the audience operations need
+# ads:write, preview by default, and apply only with --commit after the user
+# confirms the preview. Modeled as per_account because every call targets a
+# specific merchant (legacySellerId / amazonSellerId), though no brand context
+# is consumed.
 run_kind: per_account
 cadence: on_demand
-risk_tier: 1
+risk_tier: 2
 allowed_tools: [file_read, file_write]
-side_effect_policy: artifact_write   # saves AMC result CSVs to ~/.mixshift/reports/
-review_required: never
+side_effect_policy: write_gated   # audience create/update/delete via `--commit`; dry-run default, user-confirmed. Reporting saves CSVs to ~/.mixshift/reports/
+review_required: always            # audience writes require explicit user confirmation of the preview
 sql_ids: []   # AMC SQL is authored ad-hoc per request; no library SQL
 
 # Harness commands the skill calls (AMC is the AMC family inside `ads call`;
@@ -44,6 +51,11 @@ harness_commands:
   - mixshift ads call amc.create_workflow_execution --path instanceId= --path entityId= --body-file <file>
   - mixshift ads call amc.get_workflow_execution --path workflowExecutionId=
   - mixshift ads call amc.get_download_urls --path workflowExecutionId=
+  - mixshift ads call amc.create_audience --path instanceId= --path entityId= --body-file <file> [--commit]
+  - mixshift ads call amc.list_audiences --path instanceId= --path entityId=
+  - mixshift ads call amc.get_audience --path instanceId= --path entityId= --path audienceExecutionId=
+  - mixshift ads call amc.update_audience --path instanceId= --path entityId= --path audienceExecutionId= --body-file <file> [--commit]
+  - mixshift ads call amc.delete_audience --path instanceId= --path entityId= --path audienceExecutionId= [--commit]
 
 required_context_fields: []
 optional_context_fields: []
@@ -71,7 +83,37 @@ trigger_phrases:
   - ltv by asin
   - purchase cohorts
   - repeat purchase analysis
+  - create an amc audience
+  - build an audience from amc
+  - amc audience
+  - lapsed buyers audience
+  - dsp audience from amc
+  - list my amc audiences
+  - why did my amc audience fail
+  - resubmit an amc audience
+  - delete a failed amc audience
 notes: >
+  Audiences (the write side): amc.create_audience / list_audiences /
+  get_audience / update_audience / delete_audience. The audience header model
+  differs from reporting (entity and instance both ride as headers; pass them
+  as --path entityId= and --path instanceId=). The body's advertiserId is the
+  DESTINATION (a DSP advertiser id or a sponsored-ads ENTITY id), not the AMC
+  entity. The window IS the lookback: timeWindowStart/End with
+  timeWindowRelative 'TRUE' scope every _for_audiences table before the SQL
+  runs, so the SQL carries no date filter; a cut inside the window uses
+  SECONDS_BETWEEN(col, BUILT_IN_PARAMETER('TIME_WINDOW_END')) because INTERVAL,
+  DATE_SUB and DATEDIFF are rejected. refreshRateDays is 0 to 21 (no monthly).
+  tracked_asin is populated only for purchase events; page-view, add-to-cart
+  and snsSubscription audiences join on tracked_item. "All purchasers" means
+  the paid amazon_retail_purchases_for_audiences table; conversions_for_audiences
+  is ad-attributed only, a different population, never substituted silently.
+  The service previews by default, strips a trailing semicolon, probes a paid
+  table's availability on the instance before the create, and refuses with the
+  dataset name when it is missing. Only FAILED audiences can be updated or
+  deleted; a SUCCEEDED one is immutable. The instance is the source of record;
+  amc.list_audiences returns the array under executionMetadata.
+
+
   Auth model: AMC rides the Amazon Ads API, whose tokens are PER ADVERTISING
   LOGIN (not per seller). The service reads the tenant's stored advertising
   refresh token and mints access tokens in memory; the plugin never holds Ads
