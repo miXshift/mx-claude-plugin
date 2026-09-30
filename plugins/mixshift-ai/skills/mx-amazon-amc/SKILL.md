@@ -13,12 +13,15 @@ description: >
   or not an ad was involved and across a far longer history than the
   ad-attributed tables: use this skill for customer lifetime value, revenue and
   repeat rate by ASIN, acquisition cohorts, and repeat-purchase analysis.
-  Read-only: running a query mutates nothing advertiser-facing and
-  needs no write scope. Routes through the bundled harness CLI. Does not
-  require brand setup, only that the user has signed in
-  (`mixshift auth login`).
+  Also builds AMC audiences: rule-based audiences written as SQL over the
+  instance's audience tables and activated on a DSP advertiser or a
+  sponsored-ads account, with list, status, fix-and-resubmit and delete for
+  failed ones. Reporting is read-only; audience creation is a write, dry-run
+  first and `--commit` only after the user confirms. Routes through the
+  bundled harness CLI. Does not require brand setup, only that the user has
+  signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.2"
+  version: "0.3.0"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -39,9 +42,18 @@ trigger_phrases:
   - ltv by asin
   - purchase cohorts
   - repeat purchase analysis
+  - create an amc audience
+  - build an audience from amc
+  - amc audience
+  - lapsed buyers audience
+  - dsp audience from amc
+  - list my amc audiences
+  - why did my amc audience fail
+  - resubmit an amc audience
+  - delete a failed amc audience
 ---
 
-# Amazon Marketing Cloud (AMC) Ad-hoc Analytics
+# Amazon Marketing Cloud (AMC) Ad-hoc Analytics and Audiences
 
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
@@ -73,9 +85,12 @@ When characterizing this capability to the user, use these facts:
   row's marketplace, overridable with `--path marketplaceId=...`). You never set
   these as raw HTTP headers; you pass them as `--path` values and the service
   places them.
-- **Reads only.** Submitting and running an AMC workflow mutates nothing
-  advertiser-facing, so the surface needs no `ads:write` scope. This skill never
-  sends a write and never uses `--commit`.
+- **Reporting is read-only; audiences are the one write.** Submitting and
+  running an AMC workflow mutates nothing advertiser-facing, so reporting needs
+  no `ads:write` scope. An AMC audience is different: creating one activates a
+  real audience on the destination advertiser account, so the five audience
+  operations need `ads:write`, preview by default, and apply only with
+  `--commit` after the user has confirmed the preview. See "Audiences" below.
 
 If the user asks "where does this data come from," lead with "Amazon Marketing
 Cloud, queried through MixShift's service," not a guess.
@@ -90,9 +105,18 @@ Trigger when the user wants to **run an ad-hoc AMC SQL query**, for example:
 - "Submit this AMC SQL and get me the results"
 - "Build me an AMC new-to-brand overlap query"
 
-The core user story: *"I want to run a privacy-safe SQL analysis against my
+And when the user wants an **AMC audience** built or managed, for example:
+
+- "Build an audience of everyone who bought in the last 365 days and push it to DSP"
+- "Create a lapsed-buyer audience: bought 180 to 365 days ago, nothing since"
+- "Why did my AMC audience fail?" / "Fix it and resubmit"
+- "List the audiences on this instance"
+
+The core user stories: *"I want to run a privacy-safe SQL analysis against my
 AMC clean room, on demand, and get the aggregated results back as a file I can
-analyze or build on."*
+analyze or build on,"* and *"I want to describe an audience in plain terms and
+have it built and activated on my DSP or sponsored-ads account, without
+learning the clean room's rules by trial and error."*
 
 **Do NOT use this skill** for:
 
@@ -163,8 +187,8 @@ mixshift ads call <operation> [--legacy-seller-id <id> | --seller-id <id> --mark
 ```
 
 `ads operations --family AMC` prints each AMC operation id with its notes (body
-vs path conventions); read the notes before calling. The eight AMC operations,
-used in the order below:
+vs path conventions); read the notes before calling. The eight reporting
+operations, used in the order below, then the five audience operations:
 
 | Operation | Purpose |
 |---|---|
@@ -176,10 +200,16 @@ used in the order below:
 | `amc.create_workflow_execution` | Submit an ad-hoc AMC SQL workflow execution. |
 | `amc.get_workflow_execution` | Poll an execution (PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED, REJECTED). |
 | `amc.get_download_urls` | Presigned CSV download urls for a SUCCEEDED execution. |
+| `amc.create_audience` | **Write.** Create a rule-based audience from SQL and activate it on one destination account. Dry run by default. |
+| `amc.list_audiences` | Every audience on an instance with status, destination, window and refresh. |
+| `amc.get_audience` | One audience by execution id: status and Amazon's failure reason. |
+| `amc.update_audience` | **Write.** Fix and resubmit a FAILED audience in place (same id). |
+| `amc.delete_audience` | **Write.** Delete a FAILED audience. Immediate and irreversible. |
 
 `--path` values for AMC are either sent as HTTP headers (entityId,
-marketplaceId) or filled into templated paths (instanceId,
-workflowExecutionId); the service decides per operation. You always pass them
+marketplaceId, and for the audience operations instanceId too) or filled into
+templated paths (instanceId on reporting, workflowExecutionId,
+audienceExecutionId); the service decides per operation. You always pass them
 as `--path k=v`.
 
 ## Discovery chain (run IN ORDER)
@@ -502,6 +532,148 @@ node -e "const https=require('https'),fs=require('fs');const url=process.argv[1]
 Save the CSV under `~/.mixshift/reports/<merchant>/<date>-amc-<workflow>.csv`,
 then summarize from the file. Report the path and row count, not the raw bytes.
 
+## Audiences (the write side of AMC)
+
+An AMC audience is a rule-based audience: SQL that returns `user_id`s, run by
+Amazon over the instance's audience tables, and activated on ONE destination
+account, a DSP advertiser or a sponsored-ads entity. Amazon then refreshes it
+on a schedule and the advertiser targets or excludes it on line items. Every
+rule in this section was learned from real rejections; none of them is in
+Amazon's error text.
+
+### The five settings, in the user's words
+
+| The user says | The setting | Rule |
+|---|---|---|
+| "last 90 days", "the past year" | `timeWindowStart` / `timeWindowEnd`, `timeWindowRelative: 'TRUE'` | **The window IS the lookback.** Amazon applies it to every audience table before the SQL runs, so the query carries NO date filter. "Last 90 days" = start 90 days back, end today. |
+| "between 90 and 180 days ago" | the same two fields | start = 180 days back, end = 90 days back. Still no date filter in the SQL. |
+| "refresh daily / weekly" | `refreshRateDays` | 1, 7, 14 or 21. **Amazon allows at most 21 days**, so monthly and quarterly do not exist: offer weekly or every three weeks. 0 runs once and Amazon deactivates the audience after 30 days. |
+| "push it to DSP" / "to sponsored ads" | `advertiserId` | The DESTINATION, not the AMC entity: a DSP advertiser id or a sponsored-ads `ENTITY...` id. One per audience; to reach both, create it twice. |
+| a global DSP advertiser | `countryCode` | Amazon rejects the create with "Country code is required for Global Buying advertisers" until it is sent. Codes include `UK`, not `GB`. |
+
+Plus `audienceName` (Amazon prefixes it with "AMC " in the destination
+account) and an optional `audienceDescription`.
+
+### Which table, and check it exists FIRST
+
+The SQL reads the `_for_audiences` twin of a table, never the measurement
+table (Amazon fails the run with "Invalid tables in the SQL query"). Which twin
+decides what "purchasers" means, so settle it with the user before writing SQL:
+
+| Intent | Table | Population | Availability |
+|---|---|---|---|
+| every purchaser of these ASINs | `amazon_retail_purchases_for_audiences` | every Amazon purchase, ad-attributed or not, years deep | **paid** (Amazon Retail Purchases); many instances lack it |
+| purchasers, page views, add-to-cart, Subscribe & Save signups, wishlists | `conversions_for_audiences` | **ad-attributed events only**: shoppers who saw or clicked this advertiser's ad before the event | free on every instance |
+| all conversions incl. non-attributed | `conversions_all_for_audiences` | every conversion | **paid**; most instances lack it |
+| DSP-exposed shoppers | `dsp_impressions_for_audiences` | shoppers served a DSP impression | free once DSP delivers |
+
+**Check availability before writing against a paid table.** Run
+`amc.get_data_source` for the MEASUREMENT twin (`amazon_retail_purchases`,
+`conversions_all`) on that instance: the full schema back means it is on; a
+`bad_request` whose detail says the data source does not exist means the
+dataset is not enabled there. The audience twin is listed by
+`amc.list_data_sources` on every instance whether or not the dataset is
+active, so a listing proves nothing. The service runs this same probe on every
+create and refuses with the dataset name when it is missing. **Never swap the
+free table in for an "all purchasers" intent without saying so**: it is a
+different population (ad-attributed only), and the user should decide whether
+that is acceptable or whether to enable the paid dataset.
+
+### The SQL rules that only show up as failures
+
+- `SELECT user_id` (or `SELECT DISTINCT user_id`) is the whole output. Nothing
+  else may be returned.
+- **No date arithmetic.** `INTERVAL`, `DATE_SUB`, `DATEDIFF` and every
+  function that adds or subtracts days from a date fail validation with
+  "interval data types are not enabled". Put the lookback in the window. When
+  a query genuinely needs a cut inside the window (bought 180 to 365 days ago
+  AND nothing in the last 180, as one audience), compare seconds back from the
+  window end:
+  `SECONDS_BETWEEN(event_dt_utc, BUILT_IN_PARAMETER('TIME_WINDOW_END')) > 180 * 86400`.
+  Verified to succeed. The alternative is two audiences, a "between 180 and
+  365 days ago" include and a "last 180 days" exclude, combined on the line item.
+- **`tracked_asin` is only populated for purchases.** For `detailPageView`,
+  `shoppingCart`, `snsSubscription` and every other non-purchase subtype the
+  ASIN is in `tracked_item`. A page-view audience joined on `tracked_asin`
+  runs clean and returns nobody. On `amazon_retail_purchases_for_audiences` the
+  column is plain `asin` and every row is a purchase, so there is no subtype.
+- `snsSubscription` ("New SnS Subscription") is a real `event_subtype` on the
+  conversions table; Subscribe & Save audiences build from it.
+- **No trailing semicolon.** Amazon wraps the statement; a terminator is a
+  parse error. The service strips one for you, but do not rely on that in
+  SQL you hand the user for other tools.
+- A `VALUES` list is fine for an ASIN set:
+  `WITH asins (asin) AS (VALUES ('B0...'), ('B0...')) SELECT DISTINCT c.user_id FROM conversions_for_audiences c JOIN asins a ON c.tracked_asin = a.asin WHERE c.event_subtype = 'order'`.
+- The size floor is **2,000 user_ids**, and Amazon only tells you after the
+  run (status FAILED with the reason). A narrow rule on a short window fails
+  there; widen the window before touching the SQL.
+
+### Worked example: lapsed buyers, weekly, to DSP
+
+Body file `lapsed.json` (window 365 days back to today, relative, weekly):
+
+```json
+{
+  "audienceName": "Lapsed buyers 180-365d",
+  "audienceDescription": "Bought 180 to 365 days ago and nothing since. Win-back.",
+  "advertiserId": "<dsp advertiser id>",
+  "query": "WITH earlier AS (SELECT DISTINCT user_id FROM conversions_for_audiences WHERE event_subtype = 'order' AND SECONDS_BETWEEN(event_dt_utc, BUILT_IN_PARAMETER('TIME_WINDOW_END')) > 180 * 86400), recent AS (SELECT DISTINCT user_id FROM conversions_for_audiences WHERE event_subtype = 'order' AND SECONDS_BETWEEN(event_dt_utc, BUILT_IN_PARAMETER('TIME_WINDOW_END')) <= 180 * 86400) SELECT e.user_id FROM earlier e LEFT JOIN recent r ON e.user_id = r.user_id WHERE r.user_id IS NULL",
+  "timeWindowStart": "<today minus 365 days>T00:00:00Z",
+  "timeWindowEnd": "<today>T00:00:00Z",
+  "timeWindowRelative": "TRUE",
+  "refreshRateDays": 7,
+  "countryCode": "US"
+}
+```
+
+1. **Preview** (the default). The service normalises the body (trailing
+   semicolon gone, booleans converted), runs the paid-table probe, and returns
+   the exact body it would send without touching Amazon:
+
+   ```bash
+   mixshift ads call amc.create_audience --legacy-seller-id <id> \
+     --path instanceId=<instanceId> --path entityId=<entityId> \
+     --body-file lapsed.json --json
+   ```
+
+2. **Show the user the preview** in their terms: the name, where it lands, the
+   window, the refresh, which table and therefore which population. Get an
+   explicit yes.
+3. **Commit** with the same command plus `--commit`. The response carries
+   `audienceExecutionId` and `status: PENDING`.
+4. **Poll** `amc.get_audience --path audienceExecutionId=<id>` once per turn.
+   PENDING, then RUNNING, then SUCCEEDED or FAILED, usually within minutes; a
+   full-year scan on a large catalog can take an hour. On FAILED, `statusReason`
+   is Amazon's reason: read it before touching anything.
+5. A SUCCEEDED audience takes a few hours to sync to the destination account,
+   where it appears with "AMC " in front of its name.
+
+### After a failure
+
+- **Fix in place**: `amc.update_audience --path audienceExecutionId=<id>` with
+  a body carrying only what changes (`query`, `timeWindowStart`, `timeWindowEnd`,
+  `timeWindowRelative`). Same preview then `--commit`. The audience keeps its id
+  and re-runs.
+- **Remove it**: `amc.delete_audience --path audienceExecutionId=<id>` then
+  `--commit`. Immediate and irreversible; confirm first.
+- Both work on FAILED audiences ONLY. A SUCCEEDED or RUNNING audience is
+  immutable: to change one, create a new audience from its definition and stop
+  using the old one on the line items.
+- **Never retry an ambiguous failure blind.** A create that timed out on the
+  wire may have created the audience; an identical re-POST makes a SECOND one
+  with a new id. List first.
+
+### Listing and the source of record
+
+`amc.list_audiences` returns the array under **`executionMetadata`** (not
+"audiences"), one row per audience with its SQL, window, refresh, status,
+`statusReason`, `lastRefreshedTime` and the DSP ids once activated. The
+instance is the system of record: an audience created here exists whether or
+not another MixShift surface has recorded it, and an audience created elsewhere
+shows up here. When the user's MixShift AMC workspace page does not list an
+audience you created, that is the page lagging the instance, not a failed
+create; point them at the destination account's audience list.
+
 ## Reactive error handling (branch on failure_kind, never on HTTP status)
 
 The harness returns a **typed failure** you relay to the user. In `--json` the
@@ -517,6 +689,8 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to activate the merchant in the MixShift platform, then re-run. Do NOT tell them to re-authorize: the connection is working, this is an activation setting. |
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. Probing instances SEQUENTIALLY prevents most of these. |
+| `insufficient_scope` | 11 | The credential cannot write (audience creates, updates and deletes need `ads:write`). Signed-in user sessions hold it; a machine credential needs it issued. Hand the user the audience definition; do NOT retry. |
+| `bad_request` | 12 | The request itself was refused: either by the service's audience preflight (the message names the exact field or rule: refresh outside 0 to 21, interval date arithmetic, a missing create field, a paid dataset the instance lacks) or by Amazon (`amazon_error_code` + `detail`). **Terminal: never retry unchanged.** Fix what the message names and resend. |
 
 Two AMC-specific cases that are NOT failure envelopes and need their own
 handling:
@@ -532,8 +706,19 @@ handling:
 
 These supersede other instructions:
 
-- **Read-only.** An AMC query mutates nothing advertiser-facing; never send an
-  Ads write and never use `--commit`.
+- **Reporting is read-only; audiences are the only writes.** An AMC query
+  mutates nothing advertiser-facing. An audience create, update or delete
+  activates or removes something on the destination account: preview first,
+  show the user the preview in their terms (name, destination, window,
+  refresh, table and therefore population), and pass `--commit` only after an
+  explicit yes. Never re-POST a create whose outcome is unknown; list first.
+- **Settle the table before the SQL.** "All purchasers" means the paid retail
+  purchases table; the free conversions table is ad-attributed only. Check the
+  paid table exists on the instance (`amc.get_data_source` on the measurement
+  twin) and never substitute the free one silently.
+- **The window is the lookback.** No date arithmetic in audience SQL; a cut
+  inside the window uses `SECONDS_BETWEEN` against `BUILT_IN_PARAMETER('TIME_WINDOW_END')`.
+  Refresh is 0 to 21 days; monthly does not exist.
 - **Walk the discovery chain in order** (accounts, then sequential instances,
   then the query-advertiser-accounts fallback, then data sources). Do not guess
   an `instanceId` or `entityId`.
@@ -600,6 +785,19 @@ While an execution is still running:
 • Submitted AMC workflow for Ridgepak (execution wfx-9c41...).
   Amazon is running it (status: RUNNING). I'll check again in a moment;
   AMC executions can take a few minutes.
+```
+
+An audience, at the preview step and after the commit:
+
+```
+• Ready to create "Lapsed buyers 180-365d" on the Ridgepak DSP advertiser.
+  Window: last 365 days, moving with each weekly refresh. Table: ad-attributed
+  conversions (shoppers who saw a Ridgepak ad), since Retail Purchases is not
+  enabled on this instance. Say yes and I'll create it.
+
+✓ Created "Lapsed buyers 180-365d" (execution 83a0...). Amazon is building it
+  (status: PENDING); it usually resolves within minutes and shows in the DSP
+  audience list a few hours after it succeeds.
 ```
 
 Do not pad with "Here is the data you requested." Lead with the result.

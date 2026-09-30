@@ -76,7 +76,7 @@ The plugin ships **27 skills**. Each is invoked naturally in chat: say what you 
 | `mx-data-explore` | Query, sample, and CSV-export your MixShift warehouse: Sponsored Ads (SP/SB/SD), DSP, Seller / Vendor Central operational revenue, inventory, catalog. Read-only. |
 | `mx-amazon-report` | Pull Amazon SP-API reports on demand, straight from Amazon, for any merchant and window: Sales and Traffic, Brand Analytics, FBA inventory, orders, returns, vendor reports. Read-only. |
 | `mx-amazon-retail` | Live SP-API retail lookups: catalog, inventory, orders, finances, listings, offer pricing. The title / brand source for ASINs missing from the warehouse. Read-only. |
-| `mx-amazon-amc` | Run Amazon Marketing Cloud (AMC) clean-room SQL: submit a query, poll it, fetch the result CSV. Read-only. |
+| `mx-amazon-amc` | Run Amazon Marketing Cloud (AMC) clean-room SQL: submit a query, poll it, fetch the result CSV. Build AMC audiences from a plain description and activate them on DSP or sponsored ads (previewed first, applied only on your confirmation). |
 | `mx-amazon-dsp` | Read your Amazon DSP account setup (campaigns, line items, creatives, approval status) and pull DSP reports on demand. Read-only. |
 | `mx-amazon-ads` | Read and change a live Amazon Ads account: campaign / ad group / keyword / target lists, live bids and budgets, recommendations, plus pause / enable, bid and budget edits, and keyword / target / negative create and delete across SP / SB / SD. Writes preview first and need your explicit confirmation. |
 | `mx-feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
