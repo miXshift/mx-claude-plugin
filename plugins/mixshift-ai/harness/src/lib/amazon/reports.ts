@@ -208,6 +208,11 @@ export interface ReportFailure {
   responsePayload?: unknown;
   /** Bounded raw text, when the body was not JSON. */
   responseText?: string;
+  /** On `report_fatal`: AMAZON's own explanation of why it refused the report
+   *  (the gateway's `amazon_error`). It is Amazon's text about the caller's own
+   *  request and often names the one parameter to change. Absent when Amazon
+   *  gave no reason. Sanitized and length-capped (see `cleanAmazonError`). */
+  amazonError?: string;
 }
 
 export interface ListMerchantsResult {
@@ -1535,6 +1540,58 @@ function isServerFailureEnvelope(
   );
 }
 
+/** Cap on the Amazon reason we carry and print. Amazon's explanations are a
+ *  sentence or two; this only stops a pathological body flooding stdout. */
+export const AMAZON_ERROR_MAX_CHARS = 1000;
+
+/** Normalize the gateway's `amazon_error`: only a non-empty string counts
+ *  (anything else, or whitespace only, means "Amazon gave no reason").
+ *  Control characters (including ESC) become spaces so the text is safe to
+ *  print to a terminal; newlines and tabs are kept. Over-long text is cut and
+ *  marked. */
+export function cleanAmazonError(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  // eslint-disable-next-line no-control-regex
+  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim();
+  if (cleaned.length === 0) return undefined;
+  return cleaned.length > AMAZON_ERROR_MAX_CHARS
+    ? cleaned.slice(0, AMAZON_ERROR_MAX_CHARS) + '... [truncated]'
+    : cleaned;
+}
+
+export type ReportReasonClass =
+  | 'deprecated'
+  | 'generic'
+  | 'data_not_available'
+  | 'period_alignment'
+  | 'span_exceeds_max'
+  | 'missing_option'
+  | 'invalid_option_value'
+  | 'other';
+
+/** Low-cardinality class of Amazon's FATAL reason, for telemetry. Derived
+ *  from the text by pattern; the text itself is NEVER sent. Order matters:
+ *  the first matching class wins. */
+export function classifyAmazonError(text: string): ReportReasonClass {
+  const t = text.toLowerCase();
+  if (/deprecated|no longer (available|supported)/.test(t)) return 'deprecated';
+  if (/double check that your parameters/.test(t)) return 'generic';
+  if (/not (yet )?available|may not have finished processing|outside the available data range/.test(t)) {
+    return 'data_not_available';
+  }
+  if (/must (be|start on|begin on) (a )?(sunday|monday|saturday)|must start on|calendar month|first day of/.test(t)) {
+    return 'period_alignment';
+  }
+  if (/more than \d+ (days?|years?)|more than (one|two|three|four|five|six|seven|eight|nine|ten) (days?|years?)|exceeds? |maximum|at most \d+/.test(t)) {
+    return 'span_exceeds_max';
+  }
+  if (/requires? the .* to be specified|please provide|must (be )?(provided|specified)|is required|missing/.test(t)) {
+    return 'missing_option';
+  }
+  if (/valid values? (are|is)|not a valid|invalid/.test(t)) return 'invalid_option_value';
+  return 'other';
+}
+
 /** Map a server `{ ok:false, kind, ... }` envelope to a typed ReportFailure,
  *  trusting the server's kind when recognized and filling a friendly default
  *  when the server omitted one. */
@@ -1546,11 +1603,19 @@ function toReportFailure(
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const recognized = KNOWN_KINDS.has(rawKind);
   const amazonErrorCode = strOrUndef(json.amazon_error_code);
+  const amazonError = cleanAmazonError(json.amazon_error);
   const kind: ReportFailureKind = recognized
     ? (rawKind as ReportFailureKind)
     : safeKindForStatus(httpStatus, amazonErrorCode);
-  const serverFriendly =
+  const rawFriendly =
     typeof json.friendly === 'string' ? json.friendly : undefined;
+  // The gateway's report_fatal copy points at `amazon_error` ONLY when it
+  // attached one. If the reason did not survive (absent, empty, not a string),
+  // drop the pointer rather than send the caller looking for nothing.
+  const serverFriendly =
+    kind === 'report_fatal' && amazonError === undefined && rawFriendly !== undefined
+      ? rawFriendly.replace(/\s*See amazon_error for the reason Amazon gave\.?/, ' Check the report type and date range.').trim()
+      : rawFriendly;
   const message = typeof json.message === 'string' ? json.message : undefined;
   return {
     ok: false,
@@ -1568,6 +1633,7 @@ function toReportFailure(
     ...(amazonErrorCode !== undefined ? { amazonErrorCode } : {}),
     ...(numOrUndef(json.status) !== undefined ? { amazonStatus: numOrUndef(json.status) } : {}),
     ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
+    ...(amazonError !== undefined ? { amazonError } : {}),
     ...(strOrUndef(json.responseText) !== undefined
       ? { responseText: strOrUndef(json.responseText) }
       : {}),

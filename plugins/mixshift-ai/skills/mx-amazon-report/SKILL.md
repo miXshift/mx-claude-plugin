@@ -132,6 +132,17 @@ slower and redundant. Before you start a run, work through these four steps:
    archive or combine), a fresh pull is the right call. If the warehouse copy
    fully satisfies the need, say so and save them the wait.
 
+**Vendor Central (1P) is the clearest case.** The warehouse already holds
+vendor sales (`vendor_sales_manufacturing_asin`, `vendor_sales_sourcing_asin`),
+traffic (`vendor_traffic_asin_daily`), inventory
+(`vendor_inventory_manufacturing_asin_daily`,
+`vendor_inventory_sourcing_asin_daily`) and net pure product margin
+(`vendor_netpureproductmargin_asin_daily`), typically about 3 days behind today
+(the same lag Amazon's own vendor reports have). For a recurring or scheduled
+vendor task, prefer the warehouse: a fresh vendor pull has strict window rules
+(see Pattern 4), and a request that breaks one fails outright. Pull from Amazon
+only for a window or grain the warehouse lacks.
+
 This is an **explicit step and a courtesy, NOT a hard gate.** If the user wants
 the Amazon report, pull it. Never refuse a requested pull because the warehouse
 "probably has it" already. The goal is to inform the choice, not to block it.
@@ -592,7 +603,9 @@ You:  1. Resolve merchant (must have Brand Registry; if Amazon rejects with
          mixshift amazon report start --seller-id <id> \
            --type GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT \
            --option reportPeriod=WEEK \
-           --start 2026-05-25 --end 2026-05-31 --json
+           --start 2026-05-24 --end 2026-05-30 --json
+         (A WEEK window runs Sunday to Saturday: 2026-05-24 is a Sunday.
+         Amazon refuses a Monday-to-Sunday week.)
       5. Poll, then get with --out (this one is JSON; use a .json file).
          The Search Terms report has NO server-side filter, so the whole
          marketplace term set comes back and it can be very large. Always
@@ -601,6 +614,22 @@ You:  1. Resolve merchant (must have Brand Registry; if Amazon rejects with
          progress update every turn or two; only a real `report_fatal`
          warrants stopping.
 ```
+
+**Window rules for every Brand Analytics report** (the catalog's
+`describe-report` states them per report): WEEK runs Sunday to Saturday (a
+start date that is not a Sunday is refused), MONTH is a whole calendar month,
+QUARTER is a whole calendar quarter, and a request cannot span two periods. A
+period that ended very recently, or that falls outside the data range Amazon
+still serves, is refused as "not available yet"; end the window at least 3 days
+back.
+
+**Two Brand Analytics reports are deprecated by Amazon and always fail:**
+`GET_BRAND_ANALYTICS_ALTERNATE_PURCHASE_REPORT` and
+`GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT`. Amazon answers every request for
+them with "This report is now deprecated." If the user asks for one, say so up
+front and do not start a run. `list-reports` and `describe-report` mark them
+as deprecated. Offer the live Brand Analytics reports instead, after checking
+`describe-report` to see whether any of them answers the user's question.
 
 **Filtering to a set of products (use Search Catalog Performance, not Search
 Terms).** If the user wants Brand Analytics narrowed to specific ASINs, the
@@ -619,7 +648,7 @@ You:  1. Resolve merchant (Brand Registry required, same as above).
            --type GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT \
            --option reportPeriod=WEEK \
            --option "asins=B0XXXX1111 B0XXXX2222 B0XXXX3333" \
-           --start 2026-05-25 --end 2026-05-31 --json
+           --start 2026-05-24 --end 2026-05-30 --json
       4. Poll, then get with --out (JSON).
 ```
 
@@ -677,10 +706,31 @@ You:  1. Resolve a merchant whose type is Vendor in `amazon merchants`.
       Note: vendor report types only apply to Vendor merchants. If the user's
       merchant is a Seller, say so rather than starting a doomed run.
 
-      Vendor data lag: vendor feeds settle ~48-72h behind. Set the end of the
-      window about three days back from today so you land on settled numbers; a
-      too-recent end window returns thin or empty rows. If the user asks for
-      "through yesterday," explain the lag and offer the settled window instead.
+      Window rules Amazon enforces on vendor reports (a request that breaks one
+      is accepted and then FATALs, it does not come back empty):
+      - reportPeriod=WEEK runs Sunday to Saturday. A Monday-to-Sunday week is
+        refused. Example: --start 2026-05-24 --end 2026-05-30.
+      - reportPeriod=MONTH covers a whole calendar month; a partial month is
+        refused.
+      - reportPeriod=DAY spans at most 15 days. For a longer range, send
+        several 15-day requests (and combine the results) instead of one.
+      - End the window at least 3 days back. Vendor feeds settle ~48-72h
+        behind, and Amazon refuses a window that ends too recently as "not yet
+        available" (it told one caller to use an earlier dataEndTime). If the
+        user asks for "through yesterday," explain the lag and offer the
+        settled window instead.
+      - GET_VENDOR_SALES_REPORT needs reportPeriod, distributorView and
+        sellingProgram all set. Which distributorView an account accepts
+        differs by account: if Amazon refuses the value, its reason names the
+        valid one. Use that value; do not cycle through guesses.
+      A scheduled vendor task should read the warehouse tables named in
+      "Warehouse-first" above and pull from Amazon only for what they lack.
+
+      If a vendor or Brand Analytics run comes back `report_fatal`, read
+      `amazon_error` first and change the one parameter it names (a window
+      date, a span, an option value) before any retry. Amazon's generic
+      "double check that your parameters are valid" names nothing: do not
+      treat it as a fix; run `describe-report` and check the rules above.
 ```
 
 ### Pattern 5 - Snapshot report (window FORBIDDEN)
@@ -749,7 +799,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `spapi_not_configured` | 6 | SP-API pulls are not enabled for this MixShift account. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The `--seller-id` matched no merchant. Re-run `amazon merchants` and pick a listed `amazonSellerId`. |
 | `throttled` | 8 | Amazon is rate-limiting. This is NORMAL, especially on Brand Analytics search-terms pulls, not a failure: wait and keep polling patiently with backoff (a `retry_after_ms` may be present). Never suggest canceling the pull because of a `throttled` response; it is not a reason to stop. |
-| `report_fatal` | 9 | Amazon returned FATAL / CANCELLED. Usually the report type does not apply to this merchant, or the window is invalid. Check `describe-report` and try a valid window. |
+| `report_fatal` | 9 | Amazon returned FATAL / CANCELLED. **Read `amazon_error` first** (in `--json`; in text mode it is printed as "Amazon's reason" under the failure line). It is Amazon's own words about your request and usually names the one parameter to change: a date that must be a Sunday, a span over the maximum, a missing option, the valid value for an option, or "This report is now deprecated." Change exactly what it names before any retry; never resend the same parameters. If there is no `amazon_error`, or it is only Amazon's generic "double check that your parameters are valid" text, that names nothing: say so to the user, check `describe-report` for the window and option rules, and fix those. Otherwise the report type may not apply to this merchant. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
 | `download_failed` | 1 | The report document download stalled or dropped and did not finish after the built-in retries. The report itself is still ready, so just run the same `report get <runId> --out <file>` again in a moment. Not a report or auth problem. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: not an outage, not a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` carries its message. **Terminal: never retry it unchanged**, it will fail identically. Fix the parameters and resend. If the operation catalog's own notes led to this request, say so to the user and encourage `mixshift feedback` — a documented convention that is wrong affects every caller, and a repeat of the same code on the same operation is how we find it. |

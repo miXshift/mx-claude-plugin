@@ -49,6 +49,7 @@ import {
   mergeSqpDocuments,
   SQP_REPORT_TYPE,
   SQP_ASIN_OPTION_CHAR_LIMIT,
+  classifyAmazonError,
   type ReportFailure,
   type MerchantView,
   type StartReportInput,
@@ -1175,6 +1176,11 @@ async function trackFailure(
         ...(failure.amazonSellerId !== undefined ? { amazon_seller_id: failure.amazonSellerId } : {}),
         ...(failure.reportId !== undefined ? { report_id: failure.reportId } : {}),
         ...(failure.status !== undefined ? { report_status: failure.status } : {}),
+        // Low-cardinality class of Amazon's stated reason (deprecated,
+        // span_exceeds_max, ...). The reason TEXT is never sent to telemetry.
+        ...(failure.amazonError !== undefined
+          ? { reason_class: classifyAmazonError(failure.amazonError) }
+          : {}),
       },
     },
     dataDir,
@@ -1202,16 +1208,35 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
+      // Amazon's own stated reason on a FATAL report (absent when Amazon gave none).
+      amazon_error: failure.amazonError,
       // Multi-marketplace merchant_not_found: the rows to disambiguate with.
       candidates: failure.candidates,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
+    if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
     if (failure.candidates && failure.candidates.length > 0) {
       process.stderr.write(renderCandidates(failure.candidates));
     }
   }
   process.exitCode = exitCodeForKind(failure.kind);
+}
+
+/** Text-mode rendering of Amazon's stated reason, indented under the friendly
+ *  line. When the reason is Amazon's generic boilerplate (it names no
+ *  parameter), say so and point at describe-report instead of leaving the
+ *  agent to treat it as a fix. */
+function renderAmazonReason(text: string): string {
+  const body = text
+    .split(/\r?\n/)
+    .map((l, i) => (i === 0 ? `  Amazon's reason: ${l}` : `    ${l}`))
+    .join('\n');
+  const generic =
+    classifyAmazonError(text) === 'generic'
+      ? "\n  This is Amazon's generic text and names no parameter to change. Run `mixshift amazon describe-report <type>` for the window and option rules."
+      : '';
+  return `${body}${generic}\n`;
 }
 
 /** Like emitFailure, but for one chunk of the SQP auto-batch path in `report
@@ -1237,6 +1262,7 @@ function emitChunkFailure(
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
+      amazon_error: failure.amazonError,
       candidates: failure.candidates,
       chunk,
       chunks: totalChunks,
@@ -1244,6 +1270,7 @@ function emitChunkFailure(
     });
   } else {
     process.stderr.write(`\n✗ [SQP chunk ${chunk}/${totalChunks}] ${failure.friendly}\n`);
+    if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
     if (completedRunIds.length > 0) {
       process.stderr.write(
         `  ${completedRunIds.length} chunk(s) completed before this failure: ${completedRunIds.join(', ')}\n`,
@@ -1422,6 +1449,9 @@ function renderReportList(entries: ReportCatalogEntry[]): string {
     lines.push('');
     lines.push(`## ${group}`);
     for (const e of list) {
+      const purpose = e.deprecated
+        ? `DEPRECATED BY AMAZON, do not request. ${e.deprecated}`
+        : e.purpose;
       const tags = [
         e.appliesTo !== 'both' ? e.appliesTo : '',
         e.documentFormat,
@@ -1430,7 +1460,7 @@ function renderReportList(entries: ReportCatalogEntry[]): string {
       ]
         .filter(Boolean)
         .join(', ');
-      lines.push(`- \`${e.reportType}\`  —  ${e.purpose}` + (tags ? `  *(${tags})*` : ''));
+      lines.push(`- \`${e.reportType}\`  —  ${purpose}` + (tags ? `  *(${tags})*` : ''));
     }
   }
   return lines.join('\n');
@@ -1442,6 +1472,10 @@ function renderReportDetail(e: ReportCatalogEntry): string {
   lines.push(`# ${e.title}`);
   lines.push(`\`${e.reportType}\``);
   lines.push('');
+  if (e.deprecated) {
+    lines.push(`**DEPRECATED BY AMAZON: do not request this report.** ${e.deprecated}`);
+    lines.push('');
+  }
   lines.push(e.purpose);
   lines.push('');
   lines.push(`- **applies to**: ${e.appliesTo}`);
