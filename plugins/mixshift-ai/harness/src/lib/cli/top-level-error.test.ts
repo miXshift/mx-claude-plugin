@@ -19,6 +19,7 @@ import { Command, CommanderError } from 'commander';
 import { applyExitOverride, handleTopLevelError, type TopLevelErrorIo } from './top-level-error.js';
 import { registerAdsCommands } from '../../commands/ads.js';
 import { registerDataCommands } from '../../commands/data.js';
+import { registerAmazonCommands } from '../../commands/amazon.js';
 import type { TrackInput } from '../telemetry/events.js';
 
 interface Recorded {
@@ -49,6 +50,7 @@ function buildProgram(): Command {
   program.name('mixshift').version('9.9.9').option('--json', 'emit machine-readable JSON to stdout', false);
   registerAdsCommands(program);
   registerDataCommands(program);
+  registerAmazonCommands(program);
   applyExitOverride(program);
   return program;
 }
@@ -63,7 +65,7 @@ async function run(...args: string[]): Promise<Recorded & { exitCode: number | u
   } catch (err) {
     exitCode = await handleTopLevelError(
       err,
-      { json: program.opts<{ json?: boolean }>().json === true, argv: args },
+      { json: program.opts<{ json?: boolean }>().json === true, argv: args, program },
       rec.io,
     );
   }
@@ -116,6 +118,7 @@ describe('exitOverride routes commander usage errors through the same catch', ()
       status: 'error',
       error_class: 'usage_error',
       message: "unknown option '--seller-id'",
+      hint: expect.stringContaining('WHERE SellerID'),
     });
     expect(r.events).toHaveLength(1);
     expect(r.events[0]!.error_class).toBe('usage_error');
@@ -126,13 +129,58 @@ describe('exitOverride routes commander usage errors through the same catch', ()
     });
   });
 
+  it('data query --seller-id: --json envelope keeps its message and adds a hint field', async () => {
+    const r = await run('--json', 'data', 'query', '--sql', 'select 1', '--seller-id', '5');
+    expect(r.exitCode).toBe(1);
+    const envelope = JSON.parse(r.stdout);
+    expect(envelope).toMatchObject({
+      status: 'error',
+      error_class: 'usage_error',
+      message: "unknown option '--seller-id'",
+    });
+    expect(envelope.hint).toContain('WHERE SellerID = <numeric warehouse SellerID>');
+    expect(r.events[0]!.payload).toMatchObject({ hint_id: 'data_query_seller_id' });
+  });
+
+  it('data query --seller-id without --json: the hint goes to stderr after the error, same exit code', async () => {
+    const r = await run('data', 'query', '--sql', 'select 1', '--seller-id', '5');
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(/^hint: `data query` takes SQL and has no --seller-id/);
+  });
+
+  it('data sample --seller-id is untouched: it is a real option', async () => {
+    const r = await run('--json', 'data', 'sample', '--table', 't', '--seller-id', 'A1SYNTHETIC0001');
+    expect(JSON.parse(r.stdout).error_class).toBe('invalid_argument');
+    expect(JSON.parse(r.stdout).hint).toBeUndefined();
+  });
+
+  it.each([
+    [['data', 'tables'], 'mixshift data list-tables'],
+    [['amazon', 'list'], 'mixshift amazon list-reports'],
+    [['amazon', 'ops'], 'mixshift amazon operations'],
+    [['retail', 'list'], 'mixshift amazon merchants'],
+  ])('unknown command %j: hint names %s, class and exit code unchanged', async (argv, target) => {
+    const r = await run('--json', ...argv);
+    expect(r.exitCode).toBe(1);
+    const envelope = JSON.parse(r.stdout);
+    expect(envelope.error_class).toBe('usage_error');
+    expect(envelope.hint).toContain(target);
+    expect(r.events[0]!.payload).toMatchObject({ hint_id: 'command_alias' });
+  });
+
+  it('an unknown command with no alias lists the real subcommands in the hint', async () => {
+    const r = await run('--json', 'amazon', 'report', 'frobnicate');
+    expect(JSON.parse(r.stdout).hint).toContain('start, poll, get, run');
+  });
+
   it('--json after the subcommand is honoured too', async () => {
     const r = await run('data', 'query', '--sql', 'select 1', '--seller-id', '5', '--json');
     expect(JSON.parse(r.stdout).error_class).toBe('usage_error');
   });
 
   it('without --json the handler prints nothing: commander already wrote its own error line', async () => {
-    const r = await run('data', 'query', '--sql', 'select 1', '--seller-id', '5');
+    const r = await run('data', 'query', '--sql', 'select 1', '--bogus', '5');
     expect(r.exitCode).toBe(1);
     expect(r.stdout).toBe('');
     expect(r.stderr).toBe('');

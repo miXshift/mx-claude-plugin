@@ -213,6 +213,131 @@ function querySqlTelemetry(
 }
 
 /**
+ * Words MySQL 8 reserves that agents reach for as a column alias
+ * (`COUNT(*) AS rows` is the observed one). A reserved word as an unquoted
+ * alias is an ER_PARSE_ERROR whose message points at the clause after it, not
+ * at the alias, so name it explicitly.
+ */
+const RESERVED_ALIAS_WORDS = [
+  'rows', 'lines', 'rank', 'groups', 'window', 'lead', 'lag', 'system', 'row', 'row_number',
+  'dense_rank', 'over', 'lateral', 'empty', 'range', 'key', 'keys', 'interval', 'condition',
+];
+// An unquoted alias: `AS rows`, or an implicit one right after an expression: `COUNT(*) lines,`.
+const RESERVED_ALIAS_RE = new RegExp(
+  `(?:\\bas\\s+|\\)\\s+)(${RESERVED_ALIAS_WORDS.join('|')})(?=\\s*(?:,|$|\\b(?:from|group|order|limit|union)\\b))`,
+  'i',
+);
+
+/** `sql` with the inside of '...' and "..." literals blanked (comments should already be stripped). */
+function blankLiterals(sql: string): string {
+  let out = '';
+  let quote: "'" | '"' | '`' | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      if (quote !== '`' && ch === '\\') {
+        out += '  ';
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        out += ch;
+      } else {
+        out += quote === '`' ? ch : ' ';
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
+const NOT_AN_ALIAS = new Set([
+  'where', 'on', 'using', 'join', 'left', 'right', 'inner', 'outer', 'cross', 'natural', 'full',
+  'group', 'order', 'limit', 'union', 'having', 'straight_join', 'set', 'select', 'for', 'window',
+]);
+
+/** Table references in `FROM` / `JOIN`, keyed by alias (and by the table's own name). */
+function referencedTables(sql: string): Map<string, string> {
+  const clean = blankLiterals(stripSqlComments(sql));
+  const out = new Map<string, string>();
+  const re = /\b(?:from|join)\s+`?([\w$]+(?:\.[\w$]+)?)`?(?:\s+(?:as\s+)?`?([\w$]+)`?)?/gi;
+  for (let m = re.exec(clean); m; m = re.exec(clean)) {
+    const table = m[1]!.split('.').pop()!.toLowerCase();
+    out.set(table, table);
+    const alias = m[2]?.toLowerCase();
+    if (alias && !NOT_AN_ALIAS.has(alias)) out.set(alias, table);
+  }
+  return out;
+}
+
+/**
+ * Which table does an "Unknown column" error belong to? A qualified column
+ * (`'s.SellerID'`) is resolved through the query's own aliases; an unqualified
+ * one in a query with a JOIN could belong to any joined table, so no single
+ * table is named. Otherwise the outer FROM table from the query shape.
+ */
+function unknownColumnTable(
+  text: string,
+  sql: string,
+  shapeTable: string | null | undefined,
+): { table?: string; candidates: string[] } {
+  const refs = referencedTables(sql);
+  const tables = [...new Set(refs.values())];
+  const col = /unknown column '([^']+)'/i.exec(text)?.[1];
+  if (col && col.includes('.')) {
+    const parts = col.split('.');
+    const q = parts[parts.length - 2]!.toLowerCase();
+    const resolved = refs.get(q);
+    return resolved ? { table: resolved, candidates: [] } : { candidates: tables };
+  }
+  if (tables.length > 1) return { candidates: tables };
+  return { table: shapeTable ?? tables[0] ?? undefined, candidates: [] };
+}
+
+/**
+ * Append the next step to a syntax failure so a wrong guess is recoverable on
+ * the next call: an unknown column points at `data describe` (the curated
+ * column list and gotchas, rather than a raw INFORMATION_SCHEMA read), and a
+ * reserved-word alias names the word and the fix. Every other message is
+ * returned unchanged. `table` is the primary table from the query shape.
+ * Copy rule: no em dashes (customer-facing).
+ */
+export function syntaxErrorGuidance(
+  friendly: string,
+  failure: { kind: string; raw_code?: string; message?: string },
+  sql: string,
+  table: string | null | undefined,
+): string {
+  if (failure.kind !== 'syntax_error') return friendly;
+  const text = `${failure.message ?? ''} ${friendly}`;
+  if (failure.raw_code === 'ER_BAD_FIELD_ERROR' || /unknown column/i.test(text)) {
+    const target = unknownColumnTable(text, sql, table);
+    const describe = target.table
+      ? `\`mixshift data describe ${target.table}\``
+      : '`mixshift data describe <table>`' +
+        (target.candidates.length ? ` (tables in this query: ${target.candidates.join(', ')})` : '');
+    return (
+      `${friendly}\nCheck the column name against the table. ` +
+      `Run ${describe} for the real column names and gotchas ` +
+      '(`mixshift data list-tables` shows the tables it covers).'
+    );
+  }
+  if (failure.raw_code === 'ER_PARSE_ERROR') {
+    const word = RESERVED_ALIAS_RE.exec(blankLiterals(stripSqlComments(sql)))?.[1];
+    if (word) {
+      return (
+        `${friendly}\n\`${word.toLowerCase()}\` is a reserved word in MySQL 8, so it cannot be used as an alias ` +
+        `as written. Alias it something else (for example \`row_count\`) or wrap it in backticks.`
+      );
+    }
+  }
+  return friendly;
+}
+
+/**
  * Educational user-facing message for the datahub gateway's two output-size
  * caps. These arrive as the failure envelope's `kind` from POST /api/query:
  *   - 'too_many_rows'      the 50k-row cap
@@ -1197,7 +1322,11 @@ async function runMysqlQuery<Row>(
       durationMs,
     };
   } catch (err) {
-    const failure = classify(err);
+    const classified = classify(err);
+    const failure: DataQueryFailure = {
+      ...classified,
+      friendly: syntaxErrorGuidance(classified.friendly, classified, sql, options.query_shape?.table),
+    };
     void track(
       {
         event_name: EventName.QueryFailed,
@@ -1406,7 +1535,12 @@ async function runDatahubQuery<Row>(
       table_name: json.table_name,
       raw_code: json.raw_code,
       message: json.message ?? 'Query failed',
-      friendly: capFriendlyMessage(serverKind, serverFriendly),
+      friendly: syntaxErrorGuidance(
+        capFriendlyMessage(serverKind, serverFriendly),
+        { kind: serverKind, raw_code: json.raw_code, message: json.message },
+        sql,
+        options.query_shape?.table,
+      ),
       durationMs,
       // Cap-rejection size hints (Track B), when the service provides them.
       ...(typeof json.actualRowCount === 'number' ? { actualRowCount: json.actualRowCount } : {}),

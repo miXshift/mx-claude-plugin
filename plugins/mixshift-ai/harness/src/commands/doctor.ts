@@ -36,8 +36,8 @@ import {
   type InstallSituation,
 } from '../lib/install-record.js';
 import { detectSurface, type Surface } from '../lib/telemetry/surface.js';
-import { loadCredentials, getValidAccessToken } from '../lib/auth/credentials.js';
-import type { Credentials } from '../lib/auth/schema.js';
+import { getValidAccessToken } from '../lib/auth/credentials.js';
+import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { REGISTRATION_URL } from '../lib/onboarding.js';
@@ -55,22 +55,6 @@ interface DoctorCliOptions {
   apiBase?: string;
   timeoutMs?: string;
   networkOnly?: boolean;
-}
-
-type AuthKind = 'interactive' | 'service' | 'legacy_mysql' | 'none';
-
-interface AuthSummary {
-  signedIn: boolean;
-  kind: AuthKind;
-  email?: string;
-  personLabel?: string;
-  apiBase?: string;
-  clientId?: string;
-  label?: string;
-  database?: string;
-  accessExpiresAt?: string;
-  accessExpired?: boolean;
-  refreshExpiresAt?: string;
 }
 
 interface DoctorFullReport {
@@ -302,49 +286,6 @@ async function assembleFullReport(opts: {
     update,
     ok,
   };
-}
-
-async function summarizeAuth(dataDirOverride?: string): Promise<AuthSummary> {
-  let credentials: Credentials | null = null;
-  try {
-    credentials = (await loadCredentials(dataDirOverride)).credentials;
-  } catch {
-    // A malformed creds file must not break a diagnostic; treat as signed-out.
-    return { signedIn: false, kind: 'none' };
-  }
-  if (!credentials) return { signedIn: false, kind: 'none' };
-
-  // datahub (human session) wins when both exist — the more specific intent.
-  if (credentials.datahub) {
-    const d = credentials.datahub;
-    return {
-      signedIn: true,
-      kind: 'interactive',
-      email: d.email,
-      personLabel: d.person_label,
-      apiBase: d.api_base,
-      accessExpiresAt: d.expires_at,
-      accessExpired: Date.parse(d.expires_at) <= Date.now(),
-      refreshExpiresAt: d.refresh_expires_at,
-    };
-  }
-  if (credentials.service) {
-    return {
-      signedIn: true,
-      kind: 'service',
-      apiBase: credentials.service.api_base,
-      clientId: credentials.service.client_id,
-      label: credentials.service.label,
-    };
-  }
-  if (credentials.mysql) {
-    return {
-      signedIn: true,
-      kind: 'legacy_mysql',
-      database: credentials.mysql.database,
-    };
-  }
-  return { signedIn: false, kind: 'none' };
 }
 
 // ---------------------------------------------------------------------------

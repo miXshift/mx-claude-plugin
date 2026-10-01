@@ -15,6 +15,7 @@ import {
   streamQuery,
   FIRST_PAGE_PROBE_ROWS,
   TRANSIENT_NETWORK_RETRIES,
+  syntaxErrorGuidance,
 } from './query-runner.js';
 import { createCsvFileSink } from '../output/csv-file-sink.js';
 import { saveDatahub, _refreshState } from '../auth/credentials.js';
@@ -337,6 +338,125 @@ describe('runQuery :: datahub error envelope', () => {
       expect(result.kind).toBe('syntax_error');
       expect(result.friendly).toMatch(/SQL error/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wrong guesses point at the fix: unknown column -> describe, reserved alias
+// ---------------------------------------------------------------------------
+
+describe('runQuery :: syntax errors say what to do next', () => {
+  async function failWith(raw_code: string, friendly: string, sql: string) {
+    await saveDatahub(freshDatahubFixture(), testDir);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        jsonResponse(200, { ok: false, kind: 'syntax_error', raw_code, message: friendly, friendly, durationMs: 1 }),
+      ),
+    );
+    return runQuery(sql, [], { dataDirOverride: testDir });
+  }
+
+  it("unknown column: keeps the server text and points at `data describe <table>` for the queried table", async () => {
+    const r = await failWith(
+      'ER_BAD_FIELD_ERROR',
+      "SQL error: Unknown column 'Spend' in 'field list'",
+      'SELECT SUM(Spend) FROM campaignmetric WHERE SellerID = 1',
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('syntax_error');
+      expect(r.friendly).toContain("SQL error: Unknown column 'Spend' in 'field list'");
+      expect(r.friendly).toContain('`mixshift data describe campaignmetric`');
+      expect(r.message).toBe("SQL error: Unknown column 'Spend' in 'field list'");
+    }
+  });
+
+  it('unknown column with no determinable table still points at describe', async () => {
+    const r = await failWith('ER_BAD_FIELD_ERROR', "Unknown column 'x' in 'field list'", 'SELECT x');
+    if (!r.ok) expect(r.friendly).toContain('`mixshift data describe <table>`');
+  });
+
+  it('`COUNT(*) AS rows` names the reserved word and the fix', async () => {
+    const r = await failWith('ER_PARSE_ERROR', 'SQL error: You have an error in your SQL syntax', 'SELECT COUNT(*) AS rows FROM t');
+    if (!r.ok) {
+      expect(r.friendly).toContain('`rows` is a reserved word in MySQL 8');
+      expect(r.friendly).toContain('backticks');
+    }
+  });
+
+  it('an unrelated parse error is left exactly as the server wrote it', async () => {
+    const r = await failWith('ER_PARSE_ERROR', 'SQL error: parse error near `WHEER`', 'SELECT 1 WHEER x=1');
+    if (!r.ok) expect(r.friendly).toBe('SQL error: parse error near `WHEER`');
+  });
+});
+
+describe('syntaxErrorGuidance :: which table', () => {
+  const bad = { kind: 'syntax_error', raw_code: 'ER_BAD_FIELD_ERROR', message: '' };
+  const join = 'SELECT cm.Cost FROM campaignmetric cm JOIN seller s ON cm.SellerID = s.SellerID';
+
+  it('a qualified column resolves through the query alias, not the outer FROM table', () => {
+    const f = syntaxErrorGuidance("Unknown column 's.SellerID' in 'on clause'", { ...bad, message: "Unknown column 's.SellerID' in 'on clause'" }, join, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe seller`');
+    expect(f).not.toContain('describe campaignmetric');
+  });
+
+  it('resolves `AS` aliases and backticked, schema-qualified tables', () => {
+    const sql = 'SELECT 1 FROM `db`.`campaignmetric` AS cm LEFT JOIN campaign c ON c.ID = cm.CampaignID';
+    const f = syntaxErrorGuidance("Unknown column 'c.CampaignID' in 'field list'", bad, sql, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe campaign`');
+  });
+
+  it('an unqualified column in a JOIN names no single table, only the candidates', () => {
+    const f = syntaxErrorGuidance("Unknown column 'Spend' in 'field list'", bad, join, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe <table>` (tables in this query: campaignmetric, seller)');
+  });
+
+  it('an unresolvable qualifier falls back to the candidates', () => {
+    const f = syntaxErrorGuidance("Unknown column 'zz.x' in 'field list'", bad, join, 'campaignmetric');
+    expect(f).toContain('describe <table>');
+  });
+
+  it('a join keyword is not mistaken for an alias', () => {
+    const f = syntaxErrorGuidance("Unknown column 'seller.x' in 'field list'", bad, 'SELECT 1 FROM campaignmetric LEFT JOIN seller ON 1=1', 'campaignmetric');
+    expect(f).toContain('`mixshift data describe seller`');
+  });
+});
+
+describe('syntaxErrorGuidance :: literals and comments', () => {
+  const parse = { kind: 'syntax_error', raw_code: 'ER_PARSE_ERROR', message: 'm' };
+  it("ignores a reserved word inside a string literal", () => {
+    expect(syntaxErrorGuidance('f', parse, "SELECT a FROM t WHERE note = 'sold as key, bulk' WHEER x", 't')).toBe('f');
+  });
+  it('ignores a reserved word inside a comment or double-quoted literal', () => {
+    expect(syntaxErrorGuidance('f', parse, 'SELECT a FROM t -- count as rows\nWHEER x', 't')).toBe('f');
+    expect(syntaxErrorGuidance('f', parse, 'SELECT a FROM t WHERE n = "x as lines, y" WHEER x', 't')).toBe('f');
+  });
+  it('still flags a real alias after a literal', () => {
+    expect(syntaxErrorGuidance('f', parse, "SELECT 'a b' x, COUNT(*) AS rows FROM t", 't')).toContain('`rows`');
+  });
+});
+
+describe('syntaxErrorGuidance', () => {
+  const fail = { kind: 'syntax_error', raw_code: 'ER_PARSE_ERROR', message: 'm' };
+  it.each([
+    ['SELECT COUNT(*) AS rows FROM t', 'rows'],
+    ['SELECT COUNT(*) lines, SUM(q) units FROM t', 'lines'],
+    ['SELECT a AS Rank FROM t', 'rank'],
+  ])('flags a reserved alias in %s', (sql, word) => {
+    expect(syntaxErrorGuidance('f', fail, sql, 't')).toContain(`\`${word}\``);
+  });
+  it.each([
+    'SELECT COUNT(*) AS `rows` FROM t',
+    'SELECT COUNT(*) AS row_count FROM t',
+    'SELECT rows FROM t',
+  ])('leaves %s alone', (sql) => {
+    expect(syntaxErrorGuidance('f', fail, sql, 't')).toBe('f');
+  });
+  it('only touches syntax errors', () => {
+    expect(
+      syntaxErrorGuidance('f', { kind: 'unknown_table', raw_code: 'ER_BAD_FIELD_ERROR' }, 'SELECT 1', 't'),
+    ).toBe('f');
   });
 });
 
