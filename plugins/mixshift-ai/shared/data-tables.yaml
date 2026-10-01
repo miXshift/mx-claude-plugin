@@ -72,7 +72,7 @@ tables:
       - "There is no `Date` column. Filter on `DateTime` (datetime), or `DateKey` (int, YYYYMMDD)."
       - "There is no `SalesAmount` here; that is a business_reports_dpst_date column. Ad sales is `Sales`, spend is `Cost`."
       - "There is no `OrderQuantity`. Order counts live in the attribution columns (`AttributedConversions*`, `attributedOrders*`), which are windowed."
-      - "There is no `Spend` (spend is `Cost`) and no `AttributedConversions7d`. The classic windowed columns are spelled `AttributedConversions7day` and `AttributedSales7day` (also 1day, 14day, 30day), with `day`, not `d`. Only the newer new-to-brand style columns end in `14d`."
+      - "There is no `Spend` (spend is `Cost`) and no `AttributedConversions7d`. The classic windowed columns are spelled `AttributedConversions7day` and `AttributedSales7day` (also 1day, 14day, 30day), with `day`, not `d`. The newer view, new-to-brand, branded-search and detail-page-view columns end in `14d`."
 
   adgroupmetric:
     description: "Ad-group-level daily ad metrics. Same fields as campaignmetric, one level deeper. Joins to adgroup for DefaultBid + naming."
@@ -312,7 +312,7 @@ tables:
     gotchas:
       - "There is no `Date`, `ReportDate` or `SnapshotDate` column. Filter on `DateTime`."
       - "Sales here is `Amount`, NOT `SalesAmount` (that is the day-level sibling business_reports_dpst_date) and NOT `OrderedProductSales` (which does not exist in this warehouse)."
-      - "The ASIN columns are `ChildAsin` and `ParentAsin`, spelled exactly that way. There is no `ASIN`, `Asin` or `ChildASIN`."
+      - "The ASIN columns are `ChildAsin` and `ParentAsin` (MySQL ignores letter case, so `ChildASIN` also works). There is no column named just `ASIN` or `Asin`."
 
   business_reports_dpst_total:
     description: "DEPRECATED - no longer populated (no new rows since 2022). Do not use. For account-level daily totals, aggregate business_reports_dpst_date instead."

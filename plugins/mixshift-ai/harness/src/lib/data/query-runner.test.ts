@@ -391,6 +391,52 @@ describe('runQuery :: syntax errors say what to do next', () => {
   });
 });
 
+describe('syntaxErrorGuidance :: which table', () => {
+  const bad = { kind: 'syntax_error', raw_code: 'ER_BAD_FIELD_ERROR', message: '' };
+  const join = 'SELECT cm.Cost FROM campaignmetric cm JOIN seller s ON cm.SellerID = s.SellerID';
+
+  it('a qualified column resolves through the query alias, not the outer FROM table', () => {
+    const f = syntaxErrorGuidance("Unknown column 's.SellerID' in 'on clause'", { ...bad, message: "Unknown column 's.SellerID' in 'on clause'" }, join, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe seller`');
+    expect(f).not.toContain('describe campaignmetric');
+  });
+
+  it('resolves `AS` aliases and backticked, schema-qualified tables', () => {
+    const sql = 'SELECT 1 FROM `db`.`campaignmetric` AS cm LEFT JOIN campaign c ON c.ID = cm.CampaignID';
+    const f = syntaxErrorGuidance("Unknown column 'c.CampaignID' in 'field list'", bad, sql, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe campaign`');
+  });
+
+  it('an unqualified column in a JOIN names no single table, only the candidates', () => {
+    const f = syntaxErrorGuidance("Unknown column 'Spend' in 'field list'", bad, join, 'campaignmetric');
+    expect(f).toContain('`mixshift data describe <table>` (tables in this query: campaignmetric, seller)');
+  });
+
+  it('an unresolvable qualifier falls back to the candidates', () => {
+    const f = syntaxErrorGuidance("Unknown column 'zz.x' in 'field list'", bad, join, 'campaignmetric');
+    expect(f).toContain('describe <table>');
+  });
+
+  it('a join keyword is not mistaken for an alias', () => {
+    const f = syntaxErrorGuidance("Unknown column 'seller.x' in 'field list'", bad, 'SELECT 1 FROM campaignmetric LEFT JOIN seller ON 1=1', 'campaignmetric');
+    expect(f).toContain('`mixshift data describe seller`');
+  });
+});
+
+describe('syntaxErrorGuidance :: literals and comments', () => {
+  const parse = { kind: 'syntax_error', raw_code: 'ER_PARSE_ERROR', message: 'm' };
+  it("ignores a reserved word inside a string literal", () => {
+    expect(syntaxErrorGuidance('f', parse, "SELECT a FROM t WHERE note = 'sold as key, bulk' WHEER x", 't')).toBe('f');
+  });
+  it('ignores a reserved word inside a comment or double-quoted literal', () => {
+    expect(syntaxErrorGuidance('f', parse, 'SELECT a FROM t -- count as rows\nWHEER x', 't')).toBe('f');
+    expect(syntaxErrorGuidance('f', parse, 'SELECT a FROM t WHERE n = "x as lines, y" WHEER x', 't')).toBe('f');
+  });
+  it('still flags a real alias after a literal', () => {
+    expect(syntaxErrorGuidance('f', parse, "SELECT 'a b' x, COUNT(*) AS rows FROM t", 't')).toContain('`rows`');
+  });
+});
+
 describe('syntaxErrorGuidance', () => {
   const fail = { kind: 'syntax_error', raw_code: 'ER_PARSE_ERROR', message: 'm' };
   it.each([

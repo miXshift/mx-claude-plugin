@@ -109,7 +109,7 @@ export function usageHint(
         id: 'data_query_seller_id',
         text:
           '`data query` takes SQL and has no --seller-id. Filter in the SQL instead: ' +
-          'WHERE SellerID = <numeric warehouse SellerID>. ' +
+          'WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). ' +
           '(`data sample` and `data export` do take --seller-id.)',
       };
     }

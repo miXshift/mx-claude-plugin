@@ -228,6 +228,75 @@ const RESERVED_ALIAS_RE = new RegExp(
   'i',
 );
 
+/** `sql` with the inside of '...' and "..." literals blanked (comments should already be stripped). */
+function blankLiterals(sql: string): string {
+  let out = '';
+  let quote: "'" | '"' | '`' | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quote) {
+      if (quote !== '`' && ch === '\\') {
+        out += '  ';
+        i++;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        out += ch;
+      } else {
+        out += quote === '`' ? ch : ' ';
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
+const NOT_AN_ALIAS = new Set([
+  'where', 'on', 'using', 'join', 'left', 'right', 'inner', 'outer', 'cross', 'natural', 'full',
+  'group', 'order', 'limit', 'union', 'having', 'straight_join', 'set', 'select', 'for', 'window',
+]);
+
+/** Table references in `FROM` / `JOIN`, keyed by alias (and by the table's own name). */
+function referencedTables(sql: string): Map<string, string> {
+  const clean = blankLiterals(stripSqlComments(sql));
+  const out = new Map<string, string>();
+  const re = /\b(?:from|join)\s+`?([\w$]+(?:\.[\w$]+)?)`?(?:\s+(?:as\s+)?`?([\w$]+)`?)?/gi;
+  for (let m = re.exec(clean); m; m = re.exec(clean)) {
+    const table = m[1]!.split('.').pop()!.toLowerCase();
+    out.set(table, table);
+    const alias = m[2]?.toLowerCase();
+    if (alias && !NOT_AN_ALIAS.has(alias)) out.set(alias, table);
+  }
+  return out;
+}
+
+/**
+ * Which table does an "Unknown column" error belong to? A qualified column
+ * (`'s.SellerID'`) is resolved through the query's own aliases; an unqualified
+ * one in a query with a JOIN could belong to any joined table, so no single
+ * table is named. Otherwise the outer FROM table from the query shape.
+ */
+function unknownColumnTable(
+  text: string,
+  sql: string,
+  shapeTable: string | null | undefined,
+): { table?: string; candidates: string[] } {
+  const refs = referencedTables(sql);
+  const tables = [...new Set(refs.values())];
+  const col = /unknown column '([^']+)'/i.exec(text)?.[1];
+  if (col && col.includes('.')) {
+    const parts = col.split('.');
+    const q = parts[parts.length - 2]!.toLowerCase();
+    const resolved = refs.get(q);
+    return resolved ? { table: resolved, candidates: [] } : { candidates: tables };
+  }
+  if (tables.length > 1) return { candidates: tables };
+  return { table: shapeTable ?? tables[0] ?? undefined, candidates: [] };
+}
+
 /**
  * Append the next step to a syntax failure so a wrong guess is recoverable on
  * the next call: an unknown column points at `data describe` (the curated
@@ -245,9 +314,11 @@ export function syntaxErrorGuidance(
   if (failure.kind !== 'syntax_error') return friendly;
   const text = `${failure.message ?? ''} ${friendly}`;
   if (failure.raw_code === 'ER_BAD_FIELD_ERROR' || /unknown column/i.test(text)) {
-    const describe = table
-      ? `\`mixshift data describe ${table}\``
-      : '`mixshift data describe <table>`';
+    const target = unknownColumnTable(text, sql, table);
+    const describe = target.table
+      ? `\`mixshift data describe ${target.table}\``
+      : '`mixshift data describe <table>`' +
+        (target.candidates.length ? ` (tables in this query: ${target.candidates.join(', ')})` : '');
     return (
       `${friendly}\nCheck the column name against the table. ` +
       `Run ${describe} for the real column names and gotchas ` +
@@ -255,7 +326,7 @@ export function syntaxErrorGuidance(
     );
   }
   if (failure.raw_code === 'ER_PARSE_ERROR') {
-    const word = RESERVED_ALIAS_RE.exec(sql)?.[1];
+    const word = RESERVED_ALIAS_RE.exec(blankLiterals(stripSqlComments(sql)))?.[1];
     if (word) {
       return (
         `${friendly}\n\`${word.toLowerCase()}\` is a reserved word in MySQL 8, so it cannot be used as an alias ` +

@@ -711,7 +711,9 @@ const SIGN_IN_HINT_AGENT =
 
 export interface AuthStatusReport {
   signed_in: boolean;
-  credential: 'human' | 'service' | 'legacy_mysql' | 'none';
+  credential: 'human' | 'service' | 'legacy_mysql' | 'none' | 'unreadable';
+  /** credential 'unreadable' only: the credentials file that cannot be read. */
+  credentials_path?: string;
   actor?: string;
   tenant_login?: string;
   service?: string;
@@ -726,6 +728,18 @@ export interface AuthStatusReport {
 
 /** Pure: turn the shared local summary into the `auth status` report. */
 export function buildAuthStatusReport(a: AuthSummary): AuthStatusReport {
+  if (a.unreadable) {
+    return {
+      signed_in: false,
+      credential: 'unreadable',
+      credentials_path: a.credentialsPath,
+      needs_sign_in: true,
+      next_step:
+        `The saved sign-in file${a.credentialsPath ? ` (${a.credentialsPath})` : ''} cannot be read, ` +
+        'so signing in would fail to save. Delete it (or rename it aside), then sign in: ' +
+        `${SIGN_IN_HINT_AGENT}.`,
+    };
+  }
   if (!a.signedIn) {
     return {
       signed_in: false,
@@ -739,8 +753,9 @@ export function buildAuthStatusReport(a: AuthSummary): AuthStatusReport {
     return {
       signed_in: !dead,
       credential: 'human',
-      actor: a.personLabel ?? a.email,
-      tenant_login: a.email,
+      // The token's own claims are what the server and telemetry use; the stored copies can drift.
+      actor: a.tokenActor ?? a.personLabel ?? a.email,
+      tenant_login: a.tokenEmail ?? a.email,
       service: a.apiBase,
       access_expires_at: a.accessExpiresAt,
       access_expired: a.accessExpired,
@@ -771,7 +786,13 @@ export function buildAuthStatusReport(a: AuthSummary): AuthStatusReport {
 function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
   const out: string[] = [];
   if (!r.signed_in) {
-    out.push(r.credential === 'human' ? 'Not signed in (saved sign-in expired).' : 'Not signed in.');
+    out.push(
+      r.credential === 'human'
+        ? 'Not signed in (saved sign-in expired).'
+        : r.credential === 'unreadable'
+          ? 'Not signed in (the saved sign-in file cannot be read).'
+          : 'Not signed in.',
+    );
   } else if (r.credential === 'human') {
     out.push(`Signed in (human sign-in) as ${r.actor ?? '?'}`);
     if (r.tenant_login && r.tenant_login !== r.actor) out.push(`  tenant login: ${r.tenant_login}`);
@@ -798,8 +819,8 @@ function registerStatusSubcommand(auth: Command): void {
     .command('status')
     .description(
       'Show whether you are signed in, as whom, the tenant login, and when the access token expires. ' +
-        'Read-only: reads the local credentials file only. It never signs in, refreshes a token, ' +
-        'prompts, or calls the network.',
+        'Read-only: reads the local credentials file only. It never signs in, prompts, ' +
+        'contacts the sign-in service, or refreshes your session.',
     )
     .action(async (_opts: Record<string, never>, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();

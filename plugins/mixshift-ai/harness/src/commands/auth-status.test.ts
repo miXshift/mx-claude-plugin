@@ -171,6 +171,34 @@ describe('auth status', () => {
     expect(JSON.parse(out)).toMatchObject({ signed_in: false });
   });
 
+  it('an unreadable credentials file is not "signed out": names the file, says delete or rename, then sign in', async () => {
+    const { writeFile, mkdir } = await import('node:fs/promises');
+    const { credentialsPath } = await import('../lib/paths/resolve.js');
+    await mkdir(join(credentialsPath(dataDir), '..'), { recursive: true });
+    await writeFile(credentialsPath(dataDir), '{not json', 'utf-8');
+    await status('--json');
+    const r = JSON.parse(out);
+    expect(r).toMatchObject({ signed_in: false, credential: 'unreadable', needs_sign_in: true, credentials_path: credentialsPath(dataDir) });
+    expect(r.next_step).toContain('Delete it (or rename it aside)');
+    expect(r.next_step).toContain('device-init');
+    await status();
+    expect(out).toContain('the saved sign-in file cannot be read');
+  });
+
+  it('actor and tenant login come from the token claims when they differ from the stored copies', async () => {
+    const seg = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const token = `${seg({ alg: 'none' })}.${seg({ sub: '1', email: 'claim-tenant@example.test', actor: 'claim-person@example.test' })}.sig`;
+    await saveDatahub({ ...datahub(), access_token: token }, dataDir);
+    await status('--json');
+    expect(JSON.parse(out)).toMatchObject({ actor: 'claim-person@example.test', tenant_login: 'claim-tenant@example.test' });
+  });
+
+  it('a token with no readable claims falls back to the stored copies', async () => {
+    await saveDatahub(datahub(), dataDir);
+    await status('--json');
+    expect(JSON.parse(out)).toMatchObject({ actor: 'person@example.test', tenant_login: 'tenant@example.test' });
+  });
+
   it('is read-only: no network call, credentials file byte-identical', async () => {
     await saveDatahub(datahub({ expires: -HOUR }), dataDir);
     const { path } = await loadCredentials(dataDir);

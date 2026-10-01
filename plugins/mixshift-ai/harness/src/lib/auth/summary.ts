@@ -9,6 +9,8 @@
 
 import { loadCredentials } from './credentials.js';
 import type { Credentials } from './schema.js';
+import { credentialsPath } from '../paths/resolve.js';
+import { decodeAccessTokenClaims } from './token-claims.js';
 
 export type AuthKind = 'interactive' | 'service' | 'legacy_mysql' | 'none';
 
@@ -26,6 +28,12 @@ export interface AuthSummary {
   refreshExpiresAt?: string;
   /** True when the sign-in cannot be renewed any more (refresh token past its expiry). */
   refreshExpired?: boolean;
+  /** Identity claims decoded locally from the access token (what the server and telemetry use). */
+  tokenActor?: string;
+  tokenEmail?: string;
+  /** The credentials file exists but cannot be read (malformed, invalid, or a failed migration write). */
+  unreadable?: boolean;
+  credentialsPath?: string;
 }
 
 export async function summarizeAuth(dataDirOverride?: string): Promise<AuthSummary> {
@@ -34,13 +42,14 @@ export async function summarizeAuth(dataDirOverride?: string): Promise<AuthSumma
     credentials = (await loadCredentials(dataDirOverride)).credentials;
   } catch {
     // A malformed creds file must not break a diagnostic; treat as signed-out.
-    return { signedIn: false, kind: 'none' };
+    return { signedIn: false, kind: 'none', unreadable: true, credentialsPath: credentialsPath(dataDirOverride) };
   }
   if (!credentials) return { signedIn: false, kind: 'none' };
 
   // datahub (human session) wins when both exist — the more specific intent.
   if (credentials.datahub) {
     const d = credentials.datahub;
+    const claims = decodeAccessTokenClaims(d.access_token);
     return {
       signedIn: true,
       kind: 'interactive',
@@ -51,6 +60,8 @@ export async function summarizeAuth(dataDirOverride?: string): Promise<AuthSumma
       accessExpired: Date.parse(d.expires_at) <= Date.now(),
       refreshExpiresAt: d.refresh_expires_at,
       refreshExpired: Date.parse(d.refresh_expires_at) <= Date.now(),
+      tokenActor: claims.actor,
+      tokenEmail: claims.email,
     };
   }
   if (credentials.service) {
