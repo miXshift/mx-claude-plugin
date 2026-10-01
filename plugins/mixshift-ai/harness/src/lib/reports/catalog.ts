@@ -81,6 +81,11 @@ export interface ReportCatalogEntry {
   parseHints?: string;
   /** Optional free-text caveats (deprecations, regional limits, PII variants). */
   notes?: string;
+  /** Set ONLY when Amazon has deprecated the report type: a plain sentence
+   *  saying so. Surfaced by `list-reports` and `describe-report` so an agent
+   *  is told before it requests a report Amazon will refuse. Still not a gate:
+   *  `report start` passes the type through. */
+  deprecated?: string;
 }
 
 interface ReportOptionHintRaw {
@@ -102,6 +107,7 @@ interface ReportCatalogEntryRaw {
   report_options?: ReportOptionHintRaw[];
   parse_hints?: string;
   notes?: string;
+  deprecated?: string;
 }
 
 interface ReportCatalogFile {
@@ -166,6 +172,9 @@ function normalize(raw: ReportCatalogEntryRaw): ReportCatalogEntry {
     reportOptions: normalizeOptions(raw.report_options),
     parseHints: raw.parse_hints,
     notes: raw.notes,
+    ...(typeof raw.deprecated === 'string' && raw.deprecated.trim() !== ''
+      ? { deprecated: raw.deprecated.trim() }
+      : {}),
   };
 }
 

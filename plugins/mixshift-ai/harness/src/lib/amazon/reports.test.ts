@@ -18,6 +18,9 @@ import {
   QUEUED_BACKOFF_CAP_MS,
   chunkAsinList,
   mergeSqpDocuments,
+  cleanAmazonError,
+  classifyAmazonError,
+  AMAZON_ERROR_MAX_CHARS,
   SQP_ASIN_OPTION_CHAR_LIMIT,
   THROTTLE_BACKOFF_CAP_MS,
   THROTTLE_BACKOFF_FLOOR_MS,
@@ -1030,6 +1033,118 @@ describe('credential resolution from disk', () => {
 // exitCodeForKind — the kind → exit-code contract shared by every surface
 // that emits ReportFailure, documented in the mx-amazon-report failure table
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// amazon_error on report_fatal (mx-ops#93). The envelope below is the shape the
+// gateway's SpApiError.reportFatal() + toEnvelope() produce, with SYNTHETIC
+// reason text (fixture from the producer).
+// ---------------------------------------------------------------------------
+
+describe('report_fatal amazon_error pass-through', () => {
+  const producerEnvelope = (amazonError?: unknown) => ({
+    ok: false,
+    kind: 'report_fatal',
+    // Producer copy: points at amazon_error only when a reason was attached.
+    friendly:
+      amazonError !== undefined
+        ? 'Amazon could not generate this report (FATAL). See amazon_error for the reason Amazon gave.'
+        : 'Amazon could not generate this report (FATAL). Check the report type and date range.',
+    message: 'Report SYNTH-REPORT-1 ended in status FATAL.',
+    reportId: 'SYNTH-REPORT-1',
+    status: 'FATAL',
+    ...(amazonError !== undefined ? { amazon_error: amazonError } : {}),
+  });
+
+  it('carries amazon_error onto the failure (poll)', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(502, producerEnvelope('SYNTH: dataStartTime must be a Sunday')));
+    const r = await pollReport('SYNTH-RUN-1', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('report_fatal');
+      expect(r.amazonError).toBe('SYNTH: dataStartTime must be a Sunday');
+      expect(r.reportId).toBe('SYNTH-REPORT-1');
+      expect(r.status).toBe('FATAL');
+    }
+  });
+
+  it('carries amazon_error on report get (document meta) too', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(502, producerEnvelope('SYNTH reason')));
+    const r = await getReportDocumentMeta('SYNTH-RUN-1', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.amazonError).toBe('SYNTH reason');
+  });
+
+  it('leaves amazonError absent when the envelope has no reason', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(502, producerEnvelope()));
+    const r = await pollReport('SYNTH-RUN-1', injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect('amazonError' in r).toBe(false);
+      expect(r.friendly).toMatch(/Check the report type/);
+    }
+  });
+
+  it.each([[null], [''], ['   '], [42], [{ text: 'x' }], [['a']]])(
+    'treats a non-string or empty amazon_error (%j) as no reason',
+    async (bad) => {
+      const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(502, producerEnvelope(bad)));
+      const r = await pollReport('SYNTH-RUN-1', injected(fetchImpl));
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect('amazonError' in r).toBe(false);
+        // The "See amazon_error" pointer must not survive when no reason did.
+        expect(r.friendly).not.toMatch(/amazon_error/);
+        expect(r.friendly).toMatch(/Check the report type and date range/);
+      }
+    },
+  );
+});
+
+describe('cleanAmazonError', () => {
+  it('trims and keeps ordinary text, newlines and tabs', () => {
+    expect(cleanAmazonError('  line one\nline two\tend  ')).toBe('line one\nline two\tend');
+  });
+
+  it('replaces control characters (including ESC) so terminal output stays inert', () => {
+    const out = cleanAmazonError('a\u001b[31mb\u0000c\u007fd');
+    expect(out).toBe('a [31mb c d');
+    expect(out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f]/);
+  });
+
+  it('caps very long text and marks the cut', () => {
+    const out = cleanAmazonError('x'.repeat(AMAZON_ERROR_MAX_CHARS + 500)) as string;
+    expect(out.length).toBeLessThan(AMAZON_ERROR_MAX_CHARS + 40);
+    expect(out.endsWith('[truncated]')).toBe(true);
+  });
+
+  it('returns undefined for non-strings and blanks', () => {
+    for (const v of [undefined, null, 0, {}, [], '', ' \n\t ']) {
+      expect(cleanAmazonError(v)).toBeUndefined();
+    }
+  });
+});
+
+describe('classifyAmazonError (telemetry reason_class)', () => {
+  it.each([
+    ['This report is now deprecated.', 'deprecated'],
+    ['Please double check that your parameters are valid.', 'generic'],
+    ['Reporting data for end date 2000-01-01 and time period monthly is not available yet. This date may not have finished processing, or may fall outside the available data range.', 'data_not_available'],
+    ['Data is not available for the specified end date. Data for the previous day is usually available at 2pm Pacific, up to 72 hours.', 'data_not_available'],
+    ['dataStartTime must be a Sunday when reportPeriod=WEEK', 'period_alignment'],
+    ['reportPeriod DAY supports a maximum of 15 days', 'span_exceeds_max'],
+    ['Requests with a couponStartDateFrom of more than two years ago are not supported.', 'span_exceeds_max'],
+    ['This report type requires the reportPeriod, distributorView, sellingProgram reportOption to be specified', 'missing_option'],
+    ['Please provide report options promotionStartDateFrom and promotionStartDateTo in ISO-8601 format', 'missing_option'],
+    ['Invalid distributorView. Valid values are SYNTHVALUE', 'invalid_option_value'],
+    ['Something Amazon said that matches nothing above', 'other'],
+  ] as const)('%s -> %s', (text, cls) => {
+    expect(classifyAmazonError(text)).toBe(cls);
+  });
+});
 
 describe('exitCodeForKind', () => {
   it('maps every kind to the exit code documented in the skill failure table', () => {

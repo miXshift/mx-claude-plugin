@@ -93,6 +93,83 @@ describe('loadReportCatalog — real shipped catalog', () => {
   });
 });
 
+describe('deprecated report types — real shipped catalog (mx-ops#94 / Amazon deprecation)', () => {
+  const DEPRECATED = [
+    'GET_BRAND_ANALYTICS_ALTERNATE_PURCHASE_REPORT',
+    'GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT',
+  ];
+
+  it('marks the two retired Brand Analytics reports deprecated with the reason', async () => {
+    for (const t of DEPRECATED) {
+      const e = await findReportType(t);
+      expect(e, `${t} missing`).toBeTruthy();
+      expect(e?.deprecated, `${t} not marked deprecated`).toMatch(/now deprecated/);
+    }
+  });
+
+  it('marks nothing else deprecated (the flag is for Amazon-confirmed retirements only)', async () => {
+    const all = await loadReportCatalog();
+    const flagged = all.filter((e) => e.deprecated).map((e) => e.reportType);
+    expect(flagged.sort()).toEqual([...DEPRECATED].sort());
+  });
+
+  it('parses a deprecated field from an override and ignores a blank one', async () => {
+    const yaml = [
+      'reports:',
+      '  - report_type: GET_A',
+      '    deprecated: Gone.',
+      '  - report_type: GET_B',
+      '    deprecated: "  "',
+      '  - report_type: GET_C',
+    ].join('\n');
+    await withTempCatalog(yaml, async (path) => {
+      const [a, b, c] = await loadReportCatalog(path);
+      expect(a.deprecated).toBe('Gone.');
+      expect('deprecated' in b).toBe(false);
+      expect('deprecated' in c).toBe(false);
+    });
+  });
+});
+
+describe('window rules are stated where agents read them (mx-ops#94)', () => {
+  const VENDOR = [
+    'GET_VENDOR_SALES_REPORT',
+    'GET_VENDOR_INVENTORY_REPORT',
+    'GET_VENDOR_TRAFFIC_REPORT',
+    'GET_VENDOR_NET_PURE_PRODUCT_MARGIN_REPORT',
+  ];
+  const BA = [
+    'GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT',
+    'GET_BRAND_ANALYTICS_SEARCH_CATALOG_PERFORMANCE_REPORT',
+    'GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT',
+    'GET_BRAND_ANALYTICS_MARKET_BASKET_REPORT',
+    'GET_BRAND_ANALYTICS_REPEAT_PURCHASE_REPORT',
+  ];
+
+  it('vendor entries state Sunday-Saturday weeks, the 15-day DAY cap and the 3-day lag', async () => {
+    for (const t of VENDOR) {
+      const n = (await findReportType(t))?.windowNotes ?? '';
+      expect(n, t).toMatch(/Sunday to Saturday/);
+      expect(n, t).toMatch(/at most 15 days/);
+      expect(n, t).toMatch(/at least 3 days back/);
+    }
+  });
+
+  it('Brand Analytics entries state Sunday-Saturday weeks and calendar months', async () => {
+    for (const t of BA) {
+      const n = (await findReportType(t))?.windowNotes ?? '';
+      expect(n, t).toMatch(/Sunday to Saturday/);
+      expect(n, t).toMatch(/calendar month/);
+    }
+  });
+
+  it('vendor sales no longer claims mismatched options return empty', async () => {
+    const e = await findReportType('GET_VENDOR_SALES_REPORT');
+    expect(e?.parseHints ?? '').not.toMatch(/return empty/i);
+    expect(e?.parseHints ?? '').toMatch(/FATAL/);
+  });
+});
+
 describe('findReportType — real shipped catalog', () => {
   it('finds a known entry by exact enum', async () => {
     const entry = await findReportType('GET_SALES_AND_TRAFFIC_REPORT');

@@ -36,7 +36,9 @@
 #   group              display grouping
 #   report_options     report-type-specific knobs, passed to Amazon untouched
 #   parse_hints        how to read the bytes once retrieved
-#   notes              caveats (deprecations, regional limits, PII variants)
+#   notes              caveats (regional limits, PII variants)
+#   deprecated         set ONLY when Amazon has deprecated the report: one sentence saying so.
+#                        list-reports and describe-report show it as DEPRECATED BY AMAZON.
 
 schema_version: 1
 last_updated: 2026-06-04
@@ -837,7 +839,7 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window must align to the reportPeriod boundary (week/month/quarter).
+    window_notes: Window must align to the reportPeriod boundary. WEEK runs Sunday to Saturday; MONTH is a whole calendar month; QUARTER is a whole calendar quarter. A window cannot span two periods. For WEEK, Amazon refuses a start date that is not a Sunday. A period that ended very recently is refused as not available yet (Amazon says it may not have finished processing); end the window at least 3 days back.
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
@@ -853,7 +855,7 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday and cannot span two periods.
+    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday; MONTH is a whole calendar month; QUARTER is a whole calendar quarter; a window cannot span two periods. A period that ended very recently, or that falls outside the data range Amazon still serves, is refused as not available yet (Amazon says it may not have finished processing); end the window at least 3 days back.
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
@@ -872,7 +874,7 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday; MONTH is a calendar month and QUARTER a calendar quarter. Requests cannot span two periods. MONTH reaches back at most 17 months.
+    window_notes: Window must align to the reportPeriod boundary. A WEEK window must run Sunday to Saturday; MONTH is a calendar month and QUARTER a calendar quarter. Requests cannot span two periods. MONTH reaches back at most 17 months. A period that ended very recently, or that falls outside the data range Amazon still serves, is refused as not available yet (Amazon says it may not have finished processing); end the window at least 3 days back.
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
@@ -891,7 +893,7 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window aligns to reportPeriod.
+    window_notes: Window must align to the reportPeriod boundary. WEEK runs Sunday to Saturday; MONTH is a whole calendar month; QUARTER is a whole calendar quarter. A window cannot span two periods. A period that ended very recently is refused as not available yet (Amazon says it may not have finished processing); end the window at least 3 days back.
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
@@ -907,7 +909,7 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: Window aligns to reportPeriod.
+    window_notes: Window must align to the reportPeriod boundary. WEEK runs Sunday to Saturday; MONTH is a whole calendar month; QUARTER is a whole calendar quarter. A window cannot span two periods. A period that ended very recently is refused as not available yet (Amazon says it may not have finished processing); end the window at least 3 days back. Amazon also refuses a MONTH or QUARTER that falls outside the data range it still serves (older periods are refused as not available).
     warehouse_coverage: none
     group: Brand Analytics
     report_options:
@@ -920,6 +922,7 @@ reports:
   - report_type: GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT
     title: Brand Analytics — Item Comparison
     purpose: Items most often viewed in the same session as your ASINs. Consideration-set insight.
+    deprecated: Amazon has deprecated this report and now refuses every request with "This report is now deprecated." Do not request it.
     applies_to: seller
     document_format: json
     window: required
@@ -931,11 +934,12 @@ reports:
         example: WEEK
         note: WEEK | MONTH | QUARTER.
     parse_hints: JSON with compared-ASIN rows + comparison %.
-    notes: Requires Brand Registry.
+    notes: Deprecated by Amazon (see `deprecated`). Kept in the catalog only so a request for it is answered with the reason instead of a silent miss.
 
   - report_type: GET_BRAND_ANALYTICS_ALTERNATE_PURCHASE_REPORT
     title: Brand Analytics — Alternate Purchase
     purpose: Items customers bought instead of your ASINs (competitive substitution).
+    deprecated: Amazon has deprecated this report and now refuses every request with "This report is now deprecated." Do not request it.
     applies_to: seller
     document_format: json
     window: required
@@ -947,7 +951,7 @@ reports:
         example: WEEK
         note: WEEK | MONTH | QUARTER.
     parse_hints: JSON with alternate-ASIN rows + purchase %.
-    notes: Requires Brand Registry.
+    notes: Deprecated by Amazon (see `deprecated`). Kept in the catalog only so a request for it is answered with the reason instead of a silent miss. While it was still served, Amazon said the previous day's data was usually available around 2pm Pacific and could take up to 72 hours.
 
   # =========================================================================
   # Vendor (JSON) — for Vendor Central (1P) merchants only. Seller selectors
@@ -959,7 +963,7 @@ reports:
     applies_to: vendor
     document_format: json
     window: required
-    window_notes: start/end required; align to reportPeriod. Vendor data lags ~48-72h, so set the end window about 3 days back to land on settled numbers (a too-recent end returns thin or empty rows).
+    window_notes: start/end required; align to reportPeriod. WEEK runs Sunday to Saturday (a Monday-to-Sunday WEEK is refused); MONTH is a whole calendar month; DAY spans at most 15 days (split longer ranges into 15-day requests). Amazon refuses a window that ends too recently as not yet available, so end it at least 3 days back. Vendor data lags ~48-72h.
     warehouse_coverage: have
     group: Vendor
     report_options:
@@ -968,11 +972,11 @@ reports:
         note: DAY | WEEK | MONTH | QUARTER | YEAR.
       - key: distributorView
         example: MANUFACTURING
-        note: MANUFACTURING | SOURCING.
+        note: MANUFACTURING | SOURCING. The value an account accepts is account-specific; if Amazon refuses the value, its reason (amazon_error) names the valid one; use that value instead of guessing.
       - key: sellingProgram
         example: RETAIL
         note: RETAIL | BUSINESS | FRESH.
-    parse_hints: JSON with salesByAsin[] / salesAggregate. Pair the three reportOptions; mismatched combos return empty.
+    parse_hints: JSON with salesByAsin[] / salesAggregate. reportPeriod, distributorView and sellingProgram must all be given; Amazon FATALs the report if one is missing or a value is not valid for the account (it does not return an empty report). The FATAL reason is in amazon_error.
     notes: MixShift warehouse holds vendor sales (vendor_sales_manufacturing_asin). Pull on demand for windows/views not loaded.
 
   - report_type: GET_VENDOR_INVENTORY_REPORT
@@ -981,7 +985,7 @@ reports:
     applies_to: vendor
     document_format: json
     window: required
-    window_notes: align to reportPeriod.
+    window_notes: Align to reportPeriod. WEEK runs Sunday to Saturday (a Monday-to-Sunday WEEK is refused); MONTH is a whole calendar month; DAY spans at most 15 days (split longer ranges into 15-day requests). Amazon refuses a window that ends too recently as not yet available, so end it at least 3 days back.
     warehouse_coverage: partial
     group: Vendor
     report_options:
@@ -1002,7 +1006,7 @@ reports:
     applies_to: vendor
     document_format: json
     window: required
-    window_notes: align to reportPeriod.
+    window_notes: Align to reportPeriod. WEEK runs Sunday to Saturday (a Monday-to-Sunday WEEK is refused); MONTH is a whole calendar month; DAY spans at most 15 days (split longer ranges into 15-day requests). Amazon refuses a window that ends too recently as not yet available, so end it at least 3 days back.
     warehouse_coverage: none
     group: Vendor
     report_options:
@@ -1017,7 +1021,7 @@ reports:
     applies_to: vendor
     document_format: json
     window: required
-    window_notes: align to reportPeriod.
+    window_notes: Align to reportPeriod. WEEK runs Sunday to Saturday (a Monday-to-Sunday WEEK is refused); MONTH is a whole calendar month; DAY spans at most 15 days (split longer ranges into 15-day requests). Amazon refuses a window that ends too recently as not yet available, so end it at least 3 days back.
     warehouse_coverage: none
     group: Vendor
     report_options:
@@ -1063,10 +1067,16 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: start/end required.
+    window_notes: start/end required. Amazon also wants the promotion start range as report options in ISO-8601 zoned date-time form (e.g. 2011-12-03T10:15:30Z).
     warehouse_coverage: none
     group: Promotions
-    report_options: []
+    report_options:
+      - key: promotionStartDateFrom
+        example: 2026-09-01T00:00:00Z
+        note: Required by Amazon. ISO-8601 zoned date and time (ends in Z or an offset).
+      - key: promotionStartDateTo
+        example: 2026-09-30T23:59:59Z
+        note: Required by Amazon. Same format as promotionStartDateFrom.
     parse_hints: JSON with per-promotion performance rows.
 
   - report_type: GET_COUPON_PERFORMANCE_REPORT
@@ -1075,10 +1085,16 @@ reports:
     applies_to: seller
     document_format: json
     window: required
-    window_notes: start/end required.
+    window_notes: start/end required. Amazon also wants the coupon start range as report options in ISO-8601 zoned date-time form (e.g. 2011-12-03T10:15:30Z). Amazon does not support a couponStartDateFrom more than two years ago.
     warehouse_coverage: none
     group: Promotions
-    report_options: []
+    report_options:
+      - key: couponStartDateFrom
+        example: 2026-09-01T00:00:00Z
+        note: Required by Amazon. ISO-8601 zoned date and time. Not more than two years ago.
+      - key: couponStartDateTo
+        example: 2026-09-30T23:59:59Z
+        note: Required by Amazon. Same format as couponStartDateFrom.
     parse_hints: JSON with per-coupon performance rows.
 
   # =========================================================================

@@ -659,6 +659,195 @@ describe('report.failed carries run_id for started<->failed correlation', () => 
 });
 
 // ---------------------------------------------------------------------------
+// report FATAL carries Amazon's own reason (`amazon_error`) to the caller.
+// Fixture = the shape the gateway's SpApiError.reportFatal() produces, with
+// SYNTHETIC reason text. The gateway only says "See amazon_error" in the
+// friendly line when a reason exists, so the two cases below mirror both.
+// ---------------------------------------------------------------------------
+
+describe('report FATAL surfaces amazon_error (mx-ops#93)', () => {
+  const REASON = 'SYNTH reason: dataStartTime must be a Sunday when reportPeriod=WEEK';
+  const FRIENDLY_WITH =
+    'Amazon could not generate this report (FATAL). See amazon_error for the reason Amazon gave.';
+  const FRIENDLY_WITHOUT =
+    'Amazon could not generate this report (FATAL). Check the report type and date range.';
+
+  // Producer-shaped envelope, run through the REAL toReportFailure via
+  // pollReport's wire handling is covered in reports.test.ts; here the command
+  // layer receives the already-mapped ReportFailure.
+  const withReason = {
+    ok: false as const,
+    kind: 'report_fatal' as const,
+    friendly: FRIENDLY_WITH,
+    message: 'Report SYNTH-REPORT-1 ended in status FATAL.',
+    reportId: 'SYNTH-REPORT-1',
+    status: 'FATAL',
+    amazonError: REASON,
+  };
+  const withoutReason = {
+    ok: false as const,
+    kind: 'report_fatal' as const,
+    friendly: FRIENDLY_WITHOUT,
+    message: 'Report SYNTH-REPORT-1 ended in status FATAL.',
+    reportId: 'SYNTH-REPORT-1',
+    status: 'FATAL',
+  };
+
+  it('--json carries amazon_error and keeps the existing fields', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1', '--json');
+    const out = lastJson();
+    expect(out.status).toBe('error');
+    expect(out.failure_kind).toBe('report_fatal');
+    expect(out.message).toBe(FRIENDLY_WITH);
+    expect(out.detail).toBe('Report SYNTH-REPORT-1 ended in status FATAL.');
+    expect(out.amazon_error).toBe(REASON);
+    expect(process.exitCode).toBe(9);
+  });
+
+  it('--json without a reason has no amazon_error key (shape unchanged)', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withoutReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1', '--json');
+    const out = lastJson();
+    expect(out.failure_kind).toBe('report_fatal');
+    expect('amazon_error' in out).toBe(false);
+  });
+
+  it('text mode prints the reason under the friendly line', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1');
+    const err = stderrChunks.join('');
+    expect(err).toContain(FRIENDLY_WITH);
+    expect(err).toContain(`Amazon's reason: ${REASON}`);
+    expect(err.indexOf(FRIENDLY_WITH)).toBeLessThan(err.indexOf("Amazon's reason:"));
+    // A specific reason gets no "generic text" hint.
+    expect(err).not.toMatch(/generic text/);
+  });
+
+  it('text mode without a reason prints no reason line', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withoutReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1');
+    const err = stderrChunks.join('');
+    expect(err).toContain(FRIENDLY_WITHOUT);
+    expect(err).not.toContain("Amazon's reason");
+  });
+
+  it("text mode flags Amazon's generic text as naming no parameter", async () => {
+    vi.mocked(pollReport).mockResolvedValue({
+      ...withReason,
+      amazonError: 'SYNTH: please double check that your parameters are valid.',
+    });
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1');
+    const err = stderrChunks.join('');
+    expect(err).toMatch(/generic text and names no parameter/);
+    expect(err).toContain('describe-report');
+  });
+
+  it('report get surfaces the reason too (all FATAL paths share the emitter)', async () => {
+    vi.mocked(getReportDocumentMeta).mockResolvedValue(withReason);
+    vi.mocked(getReportDocument).mockResolvedValue(withReason);
+    await runCli('amazon', 'report', 'get', 'SYNTH-RUN-1', '--json');
+    expect(lastJson().amazon_error).toBe(REASON);
+  });
+
+  it('SQP chunk path: --json carries amazon_error with chunk context', async () => {
+    let startCounter = 0;
+    vi.mocked(startReport).mockImplementation(async () => {
+      startCounter += 1;
+      if (startCounter === 2) return withReason;
+      return { ok: true, runId: `run-${startCounter}`, status: 'IN_QUEUE' };
+    });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' });
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: JSON.stringify({ reportSpecification: {}, dataByAsin: [] }),
+      bytes: 2,
+    });
+    await runCli(
+      'amazon', 'report', 'run', '--type', SQP_TYPE,
+      '--option', `asin=${makeAsins(30).join(' ')}`,
+      '--out', join(tmpDir, 'sqp-fatal.json'), '--json',
+    );
+    const out = lastJson();
+    expect(out.chunk).toBe(2);
+    expect(out.amazon_error).toBe(REASON);
+    expect(out.run_ids).toEqual(['run-1']);
+  });
+
+  it('SQP chunk path: text mode prints the reason under the chunk line', async () => {
+    let startCounter = 0;
+    vi.mocked(startReport).mockImplementation(async () => {
+      startCounter += 1;
+      if (startCounter === 2) return withReason;
+      return { ok: true, runId: `run-${startCounter}`, status: 'IN_QUEUE' };
+    });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' });
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: JSON.stringify({ reportSpecification: {}, dataByAsin: [] }),
+      bytes: 2,
+    });
+    await runCli(
+      'amazon', 'report', 'run', '--type', SQP_TYPE,
+      '--option', `asin=${makeAsins(30).join(' ')}`,
+      '--out', join(tmpDir, 'sqp-fatal2.json'),
+    );
+    const err = stderrChunks.join('');
+    expect(err).toMatch(/SQP chunk 2\//);
+    expect(err).toContain(`Amazon's reason: ${REASON}`);
+  });
+
+  it('report.failed telemetry carries a reason_class, never the reason text', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1', '--json');
+    const failed = reportFailedPayloads();
+    expect(failed).toHaveLength(1);
+    expect(failed[0].reason_class).toBe('period_alignment');
+    expect(JSON.stringify(failed[0])).not.toContain('Sunday');
+    expect(JSON.stringify(failed[0])).not.toContain(REASON);
+  });
+
+  it('report.failed telemetry has no reason_class when Amazon gave no reason', async () => {
+    vi.mocked(pollReport).mockResolvedValue(withoutReason);
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1', '--json');
+    expect('reason_class' in reportFailedPayloads()[0]).toBe(false);
+  });
+});
+
+describe('deprecated Brand Analytics reports are surfaced as deprecated', () => {
+  const DEPRECATED = [
+    'GET_BRAND_ANALYTICS_ALTERNATE_PURCHASE_REPORT',
+    'GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT',
+  ];
+
+  it('describe-report (text) leads with the Amazon deprecation', async () => {
+    for (const t of DEPRECATED) {
+      stdoutChunks.length = 0;
+      await runCli('amazon', 'describe-report', t);
+      expect(stdoutText()).toContain('DEPRECATED BY AMAZON: do not request this report.');
+    }
+  });
+
+  it('describe-report --json carries the deprecated field', async () => {
+    await runCli('amazon', 'describe-report', DEPRECATED[0], '--json');
+    expect(lastJson().report.deprecated).toMatch(/now deprecated/);
+  });
+
+  it('list-reports marks only those entries as deprecated', async () => {
+    await runCli('amazon', 'list-reports', '--group', 'Brand Analytics');
+    const lines = stdoutText().split('\n').filter((l) => l.startsWith('- `'));
+    const flagged = lines.filter((l) => l.includes('DEPRECATED BY AMAZON'));
+    expect(flagged).toHaveLength(2);
+    for (const t of DEPRECATED) expect(flagged.some((l) => l.includes(t))).toBe(true);
+    expect(lines.length).toBeGreaterThan(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // report get (no --out): inline context ceiling. A large decoded document is
 // spilled to a file and returned as a handle + preview instead of dumping the
 // whole doc into an LLM's context; a small doc still prints inline.
