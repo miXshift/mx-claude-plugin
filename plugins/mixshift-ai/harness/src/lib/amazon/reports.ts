@@ -1546,23 +1546,54 @@ function isServerFailureEnvelope(
  *  sentence or two; this only stops a pathological body flooding stdout. */
 export const AMAZON_ERROR_MAX_CHARS = 1000;
 
+/** The placeholder MixShift stored on old runs when Amazon's own explanation
+ *  was not fetched. It is not Amazon's reason, so it counts as no reason. */
+const NO_REASON_PLACEHOLDER = 'amazon processingstatus=fatal';
+
 /** Normalize the gateway's `amazon_error`: only a non-empty string counts
  *  (anything else, or whitespace only, means "Amazon gave no reason").
- *  Control characters (including ESC) become spaces so the text is safe to
- *  print to a terminal; newlines and tabs are kept. Over-long text is cut and
- *  marked. */
+ *
+ *  The gateway forwards Amazon's raw error DOCUMENT, which is JSON
+ *  (`{ "errorDetails" : "..." }` or `{"reportRequestError":"..."}`); the
+ *  sentence inside is the reason, so unwrap it. Other text is kept as is.
+ *
+ *  Control characters (C0, DEL, C1 including U+009B) and bidirectional
+ *  overrides/isolates become spaces so the text is inert on a terminal;
+ *  newlines and tabs are kept. Over-long text is cut at a code point (never
+ *  inside a surrogate pair) and marked. */
 export function cleanAmazonError(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;
+  let text = v.trim();
+  if (text.startsWith('{')) {
+    try {
+      const doc = JSON.parse(text) as Record<string, unknown> | null;
+      if (doc && typeof doc === 'object') {
+        for (const key of ['errorDetails', 'reportRequestError']) {
+          const inner = doc[key];
+          if (typeof inner === 'string' && inner.trim() !== '') {
+            text = inner.trim();
+            break;
+          }
+        }
+      }
+    } catch {
+      // Not JSON: keep the raw text.
+    }
+  }
   // eslint-disable-next-line no-control-regex
-  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim();
-  if (cleaned.length === 0) return undefined;
-  return cleaned.length > AMAZON_ERROR_MAX_CHARS
-    ? cleaned.slice(0, AMAZON_ERROR_MAX_CHARS) + '... [truncated]'
+  const cleaned = text
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ')
+    .trim();
+  if (cleaned.length === 0 || cleaned.toLowerCase() === NO_REASON_PLACEHOLDER) return undefined;
+  const points = Array.from(cleaned);
+  return points.length > AMAZON_ERROR_MAX_CHARS
+    ? points.slice(0, AMAZON_ERROR_MAX_CHARS).join('') + '... [truncated]'
     : cleaned;
 }
 
 export type ReportReasonClass =
   | 'deprecated'
+  | 'wrong_merchant_type'
   | 'generic'
   | 'data_not_available'
   | 'period_alignment'
@@ -1573,24 +1604,34 @@ export type ReportReasonClass =
 
 /** Low-cardinality class of Amazon's FATAL reason, for telemetry. Derived
  *  from the text by pattern; the text itself is NEVER sent. Order matters:
- *  the first matching class wins. */
+ *  the first matching class wins. `generic` means Amazon's boilerplate and
+ *  nothing else; a boilerplate sentence next to a real one classifies by the
+ *  real one. */
 export function classifyAmazonError(text: string): ReportReasonClass {
   const t = text.toLowerCase();
   if (/deprecated|no longer (available|supported)/.test(t)) return 'deprecated';
-  if (/double check that your parameters/.test(t)) return 'generic';
-  if (/not (yet )?available|may not have finished processing|outside the available data range/.test(t)) {
+  if (/not available (to|for) (vendors|sellers)/.test(t)) return 'wrong_merchant_type';
+  if (/not yet available|not available yet|data is not available|may not have finished processing|outside the available data range/.test(t)) {
     return 'data_not_available';
   }
-  if (/must (be|start on|begin on) (a )?(sunday|monday|saturday)|must start on|calendar month|first day of/.test(t)) {
+  if (/must (be|start on|begin on) (a )?(sunday|monday|saturday)|must start on|calendar month|first day of|not a sunday|not a saturday|does not align|last day of|span exactly one|prohibited date range/.test(t)) {
     return 'period_alignment';
   }
   if (/more than \d+ (days?|years?)|more than (one|two|three|four|five|six|seven|eight|nine|ten) (days?|years?)|exceeds? |maximum|at most \d+/.test(t)) {
     return 'span_exceeds_max';
   }
-  if (/requires? the .* to be specified|please provide|must (be )?(provided|specified)|is required|missing/.test(t)) {
+  if (/requires? the .* to be specified|requires? the report option|please provide|must (be )?(provided|specified)|is required|missing/.test(t)) {
     return 'missing_option';
   }
   if (/valid values? (are|is)|not a valid|invalid/.test(t)) return 'invalid_option_value';
+  if (/double check that your parameters/.test(t)) {
+    const rest = t
+      .replace(/a client error occurred/g, ' ')
+      .replace(/(please )?double check that your parameters are valid/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    return rest === '' ? 'generic' : 'other';
+  }
   return 'other';
 }
 
