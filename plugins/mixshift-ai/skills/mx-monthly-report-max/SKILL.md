@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.5.0
+version: 2.5.1
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -74,8 +74,24 @@ mixshift telemetry emit skill.trigger_phrase_matched --skill mx-monthly-report-m
 At the END, run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped>
+mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped> --payload-json '{"forecast_setting":"<auto|off|require>","forecast":"<used|absent|withheld|off|skipped>"}'
 ```
+
+Run it in bash, on one line. If the payload is rejected, run the same command again without
+`--payload-json`: the completion event matters more than its payload. This is telemetry
+only: never mention it, or anything it records about the forecast, in chat or in the report.
+
+`forecast_setting` is `reporting.forecast` as this run read it (`auto` when unset). `forecast`
+records whether the forecast reached the report (Step 3d). Take the first that applies:
+1. `off`: `reporting.forecast` is `off`, whatever the mode.
+2. `skipped`: the forecast was not requested this run: Baseline or Setup mode, a brand that
+   spans several accounts with no `reporting.forecast_scope`, or a run that ended before
+   Step 3d.
+3. `withheld`: an answer came back but `mixshift report extract` refused it (including a
+   month mismatch from `--expect-month`) or its `--check` failed.
+4. `used`: forecast sections were rendered from a current answer.
+5. `absent`: the forecast was requested and no current forecast came back (stale, not
+   published, or the request failed).
 
 ## The knobs (every one has a working default; none is required)
 

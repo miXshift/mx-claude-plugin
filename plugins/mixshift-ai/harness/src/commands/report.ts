@@ -20,7 +20,16 @@ import {
   checkForecast,
   isForecastTrackResponse,
   ForecastMonthMismatchError,
+  type ForecastCheckFinding,
+  type ForecastFiguresDocument,
 } from '../lib/report-contract/forecast.js';
+import {
+  forecastExtractEvents,
+  forecastErrorEvent,
+  notAForecastAnswerEvent,
+  type ForecastExtractTelemetryContext,
+} from '../lib/report-contract/forecast-telemetry.js';
+import { track, type TrackInput } from '../lib/telemetry/index.js';
 import {
   renderMonthlyReport,
   scanForecastVocabulary,
@@ -37,6 +46,23 @@ import { validateBrandContext } from '../lib/context/load.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { readIndex } from '../lib/clients/index.js';
 import { resolveBrandName } from '../lib/clients/resolve-brand.js';
+
+/**
+ * Emit the forecast path's telemetry events. Never changes the command: the
+ * events are built inside the try (a builder that throws costs the events, not
+ * the command) and track() itself never throws. Awaited so the events are on
+ * disk before the command returns.
+ */
+async function trackForecast(build: () => TrackInput | TrackInput[] | undefined, dataDir: string | undefined): Promise<void> {
+  try {
+    const built = build();
+    for (const event of Array.isArray(built) ? built : built ? [built] : []) {
+      await track(event, dataDir);
+    }
+  } catch {
+    // Telemetry is best-effort; the command's output and exit code stand as they are.
+  }
+}
 
 async function readJson<T>(file: string): Promise<T> {
   try {
@@ -453,52 +479,73 @@ export function registerReportCommands(program: Command): void {
     )
     .action(async (file: string, opts: { out?: string; check: boolean; select?: string; expectMonth?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      const telemetryCtx = (): ForecastExtractTelemetryContext => ({
+        checkRan: !!opts.check,
+        ...(opts.expectMonth !== undefined ? { expectMonth: opts.expectMonth } : {}),
+        durationMs: Date.now() - startedAt,
+      });
       await withReportErrorHandling(!!root.json, async () => {
         const response = await readJson<unknown>(file);
         if (isForecastTrackResponse(response)) {
-          if (opts.select) {
-            throw new UserFacingError('--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.', 'report_bad_selection');
-          }
-          let fdoc;
+          let fdoc: ForecastFiguresDocument;
+          let ffindings: ForecastCheckFinding[];
           try {
-            fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+            if (opts.select) {
+              throw new UserFacingError('--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.', 'report_bad_selection');
+            }
+            try {
+              fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+            } catch (err) {
+              if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, 'report_forecast_month_mismatch');
+              throw err;
+            }
+            ffindings = opts.check ? checkForecast(fdoc) : [];
+            const fbody = JSON.stringify(fdoc, null, 2);
+            if (opts.out) await writeReportOutput(opts.out, fbody + '\n');
+            if (root.json) {
+              console.log(
+                JSON.stringify(
+                  {
+                    ok: ffindings.length === 0,
+                    kind: 'forecast_figures',
+                    forecast_state: fdoc.forecast.state,
+                    reason: fdoc.source.reason,
+                    figures: fdoc.figures.length,
+                    attestation: fdoc.source.attestation,
+                    out: opts.out ?? null,
+                    findings: ffindings,
+                  },
+                  null,
+                  2,
+                ),
+              );
+            } else {
+              if (!opts.out) console.log(fbody);
+              console.log(
+                `\nforecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` +
+                  (fdoc.source.reason ? ` (${fdoc.source.reason})` : '') +
+                  `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ''}`,
+              );
+              for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+              if (opts.check) console.log(ffindings.length === 0 ? 'CHECK: PASS' : `CHECK: FAIL (${ffindings.length})`);
+            }
           } catch (err) {
-            if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, 'report_forecast_month_mismatch');
+            // report.forecast_failed, then the error goes on exactly as before.
+            await trackForecast(() => forecastErrorEvent(response, err, telemetryCtx()), root.dataDir);
             throw err;
           }
-          const ffindings = opts.check ? checkForecast(fdoc) : [];
-          const fbody = JSON.stringify(fdoc, null, 2);
-          if (opts.out) await writeReportOutput(opts.out, fbody + '\n');
-          if (root.json) {
-            console.log(
-              JSON.stringify(
-                {
-                  ok: ffindings.length === 0,
-                  kind: 'forecast_figures',
-                  forecast_state: fdoc.forecast.state,
-                  reason: fdoc.source.reason,
-                  figures: fdoc.figures.length,
-                  attestation: fdoc.source.attestation,
-                  out: opts.out ?? null,
-                  findings: ffindings,
-                },
-                null,
-                2,
-              ),
-            );
-          } else {
-            if (!opts.out) console.log(fbody);
-            console.log(
-              `\nforecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` +
-                (fdoc.source.reason ? ` (${fdoc.source.reason})` : '') +
-                `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ''}`,
-            );
-            for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
-            if (opts.check) console.log(ffindings.length === 0 ? 'CHECK: PASS' : `CHECK: FAIL (${ffindings.length})`);
-          }
+          // report.forecast_extracted, plus report.forecast_failed when the
+          // forecast was withheld for a defect (an id it could not place, or
+          // --check findings). A stale or absent forecast is not a failure.
+          await trackForecast(() => forecastExtractEvents(fdoc, ffindings, telemetryCtx()), root.dataDir);
           process.exitCode = ffindings.length === 0 ? 0 : 1;
           return;
         }
+        // The forecast path was asked for (--expect-month, or another forecasting
+        // answer handed in) but this is not a FCT-TRACK-01 answer. Telemetry only:
+        // the extraction below proceeds exactly as it always has.
+        await trackForecast(() => notAForecastAnswerEvent(response, telemetryCtx()), root.dataDir);
         if (opts.select && !(COMPOSITE_SELECTIONS as readonly string[]).includes(opts.select)) {
           throw new UserFacingError(
             `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(', ')}.`,

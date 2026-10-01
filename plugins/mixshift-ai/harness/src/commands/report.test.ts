@@ -20,8 +20,11 @@
  *       (`scanForecastVocabulary`, render-report.ts), mirroring the
  *       existing validation-refusal pattern; `--force` overrides both.
  *
- * Real filesystem, real commander dispatch (no mocks) -- these are cheap,
- * pure-JSON operations with no network/credentials involved.
+ * Real filesystem, real commander dispatch -- these are cheap, pure-JSON
+ * operations with no network/credentials involved. The one stub is
+ * telemetry's track(): `report extract` on a forecast answer emits
+ * report.forecast_* events, and a test must neither write to the real
+ * telemetry queue nor go unchecked on what it would have sent.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -33,6 +36,15 @@ import { fileURLToPath } from 'node:url';
 
 import { registerReportCommands } from './report.js';
 import { COMPOSITE_SELECTIONS } from '../lib/report-contract/extract.js';
+import { track } from '../lib/telemetry/index.js';
+
+vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/telemetry/index.js')>();
+  return {
+    ...actual, // keep EventName real
+    track: vi.fn(async () => {}),
+  };
+});
 
 function buildProgram(): Command {
   const program = new Command();
@@ -53,6 +65,8 @@ let stdoutChunks: string[];
 let exitCodeBefore: typeof process.exitCode;
 
 beforeEach(async () => {
+  vi.mocked(track).mockReset();
+  vi.mocked(track).mockImplementation(async () => {});
   exitCodeBefore = process.exitCode;
   process.exitCode = undefined;
   stdoutChunks = [];
@@ -335,6 +349,94 @@ describe('report extract -- composite bundle guard (INS-MONTHLY-01 mom/yoy unwra
     const parsed = JSON.parse(stdoutText());
     expect(parsed.status).toBe('error');
     expect(parsed.error_class).toBe('report_forecast_month_mismatch');
+    expect(process.exitCode).toBe(1);
+  });
+
+  // ---- telemetry on the forecast path (report.forecast_extracted / _failed) ----
+
+  const loadAnswer = async (name: string) =>
+    JSON.parse(await readFile(fileURLToPath(new URL(`../../testdata/fct-track-01.${name}.json`, import.meta.url)), 'utf8'));
+  const tracked = () => vi.mocked(track).mock.calls.map(([input]) => input);
+
+  it('telemetry: a current forecast emits one report.forecast_extracted with counts only', async () => {
+    const file = await writeJsonFile('forecast.json', await loadAnswer('revenue.current'));
+    await runCli({ json: true }, 'extract', file, '--check', '--expect-month', '2026-02', '--out', join(dir, 'f.json'));
+    expect(process.exitCode).toBe(0);
+    const events = tracked();
+    expect(events.map((e) => e.event_name)).toEqual(['report.forecast_extracted']);
+    expect(events[0]).toMatchObject({
+      outcome: 'ok',
+      payload: { state: 'provided_current', metric: 'revenue', month: '2026-02', scope_id: 'src:demo:1', vintage: 3, check_findings: 0, expect_month: true },
+    });
+    expect((events[0]!.payload as { figures: number }).figures).toBeGreaterThan(50);
+  });
+
+  it('telemetry: a never-published forecast is the quiet path, not a failure', async () => {
+    const file = await writeJsonFile('forecast.json', await loadAnswer('never-published'));
+    await runCli({}, 'extract', file, '--check', '--out', join(dir, 'f.json'));
+    expect(process.exitCode).toBe(0);
+    expect(tracked().map((e) => e.event_name)).toEqual(['report.forecast_extracted']);
+    expect(tracked()[0]!.payload).toMatchObject({ state: 'not_provided', reason: 'never_published', figures: 0, expect_month: false });
+  });
+
+  it('telemetry: a month mismatch emits report.forecast_failed and the error envelope is unchanged', async () => {
+    const file = await writeJsonFile('forecast.json', await loadAnswer('revenue.current'));
+    await runCli({ json: true }, 'extract', file, '--expect-month', '2026-09');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed).toMatchObject({ status: 'error', error_class: 'report_forecast_month_mismatch' });
+    expect(process.exitCode).toBe(1);
+    expect(tracked()).toEqual([
+      expect.objectContaining({
+        event_name: 'report.forecast_failed',
+        outcome: 'failed',
+        error_class: 'forecast_month_mismatch',
+        payload: expect.objectContaining({ month: '2026-02', expected_month: '2026-09', expect_month: true }),
+      }),
+    ]);
+  });
+
+  it('telemetry: a withheld forecast (an id it cannot place) emits extracted + failed; output and exit code unchanged', async () => {
+    const answer = await loadAnswer('revenue.current');
+    answer.report_data.figures.push({ ...answer.report_data.figures[0], id: 'forecast.something_new.sales.month' });
+    const file = await writeJsonFile('forecast.json', answer);
+    await runCli({ json: true }, 'extract', file, '--check');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed).toMatchObject({ ok: false, forecast_state: 'not_provided', reason: 'unrecognised_figures' });
+    expect(process.exitCode).toBe(1);
+    expect(tracked().map((e) => [e.event_name, e.error_class])).toEqual([
+      ['report.forecast_extracted', undefined],
+      ['report.forecast_failed', 'unrecognised_figures'],
+    ]);
+    expect(tracked()[1]!.payload).toMatchObject({ unrecognised: ['forecast.something_new'], unrecognised_count: 1 });
+  });
+
+  it('telemetry: --expect-month on an answer that is not a FCT-TRACK-01 one is flagged; the extraction is unchanged', async () => {
+    const composite = await writeJsonFile('composite.json', compositeFixture());
+    await runCli({ json: true }, 'extract', composite, '--select', 'mom.ops', '--expect-month', '2026-02');
+    expect(JSON.parse(stdoutText()).ok).toBe(true);
+    expect(process.exitCode).toBe(0);
+    expect(tracked()).toEqual([
+      expect.objectContaining({ event_name: 'report.forecast_failed', error_class: 'not_a_forecast_answer' }),
+    ]);
+  });
+
+  it('telemetry: an ordinary extraction emits nothing', async () => {
+    const composite = await writeJsonFile('composite.json', compositeFixture());
+    await runCli({ json: true }, 'extract', composite, '--select', 'mom.ops');
+    expect(tracked()).toEqual([]);
+  });
+
+  it('telemetry that fails never changes the command', async () => {
+    vi.mocked(track).mockImplementation(async () => {
+      throw new Error('queue unwritable');
+    });
+    const file = await writeJsonFile('forecast.json', await loadAnswer('revenue.current'));
+    await runCli({ json: true }, 'extract', file, '--check', '--expect-month', '2026-02');
+    expect(JSON.parse(stdoutText())).toMatchObject({ ok: true, kind: 'forecast_figures' });
+    expect(process.exitCode).toBe(0);
+    stdoutChunks = [];
+    await runCli({ json: true }, 'extract', file, '--expect-month', '2026-09');
+    expect(JSON.parse(stdoutText()).error_class).toBe('report_forecast_month_mismatch');
     expect(process.exitCode).toBe(1);
   });
 

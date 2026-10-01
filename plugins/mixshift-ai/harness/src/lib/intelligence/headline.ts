@@ -13,9 +13,16 @@
  * TACOS delta) across naming variants. A payload that carries none of the
  * candidates degrades gracefully: the headline just omits `keyTotals`
  * entries, it never throws and never guesses at a value it can't find.
+ *
+ * Forecasting-service answers (FCT-TRACK-01, FCT-BASELINE-01) carry no `meta`
+ * at all, so for them the insight id comes from the id the CLI ran (the
+ * `fallbackInsightId` argument) and the headline gains a one-line forecast
+ * summary from forecast-answer.ts (states and labels, never a figure). Every
+ * other answer reads exactly as before.
  */
 
 import type { InsightResult } from './client.js';
+import { isForecastingAnswer, renderForecastSummary, summarizeForecastAnswer } from './forecast-answer.js';
 
 export interface RunHeadline {
   ok: boolean;
@@ -26,6 +33,9 @@ export interface RunHeadline {
    *  is already normalized to a short display string ('hit' | 'miss' | ...). */
   cache?: string;
   limitationCount?: number;
+  /** Forecasting-service answers only: a one-line summary of what the run got
+   *  (state, reason, vintage, metric, month, scope id). Never a figure. */
+  forecastSummary?: string;
   /** Best-effort key metrics keyed by a stable label (see CANDIDATE_TOTALS
    *  below). Empty when the payload carries none of the recognized shapes. */
   keyTotals: Record<string, unknown>;
@@ -92,8 +102,12 @@ function formatCache(cache: unknown): string | undefined {
 }
 
 /** Extract the headline from a completed result. Never throws — an
- *  unrecognized shape just yields fewer populated fields. */
-export function extractRunHeadline(result: InsightResult): RunHeadline {
+ *  unrecognized shape just yields fewer populated fields.
+ *
+ *  `fallbackInsightId` (the id the CLI ran or recorded) names a forecasting
+ *  answer that carries no `meta.insightId`; it is ignored for every other
+ *  answer, which keeps reading `meta` only. */
+export function extractRunHeadline(result: InsightResult, fallbackInsightId?: string): RunHeadline {
   const meta =
     result.meta && typeof result.meta === 'object' ? (result.meta as Record<string, unknown>) : {};
   const limitations = Array.isArray(result.limitations) ? result.limitations : undefined;
@@ -109,13 +123,18 @@ export function extractRunHeadline(result: InsightResult): RunHeadline {
     }
   }
 
+  const forecasting = isForecastingAnswer(result);
+  const metaInsightId = typeof meta.insightId === 'string' ? meta.insightId : undefined;
+  const forecastSummary = forecasting ? summarizeForecastAnswer(result) : undefined;
+
   return {
     ok: result.ok === true,
-    insightId: typeof meta.insightId === 'string' ? meta.insightId : undefined,
+    insightId: metaInsightId ?? (forecasting && fallbackInsightId ? fallbackInsightId : undefined),
     revision: typeof meta.revision === 'string' ? meta.revision : undefined,
     computedAt: typeof meta.computedAt === 'string' ? meta.computedAt : undefined,
     cache: formatCache(meta.cache),
     limitationCount: limitations ? limitations.length : undefined,
+    ...(forecastSummary ? { forecastSummary: renderForecastSummary(forecastSummary) } : {}),
     keyTotals,
   };
 }
@@ -126,6 +145,7 @@ export function renderHeadline(h: RunHeadline): string {
   const lines: string[] = [];
   lines.push(
     `${h.ok ? '✓' : '✗'} ${h.insightId ?? '(insight id unknown)'}` +
+      `${h.forecastSummary ? ` · ${h.forecastSummary}` : ''}` +
       `${h.cache ? `  cache: ${h.cache}` : ''}`,
   );
   const meta: string[] = [];

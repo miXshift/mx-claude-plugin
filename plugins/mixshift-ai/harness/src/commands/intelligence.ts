@@ -27,7 +27,9 @@
  * handlers set process.exitCode and return (see the header contract in
  * cli.ts); telemetry captures insight id + run id + duration + outcome +
  * cache hit/miss + limitation COUNT only — never the insight payload itself
- * (customer performance numbers, not telemetry).
+ * (customer performance numbers, not telemetry). A forecasting-service answer
+ * adds its state labels, scope id, report month and served vintage
+ * (lib/intelligence/forecast-answer.ts), still never a forecast figure.
  */
 
 import type { Command } from 'commander';
@@ -53,6 +55,16 @@ import {
   listIntelligenceRuns,
 } from '../lib/intelligence/ledger.js';
 import { extractRunHeadline, renderHeadline } from '../lib/intelligence/headline.js';
+import { forecastTelemetryFields } from '../lib/intelligence/forecast-answer.js';
+
+/** forecastTelemetryFields, never throwing into the command. */
+function safeForecastFields(result: unknown): Record<string, unknown> {
+  try {
+    return forecastTelemetryFields(result as never);
+  } catch {
+    return {};
+  }
+}
 import { intelligenceOutputPath } from '../lib/paths/resolve.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { track, EventName } from '../lib/telemetry/index.js';
@@ -267,15 +279,20 @@ function registerGetCommand(intelligence: Command): void {
           return emitFailure(result, !!root.json);
         }
         await updateIntelligenceRunStatus(runId, 'DONE', root.dataDir);
-        const headlineForId = extractRunHeadline(result);
-        const brandSlug = await brandForRunId(runId, root.dataDir);
+        const handle = await ledgerHandleForRunId(runId, root.dataDir);
+        // The answer's own meta names it; a forecasting answer carries no meta,
+        // so the id this run was submitted under (local ledger) names it then.
+        const headlineForId = extractRunHeadline(result, handle.insightId);
+        // Only a forecasting answer (no meta) is named by the ledger id; every
+        // other answer keeps the name it always had.
+        const isForecasting = (result as { service?: unknown } | null)?.service === 'forecasting';
         await emitInsightResult(
-          headlineForId.insightId ?? 'insight',
+          isForecasting ? (headlineForId.insightId ?? handle.insightId) : (headlineForId.insightId ?? 'insight'),
           result,
           opts.out,
           startedAt,
           root,
-          brandSlug,
+          handle.brand,
           runId,
         );
       } catch (err) {
@@ -394,23 +411,32 @@ function brandSlugFromParams(params: IntelligenceRunParams): string | undefined 
   return merchantEcho(params).brand;
 }
 
-/** Look up the brand this runId was submitted under, from the local ledger,
- *  so `get` can land its artifact next to where `run --async` would have.
- *  Best-effort: an unrecorded/expired handle just falls back to the flat
- *  (no-brand) artifact path.
+/** Look up the brand and insight id this runId was submitted under, from the
+ *  local ledger, so `get` can land its artifact next to where `run --async`
+ *  would have, and name an answer that carries no `meta.insightId` (a
+ *  forecasting answer). Best-effort: an unrecorded/expired handle just falls
+ *  back to the flat (no-brand) artifact path and an unknown id.
  *
- *  SECURITY: re-validates the stored brand with isSafeBrandSlug rather than
- *  trusting the ledger file verbatim — defense in depth against a
- *  hand-edited, pre-fix, or otherwise corrupt ledger entry carrying an
- *  unsafe value (see merchantEcho, which is what should have kept it out in
- *  the first place). */
-async function brandForRunId(runId: string, dataDir: string | undefined): Promise<string | undefined> {
+ *  SECURITY: re-validates the stored brand with isSafeBrandSlug (and the
+ *  stored id against a plain id shape) rather than trusting the ledger file
+ *  verbatim — defense in depth against a hand-edited, pre-fix, or otherwise
+ *  corrupt ledger entry carrying an unsafe value (see merchantEcho, which is
+ *  what should have kept it out in the first place). */
+async function ledgerHandleForRunId(
+  runId: string,
+  dataDir: string | undefined,
+): Promise<{ brand?: string; insightId?: string }> {
   try {
     const { runs } = await listIntelligenceRuns(dataDir);
-    const brand = runs.find((r) => r.run_id === runId)?.brand;
-    return brand && isSafeBrandSlug(brand) ? brand : undefined;
+    const entry = runs.find((r) => r.run_id === runId);
+    const brand = entry?.brand;
+    const insightId = entry?.insight_id;
+    return {
+      ...(brand && isSafeBrandSlug(brand) ? { brand } : {}),
+      ...(typeof insightId === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(insightId) ? { insightId } : {}),
+    };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -423,9 +449,12 @@ async function brandForRunId(runId: string, dataDir: string | undefined): Promis
  *  when present (the `get` path always has one) it also seeds
  *  intelligenceOutputPath's filename nonce, so the artifact for this run
  *  never collides with another run's (see resolve.ts for why timestamp
- *  alone isn't enough). */
+ *  alone isn't enough).
+ *
+ *  `id` is the insight id the CLI knows (the `run` argument, or what `get`
+ *  found); undefined when `get` could find none. */
 async function emitInsightResult(
-  id: string,
+  id: string | undefined,
   result: InsightResult,
   outOverride: string | undefined,
   startedAt: number,
@@ -433,11 +462,11 @@ async function emitInsightResult(
   brandSlug: string | undefined,
   runIdForTracking?: string,
 ): Promise<void> {
-  const headline = extractRunHeadline(result);
+  const headline = extractRunHeadline(result, id);
   const artifactPath = outOverride
     ? resolvePath(outOverride)
     : intelligenceOutputPath(
-        sanitizeForFilename(id),
+        sanitizeForFilename(id ?? 'insight'),
         fsSafeTimestamp(),
         brandSlug,
         root.dataDir,
@@ -453,10 +482,12 @@ async function emitInsightResult(
       outcome: 'ok',
       duration_ms: Date.now() - startedAt,
       payload: {
-        insight_id: headline.insightId ?? id,
+        insight_id: headline.insightId ?? id ?? 'insight',
         cache: headline.cache,
         limitation_count: headline.limitationCount,
         ...(runIdForTracking ? { run_id: runIdForTracking } : {}),
+        // Forecasting answers only ({} otherwise): what the person's run got.
+        ...safeForecastFields(result),
       },
     },
     root.dataDir,

@@ -224,11 +224,31 @@ export const EventName = {
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
   // + outcome + cache hit/miss + limitation COUNT only — never the insight
   // envelope itself (customer performance numbers, not telemetry).
+  // run_retrieved for a forecasting-service answer (FCT-*) adds service, kind,
+  // forecast_state / available / verdict, reason, metric, month, scope_id,
+  // vintage, vintage_age_days, ytd_runs_past_report_month and served: bounded
+  // labels, ids and booleans (lib/intelligence/forecast-answer.ts), never a
+  // forecast figure and never the service's free text.
   IntelligenceCatalogListed: 'intelligence.catalog_listed',
   IntelligenceRunStarted: 'intelligence.run_started',
   IntelligenceRunPolled: 'intelligence.run_polled',
   IntelligenceRunRetrieved: 'intelligence.run_retrieved',
   IntelligenceRunFailed: 'intelligence.run_failed',
+
+  // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
+  // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
+  // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,
+  // figures, derived, claims, sections, client_safe (COUNTS), check_findings?
+  // (count, only when --check ran), expect_month (bool)}. forecast_failed
+  // (error_class forecast_month_mismatch | unrecognised_figures |
+  // check_findings | not_a_forecast_answer | extract_error): the forecast was
+  // withheld for a defect or the forecast path errored; same identifying
+  // fields plus check rule ids (max 20) or up to 10 of the contract's own
+  // figure ids it could not place (contract-drift evidence). A stale or
+  // not-provided forecast is NOT a failure. Privacy: never a figure value,
+  // label, claim or section text, nor the service's free text.
+  ReportForecastExtracted: 'report.forecast_extracted',
+  ReportForecastFailed: 'report.forecast_failed',
 
   // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
   // Privacy: payloads carry brand slugs, per-action doc counts, force flag,

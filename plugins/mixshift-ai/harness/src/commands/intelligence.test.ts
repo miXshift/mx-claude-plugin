@@ -23,7 +23,8 @@ import {
   type InsightResult,
   type RunAcceptedResult,
 } from '../lib/intelligence/client.js';
-import { listIntelligenceRuns } from '../lib/intelligence/ledger.js';
+import { listIntelligenceRuns, recordIntelligenceRun } from '../lib/intelligence/ledger.js';
+import { track } from '../lib/telemetry/index.js';
 
 vi.mock('../lib/intelligence/client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/intelligence/client.js')>();
@@ -513,6 +514,105 @@ describe('intelligence get', () => {
     await runCli({ dataDir }, 'get', 'run-1');
     expect(stderrText()).toContain('hint:');
     expect(process.exitCode).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// forecasting answers: headline + run_retrieved fields
+// ---------------------------------------------------------------------------
+
+describe('intelligence run/get — forecasting answers', () => {
+  /** A FCT-TRACK-01 answer: no meta, no insight id of its own. */
+  const trackAnswer = (extra: Record<string, unknown> = {}) =>
+    ({
+      ok: true,
+      service: 'forecasting',
+      kind: 'track',
+      scope_id: 'src:demo:1',
+      metric: 'revenue',
+      month: '2026-02',
+      forecast_state: 'not_provided',
+      reason: 'never_published',
+      friendly: 'No forecast has been published for this scope and metric.',
+      report_data: null,
+      ...extra,
+    }) as unknown as InsightResult;
+
+  const retrievedPayload = () => {
+    const call = vi.mocked(track).mock.calls.find(([input]) => input.event_name === 'intelligence.run_retrieved');
+    return call?.[0].payload;
+  };
+
+  it('names the run by the id it ran and prints the forecast summary; run_retrieved carries the forecast fields', async () => {
+    vi.mocked(run).mockResolvedValue(trackAnswer());
+    await runCli({ dataDir }, 'run', 'FCT-TRACK-01', '--params', JSON.stringify({ merchant: { legacySellerId: 1 } }));
+    const out = stdoutText();
+    expect(out).toContain('✓ FCT-TRACK-01 · forecast not provided (never_published) · revenue 2026-02 · src:demo:1');
+    expect(out).not.toContain('insight id unknown');
+    expect(retrievedPayload()).toEqual({
+      insight_id: 'FCT-TRACK-01',
+      cache: undefined,
+      limitation_count: undefined,
+      service: 'forecasting',
+      kind: 'track',
+      forecast_state: 'not_provided',
+      reason: 'never_published',
+      metric: 'revenue',
+      month: '2026-02',
+      scope_id: 'src:demo:1',
+      served: false,
+    });
+  });
+
+  it('a served forecast reports served:true with its vintage, never a figure', async () => {
+    vi.mocked(run).mockResolvedValue(
+      trackAnswer({
+        forecast_state: 'provided_current',
+        reason: undefined,
+        report_data: { figures: [{ id: 'forecast.expected.rolling.sales.month', value: 98765.43 }] },
+        published: { gateway_revision: 3, age_days: 2 },
+        ytd_runs_past_report_month: false,
+        limitations: ['Served from the published copy.'],
+      }),
+    );
+    await runCli({ dataDir }, 'run', 'FCT-TRACK-01', '--params', '{}');
+    const payload = retrievedPayload()!;
+    expect(payload).toMatchObject({ served: true, vintage: 3, vintage_age_days: 2, limitation_count: 1, ytd_runs_past_report_month: false });
+    expect(JSON.stringify(payload)).not.toContain('98765');
+  });
+
+  it('an ordinary insight answer gains no forecast fields', async () => {
+    vi.mocked(run).mockResolvedValue(insightResult());
+    await runCli({ dataDir }, 'run', 'INS-OPS-BRIDGE-01', '--params', '{}');
+    expect(Object.keys(retrievedPayload()!).sort()).toEqual(['cache', 'insight_id', 'limitation_count']);
+  });
+
+  it('get names a forecasting answer by the id its async handle was recorded under', async () => {
+    await recordIntelligenceRun({ run_id: 'run-fc', insight_id: 'FCT-TRACK-01', status: 'IN_QUEUE' }, dataDir);
+    vi.mocked(getRunResult).mockResolvedValue(trackAnswer());
+    await runCli({ dataDir }, 'get', 'run-fc');
+    expect(stdoutText()).toContain('✓ FCT-TRACK-01 · forecast not provided (never_published)');
+    expect(retrievedPayload()).toMatchObject({ insight_id: 'FCT-TRACK-01', run_id: 'run-fc', kind: 'track' });
+  });
+
+  it('get of a recorded run whose answer is NOT a forecasting one keeps the old name (no ledger id)', async () => {
+    vi.mocked(run).mockResolvedValue(acceptedResult({ runId: 'run-ins' }));
+    await runCli({ dataDir }, 'run', 'INS-LOSTSALES-01', '--params', '{}', '--async');
+    vi.mocked(getRunResult).mockResolvedValue({ ok: true, rows: [] } as never);
+    await runCli({ dataDir, json: true }, 'get', 'run-ins');
+    const paths = [...stdoutText().matchAll(/"artifact_path":\s*"([^"]*)"/g)].map((m) => m[1]!);
+    const artifact = paths[paths.length - 1]!;
+    expect(artifact).toMatch(/insight/);
+    expect(artifact).not.toMatch(/INS-LOSTSALES-01/);
+    expect(retrievedPayload()).toMatchObject({ insight_id: 'insight', run_id: 'run-ins' });
+    expect(retrievedPayload()).not.toHaveProperty('service');
+  });
+
+  it('get with no recorded handle still renders (id unknown) and names the event insight', async () => {
+    vi.mocked(getRunResult).mockResolvedValue(trackAnswer());
+    await runCli({ dataDir }, 'get', 'run-unrecorded');
+    expect(stdoutText()).toContain('✓ (insight id unknown) · forecast not provided (never_published)');
+    expect(retrievedPayload()).toMatchObject({ insight_id: 'insight', run_id: 'run-unrecorded', served: false });
   });
 });
 

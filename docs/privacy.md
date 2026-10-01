@@ -44,6 +44,12 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - The account identifiers the call was for (seller id, advertiser / profile id, marketplace), so usage can be attributed to an account, plus item / row counts, duration, and outcome
 - We do **not** collect the returned documents, response bodies, or row data
 
+**MixShift Intelligence and forecast events:**
+- Which insight ran, its run id, whether a cached result was reused, how many limitations it carried, duration, and the failure class when it failed
+- For a forecast: whether one was current, out of date or not yet published (with the service's short reason), the metric and report month, the scope it was for, which published copy was used and how old it was
+- When a report reads a forecast: how many figures it contained, whether the report used it, and the rule or check that held it back when it did not (including the names of figure types the plugin did not recognise)
+- We do **not** collect the forecast figures, the insight results, or the service's explanatory text
+
 **Feedback:**
 - Whatever you send via `mixshift feedback "..."`, which is a direct submission to MixShift, not passive collection.
 
