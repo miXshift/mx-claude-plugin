@@ -3316,25 +3316,25 @@ var require_data_url = __commonJS({
     function isHTTPWhiteSpace(char) {
       return char === 13 || char === 10 || char === 9 || char === 32;
     }
-    function removeHTTPWhitespace(str, leading = true, trailing = true) {
-      return removeChars(str, leading, trailing, isHTTPWhiteSpace);
+    function removeHTTPWhitespace(str2, leading = true, trailing = true) {
+      return removeChars(str2, leading, trailing, isHTTPWhiteSpace);
     }
     function isASCIIWhitespace(char) {
       return char === 13 || char === 10 || char === 9 || char === 12 || char === 32;
     }
-    function removeASCIIWhitespace(str, leading = true, trailing = true) {
-      return removeChars(str, leading, trailing, isASCIIWhitespace);
+    function removeASCIIWhitespace(str2, leading = true, trailing = true) {
+      return removeChars(str2, leading, trailing, isASCIIWhitespace);
     }
-    function removeChars(str, leading, trailing, predicate) {
+    function removeChars(str2, leading, trailing, predicate) {
       let lead = 0;
-      let trail = str.length - 1;
+      let trail = str2.length - 1;
       if (leading) {
-        while (lead < str.length && predicate(str.charCodeAt(lead))) lead++;
+        while (lead < str2.length && predicate(str2.charCodeAt(lead))) lead++;
       }
       if (trailing) {
-        while (trail > 0 && predicate(str.charCodeAt(trail))) trail--;
+        while (trail > 0 && predicate(str2.charCodeAt(trail))) trail--;
       }
-      return lead === 0 && trail === str.length - 1 ? str : str.slice(lead, trail + 1);
+      return lead === 0 && trail === str2.length - 1 ? str2 : str2.slice(lead, trail + 1);
     }
     function isomorphicDecode(input) {
       const length = input.length;
@@ -5253,7 +5253,7 @@ var require_body = __commonJS({
         const boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, "0")}`;
         const prefix = `--${boundary}\r
 Content-Disposition: form-data`;
-        const escape = (str) => str.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
+        const escape = (str2) => str2.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
         const normalizeLinefeeds = (value) => value.replace(/\r?\n|\r/g, "\r\n");
         const blobParts = [];
         const rn = new Uint8Array([13, 10]);
@@ -16098,9 +16098,9 @@ var require_cookies = __commonJS({
       webidl.argumentLengthCheck(arguments, 2, "setCookie");
       webidl.brandCheck(headers, Headers, { strict: false });
       cookie = webidl.converters.Cookie(cookie);
-      const str = stringify(cookie);
-      if (str) {
-        headers.append("Set-Cookie", str);
+      const str2 = stringify(cookie);
+      if (str2) {
+        headers.append("Set-Cookie", str2);
       }
     }
     webidl.converters.DeleteCookieAttributes = webidl.dictionaryConverter([
@@ -16660,8 +16660,8 @@ var require_util7 = __commonJS({
           return false;
         }
       }
-      const num = Number.parseInt(value, 10);
-      return num >= 8 && num <= 15;
+      const num2 = Number.parseInt(value, 10);
+      return num2 >= 8 && num2 <= 15;
     }
     var hasIntl = typeof process.versions.icu === "string";
     var fatalDecoder = hasIntl ? new TextDecoder("utf-8", { fatal: true }) : void 0;
@@ -19124,14 +19124,14 @@ var require_help = __commonJS({
        * @return {string}
        *
        */
-      wrap(str, width, indent, minColumnWidth = 40) {
+      wrap(str2, width, indent, minColumnWidth = 40) {
         const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
         const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str.match(manualIndent)) return str;
+        if (str2.match(manualIndent)) return str2;
         const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str;
-        const leadingStr = str.slice(0, indent);
-        const columnText = str.slice(indent).replace("\r\n", "\n");
+        if (columnWidth < minColumnWidth) return str2;
+        const leadingStr = str2.slice(0, indent);
+        const columnText = str2.slice(indent).replace("\r\n", "\n");
         const indentString = " ".repeat(indent);
         const zeroWidthSpace = "\u200B";
         const breaks = `\\s${zeroWidthSpace}`;
@@ -19400,9 +19400,9 @@ var require_option = __commonJS({
         return option.negate === (negativeValue === value);
       }
     };
-    function camelcase(str) {
-      return str.split("-").reduce((str2, word) => {
-        return str2 + word[0].toUpperCase() + word.slice(1);
+    function camelcase(str2) {
+      return str2.split("-").reduce((str3, word) => {
+        return str3 + word[0].toUpperCase() + word.slice(1);
       });
     }
     function splitOptionFlags(flags) {
@@ -19556,11 +19556,11 @@ var require_command = __commonJS({
         this._showHelpAfterError = false;
         this._showSuggestionAfterError = true;
         this._outputConfiguration = {
-          writeOut: (str) => process5.stdout.write(str),
-          writeErr: (str) => process5.stderr.write(str),
+          writeOut: (str2) => process5.stdout.write(str2),
+          writeErr: (str2) => process5.stderr.write(str2),
           getOutHelpWidth: () => process5.stdout.isTTY ? process5.stdout.columns : void 0,
           getErrHelpWidth: () => process5.stderr.isTTY ? process5.stderr.columns : void 0,
-          outputError: (str, write) => write(str)
+          outputError: (str2, write) => write(str2)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -21196,18 +21196,18 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str, flags, description) {
-        if (str === void 0) return this._version;
-        this._version = str;
+      version(str2, flags, description) {
+        if (str2 === void 0) return this._version;
+        this._version = str2;
         flags = flags || "-V, --version";
         description = description || "output the version number";
         const versionOption = this.createOption(flags, description);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str}
+          this._outputConfiguration.writeOut(`${str2}
 `);
-          this._exit(0, "commander.version", str);
+          this._exit(0, "commander.version", str2);
         });
         return this;
       }
@@ -21218,10 +21218,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {object} [argsDescription]
        * @return {(string|Command)}
        */
-      description(str, argsDescription) {
-        if (str === void 0 && argsDescription === void 0)
+      description(str2, argsDescription) {
+        if (str2 === void 0 && argsDescription === void 0)
           return this._description;
-        this._description = str;
+        this._description = str2;
         if (argsDescription) {
           this._argsDescription = argsDescription;
         }
@@ -21233,9 +21233,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      summary(str) {
-        if (str === void 0) return this._summary;
-        this._summary = str;
+      summary(str2) {
+        if (str2 === void 0) return this._summary;
+        this._summary = str2;
         return this;
       }
       /**
@@ -21283,8 +21283,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      usage(str) {
-        if (str === void 0) {
+      usage(str2) {
+        if (str2 === void 0) {
           if (this._usage) return this._usage;
           const args = this.registeredArguments.map((arg) => {
             return humanReadableArgName(arg);
@@ -21295,7 +21295,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             this.registeredArguments.length ? args : []
           ).join(" ");
         }
-        this._usage = str;
+        this._usage = str2;
         return this;
       }
       /**
@@ -21304,9 +21304,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      name(str) {
-        if (str === void 0) return this._name;
-        this._name = str;
+      name(str2) {
+        if (str2 === void 0) return this._name;
+        this._name = str2;
         return this;
       }
       /**
@@ -22539,13 +22539,13 @@ var require_Collection = __commonJS({
 var require_stringifyComment = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
-    var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
+    var stringifyComment = (str2) => str2.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
       if (/^\n+$/.test(comment))
         return comment.substring(1);
       return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
     }
-    var lineComment = (str, indent, comment) => str.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str.endsWith(" ") ? "" : " ") + comment;
+    var lineComment = (str2, indent, comment) => str2.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str2.endsWith(" ") ? "" : " ") + comment;
     exports.indentComment = indentComment;
     exports.lineComment = lineComment;
     exports.stringifyComment = stringifyComment;
@@ -22699,16 +22699,16 @@ var require_stringifyString = __commonJS({
       lineWidth: ctx.options.lineWidth,
       minContentWidth: ctx.options.minContentWidth
     });
-    var containsDocumentMarker = (str) => /^(%|---|\.\.\.)/m.test(str);
-    function lineLengthOverLimit(str, lineWidth, indentLength) {
+    var containsDocumentMarker = (str2) => /^(%|---|\.\.\.)/m.test(str2);
+    function lineLengthOverLimit(str2, lineWidth, indentLength) {
       if (!lineWidth || lineWidth < 0)
         return false;
       const limit = lineWidth - indentLength;
-      const strLen = str.length;
+      const strLen = str2.length;
       if (strLen <= limit)
         return false;
       for (let i = 0, start = 0; i < strLen; ++i) {
-        if (str[i] === "\n") {
+        if (str2[i] === "\n") {
           if (i - start > limit)
             return true;
           start = i + 1;
@@ -22725,11 +22725,11 @@ var require_stringifyString = __commonJS({
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
-      let str = "";
+      let str2 = "";
       let start = 0;
       for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
         if (ch === " " && json2[i + 1] === "\\" && json2[i + 2] === "n") {
-          str += json2.slice(start, i) + "\\ ";
+          str2 += json2.slice(start, i) + "\\ ";
           i += 1;
           start = i;
           ch = "\\";
@@ -22738,38 +22738,38 @@ var require_stringifyString = __commonJS({
           switch (json2[i + 1]) {
             case "u":
               {
-                str += json2.slice(start, i);
+                str2 += json2.slice(start, i);
                 const code = json2.substr(i + 2, 4);
                 switch (code) {
                   case "0000":
-                    str += "\\0";
+                    str2 += "\\0";
                     break;
                   case "0007":
-                    str += "\\a";
+                    str2 += "\\a";
                     break;
                   case "000b":
-                    str += "\\v";
+                    str2 += "\\v";
                     break;
                   case "001b":
-                    str += "\\e";
+                    str2 += "\\e";
                     break;
                   case "0085":
-                    str += "\\N";
+                    str2 += "\\N";
                     break;
                   case "00a0":
-                    str += "\\_";
+                    str2 += "\\_";
                     break;
                   case "2028":
-                    str += "\\L";
+                    str2 += "\\L";
                     break;
                   case "2029":
-                    str += "\\P";
+                    str2 += "\\P";
                     break;
                   default:
                     if (code.substr(0, 2) === "00")
-                      str += "\\x" + code.substr(2);
+                      str2 += "\\x" + code.substr(2);
                     else
-                      str += json2.substr(i, 6);
+                      str2 += json2.substr(i, 6);
                 }
                 i += 5;
                 start = i + 1;
@@ -22779,14 +22779,14 @@ var require_stringifyString = __commonJS({
               if (implicitKey || json2[i + 2] === '"' || json2.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str += json2.slice(start, i) + "\n\n";
+                str2 += json2.slice(start, i) + "\n\n";
                 while (json2[i + 2] === "\\" && json2[i + 3] === "n" && json2[i + 4] !== '"') {
-                  str += "\n";
+                  str2 += "\n";
                   i += 2;
                 }
-                str += indent;
+                str2 += indent;
                 if (json2[i + 2] === " ")
-                  str += "\\";
+                  str2 += "\\";
                 i += 1;
                 start = i + 1;
               }
@@ -22795,8 +22795,8 @@ var require_stringifyString = __commonJS({
               i += 1;
           }
       }
-      str = start ? str + json2.slice(start) : json2;
-      return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
+      str2 = start ? str2 + json2.slice(start) : json2;
+      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
       if (ctx.options.singleQuote === false || ctx.implicitKey && value.includes("\n") || /[ \t]\n|\n[ \t]/.test(value))
@@ -22924,15 +22924,15 @@ ${indent}${start}${value}${end}`;
           return quotedString(value, ctx);
         }
       }
-      const str = value.replace(/\n+/g, `$&
+      const str2 = value.replace(/\n+/g, `$&
 ${indent}`);
       if (actualString) {
-        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str);
+        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str2);
         const { compat, tags } = ctx.doc.schema;
         if (tags.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
-      return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
+      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
     }
     function stringifyString(item, ctx, onComment, onChompKeep) {
       const { implicitKey, inFlow } = ctx;
@@ -23084,11 +23084,11 @@ var require_stringify = __commonJS({
       const props = stringifyProps(node, tagObj, ctx);
       if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
-      const str = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
+      const str2 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
       if (!props)
-        return str;
-      return identity.isScalar(node) || str[0] === "{" || str[0] === "[" ? `${props} ${str}` : `${props}
-${ctx.indent}${str}`;
+        return str2;
+      return identity.isScalar(node) || str2[0] === "{" || str2[0] === "[" ? `${props} ${str2}` : `${props}
+${ctx.indent}${str2}`;
     }
     exports.createStringifyContext = createStringifyContext;
     exports.stringify = stringify;
@@ -23123,8 +23123,8 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
-      if (!explicitKey && !ctx.inFlow && str.length > 1024) {
+      let str2 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      if (!explicitKey && !ctx.inFlow && str2.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
         explicitKey = true;
@@ -23133,27 +23133,27 @@ var require_stringifyPair = __commonJS({
         if (allNullValues || value == null) {
           if (keyCommentDone && onComment)
             onComment();
-          return str === "" ? "?" : explicitKey ? `? ${str}` : str;
+          return str2 === "" ? "?" : explicitKey ? `? ${str2}` : str2;
         }
       } else if (allNullValues && !simpleKeys || value == null && explicitKey) {
-        str = `? ${str}`;
+        str2 = `? ${str2}`;
         if (keyComment && !keyCommentDone) {
-          str += stringifyComment.lineComment(str, ctx.indent, commentString(keyComment));
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
         } else if (chompKeep && onChompKeep)
           onChompKeep();
-        return str;
+        return str2;
       }
       if (keyCommentDone)
         keyComment = null;
       if (explicitKey) {
         if (keyComment)
-          str += stringifyComment.lineComment(str, ctx.indent, commentString(keyComment));
-        str = `? ${str}
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+        str2 = `? ${str2}
 ${indent}:`;
       } else {
-        str = `${str}:`;
+        str2 = `${str2}:`;
         if (keyComment)
-          str += stringifyComment.lineComment(str, ctx.indent, commentString(keyComment));
+          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
       }
       let vsb, vcb, valueComment;
       if (identity.isNode(value)) {
@@ -23169,7 +23169,7 @@ ${indent}:`;
       }
       ctx.implicitKey = false;
       if (!explicitKey && !keyComment && identity.isScalar(value))
-        ctx.indentAtStart = str.length + 1;
+        ctx.indentAtStart = str2.length + 1;
       chompKeep = false;
       if (!indentSeq && indentStep.length >= 2 && !ctx.inFlow && !explicitKey && identity.isSeq(value) && !value.flow && !value.tag && !value.anchor) {
         ctx.indent = ctx.indent.substring(2);
@@ -23213,16 +23213,16 @@ ${ctx.indent}`;
       } else if (valueStr === "" || valueStr[0] === "\n") {
         ws = "";
       }
-      str += ws + valueStr;
+      str2 += ws + valueStr;
       if (ctx.inFlow) {
         if (valueCommentDone && onComment)
           onComment();
       } else if (valueComment && !valueCommentDone) {
-        str += stringifyComment.lineComment(str, ctx.indent, commentString(valueComment));
+        str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(valueComment));
       } else if (chompKeep && onChompKeep) {
         onChompKeep();
       }
-      return str;
+      return str2;
     }
     exports.stringifyPair = stringifyPair;
   }
@@ -23449,31 +23449,31 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str3 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
-          str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
+          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str2);
+        lines.push(blockItemPrefix + str3);
       }
-      let str;
+      let str2;
       if (lines.length === 0) {
-        str = flowChars.start + flowChars.end;
+        str2 = flowChars.start + flowChars.end;
       } else {
-        str = lines[0];
+        str2 = lines[0];
         for (let i = 1; i < lines.length; ++i) {
           const line = lines[i];
-          str += line ? `
+          str2 += line ? `
 ${indent}${line}` : "\n";
         }
       }
       if (comment) {
-        str += "\n" + stringifyComment.indentComment(commentString(comment), indent);
+        str2 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
         if (onComment)
           onComment();
       } else if (chompKeep && onChompKeep)
         onChompKeep();
-      return str;
+      return str2;
     }
     function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
@@ -23516,21 +23516,21 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
-        reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
+        let str2 = stringify.stringify(item, itemCtx, () => comment = null);
+        reqNewline || (reqNewline = lines.length > linesAtValue || str2.includes("\n"));
         if (i < items.length - 1) {
-          str += ",";
+          str2 += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str2.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
-            str += ",";
+            str2 += ",";
           }
         }
         if (comment)
-          str += stringifyComment.lineComment(str, itemIndent, commentString(comment));
-        lines.push(str);
+          str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment));
+        lines.push(str2);
         linesAtValue = lines.length;
       }
       const { start, end } = flowChars;
@@ -23542,11 +23542,11 @@ ${indent}${line}` : "\n";
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str = start;
+          let str2 = start;
           for (const line of lines)
-            str += line ? `
+            str2 += line ? `
 ${indentStep}${indent}${line}` : "\n";
-          return `${str}
+          return `${str2}
 ${indent}${end}`;
         } else {
           return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
@@ -23878,7 +23878,7 @@ var require_string = __commonJS({
       identify: (value) => typeof value === "string",
       default: true,
       tag: "tag:yaml.org,2002:str",
-      resolve: (str) => str,
+      resolve: (str2) => str2,
       stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
         return stringifyString.stringifyString(item, ctx, onComment, onChompKeep);
@@ -23916,7 +23916,7 @@ var require_bool = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:bool",
       test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
-      resolve: (str) => new Scalar.Scalar(str[0] === "t" || str[0] === "T"),
+      resolve: (str2) => new Scalar.Scalar(str2[0] === "t" || str2[0] === "T"),
       stringify({ source, value }, ctx) {
         if (source && boolTag.test.test(source)) {
           const sv = source[0] === "t" || source[0] === "T";
@@ -23937,9 +23937,9 @@ var require_stringifyNumber = __commonJS({
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
         return String(value);
-      const num = typeof value === "number" ? value : Number(value);
-      if (!isFinite(num))
-        return isNaN(num) ? ".nan" : num < 0 ? "-.inf" : ".inf";
+      const num2 = typeof value === "number" ? value : Number(value);
+      if (!isFinite(num2))
+        return isNaN(num2) ? ".nan" : num2 < 0 ? "-.inf" : ".inf";
       let n = Object.is(value, -0) ? "-0" : JSON.stringify(value);
       if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^-?\d/.test(n) && !n.includes("e")) {
         let i = n.indexOf(".");
@@ -23968,7 +23968,7 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str) => str.slice(-3).toLowerCase() === "nan" ? NaN : str[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -23977,10 +23977,10 @@ var require_float = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
-      resolve: (str) => parseFloat(str),
+      resolve: (str2) => parseFloat(str2),
       stringify(node) {
-        const num = Number(node.value);
-        return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num2 = Number(node.value);
+        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -23988,11 +23988,11 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
-      resolve(str) {
-        const node = new Scalar.Scalar(parseFloat(str));
-        const dot = str.indexOf(".");
-        if (dot !== -1 && str[str.length - 1] === "0")
-          node.minFractionDigits = str.length - dot - 1;
+      resolve(str2) {
+        const node = new Scalar.Scalar(parseFloat(str2));
+        const dot = str2.indexOf(".");
+        if (dot !== -1 && str2[str2.length - 1] === "0")
+          node.minFractionDigits = str2.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -24009,7 +24009,7 @@ var require_int = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    var intResolve = (str, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str) : parseInt(str.substring(offset), radix);
+    var intResolve = (str2, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2.substring(offset), radix);
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value) && value >= 0)
@@ -24022,7 +24022,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^0o[0-7]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 2, 8, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 8, opt),
       stringify: (node) => intStringify(node, 8, "0o")
     };
     var int2 = {
@@ -24030,7 +24030,7 @@ var require_int = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 0, 10, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24039,7 +24039,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^0x[0-9a-fA-F]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 2, 16, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24092,7 +24092,7 @@ var require_schema2 = __commonJS({
         identify: (value) => typeof value === "string",
         default: true,
         tag: "tag:yaml.org,2002:str",
-        resolve: (str) => str,
+        resolve: (str2) => str2,
         stringify: stringifyJSON
       },
       {
@@ -24109,7 +24109,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:bool",
         test: /^true$|^false$/,
-        resolve: (str) => str === "true",
+        resolve: (str2) => str2 === "true",
         stringify: stringifyJSON
       },
       {
@@ -24117,7 +24117,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:int",
         test: /^-?(?:0|[1-9][0-9]*)$/,
-        resolve: (str, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str) : parseInt(str, 10),
+        resolve: (str2, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2, 10),
         stringify: ({ value }) => intIdentify(value) ? value.toString() : JSON.stringify(value)
       },
       {
@@ -24125,7 +24125,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:float",
         test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
-        resolve: (str) => parseFloat(str),
+        resolve: (str2) => parseFloat(str2),
         stringify: stringifyJSON
       }
     ];
@@ -24133,9 +24133,9 @@ var require_schema2 = __commonJS({
       default: true,
       tag: "",
       test: /^/,
-      resolve(str, onError) {
-        onError(`Unresolved plain scalar ${JSON.stringify(str)}`);
-        return str;
+      resolve(str2, onError) {
+        onError(`Unresolved plain scalar ${JSON.stringify(str2)}`);
+        return str2;
       }
     };
     var schema = [map2.map, seq.seq].concat(jsonScalars, jsonError);
@@ -24167,10 +24167,10 @@ var require_binary = __commonJS({
         if (typeof node_buffer.Buffer === "function") {
           return node_buffer.Buffer.from(src, "base64");
         } else if (typeof atob === "function") {
-          const str = atob(src.replace(/[\n\r]/g, ""));
-          const buffer = new Uint8Array(str.length);
-          for (let i = 0; i < str.length; ++i)
-            buffer[i] = str.charCodeAt(i);
+          const str2 = atob(src.replace(/[\n\r]/g, ""));
+          const buffer = new Uint8Array(str2.length);
+          for (let i = 0; i < str2.length; ++i)
+            buffer[i] = str2.charCodeAt(i);
           return buffer;
         } else {
           onError("This environment does not support reading binary tags; either Buffer or atob is required");
@@ -24181,28 +24181,28 @@ var require_binary = __commonJS({
         if (!value)
           return "";
         const buf = value;
-        let str;
+        let str2;
         if (typeof node_buffer.Buffer === "function") {
-          str = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
+          str2 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
         } else if (typeof btoa === "function") {
           let s = "";
           for (let i = 0; i < buf.length; ++i)
             s += String.fromCharCode(buf[i]);
-          str = btoa(s);
+          str2 = btoa(s);
         } else {
           throw new Error("This environment does not support writing binary tags; either Buffer or btoa is required");
         }
         type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
-          const n = Math.ceil(str.length / lineWidth);
+          const n = Math.ceil(str2.length / lineWidth);
           const lines = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str.substr(o, lineWidth);
+            lines[i] = str2.substr(o, lineWidth);
           }
-          str = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str2 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
-        return stringifyString.stringifyString({ comment, type, value: str }, ctx, onComment, onChompKeep);
+        return stringifyString.stringifyString({ comment, type, value: str2 }, ctx, onComment, onChompKeep);
       }
     };
     exports.binary = binary;
@@ -24408,7 +24408,7 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str) => str.slice(-3).toLowerCase() === "nan" ? NaN : str[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -24417,10 +24417,10 @@ var require_float2 = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
-      resolve: (str) => parseFloat(str.replace(/_/g, "")),
+      resolve: (str2) => parseFloat(str2.replace(/_/g, "")),
       stringify(node) {
-        const num = Number(node.value);
-        return isFinite(num) ? num.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num2 = Number(node.value);
+        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -24428,11 +24428,11 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
-      resolve(str) {
-        const node = new Scalar.Scalar(parseFloat(str.replace(/_/g, "")));
-        const dot = str.indexOf(".");
+      resolve(str2) {
+        const node = new Scalar.Scalar(parseFloat(str2.replace(/_/g, "")));
+        const dot = str2.indexOf(".");
         if (dot !== -1) {
-          const f = str.substring(dot + 1).replace(/_/g, "");
+          const f = str2.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -24452,34 +24452,34 @@ var require_int2 = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    function intResolve(str, offset, radix, { intAsBigInt }) {
-      const sign = str[0];
+    function intResolve(str2, offset, radix, { intAsBigInt }) {
+      const sign = str2[0];
       if (sign === "-" || sign === "+")
         offset += 1;
-      str = str.substring(offset).replace(/_/g, "");
+      str2 = str2.substring(offset).replace(/_/g, "");
       if (intAsBigInt) {
         switch (radix) {
           case 2:
-            str = `0b${str}`;
+            str2 = `0b${str2}`;
             break;
           case 8:
-            str = `0o${str}`;
+            str2 = `0o${str2}`;
             break;
           case 16:
-            str = `0x${str}`;
+            str2 = `0x${str2}`;
             break;
         }
-        const n2 = BigInt(str);
+        const n2 = BigInt(str2);
         return sign === "-" ? BigInt(-1) * n2 : n2;
       }
-      const n = parseInt(str, radix);
+      const n = parseInt(str2, radix);
       return sign === "-" ? -1 * n : n;
     }
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value)) {
-        const str = value.toString(radix);
-        return value < 0 ? "-" + prefix + str.substr(1) : prefix + str;
+        const str2 = value.toString(radix);
+        return value < 0 ? "-" + prefix + str2.substr(1) : prefix + str2;
       }
       return stringifyNumber.stringifyNumber(node);
     }
@@ -24489,7 +24489,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "BIN",
       test: /^[-+]?0b[0-1_]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 2, 2, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 2, opt),
       stringify: (node) => intStringify(node, 2, "0b")
     };
     var intOct = {
@@ -24498,7 +24498,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^[-+]?0[0-7_]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 1, 8, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 1, 8, opt),
       stringify: (node) => intStringify(node, 8, "0")
     };
     var int2 = {
@@ -24506,7 +24506,7 @@ var require_int2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9][0-9_]*$/,
-      resolve: (str, _onError, opt) => intResolve(str, 0, 10, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24515,7 +24515,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^[-+]?0x[0-9a-fA-F_]+$/,
-      resolve: (str, _onError, opt) => intResolve(str, 2, 16, opt),
+      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24619,26 +24619,26 @@ var require_timestamp = __commonJS({
   "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
-    function parseSexagesimal(str, asBigInt) {
-      const sign = str[0];
-      const parts = sign === "-" || sign === "+" ? str.substring(1) : str;
-      const num = (n) => asBigInt ? BigInt(n) : Number(n);
-      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num(60) + num(p), num(0));
-      return sign === "-" ? num(-1) * res : res;
+    function parseSexagesimal(str2, asBigInt) {
+      const sign = str2[0];
+      const parts = sign === "-" || sign === "+" ? str2.substring(1) : str2;
+      const num2 = (n) => asBigInt ? BigInt(n) : Number(n);
+      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num2(60) + num2(p), num2(0));
+      return sign === "-" ? num2(-1) * res : res;
     }
     function stringifySexagesimal(node) {
       let { value } = node;
-      let num = (n) => n;
+      let num2 = (n) => n;
       if (typeof value === "bigint")
-        num = (n) => BigInt(n);
+        num2 = (n) => BigInt(n);
       else if (isNaN(value) || !isFinite(value))
         return stringifyNumber.stringifyNumber(node);
       let sign = "";
       if (value < 0) {
         sign = "-";
-        value *= num(-1);
+        value *= num2(-1);
       }
-      const _60 = num(60);
+      const _60 = num2(60);
       const parts = [value % _60];
       if (value < 60) {
         parts.unshift(0);
@@ -24658,7 +24658,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+$/,
-      resolve: (str, _onError, { intAsBigInt }) => parseSexagesimal(str, intAsBigInt),
+      resolve: (str2, _onError, { intAsBigInt }) => parseSexagesimal(str2, intAsBigInt),
       stringify: stringifySexagesimal
     };
     var floatTime = {
@@ -24667,7 +24667,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*$/,
-      resolve: (str) => parseSexagesimal(str, false),
+      resolve: (str2) => parseSexagesimal(str2, false),
       stringify: stringifySexagesimal
     };
     var timestamp = {
@@ -24678,8 +24678,8 @@ var require_timestamp = __commonJS({
       // may be omitted altogether, resulting in a date format. In such a case, the time part is
       // assumed to be 00:00:00Z (start of day, UTC).
       test: RegExp("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:(?:t|T|[ \\t]+)([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$"),
-      resolve(str) {
-        const match = str.match(timestamp.test);
+      resolve(str2) {
+        const match = str2.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
         const [, year, month, day, hour, minute, second] = match.map(Number);
@@ -29300,14 +29300,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str = "";
+  let str2 = "";
   for (let i = 0; i < length; i++) {
-    str += chars[Math.floor(Math.random() * chars.length)];
+    str2 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str;
+  return str2;
 }
-function esc(str) {
-  return JSON.stringify(str);
+function esc(str2) {
+  return JSON.stringify(str2);
 }
 function slugify(input) {
   return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -29351,8 +29351,8 @@ function numKeys(data) {
   }
   return keyCount;
 }
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str2) {
+  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -45647,8 +45647,8 @@ var require_denque = __commonJS({
       this._list.length >>>= 1;
       this._capacityMask >>>= 1;
     };
-    Denque.prototype._nextPowerOf2 = function _nextPowerOf2(num) {
-      var log2 = Math.log(num) / Math.log(2);
+    Denque.prototype._nextPowerOf2 = function _nextPowerOf2(num2) {
+      var log2 = Math.log(num2) / Math.log(2);
       var nextPow2 = 1 << log2 + 1;
       return Math.max(nextPow2, 4);
     };
@@ -50025,27 +50025,27 @@ var require_umd = __commonJS({
         }
         Long.fromBits = fromBits;
         var pow_dbl = Math.pow;
-        function fromString(str, unsigned, radix) {
-          if (str.length === 0) throw Error("empty string");
+        function fromString(str2, unsigned, radix) {
+          if (str2.length === 0) throw Error("empty string");
           if (typeof unsigned === "number") {
             radix = unsigned;
             unsigned = false;
           } else {
             unsigned = !!unsigned;
           }
-          if (str === "NaN" || str === "Infinity" || str === "+Infinity" || str === "-Infinity")
+          if (str2 === "NaN" || str2 === "Infinity" || str2 === "+Infinity" || str2 === "-Infinity")
             return unsigned ? UZERO : ZERO;
           radix = radix || 10;
           if (radix < 2 || 36 < radix) throw RangeError("radix");
           var p;
-          if ((p = str.indexOf("-")) > 0) throw Error("interior hyphen");
+          if ((p = str2.indexOf("-")) > 0) throw Error("interior hyphen");
           else if (p === 0) {
-            return fromString(str.substring(1), unsigned, radix).neg();
+            return fromString(str2.substring(1), unsigned, radix).neg();
           }
           var radixToPower = fromNumber(pow_dbl(radix, 8));
           var result = ZERO;
-          for (var i = 0; i < str.length; i += 8) {
-            var size = Math.min(8, str.length - i), value = parseInt(str.substring(i, i + size), radix);
+          for (var i = 0; i < str2.length; i += 8) {
+            var size = Math.min(8, str2.length - i), value = parseInt(str2.substring(i, i + size), radix);
             if (size < 8) {
               var power = fromNumber(pow_dbl(radix, size));
               result = result.mul(power).add(fromNumber(value));
@@ -50661,12 +50661,12 @@ var require_bom_handling = __commonJS({
       this.encoder = encoder;
       this.addBOM = true;
     }
-    PrependBOMWrapper.prototype.write = function(str) {
+    PrependBOMWrapper.prototype.write = function(str2) {
       if (this.addBOM) {
-        str = BOMChar + str;
+        str2 = BOMChar + str2;
         this.addBOM = false;
       }
-      return this.encoder.write(str);
+      return this.encoder.write(str2);
     };
     PrependBOMWrapper.prototype.end = function() {
       return this.encoder.end();
@@ -50765,31 +50765,31 @@ var require_internal = __commonJS({
     function InternalEncoder(options, codec2) {
       this.enc = codec2.enc;
     }
-    InternalEncoder.prototype.write = function(str) {
-      return Buffer2.from(str, this.enc);
+    InternalEncoder.prototype.write = function(str2) {
+      return Buffer2.from(str2, this.enc);
     };
     InternalEncoder.prototype.end = function() {
     };
     function InternalEncoderBase64(options, codec2) {
       this.prevStr = "";
     }
-    InternalEncoderBase64.prototype.write = function(str) {
-      str = this.prevStr + str;
-      var completeQuads = str.length - str.length % 4;
-      this.prevStr = str.slice(completeQuads);
-      str = str.slice(0, completeQuads);
-      return Buffer2.from(str, "base64");
+    InternalEncoderBase64.prototype.write = function(str2) {
+      str2 = this.prevStr + str2;
+      var completeQuads = str2.length - str2.length % 4;
+      this.prevStr = str2.slice(completeQuads);
+      str2 = str2.slice(0, completeQuads);
+      return Buffer2.from(str2, "base64");
     };
     InternalEncoderBase64.prototype.end = function() {
       return Buffer2.from(this.prevStr, "base64");
     };
     function InternalEncoderCesu8(options, codec2) {
     }
-    InternalEncoderCesu8.prototype.write = function(str) {
-      var buf = Buffer2.alloc(str.length * 3);
+    InternalEncoderCesu8.prototype.write = function(str2) {
+      var buf = Buffer2.alloc(str2.length * 3);
       var bufIdx = 0;
-      for (var i = 0; i < str.length; i++) {
-        var charCode = str.charCodeAt(i);
+      for (var i = 0; i < str2.length; i++) {
+        var charCode = str2.charCodeAt(i);
         if (charCode < 128) {
           buf[bufIdx++] = charCode;
         } else if (charCode < 2048) {
@@ -50870,25 +50870,25 @@ var require_internal = __commonJS({
     function InternalEncoderUtf8(options, codec2) {
       this.highSurrogate = "";
     }
-    InternalEncoderUtf8.prototype.write = function(str) {
+    InternalEncoderUtf8.prototype.write = function(str2) {
       if (this.highSurrogate) {
-        str = this.highSurrogate + str;
+        str2 = this.highSurrogate + str2;
         this.highSurrogate = "";
       }
-      if (str.length > 0) {
-        var charCode = str.charCodeAt(str.length - 1);
+      if (str2.length > 0) {
+        var charCode = str2.charCodeAt(str2.length - 1);
         if (charCode >= 55296 && charCode < 56320) {
-          this.highSurrogate = str[str.length - 1];
-          str = str.slice(0, str.length - 1);
+          this.highSurrogate = str2[str2.length - 1];
+          str2 = str2.slice(0, str2.length - 1);
         }
       }
-      return Buffer2.from(str, this.enc);
+      return Buffer2.from(str2, this.enc);
     };
     InternalEncoderUtf8.prototype.end = function() {
       if (this.highSurrogate) {
-        var str = this.highSurrogate;
+        var str2 = this.highSurrogate;
         this.highSurrogate = "";
-        return Buffer2.from(str, this.enc);
+        return Buffer2.from(str2, this.enc);
       }
     };
   }
@@ -50915,8 +50915,8 @@ var require_utf32 = __commonJS({
       this.isLE = codec2.isLE;
       this.highSurrogate = 0;
     }
-    Utf32Encoder.prototype.write = function(str) {
-      var src = Buffer2.from(str, "ucs2");
+    Utf32Encoder.prototype.write = function(str2) {
+      var src = Buffer2.from(str2, "ucs2");
       var dst = Buffer2.alloc(src.length * 2);
       var write32 = this.isLE ? dst.writeUInt32LE : dst.writeUInt32BE;
       var offset = 0;
@@ -51037,8 +51037,8 @@ var require_utf32 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder(options.defaultEncoding || "utf-32le", options);
     }
-    Utf32AutoEncoder.prototype.write = function(str) {
-      return this.encoder.write(str);
+    Utf32AutoEncoder.prototype.write = function(str2) {
+      return this.encoder.write(str2);
     };
     Utf32AutoEncoder.prototype.end = function() {
       return this.encoder.end();
@@ -51138,8 +51138,8 @@ var require_utf16 = __commonJS({
     Utf16BECodec.prototype.bomAware = true;
     function Utf16BEEncoder() {
     }
-    Utf16BEEncoder.prototype.write = function(str) {
-      var buf = Buffer2.from(str, "ucs2");
+    Utf16BEEncoder.prototype.write = function(str2) {
+      var buf = Buffer2.from(str2, "ucs2");
       for (var i = 0; i < buf.length; i += 2) {
         var tmp = buf[i];
         buf[i] = buf[i + 1];
@@ -51188,8 +51188,8 @@ var require_utf16 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder("utf-16le", options);
     }
-    Utf16Encoder.prototype.write = function(str) {
-      return this.encoder.write(str);
+    Utf16Encoder.prototype.write = function(str2) {
+      return this.encoder.write(str2);
     };
     Utf16Encoder.prototype.end = function() {
       return this.encoder.end();
@@ -51285,8 +51285,8 @@ var require_utf7 = __commonJS({
     function Utf7Encoder(options, codec2) {
       this.iconv = codec2.iconv;
     }
-    Utf7Encoder.prototype.write = function(str) {
-      return Buffer2.from(str.replace(nonDirectChars, function(chunk) {
+    Utf7Encoder.prototype.write = function(str2) {
+      return Buffer2.from(str2.replace(nonDirectChars, function(chunk) {
         return "+" + (chunk === "+" ? "" : this.iconv.encode(chunk, "utf16-be").toString("base64").replace(/=+$/, "")) + "-";
       }.bind(this)));
     };
@@ -51370,14 +51370,14 @@ var require_utf7 = __commonJS({
       this.base64Accum = Buffer2.alloc(6);
       this.base64AccumIdx = 0;
     }
-    Utf7IMAPEncoder.prototype.write = function(str) {
+    Utf7IMAPEncoder.prototype.write = function(str2) {
       var inBase64 = this.inBase64;
       var base64Accum = this.base64Accum;
       var base64AccumIdx = this.base64AccumIdx;
-      var buf = Buffer2.alloc(str.length * 5 + 10);
+      var buf = Buffer2.alloc(str2.length * 5 + 10);
       var bufIdx = 0;
-      for (var i2 = 0; i2 < str.length; i2++) {
-        var uChar = str.charCodeAt(i2);
+      for (var i2 = 0; i2 < str2.length; i2++) {
+        var uChar = str2.charCodeAt(i2);
         if (uChar >= 32 && uChar <= 126) {
           if (inBase64) {
             if (base64AccumIdx > 0) {
@@ -51518,10 +51518,10 @@ var require_sbcs_codec = __commonJS({
     function SBCSEncoder(options, codec2) {
       this.encodeBuf = codec2.encodeBuf;
     }
-    SBCSEncoder.prototype.write = function(str) {
-      var buf = Buffer2.alloc(str.length);
-      for (var i = 0; i < str.length; i++) {
-        buf[i] = this.encodeBuf[str.charCodeAt(i)];
+    SBCSEncoder.prototype.write = function(str2) {
+      var buf = Buffer2.alloc(str2.length);
+      for (var i = 0; i < str2.length; i++) {
+        buf[i] = this.encodeBuf[str2.charCodeAt(i)];
       }
       return buf;
     };
@@ -52395,8 +52395,8 @@ var require_dbcs_codec = __commonJS({
       this.defaultCharSingleByte = codec2.defCharSB;
       this.gb18030 = codec2.gb18030;
     }
-    DBCSEncoder.prototype.write = function(str) {
-      var newBuf = Buffer2.alloc(str.length * (this.gb18030 ? 4 : 3));
+    DBCSEncoder.prototype.write = function(str2) {
+      var newBuf = Buffer2.alloc(str2.length * (this.gb18030 ? 4 : 3));
       var leadSurrogate = this.leadSurrogate;
       var seqObj = this.seqObj;
       var nextChar = -1;
@@ -52404,8 +52404,8 @@ var require_dbcs_codec = __commonJS({
       var j = 0;
       while (true) {
         if (nextChar === -1) {
-          if (i2 == str.length) break;
-          var uCode = str.charCodeAt(i2++);
+          if (i2 == str2.length) break;
+          var uCode = str2.charCodeAt(i2++);
         } else {
           var uCode = nextChar;
           nextChar = -1;
@@ -54243,10 +54243,10 @@ var require_lib3 = __commonJS({
     module.exports.encodings = null;
     module.exports.defaultCharUnicode = "\uFFFD";
     module.exports.defaultCharSingleByte = "?";
-    module.exports.encode = function encode3(str, encoding, options) {
-      str = "" + (str || "");
+    module.exports.encode = function encode3(str2, encoding, options) {
+      str2 = "" + (str2 || "");
       var encoder = module.exports.getEncoder(encoding, options);
-      var res = encoder.write(str);
+      var res = encoder.write(str2);
       var trail = encoder.end();
       return trail && trail.length > 0 ? Buffer2.concat([res, trail]) : res;
     };
@@ -54514,12 +54514,12 @@ var require_packet = __commonJS({
     var Types = require_types();
     var INVALID_DATE = /* @__PURE__ */ new Date(NaN);
     var pad = "000000000000";
-    function leftPad(num, value) {
+    function leftPad(num2, value) {
       const s = value.toString();
-      if (s.length >= num) {
+      if (s.length >= num2) {
         return s;
       }
-      return (pad + s).slice(-num);
+      return (pad + s).slice(-num2);
     }
     var minus = "-".charCodeAt(0);
     var plus = "+".charCodeAt(0);
@@ -54558,8 +54558,8 @@ var require_packet = __commonJS({
       haveMoreData() {
         return this.end > this.offset;
       }
-      skip(num) {
-        this.offset += num;
+      skip(num2) {
+        this.offset += num2;
       }
       readInt8() {
         return this.buffer[this.offset++];
@@ -54730,14 +54730,14 @@ var require_packet = __commonJS({
           }
           return new Date(y, m - 1, d, H, M, S, ms);
         }
-        let str = this.readDateTimeString(6, "T", null);
-        if (!str) {
+        let str2 = this.readDateTimeString(6, "T", null);
+        if (!str2) {
           return INVALID_DATE;
         }
-        if (str.length === 10) {
-          str += "T00:00:00";
+        if (str2.length === 10) {
+          str2 += "T00:00:00";
         }
-        return new Date(str + timezone);
+        return new Date(str2 + timezone);
       }
       readDateTimeString(decimals, timeSep, columnType) {
         const length = this.readInt8();
@@ -54748,37 +54748,37 @@ var require_packet = __commonJS({
         let M = 0;
         let S = 0;
         let ms = 0;
-        let str;
+        let str2;
         if (length > 3) {
           y = this.readInt16();
           m = this.readInt8();
           d = this.readInt8();
-          str = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
+          str2 = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
         }
         if (length > 6) {
           H = this.readInt8();
           M = this.readInt8();
           S = this.readInt8();
-          str += `${timeSep || " "}${[
+          str2 += `${timeSep || " "}${[
             leftPad(2, H),
             leftPad(2, M),
             leftPad(2, S)
           ].join(":")}`;
         } else if (columnType === Types.DATETIME) {
-          str += " 00:00:00";
+          str2 += " 00:00:00";
         }
         if (length > 10) {
           ms = this.readInt32();
-          str += ".";
+          str2 += ".";
           if (decimals) {
             ms = leftPad(6, ms);
             if (ms.length > decimals) {
               ms = ms.substring(0, decimals);
             }
           }
-          str += ms;
+          str2 += ms;
         }
-        return str;
+        return str2;
       }
       // TIME - value as a string, Can be negative
       readTimeString(convertTtoMs) {
@@ -54877,20 +54877,20 @@ var require_packet = __commonJS({
           this.offset++;
           sign = -1;
         }
-        let str;
+        let str2;
         const numDigits = end - this.offset;
         if (supportBigNumbers) {
           if (numDigits >= 15) {
-            str = this.readString(end - this.offset, "binary");
-            result = parseInt(str, 10);
+            str2 = this.readString(end - this.offset, "binary");
+            result = parseInt(str2, 10);
             if (Number.isSafeInteger(sign * result)) {
               return sign * result;
             }
-            return sign === -1 ? `-${str}` : str;
+            return sign === -1 ? `-${str2}` : str2;
           }
           if (numDigits > 16) {
-            str = this.readString(end - this.offset);
-            return sign === -1 ? `-${str}` : str;
+            str2 = this.readString(end - this.offset);
+            return sign === -1 ? `-${str2}` : str2;
           }
         }
         if (this.buffer[this.offset] === plus) {
@@ -54901,12 +54901,12 @@ var require_packet = __commonJS({
           result += this.buffer[this.offset] - 48;
           this.offset++;
         }
-        const num = result * sign;
+        const num2 = result * sign;
         if (!supportBigNumbers) {
-          return num;
+          return num2;
         }
-        if (Number.isSafeInteger(num)) {
-          return num;
+        if (Number.isSafeInteger(num2)) {
+          return num2;
         }
         return this.buffer.toString("ascii", start, end);
       }
@@ -54947,7 +54947,7 @@ var require_packet = __commonJS({
         }
         const bufferLength = buffer.length;
         function parseGeometry() {
-          let x, y, i, j, numPoints, numRings, num, line;
+          let x, y, i, j, numPoints, numRings, num2, line;
           let result = null;
           if (offset + 5 > bufferLength) {
             return null;
@@ -55028,13 +55028,13 @@ var require_packet = __commonJS({
               if (offset + 4 > bufferLength) {
                 return null;
               }
-              num = byteOrder ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
+              num2 = byteOrder ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
               offset += 4;
-              if (num > (bufferLength - offset) / 9) {
+              if (num2 > (bufferLength - offset) / 9) {
                 return null;
               }
               result = [];
-              for (i = num; i > 0; i--) {
+              for (i = num2; i > 0; i--) {
                 result.push(parseGeometry());
               }
               break;
@@ -55076,14 +55076,14 @@ var require_packet = __commonJS({
         );
       }
       parseDateTime(timezone) {
-        const str = this.readLengthCodedString("binary");
-        if (str === null) {
+        const str2 = this.readLengthCodedString("binary");
+        if (str2 === null) {
           return null;
         }
         if (!timezone || timezone === "local") {
-          return new Date(str);
+          return new Date(str2);
         }
-        return /* @__PURE__ */ new Date(`${str}${timezone}`);
+        return /* @__PURE__ */ new Date(`${str2}${timezone}`);
       }
       parseFloat(len) {
         if (len === null) {
@@ -55093,9 +55093,9 @@ var require_packet = __commonJS({
           return 0;
         }
         if (len > 17) {
-          const str = this.buffer.toString("utf8", this.offset, this.offset + len);
+          const str2 = this.buffer.toString("utf8", this.offset, this.offset + len);
           this.offset += len;
-          return Number.parseFloat(str);
+          return Number.parseFloat(str2);
         }
         let result = 0;
         const end = this.offset + len;
@@ -55116,9 +55116,9 @@ var require_packet = __commonJS({
             this.offset++;
           } else if (charCode === exponent || charCode === exponentCapital) {
             const start = end - len;
-            const str = this.buffer.toString("utf8", start, end);
+            const str2 = this.buffer.toString("utf8", start, end);
             this.offset = end;
-            return Number.parseFloat(str);
+            return Number.parseFloat(str2);
           } else {
             result *= 10;
             result += this.buffer[this.offset] - 48;
@@ -55311,8 +55311,8 @@ var require_packet = __commonJS({
         }
         return 9;
       }
-      static lengthCodedStringLength(str, encoding) {
-        const buf = StringParser.encode(str, encoding);
+      static lengthCodedStringLength(str2, encoding) {
+        const buf = StringParser.encode(str2, encoding);
         const slen = buf.length;
         return _Packet.lengthCodedNumberLength(slen) + slen;
       }
@@ -57895,8 +57895,8 @@ var require_mysql_native_password = __commonJS({
 var require_mysql_clear_password = __commonJS({
   "node_modules/mysql2/lib/auth_plugins/mysql_clear_password.js"(exports, module) {
     "use strict";
-    function bufferFromStr(str) {
-      return Buffer.from(`${str}\0`);
+    function bufferFromStr(str2) {
+      return Buffer.from(`${str2}\0`);
     }
     var create_mysql_clear_password_plugin = (pluginOptions) => function mysql_clear_password_plugin({ connection, command }) {
       const password = command.password || pluginOptions.password || connection.config.password;
@@ -58897,9 +58897,9 @@ var require_charsets = __commonJS({
 var require_helpers = __commonJS({
   "node_modules/mysql2/lib/helpers.js"(exports) {
     "use strict";
-    function srcEscape(str) {
+    function srcEscape(str2) {
       return JSON.stringify({
-        [str]: 1
+        [str2]: 1
       }).slice(1, -3);
     }
     exports.srcEscape = srcEscape;
@@ -58957,8 +58957,8 @@ ${msg2}:
 var require_is_property = __commonJS({
   "node_modules/is-property/is-property.js"(exports, module) {
     "use strict";
-    function isProperty(str) {
-      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str);
+    function isProperty(str2) {
+      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str2);
     }
     module.exports = isProperty;
   }
@@ -59046,10 +59046,10 @@ var require_generate_function = __commonJS({
       var lines = [];
       var indent = 0;
       var vars = {};
-      var push2 = function(str) {
+      var push2 = function(str2) {
         var spaces = "";
         while (spaces.length < indent * 2) spaces += "  ";
-        lines.push(spaces + str);
+        lines.push(spaces + str2);
       };
       var pushLine = function(line2) {
         if (INDENT_END.test(line2.trim()[0]) && INDENT_START.test(line2[line2.length - 1])) {
@@ -61281,11 +61281,11 @@ var require_connection_config = __commonJS({
         return defaultFlags;
       }
       static getCharsetNumber(charset) {
-        const num = Charsets[charset.toUpperCase()];
-        if (num === void 0) {
+        const num2 = Charsets[charset.toUpperCase()];
+        if (num2 === void 0) {
           throw new TypeError(`Unknown charset '${charset}'`);
         }
-        return num;
+        return num2;
       }
       static getSSLProfile(name) {
         if (!SSLProfiles) {
@@ -61479,7 +61479,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join29(tree) {
+      function join30(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61505,7 +61505,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join29(parse4(query));
+        tree = join30(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64654,8 +64654,9 @@ var init_identity = __esm({
 });
 
 // src/lib/telemetry/queue.ts
-import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat as stat2 } from "node:fs/promises";
-import { dirname as dirname5 } from "node:path";
+import { appendFile, readFile as readFile6, writeFile as writeFile3, rename as rename3, unlink as unlink2, mkdir as mkdir3, stat as stat2, readdir } from "node:fs/promises";
+import { randomBytes as randomBytes2 } from "node:crypto";
+import { dirname as dirname5, join as join7 } from "node:path";
 async function enqueueEvent(record2, dataDirOverride) {
   const path2 = telemetryQueuePath(dataDirOverride);
   const line = JSON.stringify(record2) + "\n";
@@ -64669,32 +64670,6 @@ async function enqueueEvent(record2, dataDirOverride) {
     }
   }
 }
-async function readQueue(dataDirOverride) {
-  const path2 = telemetryQueuePath(dataDirOverride);
-  let raw;
-  try {
-    raw = await readFile6(path2, "utf-8");
-  } catch (err) {
-    if (isFileNotFoundError6(err)) return [];
-    return [];
-  }
-  if (!raw.trim()) return [];
-  const events = [];
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const ev = JSON.parse(line);
-      events.push(ev);
-    } catch {
-    }
-  }
-  return events;
-}
-async function overwriteQueue(records, dataDirOverride) {
-  const path2 = telemetryQueuePath(dataDirOverride);
-  const body = records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
-  await atomicWrite(path2, body);
-}
 async function atomicWrite(path2, body) {
   const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
@@ -64707,57 +64682,484 @@ async function atomicWrite(path2, body) {
     }
   }
 }
-async function queueSizeBytes(dataDirOverride) {
+async function claimQueue(dataDirOverride) {
+  const queuePath = telemetryQueuePath(dataDirOverride);
+  const dir = dirname5(queuePath);
+  const mine = join7(dir, `${INFLIGHT_PREFIX}${process.pid}.${Date.now()}.${randomBytes2(4).toString("hex")}.jsonl`);
+  await removeStaleTemps(dir);
+  const took = await renameWithRetry(queuePath, mine);
+  if (took === "error") return "busy";
+  const adopted = [];
+  for (const orphan of await findOrphans(dir, mine)) {
+    const into = `${mine}.adopted.${randomBytes2(4).toString("hex")}`;
+    if (await renameWithRetry(orphan, into) !== "ok") continue;
+    const raw = await readTextOr(into, null);
+    if (raw !== null) adopted.push({ path: into, raw });
+  }
+  let liveBuf = Buffer.alloc(0);
+  if (took === "ok") {
+    const b = await readSettled(mine);
+    if (b === null) return "busy";
+    liveBuf = b;
+  }
+  let known = liveBuf.length;
+  const { events, malformed } = parseJsonl(adopted.reduce((acc, a) => joinJsonl(acc, a.raw), liveBuf.toString("utf-8")));
+  const handBack = async (bytes) => {
+    try {
+      await mkdir3(dir, { recursive: true });
+      const tail = bytes.length && bytes[bytes.length - 1] === 10 ? Buffer.alloc(0) : NEWLINE;
+      await appendFile(queuePath, Buffer.concat([NEWLINE, bytes, tail]));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (malformed.length && !await deadLetterLines(malformed, dataDirOverride)) {
+    if (!await handBack(Buffer.from(malformed.join("\n") + "\n", "utf-8"))) return "busy";
+  }
+  const rescueLate = async () => {
+    const buf = await readSettled(mine);
+    if (buf === null) return took !== "ok" && known === 0;
+    if (buf.length <= known) return true;
+    if (!await handBack(buf.subarray(known))) return false;
+    known = buf.length;
+    return true;
+  };
+  if (events.length === 0) {
+    if (took === "ok" && !await rescueLate()) return "busy";
+    if (took === "ok") await unlinkWithRetry(mine);
+    for (const a of adopted) await unlinkWithRetry(a.path);
+    return null;
+  }
+  if (adopted.length || malformed.length || took !== "ok") {
+    if (took === "ok" && !await rescueLate()) return "busy";
+    const body = toJsonl(events);
+    if (!await atomicWriteOk(mine, body)) return "busy";
+    known = Buffer.byteLength(body, "utf-8");
+  }
+  for (const a of adopted) await unlinkWithRetry(a.path);
+  return {
+    events,
+    async checkpoint(unsent) {
+      if (!await rescueLate()) return;
+      const body = toJsonl(unsent);
+      if (await atomicWriteOk(mine, body)) known = Buffer.byteLength(body, "utf-8");
+    },
+    async release(unsent) {
+      const rescued = await rescueLate();
+      if (unsent.length > 0 && !await handBack(Buffer.from(toJsonl(unsent), "utf-8"))) {
+        if (rescued) await atomicWrite(mine, toJsonl(unsent));
+        return;
+      }
+      if (rescued) await unlinkWithRetry(mine);
+    }
+  };
+}
+async function deadLetterEvents(records, reason, dataDirOverride) {
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  return appendDeadLetter(
+    records.map((record2) => JSON.stringify({ dead_lettered_at: at, status: reason.status, error: reason.error.slice(0, 300), record: record2 })),
+    dataDirOverride
+  );
+}
+async function deadLetterLines(lines, dataDirOverride) {
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  return appendDeadLetter(
+    lines.map((raw_line) => JSON.stringify({ dead_lettered_at: at, status: 0, error: "unparseable queue line", raw_line })),
+    dataDirOverride
+  );
+}
+async function appendDeadLetter(lines, dataDirOverride) {
+  if (lines.length === 0) return true;
+  const path2 = deadLetterPath(dataDirOverride);
   try {
-    const s = await stat2(telemetryQueuePath(dataDirOverride));
-    return s.size;
+    const size = await stat2(path2).then((s) => s.size).catch(() => 0);
+    if (size >= DEADLETTER_MAX_BYTES) return false;
+    await mkdir3(dirname5(path2), { recursive: true });
+    await appendFile(path2, lines.join("\n") + "\n", { encoding: "utf-8" });
+    const markerPath = join7(dirname5(path2), DEADLETTER_VERSION_FILENAME);
+    if ((await readTextOr(markerPath, "")).trim() === "") await atomicWrite(markerPath, getPluginVersion());
+    return true;
   } catch {
+    return false;
+  }
+}
+function deadLetterPath(dataDirOverride) {
+  return join7(dirname5(telemetryQueuePath(dataDirOverride)), DEADLETTER_FILENAME);
+}
+async function deadLetterCount(dataDirOverride) {
+  const raw = await readTextOr(deadLetterPath(dataDirOverride), "");
+  return raw.split("\n").filter((l) => l.trim()).length;
+}
+async function replayDeadLetter(currentVersion, dataDirOverride) {
+  const path2 = deadLetterPath(dataDirOverride);
+  const dir = dirname5(path2);
+  const markerPath = join7(dir, DEADLETTER_VERSION_FILENAME);
+  await recoverStaleReplayClaims(dir, path2);
+  const marker = (await readTextOr(markerPath, "")).trim();
+  if (!marker || !isNewerVersion(currentVersion, marker)) return 0;
+  const claimed = `${path2}.replaying.${process.pid}.${Date.now()}.${randomBytes2(4).toString("hex")}`;
+  const took = await renameWithRetry(path2, claimed);
+  if (took === "missing") {
+    await atomicWrite(markerPath, currentVersion);
     return 0;
   }
+  if (took !== "ok") return 0;
+  const raw = await readTextOr(claimed, null);
+  if (raw === null) return 0;
+  const replay = [];
+  const keep = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (entry.record && typeof entry.record === "object") replay.push(entry.record);
+      else keep.push(line);
+    } catch {
+      keep.push(line);
+    }
+  }
+  await atomicWrite(markerPath, currentVersion);
+  try {
+    if (replay.length) {
+      await mkdir3(dir, { recursive: true });
+      await appendFile(telemetryQueuePath(dataDirOverride), "\n" + toJsonl(replay), { encoding: "utf-8" });
+    }
+  } catch {
+    await appendClaimBack(claimed, path2, raw);
+    return 0;
+  }
+  if (keep.length) await appendClaimBack(claimed, path2, keep.join("\n") + "\n");
+  else await unlinkWithRetry(claimed);
+  return replay.length;
+}
+async function appendClaimBack(claimed, path2, body) {
+  try {
+    await mkdir3(dirname5(path2), { recursive: true });
+    await appendFile(path2, body.endsWith("\n") ? body : body + "\n", { encoding: "utf-8" });
+    await unlinkWithRetry(claimed);
+  } catch {
+  }
+}
+async function recoverStaleReplayClaims(dir, path2) {
+  let names;
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  const prefix = `${DEADLETTER_FILENAME}.replaying.`;
+  const cutoff = Date.now() - ORPHAN_AGE_MS;
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const full = join7(dir, name);
+    try {
+      if ((await stat2(full)).mtimeMs >= cutoff) continue;
+      const body = await readTextOr(full, null);
+      if (body !== null && body.trim()) await appendClaimBack(full, path2, body);
+      else if (body !== null) await unlinkWithRetry(full);
+    } catch {
+    }
+  }
+}
+function isNewerVersion(a, b) {
+  const parse4 = (v) => {
+    const [core = "", pre = ""] = v.trim().split("-", 2);
+    const nums = core.split(".").map((x) => Number(x));
+    return nums.some((n) => !Number.isFinite(n)) ? null : { nums, pre };
+  };
+  const pa = parse4(a);
+  const pb = parse4(b);
+  if (!pa || !pb) return false;
+  for (let i = 0; i < Math.max(pa.nums.length, pb.nums.length); i++) {
+    const d = (pa.nums[i] ?? 0) - (pb.nums[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  if (pa.pre === pb.pre) return false;
+  if (!pa.pre) return true;
+  if (!pb.pre) return false;
+  return pa.pre > pb.pre;
+}
+async function readSettled(path2) {
+  let buf = await readBufferOr(path2, null);
+  for (let i = 0; buf && buf.length > 0 && buf[buf.length - 1] !== 10 && i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    buf = await readBufferOr(path2, buf);
+  }
+  return buf;
+}
+function claimTimeOf(name) {
+  const ms = Number(name.slice(INFLIGHT_PREFIX.length).split(".")[1]);
+  return Number.isFinite(ms) ? ms : 0;
+}
+async function findOrphans(dir, mine) {
+  let names;
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const cutoff = Date.now() - ORPHAN_AGE_MS;
+  const out = [];
+  for (const name of names) {
+    if (!name.startsWith(INFLIGHT_PREFIX) || name.includes(".tmp.")) continue;
+    const full = join7(dir, name);
+    if (full === mine || full.startsWith(`${mine}.`)) continue;
+    try {
+      const age = Math.max((await stat2(full)).mtimeMs, claimTimeOf(name));
+      if (age < cutoff) out.push(full);
+    } catch {
+    }
+  }
+  return out.sort();
+}
+async function removeStaleTemps(dir) {
+  let names;
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - ORPHAN_AGE_MS;
+  for (const name of names) {
+    if (!name.includes(".tmp.")) continue;
+    const full = join7(dir, name);
+    try {
+      if ((await stat2(full)).mtimeMs < cutoff) await unlinkWithRetry(full);
+    } catch {
+    }
+  }
+}
+async function renameWithRetry(from, to) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await rename3(from, to);
+      return "ok";
+    } catch (err) {
+      if (isFileNotFoundError6(err)) return "missing";
+      if (!TRANSIENT_FS.has(String(err?.code))) return "error";
+      await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
+    }
+  }
+  return "error";
+}
+async function unlinkWithRetry(path2) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await unlink2(path2);
+      return;
+    } catch (err) {
+      if (isFileNotFoundError6(err)) return;
+      if (!TRANSIENT_FS.has(String(err?.code))) return;
+      await new Promise((r) => setTimeout(r, 25 * (attempt + 1)));
+    }
+  }
+}
+async function readTextOr(path2, fallback) {
+  try {
+    return await readFile6(path2, "utf-8");
+  } catch {
+    return fallback;
+  }
+}
+async function readBufferOr(path2, fallback) {
+  try {
+    return await readFile6(path2);
+  } catch {
+    return fallback;
+  }
+}
+function joinJsonl(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return a.endsWith("\n") ? a + b : `${a}
+${b}`;
+}
+function parseJsonl(raw) {
+  const events = [];
+  const malformed = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const v = JSON.parse(line);
+      if (v && typeof v === "object" && !Array.isArray(v)) events.push(v);
+      else malformed.push(line);
+    } catch {
+      malformed.push(line);
+    }
+  }
+  return { events, malformed };
+}
+function toJsonl(records) {
+  return records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
+}
+async function atomicWriteOk(path2, body) {
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    await writeFile3(tmp, body, { encoding: "utf-8" });
+    await rename3(tmp, path2);
+    return true;
+  } catch {
+    await unlinkWithRetry(tmp);
+    return false;
+  }
+}
+async function queueSizeBytes(dataDirOverride) {
+  const queuePath = telemetryQueuePath(dataDirOverride);
+  let total = 0;
+  try {
+    total += (await stat2(queuePath)).size;
+  } catch {
+  }
+  try {
+    const dir = dirname5(queuePath);
+    for (const name of await readdir(dir)) {
+      if (!name.startsWith(INFLIGHT_PREFIX) || name.includes(".tmp.")) continue;
+      try {
+        total += (await stat2(join7(dir, name))).size;
+      } catch {
+      }
+    }
+  } catch {
+  }
+  return total;
 }
 function isFileNotFoundError6(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
+var INFLIGHT_PREFIX, ORPHAN_AGE_MS, DEADLETTER_FILENAME, DEADLETTER_VERSION_FILENAME, DEADLETTER_MAX_BYTES, NEWLINE, TRANSIENT_FS;
 var init_queue = __esm({
   "src/lib/telemetry/queue.ts"() {
     "use strict";
     init_resolve();
+    init_plugin_version();
+    INFLIGHT_PREFIX = "queue.inflight.";
+    ORPHAN_AGE_MS = 10 * 60 * 1e3;
+    DEADLETTER_FILENAME = "deadletter.jsonl";
+    DEADLETTER_VERSION_FILENAME = "deadletter.version";
+    DEADLETTER_MAX_BYTES = 5 * 1024 * 1024;
+    NEWLINE = Buffer.from("\n", "utf-8");
+    TRANSIENT_FS = /* @__PURE__ */ new Set(["EPERM", "EBUSY", "EACCES"]);
   }
 });
 
 // src/lib/telemetry/client.ts
+function cap(s, max) {
+  return s.length <= max ? s : s.slice(0, max);
+}
+function isPermanentRejection(err) {
+  return err instanceof TelemetryHttpError && PERMANENT_REJECTION.has(err.status);
+}
+function errText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
 async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const defaults = await loadPluginDefaults();
   const { endpoint, apikey, batch_size } = defaults.telemetry;
   if (!endpoint || !apikey) {
     return { status: "no_endpoint", events_sent: 0 };
   }
-  const events = await readQueue(dataDirOverride);
-  if (events.length === 0) {
+  await replayDeadLetter(getPluginVersion(), dataDirOverride).catch(() => 0);
+  const claim = await claimQueue(dataDirOverride);
+  if (claim === "busy") {
+    return { status: "failed", events_sent: 0, error: "telemetry queue is busy (could not claim it); left in place for the next run" };
+  }
+  if (claim === null) {
     return { status: "no_events", events_sent: 0 };
   }
+  const requeue = [];
+  const setAside = [];
   let sentCount = 0;
-  for (let i = 0; i < events.length; i += batch_size) {
-    const batch = events.slice(i, i + batch_size);
+  const putAside = async (rec, status, error51) => {
+    let kept = false;
     try {
-      await postBatch(endpoint, apikey, batch, timeoutMs);
-      sentCount += batch.length;
-      await overwriteQueue(events.slice(i + batch_size), dataDirOverride);
+      kept = await deadLetterEvents([rec], { status, error: error51 }, dataDirOverride);
+    } catch {
+      kept = false;
+    }
+    if (kept) setAside.push({ event_name: cap(String(rec.event_name ?? "?"), 128), status });
+    else requeue.push(rec);
+  };
+  const summary = () => ({
+    ...setAside.length ? { dead_lettered: setAside.length, set_aside: setAside } : {},
+    ...requeue.length ? { requeued: requeue.length } : {}
+  });
+  const fail2 = async (unsent, err) => {
+    await claim.release([...unsent, ...requeue]);
+    return { status: "failed", events_sent: sentCount, ...summary(), error: errText(err) };
+  };
+  const events = [];
+  for (const rec of claim.events) {
+    try {
+      const wire = normalizeRecord(rec);
+      JSON.stringify(wire);
+      events.push({ rec, wire });
     } catch (err) {
-      return {
-        status: "failed",
-        events_sent: sentCount,
-        error: err instanceof Error ? err.message : String(err)
-      };
+      await putAside(rec, 0, `could not serialize: ${errText(err)}`);
     }
   }
-  return { status: "sent", events_sent: sentCount };
+  const recs = (from) => events.slice(from).map((e) => e.rec);
+  const startedAt = Date.now();
+  let allRefusedStreak = 0;
+  for (let i = 0; i < events.length; i += batch_size) {
+    if (i > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
+      await claim.release([...recs(i), ...requeue]);
+      return {
+        status: "sent",
+        events_sent: sentCount,
+        ...summary(),
+        error: `time budget reached; ${events.length - i} event(s) stay queued for the next run`
+      };
+    }
+    if (allRefusedStreak >= 2) {
+      return fail2(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
+    }
+    const refusedBefore = setAside.length + requeue.length;
+    const batch = events.slice(i, i + batch_size);
+    try {
+      await postBatch(endpoint, apikey, batch.map((e) => e.wire), timeoutMs);
+      sentCount += batch.length;
+      allRefusedStreak = 0;
+    } catch (err) {
+      if (!isPermanentRejection(err)) return fail2(recs(i), err);
+      for (let j = 0; j < batch.length; j++) {
+        const one = batch[j];
+        if (j > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
+          await claim.release([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size), ...requeue]);
+          return {
+            status: "sent",
+            events_sent: sentCount,
+            ...summary(),
+            error: `time budget reached; ${batch.length - j + Math.max(0, events.length - i - batch_size)} event(s) stay queued for the next run`
+          };
+        }
+        try {
+          if (batch.length === 1) throw err;
+          await postBatch(endpoint, apikey, [one.wire], timeoutMs);
+          sentCount++;
+        } catch (rowErr) {
+          if (!isPermanentRejection(rowErr)) {
+            return fail2([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
+          }
+          await putAside(one.rec, rowErr.status, rowErr.message);
+        }
+      }
+      const refusedHere = setAside.length + requeue.length - refusedBefore;
+      allRefusedStreak = refusedHere === batch.length ? allRefusedStreak + 1 : 0;
+    }
+    await claim.checkpoint([...recs(i + batch_size), ...requeue]);
+  }
+  await claim.release(requeue);
+  const note = [
+    setAside.length ? `${setAside.length} event(s) the server refused were set aside in deadletter.jsonl (retried after the next plugin update)` : "",
+    requeue.length ? `${requeue.length} refused event(s) stay queued because deadletter.jsonl is full` : ""
+  ].filter(Boolean).join("; ");
+  return { status: "sent", events_sent: sentCount, ...summary(), ...note ? { error: note } : {} };
 }
-async function postBatch(endpoint, apikey, batch, timeoutMs) {
+async function postBatch(endpoint, apikey, normalized, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const normalized = batch.map(normalizeRecord);
     const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -64771,8 +65173,9 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => "<unreadable>");
-      throw new Error(
-        `Supabase responded ${resp.status} ${resp.statusText}: ${body.slice(0, 200)}`
+      throw new TelemetryHttpError(
+        `Supabase responded ${resp.status} ${resp.statusText}: ${body.slice(0, 200)}`,
+        resp.status
       );
     }
   } finally {
@@ -64780,9 +65183,9 @@ async function postBatch(endpoint, apikey, batch, timeoutMs) {
   }
 }
 function normalizeRecord(rec) {
-  return {
-    event_name: rec.event_name,
-    install_id: rec.install_id,
+  const row = storable({
+    event_name: capText(rec.event_name, 128),
+    install_id: capText(rec.install_id, 64),
     email: rec.email ?? null,
     // Null on pre-auth events and on queue entries written by harnesses
     // that didn't yet send the field.
@@ -64801,22 +65204,78 @@ function normalizeRecord(rec) {
     ts: rec.ts,
     payload: rec.payload ?? {},
     skill_id: rec.skill_id ?? null,
-    duration_ms: rec.duration_ms ?? null,
+    duration_ms: toInt4(rec.duration_ms),
     outcome: rec.outcome ?? null,
     query_id: rec.query_id ?? null,
     query_table: rec.query_table ?? null,
-    row_count: rec.row_count ?? null,
+    row_count: toInt4(rec.row_count),
     error_class: rec.error_class ?? null,
     trigger_phrase: rec.trigger_phrase ?? null
-  };
+  });
+  const bytes = Buffer.byteLength(JSON.stringify(row), "utf-8");
+  if (bytes > MAX_ROW_BYTES) {
+    const p = row.payload;
+    row.payload = {
+      payload_truncated: true,
+      original_row_bytes: bytes,
+      keys: p && typeof p === "object" ? Object.keys(p).slice(0, 50).map((k) => k.slice(0, 100)) : []
+    };
+    if (Buffer.byteLength(JSON.stringify(row), "utf-8") > MAX_ROW_BYTES) {
+      for (const [k, v] of Object.entries(row)) {
+        if (typeof v === "string" && v.length > 1024) row[k] = v.slice(0, 1024);
+      }
+    }
+  }
+  return row;
 }
-var DEFAULT_TIMEOUT_MS;
+function capText(v, max) {
+  return typeof v === "string" && v.length > max ? v.slice(0, max) : v;
+}
+function toInt4(v) {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return null;
+  const r = Math.round(n);
+  return r > INT4_MAX || r < -INT4_MAX - 1 ? null : r;
+}
+function storableString(s) {
+  if (s.length > MAX_STRING_CHARS) s = s.slice(0, MAX_STRING_CHARS) + "...[truncated]";
+  return s.replace(UNSTORABLE, (m) => m === "\0" ? "" : REPLACEMENT_CHAR);
+}
+function storable(v) {
+  if (typeof v === "string") return storableString(v);
+  if (Array.isArray(v)) return v.map(storable);
+  if (v && typeof v === "object") {
+    const toJSON = v.toJSON;
+    if (typeof toJSON === "function") return storable(toJSON.call(v));
+    const out = {};
+    for (const [k, val] of Object.entries(v)) out[storableString(k)] = storable(val);
+    return out;
+  }
+  return v;
+}
+var DEFAULT_TIMEOUT_MS, FLUSH_BUDGET_MS, TelemetryHttpError, PERMANENT_REJECTION, MAX_ROW_BYTES, MAX_STRING_CHARS, INT4_MAX, UNSTORABLE, REPLACEMENT_CHAR;
 var init_client = __esm({
   "src/lib/telemetry/client.ts"() {
     "use strict";
     init_load3();
+    init_plugin_version();
     init_queue();
     DEFAULT_TIMEOUT_MS = 5e3;
+    FLUSH_BUDGET_MS = 5e3;
+    TelemetryHttpError = class extends Error {
+      constructor(message, status) {
+        super(message);
+        this.status = status;
+        this.name = "TelemetryHttpError";
+      }
+      status;
+    };
+    PERMANENT_REJECTION = /* @__PURE__ */ new Set([400, 409, 413, 422]);
+    MAX_ROW_BYTES = 2e5;
+    MAX_STRING_CHARS = 32768;
+    INT4_MAX = 2147483647;
+    UNSTORABLE = /\u0000|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+    REPLACEMENT_CHAR = String.fromCharCode(65533);
   }
 });
 
@@ -64994,6 +65453,11 @@ var init_events = __esm({
       // emitted normally through track() from `mixshift whatsnew --dismiss`.
       UpdateBannerShown: "update.banner_shown",
       UpdateDismissed: "update.dismissed",
+      // Telemetry self-report (lib/telemetry/client.ts + index.ts maybeFlush): the
+      // flush set events aside in deadletter.jsonl because the server refused them.
+      // Privacy: payload carries only a count, the HTTP statuses and the refused
+      // events' event_name values, never their contents.
+      TelemetryEventsSetAside: "telemetry.events_set_aside",
       // Guided catch-up actions (P2, lib/update-actions.ts + lib/update-actions-
       // state.ts + `mixshift update-actions` + the mx-update skill). Privacy:
       // payloads carry only action ids (stable slugs from releases/actions.yaml,
@@ -65328,7 +65792,22 @@ async function maybeFlush(dataDirOverride) {
   try {
     const enabled = await isTelemetryEnabled(dataDirOverride);
     if (!enabled) return { status: "no_endpoint", events_sent: 0 };
-    return await flushQueue(dataDirOverride);
+    const result = await flushQueue(dataDirOverride);
+    const refused = (result.set_aside ?? []).filter((s) => s.event_name !== EventName.TelemetryEventsSetAside);
+    if (refused.length) {
+      await track(
+        {
+          event_name: EventName.TelemetryEventsSetAside,
+          payload: {
+            count: refused.length,
+            statuses: [...new Set(refused.map((s) => s.status))].slice(0, 10),
+            event_names: [...new Set(refused.map((s) => s.event_name))].slice(0, 10)
+          }
+        },
+        dataDirOverride
+      );
+    }
+    return result;
   } catch (err) {
     return {
       status: "failed",
@@ -65663,8 +66142,8 @@ async function paginateOverCap(sql, exec4, opts = {}) {
       completed = true;
       break;
     }
-    const cap = Number.isFinite(maxRows) ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
-    const requestSize = Math.max(1, Math.min(pageSize, cap));
+    const cap2 = Number.isFinite(maxRows) ? Math.min(PAGE_MAX_ROWS, remaining) : PAGE_MAX_ROWS;
+    const requestSize = Math.max(1, Math.min(pageSize, cap2));
     const r = await exec4(
       `SELECT * FROM (${pageInner}) AS _mx_page ORDER BY ${orderBy} LIMIT ${requestSize} OFFSET ${offset}`
     );
@@ -66950,14 +67429,14 @@ var init_client2 = __esm({
 
 // src/lib/context-sync/local.ts
 import { createHash } from "node:crypto";
-import { readdir, readFile as readFile8 } from "node:fs/promises";
-import { basename as basename2, join as join7 } from "node:path";
+import { readdir as readdir2, readFile as readFile8 } from "node:fs/promises";
+import { basename as basename2, join as join8 } from "node:path";
 function hashContent(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 async function listLocalBrands(dataDirOverride) {
   try {
-    const entries = await readdir(clientsDir(dataDirOverride), { withFileTypes: true });
+    const entries = await readdir2(clientsDir(dataDirOverride), { withFileTypes: true });
     return entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
   } catch (err) {
     if (isFileNotFoundError7(err)) return [];
@@ -66975,14 +67454,14 @@ async function readLocalDocs(brandSlug, dataDirOverride) {
   const dir = corporaDir(brandSlug, dataDirOverride);
   let entries;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = await readdir2(dir, { withFileTypes: true });
   } catch (err) {
     if (isFileNotFoundError7(err)) return docs;
     throw err;
   }
   const corpusNames = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
   for (const name of corpusNames) {
-    const path2 = join7(dir, name);
+    const path2 = join8(dir, name);
     const content = await readFile8(path2, "utf8");
     docs.push({
       key: corpusKey(name),
@@ -67021,13 +67500,13 @@ function localPathForKey(brandSlug, key, dataDirOverride) {
           `unsafe corpus name ${JSON.stringify(corpusName)} \u2014 refusing to resolve a local path`
         );
       }
-      return join7(corporaDir(brandSlug, dataDirOverride), corpusName);
+      return join8(corporaDir(brandSlug, dataDirOverride), corpusName);
     }
   }
 }
 async function brandDirExists(brandSlug, dataDirOverride) {
   try {
-    await readdir(brandDir(brandSlug, dataDirOverride));
+    await readdir2(brandDir(brandSlug, dataDirOverride));
     return true;
   } catch {
     return false;
@@ -67197,7 +67676,7 @@ var init_state = __esm({
 // src/lib/context-sync/engine.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir5, rename as rename5, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
-import { basename as basename3, dirname as dirname7, join as join8 } from "node:path";
+import { basename as basename3, dirname as dirname7, join as join9 } from "node:path";
 function verdictFor(local, manifestDoc, state) {
   if (!local && !manifestDoc) return null;
   if (local && !manifestDoc) return state ? "server-deleted" : "local-only";
@@ -67381,7 +67860,7 @@ function reportFor(pair, action, detail) {
 async function writeFileAtomic(path2, content) {
   const dir = dirname7(path2);
   await mkdir5(dir, { recursive: true });
-  const tmpPath = join8(
+  const tmpPath = join9(
     dir,
     `.${basename3(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
   );
@@ -67884,7 +68363,7 @@ function createTimelineClient(options = {}) {
     }
   };
 }
-async function listAllEvents(client, query = {}, cap = LIST_ALL_CAP) {
+async function listAllEvents(client, query = {}, cap2 = LIST_ALL_CAP) {
   const events = [];
   let cursor;
   do {
@@ -67896,8 +68375,8 @@ async function listAllEvents(client, query = {}, cap = LIST_ALL_CAP) {
     events.push(...page.events);
     cursor = page.next_cursor;
     if (page.events.length === 0) break;
-  } while (cursor !== void 0 && events.length < cap);
-  return { ok: true, events: events.slice(0, cap) };
+  } while (cursor !== void 0 && events.length < cap2);
+  return { ok: true, events: events.slice(0, cap2) };
 }
 async function resolveApiBase2(dataDirOverride) {
   const { credentials } = await loadCredentials(dataDirOverride);
@@ -69208,9 +69687,9 @@ __export(flush_log_exports, {
   tailFlushLog: () => tailFlushLog
 });
 import { appendFile as appendFile2, mkdir as mkdir26, readFile as readFile35 } from "node:fs/promises";
-import { join as join22, dirname as dirname30 } from "node:path";
+import { join as join23, dirname as dirname30 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join22(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join23(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
@@ -69922,7 +70401,7 @@ init_telemetry();
 
 // src/commands/brand-view.ts
 init_clients();
-import { readdir as readdir2, stat as stat3, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
+import { readdir as readdir3, stat as stat3, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
 import { dirname as dirname12 } from "node:path";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
@@ -70139,7 +70618,7 @@ init_resolve();
 // src/lib/render/design-system.ts
 import { readFile as readFile13 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname11, join as join9, parse as parse3 } from "node:path";
+import { dirname as dirname11, join as join10, parse as parse3 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 function designSystemDir() {
   if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
@@ -70148,8 +70627,8 @@ function designSystemDir() {
   let dir = dirname11(fileURLToPath4(import.meta.url));
   const root = parse3(dir).root;
   for (let i = 0; i < 8; i++) {
-    const candidate = join9(dir, "assets", "design-system");
-    if (existsSync2(join9(candidate, "colors_and_type.css"))) {
+    const candidate = join10(dir, "assets", "design-system");
+    if (existsSync2(join10(candidate, "colors_and_type.css"))) {
       return candidate;
     }
     if (dir === root) break;
@@ -70161,7 +70640,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile13(join9(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile13(join10(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -70169,7 +70648,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile13(join9(designSystemDir(), filename), "utf-8");
+  const raw = await readFile13(join10(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -71464,7 +71943,7 @@ async function scanRecentRuns(slug, dataDir, limit) {
   const runsRoot = `${brandDir(slug, dataDir)}/runs`;
   let skillDirs;
   try {
-    skillDirs = await readdir2(runsRoot);
+    skillDirs = await readdir3(runsRoot);
   } catch {
     return [];
   }
@@ -71473,7 +71952,7 @@ async function scanRecentRuns(slug, dataDir, limit) {
     const skillDir = `${runsRoot}/${skillId}`;
     let dateDirs;
     try {
-      dateDirs = await readdir2(skillDir);
+      dateDirs = await readdir3(skillDir);
     } catch {
       continue;
     }
@@ -71570,7 +72049,7 @@ import { dirname as dirname14 } from "node:path";
 
 // src/lib/data/dispatch.ts
 import { readFile as readFile15, access as access2 } from "node:fs/promises";
-import { join as join10 } from "node:path";
+import { join as join11 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
@@ -71799,7 +72278,7 @@ async function resolveLocalNamedSql(catalogId, sprocName, env = process.env) {
 }
 async function readLocalSql(dir, fileName) {
   if (!dir) return void 0;
-  const path2 = join10(dir, fileName);
+  const path2 = join11(dir, fileName);
   try {
     await access2(path2);
   } catch {
@@ -75561,9 +76040,9 @@ function renderBrandConfigCard(payload) {
 }
 function renderFieldLine(state) {
   const idx = state._idx ?? 0;
-  const num = idx.toString().padStart(2, " ");
+  const num2 = idx.toString().padStart(2, " ");
   const label = humanLabel(state.field).padEnd(24);
-  return `  ${num}. ${label}  ${state.display}`;
+  return `  ${num2}. ${label}  ${state.display}`;
 }
 function renderSourceHint(state) {
   switch (state.source) {
@@ -75624,19 +76103,19 @@ import { promisify as promisify2 } from "node:util";
 // src/lib/render/brand-context-composer.ts
 init_resolve();
 import { mkdir as mkdir14, writeFile as writeFile14 } from "node:fs/promises";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 
 // src/lib/render/brand-context-report.ts
 var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, readdir as readdir3, stat as stat4 } from "node:fs/promises";
-import { dirname as dirname17, join as join11 } from "node:path";
+import { readFile as readFile21, readdir as readdir4, stat as stat4 } from "node:fs/promises";
+import { dirname as dirname17, join as join12 } from "node:path";
 async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const narPath = narrativePath(brandSlug, dataDirOverride);
   const dir = brandDir(brandSlug, dataDirOverride);
-  const briPath = join11(dir, "brand-intelligence.yaml");
-  const corporaPath = join11(dir, "corpora");
+  const briPath = join12(dir, "brand-intelligence.yaml");
+  const corporaPath = join12(dir, "corpora");
   const [context, narrative, intel, corpora, brainResult] = await Promise.all([
     readYamlIfExists(ctxPath),
     readTextIfExists(narPath),
@@ -75861,7 +76340,7 @@ async function loadAuditLabels() {
   let dir = dirname17(fileURLToPath8(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
-    const candidate = join11(
+    const candidate = join12(
       dir,
       "shared",
       "clients",
@@ -75895,14 +76374,14 @@ async function readTextIfExists(path2) {
 }
 async function summarizeCorpora(dirPath) {
   try {
-    const entries = await readdir3(dirPath);
+    const entries = await readdir4(dirPath);
     const summaries = [];
     for (const f of entries) {
       if (!f.endsWith(".csv")) continue;
       try {
-        const s = await stat4(join11(dirPath, f));
+        const s = await stat4(join12(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile21(join11(dirPath, f), "utf-8");
+        const raw = await readFile21(join12(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -76315,15 +76794,15 @@ function sectionSeasonality(s) {
     { key: "window", label: "Window" },
     { key: "notes", label: "Notes" }
   ];
-  const str = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
+  const str2 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
   const brandRows = brandEvents.map((e) => {
-    const start = str(e.start);
-    const end = str(e.end);
-    const activeThrough = str(e.active_through);
+    const start = str2(e.start);
+    const end = str2(e.end);
+    const activeThrough = str2(e.active_through);
     return {
-      event: str(e.id) ?? "(unnamed event)",
+      event: str2(e.id) ?? "(unnamed event)",
       window: start ? `${start}${end ? ` to ${end}` : " (open-ended)"}` : activeThrough ? `through ${activeThrough}` : end ? `until ${end}` : "\u2014",
-      notes: [str(e.type)?.replace(/_/g, " "), str(e.interpretation)].filter(Boolean).join(": ")
+      notes: [str2(e.type)?.replace(/_/g, " "), str2(e.interpretation)].filter(Boolean).join(": ")
     };
   });
   const genericTentpoles = [
@@ -76611,9 +77090,9 @@ async function composeBrandContextReport(args) {
   const review = composeReviewJson(state);
   const dir = brandDir(args.brandSlug, args.dataDirOverride);
   await mkdir14(dir, { recursive: true });
-  const htmlPath = join12(dir, "brand-context.html");
-  const headlinePath = join12(dir, "brand-context.headline.json");
-  const reviewPath = join12(dir, "brand-context.review.json");
+  const htmlPath = join13(dir, "brand-context.html");
+  const headlinePath = join13(dir, "brand-context.headline.json");
+  const reviewPath = join13(dir, "brand-context.review.json");
   await Promise.all([
     writeFile14(htmlPath, html, "utf-8"),
     writeFile14(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
@@ -80899,7 +81378,7 @@ function wrapAnsi(string4, columns, options) {
 
 // node_modules/@inquirer/core/dist/lib/utils.js
 function breakLines(content, width) {
-  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str) => str.trimEnd())).join("\n");
+  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str2) => str2.trimEnd())).join("\n");
 }
 function readlineWidth() {
   return (0, import_cli_width.default)({ defaultWidth: 80, output: readline().output });
@@ -81733,7 +82212,7 @@ init_schema3();
 // src/lib/auth/login-flow.ts
 init_credentials();
 import { createServer } from "node:http";
-import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
+import { randomBytes as randomBytes3, createHash as createHash4 } from "node:crypto";
 import { hostname as hostname3 } from "node:os";
 import { spawn as spawn2 } from "node:child_process";
 
@@ -82044,11 +82523,11 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
   }
 }
 function generatePkce() {
-  const verifier = base64url3(randomBytes2(64));
+  const verifier = base64url3(randomBytes3(64));
   const challenge = base64url3(
     createHash4("sha256").update(verifier).digest()
   );
-  const state = base64url3(randomBytes2(32));
+  const state = base64url3(randomBytes3(32));
   return { verifier, challenge, state };
 }
 function base64url3(buf) {
@@ -83397,13 +83876,13 @@ function assertIdentifier(...names) {
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir18, writeFile as writeFile18, rename as rename16 } from "node:fs/promises";
-import { dirname as dirname21, join as join13 } from "node:path";
+import { dirname as dirname21, join as join14 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir18(runDir, { recursive: true });
-  const dataJsonPath = join13(runDir, "data.json");
-  const dataMdPath = join13(runDir, "data.md");
+  const dataJsonPath = join14(runDir, "data.json");
+  const dataMdPath = join14(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -83433,7 +83912,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join13(
+  return join14(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -83939,8 +84418,8 @@ import { readFile as readFile27 } from "node:fs/promises";
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir19, writeFile as writeFile19, rename as rename17 } from "node:fs/promises";
-import { join as join14, dirname as dirname22 } from "node:path";
-import { createHash as createHash5, randomBytes as randomBytes3 } from "node:crypto";
+import { join as join15, dirname as dirname22 } from "node:path";
+import { createHash as createHash5, randomBytes as randomBytes4 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
 init_zod();
@@ -84099,7 +84578,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join14(
+  return join15(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -84109,7 +84588,7 @@ function sidecarPath(args) {
   );
 }
 function generateRunId() {
-  return randomBytes3(3).toString("hex");
+  return randomBytes4(3).toString("hex");
 }
 function normalizeSqlCalls(calls) {
   return calls.map((c) => ({
@@ -84218,7 +84697,7 @@ import { resolve as resolvePath } from "node:path";
 // src/lib/data/tables-catalog.ts
 var import_yaml20 = __toESM(require_dist(), 1);
 import { readFile as readFile28 } from "node:fs/promises";
-import { dirname as dirname23, join as join15 } from "node:path";
+import { dirname as dirname23, join as join16 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
@@ -84259,7 +84738,7 @@ function candidatePaths3() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join15(dir, "shared", "data-tables.yaml"));
+    candidates.push(join16(dir, "shared", "data-tables.yaml"));
     const parent = dirname23(dir);
     if (parent === dir) break;
     dir = parent;
@@ -85567,12 +86046,12 @@ init_plugin_version();
 init_resolve();
 import { readFile as readFile30, writeFile as writeFile21, mkdir as mkdir22 } from "node:fs/promises";
 import { dirname as dirname26 } from "node:path";
-import { join as join17 } from "node:path";
+import { join as join18 } from "node:path";
 
 // src/lib/update-notice-state.ts
 init_resolve();
 import { readFile as readFile29, writeFile as writeFile20, mkdir as mkdir21, rename as rename19, unlink as unlink7 } from "node:fs/promises";
-import { dirname as dirname25, join as join16 } from "node:path";
+import { dirname as dirname25, join as join17 } from "node:path";
 var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
 var VERSION_RE = /^\d{1,5}(\.\d{1,5}){1,3}(-[0-9A-Za-z][0-9A-Za-z.]{0,14})?(\+[0-9A-Za-z][0-9A-Za-z.]{0,14})?$/;
 function isValidVersion(v) {
@@ -85590,7 +86069,7 @@ function updateNoticeStateDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function updateNoticeStatePath(dataDirOverride) {
-  return join16(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
+  return join17(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
 }
 async function loadUpdateNoticeState(dataDirOverride) {
   try {
@@ -85664,7 +86143,7 @@ var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/t
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join17(resolveDataDir(dataDirOverride), "version-check.json");
+  return join18(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
@@ -86170,12 +86649,12 @@ init_plugin_version();
 // src/lib/install-record.ts
 import { readFile as readFile31 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
-import { join as join18 } from "node:path";
+import { join as join19 } from "node:path";
 init_surface();
 var PLUGIN_KEY = "mixshift-ai@mixshift";
 var SURFACES_WITHOUT_INSTALL_RECORD = /* @__PURE__ */ new Set(["cowork"]);
 function installedPluginsPath(homeOverride) {
-  return join18(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
+  return join19(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
 }
 function isPlausibleSha(v) {
   return typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);
@@ -86453,7 +86932,7 @@ init_telemetry();
 // src/lib/changelog.ts
 init_resolve();
 import { readFile as readFile32, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
-import { dirname as dirname27, join as join19 } from "node:path";
+import { dirname as dirname27, join as join20 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -86494,7 +86973,7 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join19(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join20(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
@@ -86655,7 +87134,7 @@ init_plugin_version();
 // src/lib/update-actions-state.ts
 init_resolve();
 import { readFile as readFile33, writeFile as writeFile23, mkdir as mkdir24, rename as rename20, unlink as unlink8 } from "node:fs/promises";
-import { dirname as dirname28, join as join20 } from "node:path";
+import { dirname as dirname28, join as join21 } from "node:path";
 var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
 var ACTION_STATUSES = [
   "completed",
@@ -86673,7 +87152,7 @@ function actionsLedgerDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function actionsLedgerPath(dataDirOverride) {
-  return join20(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
+  return join21(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
 }
 async function loadActionsLedger(dataDirOverride) {
   try {
@@ -86732,8 +87211,8 @@ var import_yaml21 = __toESM(require_dist(), 1);
 init_resolve();
 init_plugin_root();
 import { readFile as readFile34, writeFile as writeFile24, mkdir as mkdir25 } from "node:fs/promises";
-import { readdir as readdir4 } from "node:fs/promises";
-import { dirname as dirname29, join as join21 } from "node:path";
+import { readdir as readdir5 } from "node:fs/promises";
+import { dirname as dirname29, join as join22 } from "node:path";
 init_credentials();
 init_clients();
 var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
@@ -86823,7 +87302,7 @@ function parseActions(yamlText) {
   return out;
 }
 function actionsCachePath(dataDirOverride) {
-  return join21(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
+  return join22(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
 }
 async function loadActions(opts = {}) {
   const path2 = actionsCachePath(opts.dataDirOverride);
@@ -86917,7 +87396,7 @@ async function evalPredicateInner(kind, opts) {
 async function listInstalledSkillIds() {
   try {
     const dir = pluginPath("skills");
-    const entries = await readdir4(dir, { withFileTypes: true });
+    const entries = await readdir5(dir, { withFileTypes: true });
     return new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name));
   } catch {
     return /* @__PURE__ */ new Set();
@@ -87129,6 +87608,7 @@ function registerTelemetryCommands(program3) {
     const root = cmd.optsWithGlobals();
     const status = await getTelemetryStatus(root.dataDir);
     const queueBytes = await queueSizeBytes(root.dataDir);
+    const setAside = await deadLetterCount(root.dataDir);
     const recentFlushes = await tailFlushLog(5, root.dataDir);
     const envLoad = await loadDotenvIfPresent();
     const envCandidates = candidatePaths();
@@ -87139,6 +87619,8 @@ function registerTelemetryCommands(program3) {
             ...status,
             queue_path: telemetryQueuePath(root.dataDir),
             queue_size_bytes: queueBytes,
+            set_aside_count: setAside,
+            set_aside_path: deadLetterPath(root.dataDir),
             flush_log_path: flushLogPath(root.dataDir),
             recent_flushes: recentFlushes.map((l) => {
               const [ts, st, n, err] = l.split("	");
@@ -87185,7 +87667,8 @@ ${indicator} Telemetry ${status.enabled ? "enabled" : "disabled"}
   - env_file:         ${envLine}
   - queue path:       ${telemetryQueuePath(root.dataDir)}
   - queue size:       ${queueBytes} bytes
-` + flushSection + "\nSee docs/privacy.md for what we collect and why.\n"
+` + (setAside ? `  - set aside:        ${setAside} event(s) the server refused, kept in ${deadLetterPath(root.dataDir)} (retried after the next plugin update)
+` : "") + flushSection + "\nSee docs/privacy.md for what we collect and why.\n"
     );
   });
   telemetry.command("surface").description(
@@ -87284,8 +87767,9 @@ Context:
         process.stdout.write(
           `
 \u2713 Flushed ${result.events_sent} event(s) to telemetry endpoint.
-
-`
+` + (result.dead_lettered ? `  ${result.dead_lettered} event(s) the server refused were set aside (see mixshift telemetry status).
+` : "") + (result.requeued ? `  ${result.requeued} refused event(s) stay queued: the set-aside file is full.
+` : "") + "\n"
         );
         break;
       case "no_events":
@@ -87847,10 +88331,10 @@ function renderCaptureNudge(candidates, brandName) {
   return lines.join("\n");
 }
 function renderFieldLine2(entry, labelWidth) {
-  const num = entryIndex(entry).toString().padStart(2, " ");
+  const num2 = entryIndex(entry).toString().padStart(2, " ");
   const label = humanLabel2(entry.field).padEnd(labelWidth);
   const value = entry.display;
-  return `  ${num}. ${label}  ${value}`;
+  return `  ${num2}. ${label}  ${value}`;
 }
 function renderSourceHint2(entry) {
   switch (entry.source) {
@@ -88937,14 +89421,14 @@ async function fetchDocumentBytes(url2, compressionAlgorithm, opts) {
   if (buf.length > MAX_INLINE_DOCUMENT_BYTES) return documentTooLarge();
   return { ok: true, text: buf.toString("utf8"), bytes: buf.length };
 }
-async function readCapped(res, cap) {
+async function readCapped(res, cap2) {
   const body = res.body;
   if (body && typeof body[Symbol.asyncIterator] === "function") {
     const chunks = [];
     let total = 0;
     for await (const chunk of body) {
       total += chunk.byteLength;
-      if (total > cap) {
+      if (total > cap2) {
         try {
           await body.cancel();
         } catch {
@@ -88956,7 +89440,7 @@ async function readCapped(res, cap) {
     return Buffer.concat(chunks);
   }
   const ab = await res.arrayBuffer();
-  if (ab.byteLength > cap) throw new DocumentTooLargeError(ab.byteLength);
+  if (ab.byteLength > cap2) throw new DocumentTooLargeError(ab.byteLength);
   return Buffer.from(ab);
 }
 function presignedFetchFailure(status) {
@@ -89266,7 +89750,7 @@ function safeJsonPreview(json2) {
 // src/lib/reports/catalog.ts
 var import_yaml23 = __toESM(require_dist(), 1);
 import { readFile as readFile38 } from "node:fs/promises";
-import { dirname as dirname33, join as join23 } from "node:path";
+import { dirname as dirname33, join as join24 } from "node:path";
 import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
@@ -89321,7 +89805,7 @@ function candidatePaths4() {
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join23(dir, "shared", "reports", "catalog.yaml"));
+    candidates.push(join24(dir, "shared", "reports", "catalog.yaml"));
     const parent = dirname33(dir);
     if (parent === dir) break;
     dir = parent;
@@ -91486,19 +91970,19 @@ function deriveEntityType(operation) {
   return m ? m[1] : null;
 }
 var ENTITY_ID_KEY_RE = /^(campaign|adGroup|keyword|target|targeting|ad|productAd|negativeKeyword|negativeTarget|portfolio)Id$/i;
-function extractEntityIds(body, cap = ENTITY_IDS_CAP) {
+function extractEntityIds(body, cap2 = ENTITY_IDS_CAP) {
   const found = /* @__PURE__ */ new Set();
   const walk = (node, depth) => {
-    if (found.size >= cap || depth > 4 || node === null || typeof node !== "object") return;
+    if (found.size >= cap2 || depth > 4 || node === null || typeof node !== "object") return;
     if (Array.isArray(node)) {
       for (const item of node) {
-        if (found.size >= cap) return;
+        if (found.size >= cap2) return;
         walk(item, depth + 1);
       }
       return;
     }
     for (const [key, value] of Object.entries(node)) {
-      if (found.size >= cap) return;
+      if (found.size >= cap2) return;
       if (ENTITY_ID_KEY_RE.test(key) && (typeof value === "string" || typeof value === "number")) {
         found.add(String(value));
       } else {
@@ -92843,8 +93327,8 @@ function renderCatalog(entries) {
 }
 
 // src/commands/report.ts
-import { readFile as readFile45, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir5 } from "node:fs/promises";
-import { dirname as dirname38, join as join25, resolve as resolve2 } from "node:path";
+import { readFile as readFile45, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir6 } from "node:fs/promises";
+import { dirname as dirname38, join as join26, resolve as resolve2 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -94166,9 +94650,268 @@ function checkFigures(out) {
   return findings;
 }
 
+// src/lib/report-contract/forecast.ts
+var ForecastMonthMismatchError = class extends Error {
+  constructor(expected, got) {
+    super(
+      `The forecast answer is for ${got || "no month"}, not the report month ${expected}. It is an earlier run's file: treat the forecast as absent for this report.`
+    );
+    this.expected = expected;
+    this.got = got;
+    this.name = "ForecastMonthMismatchError";
+  }
+  expected;
+  got;
+};
+var isRec = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function isForecastTrackResponse(response) {
+  return isRec(response) && response.ok === true && response.service === "forecasting" && response.kind === "track";
+}
+function roleOfId(id) {
+  if (!id.startsWith("forecast.")) return null;
+  const MONTH = String.raw`\d{4}-\d{2}$`;
+  const rules = [
+    // The year-start forecast stands in for a plan nobody has recorded: internal only.
+    [/\.expected\.year_start\.|actual_vs_year_start/, "year_start"],
+    // The current model, fitted with the month in it: what the app shows.
+    [/(^|\.)(fit|projection)(\.|$)|actual_vs_projection|projection_vs_/, "projection"],
+    // Months still to come, each at the spend it stands on (incl. what each assumes about last year).
+    [new RegExp(String.raw`\.projected\.|\.spend\.${MONTH}|\.range\.(lower|upper)\.[a-z]+\.${MONTH}|\.assumed_yoy\.[a-z]+\.${MONTH}`), "outlook"],
+    // What the model said before the report month closed, and what it assumed.
+    [/\.expected\.|actual_vs_rolling|actual_vs_forecast|\.assumed_yoy\.[a-z]+\.month$|\.range\.(lower|upper)\.[a-z]+\.month$|\.tolerance\./, "forecast"],
+    // What the model is, how it moved, and the corrections it stands on.
+    [/\.model\.|\.overlay\./, "basis"],
+    // What happened.
+    [/\.actual\.|\.last_year\./, "actual"]
+  ];
+  for (const [re, role] of rules) if (re.test(id)) return role;
+  return null;
+}
+function roleOfClaim(id) {
+  if (/projection_line$/.test(id)) return "projection";
+  if (/(operator_line|month_line)$/.test(id)) return "forecast";
+  if (/outlook$/.test(id)) return "outlook";
+  if (/basis$/.test(id)) return "basis";
+  return null;
+}
+var CLIENT_ROLES = /* @__PURE__ */ new Set(["actual", "forecast", "outlook"]);
+var str = (v) => typeof v === "string" ? v : null;
+var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+var strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+function extractForecast(response, opts = {}) {
+  if (!isForecastTrackResponse(response)) {
+    throw new Error('Not a FCT-TRACK-01 answer (expected ok:true, service "forecasting", kind "track").');
+  }
+  const r = response;
+  const metric = r.metric === "units" ? "units" : "revenue";
+  const month = str(r.month) ?? "";
+  if (opts.expectMonth !== void 0 && opts.expectMonth !== month) {
+    throw new ForecastMonthMismatchError(opts.expectMonth, month);
+  }
+  let state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
+  let reason = str(r.reason);
+  const pub = isRec(r.published) ? r.published : null;
+  const published = pub && num(pub.gateway_revision) !== null ? {
+    at: str(pub.at) ?? "",
+    by: str(pub.by) ?? "",
+    producer: str(pub.producer) ?? "app",
+    gateway_revision: num(pub.gateway_revision),
+    published_run_id: str(pub.published_run_id) ?? "",
+    age_days: num(pub.age_days) ?? 0,
+    document_version: num(pub.document_version),
+    overlay_revisions: num(pub.overlay_revisions)
+  } : null;
+  const spendBasis = r.spend_basis === "ads_plus_dsp" ? "ads_plus_dsp" : r.spend_basis === "ads_only" ? "ads_only" : null;
+  const doc = {
+    schema_version: "2.0-draft",
+    kind: "forecast_figures",
+    source: {
+      insight: "FCT-TRACK-01",
+      metric,
+      month,
+      scope_id: str(r.scope_id),
+      forecast_state: state,
+      reason,
+      friendly: str(r.friendly),
+      spend_basis: spendBasis,
+      ytd_runs_past_report_month: r.ytd_runs_past_report_month === true,
+      unrecognised: [],
+      published,
+      attestation: ""
+    },
+    forecast: { state, report_month: month, metric },
+    currency: null,
+    caveat_registry: {},
+    figures: [],
+    derived: [],
+    claims: [],
+    sections: [],
+    limitations: []
+  };
+  const rd = isRec(r.report_data) ? r.report_data : null;
+  if (state === "provided_current" && rd) {
+    const registry2 = isRec(rd.caveat_registry) ? rd.caveat_registry : {};
+    const blocking = (keys) => keys.some((k) => registry2[k]?.severity === "blocking");
+    const figures2 = [];
+    for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
+      if (!isRec(f)) continue;
+      const id = str(f.id) ?? "";
+      const role = roleOfId(id);
+      const caveats = strs(f.caveats);
+      figures2.push({
+        id,
+        label: str(f.label) ?? "",
+        value: f.value,
+        unit: str(f.unit) ?? "",
+        basis: str(f.basis) ?? "",
+        source_path: str(f.source_path) ?? "",
+        caveats,
+        confidence: "published",
+        forecast_role: role ?? "unclassified",
+        client_safe: role !== null && CLIENT_ROLES.has(role) && !blocking(caveats),
+        ...num(f.precision) !== null ? { precision: num(f.precision) } : {},
+        ...f.population !== void 0 ? { population: f.population } : {}
+      });
+    }
+    const safe = new Map(figures2.map((f) => [f.id, f.client_safe]));
+    const derived = [];
+    for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
+      if (!isRec(d)) continue;
+      const id = str(d.id) ?? "";
+      const role = roleOfId(id);
+      const inputs = strs(d.inputs);
+      derived.push({
+        id,
+        label: str(d.label) ?? "",
+        value: d.value,
+        unit: str(d.unit) ?? "",
+        basis: str(d.basis) ?? "",
+        inputs,
+        why_not_published: str(d.why_not_published) ?? "",
+        forecast_role: role ?? "unclassified",
+        client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe.get(i) === true)
+      });
+    }
+    const claims = [];
+    for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
+      if (!isRec(c)) continue;
+      const id = str(c.id) ?? "";
+      claims.push({
+        id,
+        kind: str(c.kind) ?? "",
+        text: str(c.text) ?? "",
+        figure_refs: strs(c.figure_refs),
+        forecast_role: roleOfClaim(id) ?? "unclassified",
+        ...str(c.comparison_basis) ? { comparison_basis: str(c.comparison_basis) } : {}
+      });
+    }
+    const unrecognised = [...figures2, ...derived, ...claims].filter((x) => x.forecast_role === "unclassified").map((x) => x.id);
+    if (unrecognised.length > 0) {
+      state = "not_provided";
+      reason = "unrecognised_figures";
+      doc.source.unrecognised = unrecognised;
+    } else {
+      doc.currency = str(rd.currency);
+      doc.caveat_registry = registry2;
+      doc.figures = figures2;
+      doc.derived = derived;
+      doc.claims = claims;
+      for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
+        if (!isRec(s)) continue;
+        doc.sections.push({
+          id: str(s.id) ?? "",
+          kind: "forecast",
+          audience: "internal",
+          figure_refs: strs(s.figure_refs),
+          claim_refs: strs(s.claim_refs),
+          caveats_rendered: strs(s.caveats_rendered),
+          display_text: str(s.display_text) ?? ""
+        });
+      }
+      doc.limitations = strs(r.limitations);
+    }
+  } else if (state === "provided_current") {
+    state = "not_provided";
+    reason = reason ?? "no_report_data";
+  }
+  doc.forecast.state = state;
+  doc.source.forecast_state = state;
+  doc.source.reason = reason;
+  doc.source.attestation = state === "provided_current" && published ? `FCT-TRACK-01 ${metric} ${month}: published forecast vintage ${published.gateway_revision} (${published.published_run_id}), published ${published.at.slice(0, 10)}` : `FCT-TRACK-01 ${metric} ${month}: no forecast figures used (${reason ?? state})`;
+  return doc;
+}
+var ROLES = /* @__PURE__ */ new Set(["actual", "forecast", "year_start", "projection", "outlook", "basis"]);
+function checkForecast(doc) {
+  const findings = [];
+  const current = doc.forecast.state === "provided_current";
+  if (!current && (doc.figures.length || doc.derived.length || doc.claims.length || doc.sections.length || doc.limitations.length)) {
+    findings.push({ rule: "FORECAST-GATE", subject: doc.forecast.state, detail: "a forecast that is not provided_current must carry no content" });
+  }
+  if (current && doc.figures.length === 0) {
+    findings.push({ rule: "FORECAST-GATE", subject: "provided_current", detail: "a current forecast arrived with no figures" });
+  }
+  for (const id of doc.source.unrecognised) {
+    findings.push({ rule: "FORECAST-ROLE", subject: id, detail: "id not recognised; the forecast was withheld" });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const x of [...doc.figures, ...doc.derived]) {
+    if (seen.has(x.id)) findings.push({ rule: "FORECAST-DUPLICATE", subject: x.id, detail: "id appears twice" });
+    seen.add(x.id);
+  }
+  const role = new Map([...doc.figures, ...doc.derived].map((x) => [x.id, x.forecast_role]));
+  const claimIds = new Set(doc.claims.map((c) => c.id));
+  const otherMetric = doc.forecast.metric === "units" ? ".sales." : ".units.";
+  for (const f of doc.figures) {
+    for (const k of ["id", "label", "unit", "basis", "source_path"]) {
+      if (!f[k]) findings.push({ rule: "REQUIRED", subject: f.id || "(no id)", detail: `missing ${k}` });
+    }
+    if (typeof f.value !== "number" || !Number.isFinite(f.value)) findings.push({ rule: "NUMERIC", subject: f.id, detail: "value is not a finite number" });
+    if (!ROLES.has(f.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: f.id, detail: "id not recognised" });
+    if (f.id.includes(otherMetric)) findings.push({ rule: "FORECAST-METRIC", subject: f.id, detail: `a ${doc.forecast.metric} document carries the other metric's figure` });
+    for (const c of f.caveats) if (!doc.caveat_registry[c]) findings.push({ rule: "FORECAST-TRACE", subject: f.id, detail: `caveat ${c} is not in the registry` });
+  }
+  for (const d of doc.derived) {
+    if (typeof d.value !== "number" || !Number.isFinite(d.value)) findings.push({ rule: "NUMERIC", subject: d.id, detail: "value is not a finite number" });
+    if (!d.why_not_published) findings.push({ rule: "REQUIRED", subject: d.id, detail: "missing why_not_published" });
+    if (!ROLES.has(d.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: d.id, detail: "derived id not recognised" });
+    for (const i of d.inputs) if (!role.has(i)) findings.push({ rule: "FORECAST-TRACE", subject: d.id, detail: `input ${i} is not a figure here` });
+  }
+  for (const c of doc.claims) {
+    if (!ROLES.has(c.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: c.id, detail: "claim id not recognised" });
+    for (const ref of c.figure_refs) {
+      if (!role.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: c.id, detail: `figure ${ref} is not here` });
+      else if (c.forecast_role === "forecast" && role.get(ref) === "projection") {
+        findings.push({ rule: "FORECAST-CLAIM-BASIS", subject: c.id, detail: `a forecast claim cites the projection figure ${ref}` });
+      }
+    }
+  }
+  for (const s of doc.sections) {
+    for (const ref of s.figure_refs) if (!role.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `figure ${ref} is not here` });
+    for (const ref of s.claim_refs) if (!claimIds.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `claim ${ref} is not here` });
+    for (const c of s.caveats_rendered) if (!doc.caveat_registry[c]) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `caveat ${c} is not in the registry` });
+  }
+  if (current && doc.figures.length > 0) {
+    const asReport = {
+      schema_version: "2.0-draft",
+      currency: doc.currency ?? void 0,
+      figures: doc.figures,
+      derived: doc.derived,
+      caveat_registry: doc.caveat_registry,
+      claims: doc.claims,
+      sections: doc.sections
+    };
+    for (const f of validateReportData(asReport)) {
+      if ((f.severity ?? "error") === "error") {
+        findings.push({ rule: "FORECAST-CONTRACT", subject: f.subject, detail: `${f.rule}: ${f.detail}` });
+      }
+    }
+  }
+  return findings;
+}
+
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join24 } from "node:path";
+import { join as join25 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -94394,7 +95137,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join24(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync2(join25(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -94661,8 +95404,8 @@ async function loadServedContract(docPath, explicit, noFigures) {
   } else {
     const dir = dirname38(resolve2(docPath));
     try {
-      const entries = await readdir5(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join25(dir, e));
+      const entries = await readdir6(dir);
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join26(dir, e));
     } catch {
       return none;
     }
@@ -94829,14 +95572,57 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
     });
   });
   report.command("extract <response.json>").description(
-    "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings."
-  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).option(
+    "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings. A FCT-TRACK-01 answer yields a forecast figures document: empty unless the forecast is current, every figure tagged with its role (forecast, projection, ...)."
+  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).option("--expect-month <YYYY-MM>", "for a FCT-TRACK-01 answer: refuse one about any other month (a file left by an earlier run)").option(
     "--select <envelope>",
     `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(" | ")}`
   ).action(async (file2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     await withReportErrorHandling(!!root.json, async () => {
       const response = await readJson(file2);
+      if (isForecastTrackResponse(response)) {
+        if (opts.select) {
+          throw new UserFacingError("--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.", "report_bad_selection");
+        }
+        let fdoc;
+        try {
+          fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+        } catch (err) {
+          if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, "report_forecast_month_mismatch");
+          throw err;
+        }
+        const ffindings = opts.check ? checkForecast(fdoc) : [];
+        const fbody = JSON.stringify(fdoc, null, 2);
+        if (opts.out) await writeReportOutput(opts.out, fbody + "\n");
+        if (root.json) {
+          console.log(
+            JSON.stringify(
+              {
+                ok: ffindings.length === 0,
+                kind: "forecast_figures",
+                forecast_state: fdoc.forecast.state,
+                reason: fdoc.source.reason,
+                figures: fdoc.figures.length,
+                attestation: fdoc.source.attestation,
+                out: opts.out ?? null,
+                findings: ffindings
+              },
+              null,
+              2
+            )
+          );
+        } else {
+          if (!opts.out) console.log(fbody);
+          console.log(
+            `
+forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` + (fdoc.source.reason ? ` (${fdoc.source.reason})` : "") + `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ""}`
+          );
+          for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+          if (opts.check) console.log(ffindings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${ffindings.length})`);
+        }
+        process.exitCode = ffindings.length === 0 ? 0 : 1;
+        return;
+      }
       if (opts.select && !COMPOSITE_SELECTIONS.includes(opts.select)) {
         throw new UserFacingError(
           `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(", ")}.`,
@@ -95894,7 +96680,7 @@ init_credentials();
 init_telemetry();
 import { promises as fs } from "node:fs";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname39, join as join26 } from "node:path";
+import { dirname as dirname39, join as join27 } from "node:path";
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -96040,12 +96826,12 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join26(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join27(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
   let dir = dirname39(fileURLToPath7(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join26(dir, "skills");
+      const candidate = join27(dir, "skills");
       const stat7 = await fs.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
@@ -96171,7 +96957,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs2 } from "node:fs";
-import { resolve as resolve3, join as join27, relative, basename as basename4 } from "node:path";
+import { resolve as resolve3, join as join28, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -96504,7 +97290,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join27(dir, e.name);
+        const abs = join28(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -97754,8 +98540,8 @@ init_engine();
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
-import { readdir as readdir6, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname40, join as join28 } from "node:path";
+import { readdir as readdir7, stat as stat6 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname40, join as join29 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -97800,7 +98586,7 @@ async function discoverCredentialFiles(roots, maxDepth) {
 async function walkForCredentials(dir, depth, maxDepth, found) {
   let entries;
   try {
-    entries = await readdir6(dir, { withFileTypes: true });
+    entries = await readdir7(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -97811,14 +98597,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join28(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join29(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
     if (basename5(dir) !== "auth" || basename5(dirname40(dir)) !== ".mixshift") continue;
-    found.push(join28(dir, entry.name));
+    found.push(join29(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -97901,7 +98687,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join28(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join29(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };

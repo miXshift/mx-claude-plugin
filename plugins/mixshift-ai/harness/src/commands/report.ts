@@ -16,6 +16,12 @@ import {
   type CompositeSelection,
 } from '../lib/report-contract/extract.js';
 import {
+  extractForecast,
+  checkForecast,
+  isForecastTrackResponse,
+  ForecastMonthMismatchError,
+} from '../lib/report-contract/forecast.js';
+import {
   renderMonthlyReport,
   scanForecastVocabulary,
   type RenderReportDataDocument,
@@ -434,18 +440,65 @@ export function registerReportCommands(program: Command): void {
     .description(
       'Deterministically extract typed figures from an intelligence run response ' +
         '(the model never reads raw envelope JSON). Use --check to enforce the ' +
-        'extraction invariants; exit 0 = ok, 1 = check findings.',
+        'extraction invariants; exit 0 = ok, 1 = check findings. A FCT-TRACK-01 ' +
+        'answer yields a forecast figures document: empty unless the forecast is ' +
+        'current, every figure tagged with its role (forecast, projection, ...).',
     )
     .option('--out <path>', 'write the figures document here (default: stdout)')
     .option('--check', 'run the extraction invariants (delta identity, SKU split, bridge footing)', false)
+    .option('--expect-month <YYYY-MM>', 'for a FCT-TRACK-01 answer: refuse one about any other month (a file left by an earlier run)')
     .option(
       '--select <envelope>',
       `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(' | ')}`,
     )
-    .action(async (file: string, opts: { out?: string; check: boolean; select?: string }, cmd: Command) => {
+    .action(async (file: string, opts: { out?: string; check: boolean; select?: string; expectMonth?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const response = await readJson<unknown>(file);
+        if (isForecastTrackResponse(response)) {
+          if (opts.select) {
+            throw new UserFacingError('--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.', 'report_bad_selection');
+          }
+          let fdoc;
+          try {
+            fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+          } catch (err) {
+            if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, 'report_forecast_month_mismatch');
+            throw err;
+          }
+          const ffindings = opts.check ? checkForecast(fdoc) : [];
+          const fbody = JSON.stringify(fdoc, null, 2);
+          if (opts.out) await writeReportOutput(opts.out, fbody + '\n');
+          if (root.json) {
+            console.log(
+              JSON.stringify(
+                {
+                  ok: ffindings.length === 0,
+                  kind: 'forecast_figures',
+                  forecast_state: fdoc.forecast.state,
+                  reason: fdoc.source.reason,
+                  figures: fdoc.figures.length,
+                  attestation: fdoc.source.attestation,
+                  out: opts.out ?? null,
+                  findings: ffindings,
+                },
+                null,
+                2,
+              ),
+            );
+          } else {
+            if (!opts.out) console.log(fbody);
+            console.log(
+              `\nforecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` +
+                (fdoc.source.reason ? ` (${fdoc.source.reason})` : '') +
+                `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ''}`,
+            );
+            for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+            if (opts.check) console.log(ffindings.length === 0 ? 'CHECK: PASS' : `CHECK: FAIL (${ffindings.length})`);
+          }
+          process.exitCode = ffindings.length === 0 ? 0 : 1;
+          return;
+        }
         if (opts.select && !(COMPOSITE_SELECTIONS as readonly string[]).includes(opts.select)) {
           throw new UserFacingError(
             `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(', ')}.`,

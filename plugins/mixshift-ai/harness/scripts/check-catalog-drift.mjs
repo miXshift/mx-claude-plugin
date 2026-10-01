@@ -53,6 +53,11 @@ const NOT_OPERATIONS = new Map([
   ['reporting.review', 'context.yaml config key read by mx-monthly-report-max'],
   ['reporting.sections', 'context.yaml config key read by mx-monthly-report-max'],
   ['reporting.vc_revenue_basis', 'context.yaml config key read by mx-monthly-report-max (Vendor Central ordered/shipped basis)'],
+  ['reporting.forecast', 'context.yaml config key read by mx-monthly-report-max (forecast setting: auto/off/require)'],
+  ['reporting.forecast_metrics', 'context.yaml config key read by mx-monthly-report-max (forecast metrics)'],
+  ['reporting.forecast_audience', 'context.yaml config key read by mx-monthly-report-max (forecast audience)'],
+  ['reporting.forecast_scope', 'context.yaml config key read by mx-monthly-report-max (forecast scope key)'],
+  ['reporting.thresholds.forecast_actual_tolerance_pct', 'context.yaml config key read by mx-monthly-report-max (forecast vs warehouse actual tolerance)'],
 ]);
 
 function resolveCatalogDir() {

@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.4.0
+version: 2.5.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -14,9 +14,9 @@ description: >
   [client]', 'get me ready for the [client] monthly', 'QBR prep', 'what moved this month
   for [brand]', 'anything I should flag before this call'.
 author: Claude
-last_updated: 2026-09-07
+last_updated: 2026-10-01
 dependencies:
-  - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`)
+  - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`; FCT-TRACK-01 for the optional forecast)
   - Warehouse read access via the gateway (`mixshift report battery` for the figure battery,
     `mixshift data query` for by-hand queries), which needs the token-based sign-in
     (`mixshift auth login`, or a service credential for unattended runs); legacy raw-MySQL
@@ -102,6 +102,10 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Documents | both; "just the client one" / "just my notes" narrows it | `reporting.brief_documents`: `both`, `client_only`, `internal_only` |
 | Publish | two persistent per-brand HUB artifacts (client + internal), each period stacking in place at one stable URL; without the Artifact tool, two hub HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
 | Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
+| Forecast | `auto`: when the MixShift forecasting service holds a forecast for this brand that is current for the report month, it appears in the report (Step 3d); otherwise nothing forecast-related appears anywhere, the settings section says nothing about it, and nobody is asked | `reporting.forecast`: `auto`, `off` (no forecast request at all), or `require` (a missing, stale or failed forecast becomes one line in the internal companion's exceptions block) |
+| Forecast metrics | revenue; units are requested only when the revenue forecast came back current | `reporting.forecast_metrics: [revenue, units]` adds units; `[revenue]` is the default |
+| Forecast audience | both documents: in the client brief only figures marked client-safe; the forecast, the current model's fit and what the forecast stands on in the internal companion | `reporting.forecast_audience: internal_only` keeps it out of the client brief |
+| Forecast scope | the account | `reporting.forecast_scope: <scope key>` for a sub-brand or item group defined in the forecasting app |
 | Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
 | Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list; per-brand ADDITIONS via `clients/<brand>/report-sections/` (see "Custom sections") |
@@ -116,7 +120,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 **Threshold defaults** (quote the active values in the method notes; override via
 `reporting.thresholds.*`): Buy Box attention floor 92% page-view-weighted; Buy Box MoM drop
 worth flagging 5 pts; mover tables capped at 10 rows a side; Things-to-check 5 to 7 rows;
-SKU reconciliation tolerance 0.5%; settled-window exclusion 7 days on Seller Central and 14 on Vendor
+SKU reconciliation tolerance 0.5%; forecast-versus-warehouse actual tolerance 1% (`forecast_actual_tolerance_pct`, Step 3d); settled-window exclusion 7 days on Seller Central and 14 on Vendor
 Central under the default basis (the attribution tail of each channel's rule; `--attribution all_14` makes it
 14 everywhere and `sc_default` 7 everywhere; `thresholds_applied.settled_exclusion_days` says what ran);
 Vendor Central out-of-stock rate threshold 0.25
@@ -241,9 +245,10 @@ figure covers, because a client with both 1P and 3P will otherwise assume the wr
 
 ## Step 3: Pull the figures
 
-Three sources, each with its own job. Disclose before the first envelope run of the
-session: one run consumes one metered intelligence request; re-reads of the artifact on
-disk are free.
+Three sources, each with its own job, plus the optional forecast (3d). Disclose before the
+first envelope run of the session: one run consumes one metered intelligence request, and
+the forecast adds one per account (two when units are on and the revenue forecast is
+current) unless `reporting.forecast` is `off`; re-reads of the artifacts on disk are free.
 
 ### 3a. Core figures: the Intelligence envelope
 
@@ -540,6 +545,80 @@ Up to 20 ASINs per batch, about one batch per 12s. Read `Offers[].IsFeaturedMerc
 seller id on the winning offer, `ListingPrice`, `Summary.NumberOfOffers` and
 `Summary.CompetitivePriceThreshold`.
 
+### 3d. Forecast figures (optional): the published forecast
+
+Skip this step when `reporting.forecast` is `off`, when the account mode is Baseline or
+Setup, or when the brand spans several accounts (a forecast is kept per seller account and
+is never added across accounts; for such a brand, a forecast reaches the report only through
+a `reporting.forecast_scope` the forecasting app defines for the brand as a whole).
+Otherwise request the revenue forecast for the report month. The forecast is the copy the
+MixShift forecasting app publishes, with the corrections its users entered; the report never
+fits a model of its own.
+
+```bash
+rm -f forecast.revenue.json figures.forecast.revenue.json && \
+mixshift intelligence run FCT-TRACK-01 \
+  --params '{"merchant":{"legacySellerId":<SellerID>},"month":"<YYYY-MM report month>","metric":"revenue","brandSlug":"<slug>"}' \
+  --out forecast.revenue.json && \
+mixshift report extract forecast.revenue.json --check --expect-month <YYYY-MM report month> \
+  --out figures.forecast.revenue.json
+```
+
+Add `"scopeKey":"<key>"` when `reporting.forecast_scope` is set. Request units (the same
+call with `"metric":"units"` and the `units` file names) only when `reporting.forecast_metrics`
+includes units AND the revenue document came back `provided_current`.
+
+**No forecast means no trace of one.** The extracted document carries figures, claims,
+sections and limitations ONLY when `forecast.state` is `provided_current`. In every other
+case (`stale`, `not_provided`, a failed or refused run, a missing output file, an `--expect-month`
+refusal, a `--check` failure) treat the forecast as absent: no forecast section, no forecast
+vocabulary anywhere (Step 7's suppression rule), no settings line about it, and no question to
+the user. Never retry the request and never send feedback about it: a forecast that is not
+there is the normal case. Under `reporting.forecast: require` only, add one plain line to the
+internal companion's exceptions block, built from `source.friendly` when the document exists
+and "the forecasting service did not answer" when it does not.
+
+**Two expectations, and where each may appear.** Every figure, derived figure and claim
+carries `forecast_role`:
+- `forecast`: what the model said BEFORE the month closed. The ONLY expectation a beat or miss
+  is stated against: `forecast.expected.at_actual_spend.*` when present (what was forecast at
+  the spend that actually happened), else `forecast.expected.rolling.*`.
+- `projection`: the current model's fit WITH the month included, the number the forecasting
+  app shows. Internal companion only, always named "the current model's fit", never "the
+  forecast", and never in the same sentence as a forecasting error.
+- `year_start`: the forecast made at the start of the year. It stands in for a plan nobody has
+  recorded; internal companion only, and never called a plan.
+- `actual`, `outlook` (the months still to come, each at the spend it stands on) and `basis`
+  (the model, how the latest month moved it, and the figures somebody corrected in the app).
+
+The client brief quotes ONLY figures with `client_safe: true` (an actual, forecast or outlook
+figure carrying no blocking caveat), in your own sentences under the house rules. In No-YoY
+mode it quotes no last-year or assumed-change-on-last-year figure from the forecast either.
+The internal companion may quote any figure. Its `sections` are the map of which figures
+belong together, not text to paste: write the sentences yourself under Step 7's vocabulary,
+and wherever you quote a figure that carries a blocking caveat, render that caveat's
+`caveat_registry` text in plain words beside it. From the `basis` figures, say what the
+forecast stands on: how many sales and ad-spend figures were corrected in the app, how many
+months were left out, how many corrections sit on a source figure that has since moved, and
+whether the latest month moved the model by more than its own margin. When
+`source.ytd_runs_past_report_month` is true, the forecast's year-to-date figures run past the
+report month: quote no year-to-date forecast figure in the client brief.
+
+**The forecast's actuals can differ from the warehouse's.** The forecast stands on figures
+corrected in the forecasting app; the battery reads the warehouse. Compare the forecast
+document's actual for the report month with the battery's. Within the forecast-versus-warehouse
+tolerance (default 1%), the client brief may state the beat or miss against the forecast. Beyond
+it, the client brief states none: the internal companion states both actuals, the correction
+count, and which actual the forecast variance uses, as an internal reconciliation (Step 7).
+
+**Cite it, only when used.** When a current forecast's figures appear in either document, its
+`source.attestation` goes into the run record and into the review packet's
+`anti_fabrication_attestation.forecast_numbers_source`, and the first settings section on the
+brand names it in one plain line ("Forecast: the MixShift revenue forecasting model, published
+30 September, standing on 12 corrected sales figures."). Its `limitations` go into the method
+notes (i06) in plain words. When no forecast figure was used, `forecast_numbers_source` is
+"none" and nothing else is said.
+
 ## Step 4: Separate the mechanisms
 
 The brief's central job is answering "is this a demand problem or something we can fix".
@@ -724,9 +803,13 @@ and route it to an internal reconciliation instead of onto the call. A workbook 
 several unlabelled scenarios is itself the finding. Absent any current forecast, suppress
 every "vs plan / projected / ahead / behind" phrase; the run-rate close from the daily
 series is presented as arithmetic, never as a forecast. When a forecast IS current, the
-vocabulary is fixed: "the MixShift revenue forecasting model" on first mention, "the
-forecasting model" for the model, "the forecast" for the number. "Plan" is banned. Never
-reference a seasonal driver without the forecasting model's seasonal index behind it.
+vocabulary is fixed: "the MixShift revenue forecasting model" on first mention (for units,
+"the MixShift units forecast"), "the forecasting model" for the model, "the forecast" for
+what the model said before the month closed. The current model's figure for a closed month
+is "the current model's fit": internal companion only, never called the forecast, never
+beside a forecasting error (Step 3d). "Plan" is banned: no brand plan is recorded in the
+service yet. Never reference a seasonal driver without the forecasting model's seasonal
+index behind it.
 
 **A beat or miss carries what the forecast assumed.** "Beat the forecast by 3.1%" is never
 printed without the forecast's own year-over-year assumption beside it: an account that
@@ -735,15 +818,15 @@ are different events, and the reader cannot tell them apart from the beat alone.
 assertions row for the forecast basis carries the assumption, and the sentence carries it
 in words ("ahead of a forecast that already assumed a 13% decline").
 
-**Every open-window ACOS projects to settled, the same way every month.** An in-progress
+**Every open-window ACOS gets a settled estimate, the same way every month.** An in-progress
 or recently closed month's ACOS is read on an open attribution window, so it will improve
 as orders settle. When brand context carries `capture_rate_calibration` (enabled, with a
 capture rate or a daily settlement curve), apply it to the battery's `daily_ads_by_type`
-series and print the projection with its basis: "August ACOS is 18.0% on an open window
-and projects to about 18.5% settled". Grade last month's projection against this month's
-settled figure in the commitments section (a projection of 18.5% against 18.48% settled is
+series and print the settled estimate with its basis: "August ACOS is 18.0% on an open window
+and should settle at about 18.5%". Grade last month's settled estimate against this month's
+settled figure in the commitments section (an estimate of 18.5% against 18.48% settled is
 the calibration working; a miss of more than a point is a calibration write-back). Without
-a calibration, print the open-window figure labelled "open window" and no projection;
+a calibration, print the open-window figure labelled "open window" and no settled estimate;
 never project from a rule of thumb.
 
 **Weak comparison bases.** A spectacular year-over-year number often means last year was
@@ -911,7 +994,7 @@ Composition rules that survive every mode:
   only by method and caveats (i06); the client document carries no provenance apparatus
   at all. It asserts, and the internal companion holds the entire audit trail.
   The register is the technical AUDIT TRAIL; the review packet is its PLAIN-LANGUAGE
-  projection. Every register row carries both voices: `claim` / `falsifier` (technical,
+  rendering. Every register row carries both voices: `claim` / `falsifier` (technical,
   for i05) and `plain_language` / `why_it_matters` (for the packet), plus
   `type: statement | question | write_back` so the packet can bucket rows without
   guessing which ones want an answer.
@@ -1229,9 +1312,13 @@ The errors that survive casual proofreading:
 - The bottom line is at least as complete as the executive read; each tile delta is
   coloured on its own merit; the campaign-type table is eight columns; the internal
   companion grades last month's commitments and claims (required after the first run).
-- Every open-window ACOS prints its settled projection with its basis when the brand has a
+- Every open-window ACOS prints its settled estimate with its basis when the brand has a
   calibration, and "open window" when it does not; every forecast beat or miss carries the
   forecast's own year-over-year assumption.
+- Forecast content came only from a `provided_current` forecast figures document that passed
+  `--check` for the report month; the client brief quotes only `client_safe` forecast figures,
+  states every beat or miss against the forecast and none beyond the actual tolerance; a run
+  with no forecast carries no trace of one; `forecast_numbers_source` is the attestation or "none".
 - The session footing, the restatement and any promotion windows from the run's context
   block are in i06 and the run summary; no mix-versus-rate sentence came from an
   item-group run.

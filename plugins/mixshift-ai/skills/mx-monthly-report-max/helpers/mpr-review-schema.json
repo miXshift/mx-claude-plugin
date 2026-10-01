@@ -35,7 +35,7 @@
 
   "anti_fabrication_attestation": {
     "all_numbers_from_db_or_context_yaml": true,
-    "forecast_numbers_source": "<context.yaml path(s) or screenshot ref>",
+    "forecast_numbers_source": "<the source.attestation of each forecast figures document whose figures were used, else 'none'>",
     "item_group_mapping_applied": "<context.yaml path or 'not applicable'>",
     "unsupported_claims_present": false
   }

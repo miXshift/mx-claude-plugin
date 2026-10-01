@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "service": "forecasting",
+  "kind": "track",
+  "scope_id": "src:demo:1",
+  "metric": "revenue",
+  "month": "2026-06",
+  "forecast_state": "stale",
+  "reason": "report_month_not_closed",
+  "friendly": "The published forecast does not yet have the report month closed, so it is not current for this report.",
+  "report_data": null,
+  "published": {
+    "at": "2026-09-30T10:00:00.000Z",
+    "by": "svc:example-publisher",
+    "producer": "app",
+    "gateway_revision": 3,
+    "published_run_id": "7d1f0c2e-0000-4000-8000-000000000001",
+    "age_days": 1,
+    "window": {
+      "start_month": "2026-01",
+      "end_month": "2026-12"
+    },
+    "last_closed_month": "2026-02",
+    "document_version": 29,
+    "overlay_revisions": 28,
+    "schema_version": "forecast_bridge.forecast_document/v1",
+    "schema_revision": 6,
+    "contract": {
+      "version": "0.0.0",
+      "build_id": "example-build",
+      "upstream_sha": "example-sha"
+    }
+  },
+  "spend_basis": "ads_only",
+  "limitations": [
+    "Served from the copy the MixShift forecasting app published on 2026-09-30 (vintage 3). Corrections made in the app since then reach this answer on the app's next push, normally within a day.",
+    "No brand plan is recorded yet: where a figure is compared with the year-start forecast, that forecast stands in for a plan and is not one."
+  ]
+}
