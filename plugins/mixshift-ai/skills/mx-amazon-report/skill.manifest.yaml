@@ -100,13 +100,13 @@ notes: >
   Pricing subcommands shipped in harness 0.5.18 as a sibling of
   `amazon report` (same Bearer token, same typed-failure envelope):
   FOEP is keyed by SKU, competitive summary by ASIN. Sync mode caps at
-  200 items; `--async` returns a run_id polled via poll-run and fetched
+  200 items for FOEP and 100 ASINs for competitive summary; `--async` returns a run_id polled via poll-run and fetched
   via get-run-result. Pricing merchant flags are --amazon-seller-id /
   --legacy-seller-id (no --seller-id on this surface), and done-ness is
   status DONE from poll-run: no `ready` boolean, no exit-10 convention;
   --json failures carry the kind under `kind`, not `failure_kind`. In
-  chat, keep sync calls to a couple dozen items (the service paces
-  batches of 40 at ~35s); larger lists go --async.
+  chat, keep sync calls to one batch (the service paces batches of 40 for
+  FOEP and 20 for competitive summary at ~35s); larger lists go --async.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)

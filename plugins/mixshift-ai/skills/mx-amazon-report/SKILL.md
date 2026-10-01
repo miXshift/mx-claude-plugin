@@ -439,14 +439,20 @@ fan-out rules) carries over unchanged from "Merchant selection" above.
 `--marketplace` accepts a country code (`US`, `UK`, ...) or a raw
 marketplaceId, same as the report commands.
 
-### Sync vs --async (the 200-item cap, and what it means in chat)
+### Sync vs --async (the sync caps, and what it means in chat)
 
-- **Sync is the default.** It caps at 200 items and returns the full per-item
-  `responses` array inline. The service works the list in batches of 40 with
-  ~35 s pacing between batches, so a full 200-item sync job can take ~3
-  minutes. Fine in a terminal; fatal in chat, where the Bash tool ceiling is
-  ~45 seconds. **In chat, keep sync calls to a couple dozen items at most**
-  (comfortably inside one service-side batch); anything larger goes `--async`.
+- **Sync is the default.** It returns the full per-item `responses` array
+  inline and caps at 200 items for FOEP and 100 ASINs for Competitive Summary.
+  The service works the list in batches (40 for FOEP, 20 for Competitive
+  Summary, Amazon's limit) with ~35 s pacing between batches, so a full sync
+  job can take ~2.5 to 3 minutes. Fine in a terminal; fatal in chat, where the
+  Bash tool ceiling is ~45 seconds. **In chat, keep Competitive Summary sync
+  calls to 20 ASINs (one batch) and FOEP to a couple dozen items at most**
+  (one service-side batch each); anything larger goes `--async`. A second
+  batch for the same seller within about a minute waits ~35 s for pacing, so
+  in chat use `--async` for anything past one batch. A sync call over the cap
+  (100 ASINs Competitive Summary, 200 SKUs FOEP) fails fast with kind
+  `too_many_items` (HTTP 400): switch to `--async`, do not retry it unchanged.
 - **`--async` is for larger lists** (the client models up to 5,000 items per
   run; chunk beyond that). It returns `{ runId, status, itemsTotal }`
   immediately and you poll across calls, same discipline as reports.
@@ -461,7 +467,7 @@ mixshift amazon pricing cs-batch --legacy-seller-id 574 \
 
 # 2. Poll across turns until status is DONE
 mixshift amazon pricing poll-run 9c41... --json
-# -> { ..., "status": "IN_PROGRESS", "itemsTotal": 3, "itemsCompleted": 1, ... }
+# -> { ..., "status": "IN_PROGRESS", "itemsTotal": 3, "itemsCompleted": 0, ... }
 
 # 3. Fetch the per-item responses once status is DONE
 mixshift amazon pricing get-run-result 9c41... --json
@@ -476,7 +482,9 @@ exit-code-10 "not ready" convention. `poll-run` exits 0 while the run is still
 `get-run-result`. `poll-run` is the only poll on this surface: do NOT use
 `get-run-result` as the poll the way `report get` doubles as one (it has no
 "not ready" signal). Pace polls as for reports: poll once, surface progress
-(`itemsCompleted` of `itemsTotal`), and wait a beat or the user's next turn
+(`itemsCompleted` counts finished BATCHES, not items: progress is
+`itemsCompleted` / ceil(`itemsTotal` / 20) for Competitive Summary, / 40 for
+FOEP), and wait a beat or the user's next turn
 before polling again; catalog-size runs take minutes. `FATAL` and `CANCELLED`
 are terminal; `errorDetail` says why. The runId stays valid across turns and
 CLI invocations, so a slow run is never lost.
@@ -717,12 +725,15 @@ You:  1. Resolve the merchant row (amazon merchants --json) and carry its
 ### Pattern 8 - Catalog-wide pricing job (async, poll across turns)
 ```
 User: "Competitive summary for our full 800-ASIN catalog"
-You:  1. Resolve the merchant row. 800 items is over the sync cap, so
+You:  1. Resolve the merchant row. 800 items is over the sync cap (100 for
+         Competitive Summary), and the service runs it as 40 paced batches of
+         20 (roughly 25 minutes), so
          --async is mandatory (and the right call in chat anyway):
          mixshift amazon pricing cs-batch --legacy-seller-id <id> \
            --asins <comma-separated list> --async --json
-      2. poll-run across turns until status is DONE. itemsCompleted over
-         itemsTotal is your progress meter; surface it to the user.
+      2. poll-run across turns until status is DONE. itemsCompleted counts
+         finished BATCHES of 20, not ASINs, so progress is itemsCompleted over
+         ceil(itemsTotal / 20) (40 batches for 800 ASINs); surface it.
       3. get-run-result <runId> --json, redirected to a file under
          ~/.mixshift/reports/<merchant>/. Summarize the spread (who wins
          the featured offer, where reference prices sit) and point at the
@@ -921,8 +932,9 @@ These supersede other instructions:
 - **Gate pricing runs on `status: DONE`.** The pricing surface has no `ready`
   boolean and no exit-10 convention; `FATAL` / `CANCELLED` are terminal.
 - **Never block in chat.** Use start / poll / get as separate tool calls. Save
-  `report run` for terminals. Pricing sync calls count too: past a couple
-  dozen items they can outlive the chat Bash ceiling, so go `--async` and poll.
+  `report run` for terminals. Pricing sync calls count too: past one
+  batch (20 ASINs, or a couple dozen SKUs) they can outlive the chat Bash
+  ceiling, so go `--async` and poll.
 - **Exit 10 is not an error.** It means "not ready yet" or "timed out
   waiting." The run is still valid; keep polling. (Report surface only:
   pricing commands never use exit 10.)

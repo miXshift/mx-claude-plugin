@@ -139,6 +139,7 @@ export type ReportFailureKind =
   | 'merchant_inactive' // 422 — merchant is not ACTIVE for Ads in MixShift. Terminal: activate it, do not retry
   | 'profile_not_authorized' // 403 — credential is fine; Amazon denies this profile to that advertising login
   | 'bad_request' // 400 — AMAZON rejected the request; +amazonErrorCode. Terminal: do not retry
+  | 'too_many_items' // 400 — a sync pricing call exceeded the sync cap (100 ASINs / 200 SKUs). Terminal: use --async
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
   | 'throttled' // 429 — Amazon rate limit; +retryAfterMs
@@ -1501,6 +1502,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'merchant_inactive',
   'profile_not_authorized',
   'bad_request',
+  'too_many_items',
   'restricted_report',
   'merchant_not_found',
   'throttled',
@@ -1745,6 +1747,12 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
         `${requestLabel(surface)} was rejected by Amazon because of the ` +
         'request itself, not a MixShift or Amazon outage. Retrying it ' +
         'unchanged will not help.'
+      );
+    case 'too_many_items':
+      return (
+        'That is too many items for a single synchronous call. Start it as a ' +
+        'background run (--async) and poll it, or send fewer items. Retrying ' +
+        'it unchanged will not help.'
       );
     case 'restricted_report':
       return (

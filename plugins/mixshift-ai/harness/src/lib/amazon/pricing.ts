@@ -10,7 +10,7 @@
  *   - getCompetitiveSummary               (keyed by ASIN)
  *
  * Each is exposed in two modes:
- *   - sync  (capped at 200 items, returns full responses inline)
+ *   - sync  (capped at 200 FOEP SKUs / 100 Competitive Summary ASINs, returns full responses inline)
  *   - async (no cap, returns runId; poll + fetch separately)
  *
  * Plus run-lifecycle calls used by either async variant:
@@ -82,7 +82,7 @@ export type CompetitiveSummaryIncludedData =
   | 'lowestPricedOffers';
 
 export interface CompetitiveSummaryBatchInput extends MerchantSelection {
-  /** Keyed by ASIN. 1..200 for sync; 1..5000 for async. */
+  /** Keyed by ASIN. 1..100 for sync; 1..5000 for async. */
   asins: string[];
   /** Defaults to ['featuredBuyingOptions','referencePrices']. */
   includedData?: CompetitiveSummaryIncludedData[];

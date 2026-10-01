@@ -7,7 +7,9 @@
  *   - get-competitive-summary-batch           (keyed by ASIN)
  *
  * Each runs in one of two modes:
- *   - sync (default, cap 200 items, response inline, ~3 min worst case)
+ *   - sync (default, response inline; cap 200 items for FOEP and 100 ASINs for
+ *     Competitive Summary, which the service sends in paced batches of 20;
+ *     about 2.5 to 3 min worst case)
  *   - async via --async (no cap, returns runId; poll separately)
  *
  * Plus run-lifecycle commands:
@@ -206,7 +208,7 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
     .alias('cs-batch')
     .description(
       'Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, ' +
-        'optional lowest-priced offers. Keyed by ASIN. Sync cap 200; --async for larger jobs.',
+        'optional lowest-priced offers. Keyed by ASIN. Sync cap 100; --async for larger jobs.',
     )
     .option('--asins <list>', 'Comma-separated ASINs. Mutually exclusive with --asins-file.')
     .option('--asins-file <path>', 'File with one ASIN per line.')

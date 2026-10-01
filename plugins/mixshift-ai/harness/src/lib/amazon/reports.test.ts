@@ -853,6 +853,26 @@ describe('unrecognized wire kinds (mx-ops#43)', () => {
     }
   });
 
+  it('recognizes too_many_items (oversized sync pricing call) and keeps the service wording', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, {
+        ok: false,
+        kind: 'too_many_items',
+        friendly: 'Sync mode supports up to 100 items. Use the async start endpoint (/start) for larger jobs.',
+      }),
+    );
+    const r = await startReport(
+      { amazonSellerId: 'A1', reportType: 'X' },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('too_many_items');
+      expect(r.unrecognizedKind).toBeUndefined();
+      expect(r.friendly).toContain('async');
+    }
+  });
+
   it('falls back to bad_request on a 400 with an unknown kind ONLY when the Amazon error code is present', async () => {
     // The code is the evidence Amazon did the rejecting. Without it a 400 could
     // just as well be the service's own validation, which is not `bad_request`.
@@ -1056,6 +1076,7 @@ describe('exitCodeForKind', () => {
       approval_mismatch: 1,
       stale_approval: 1,
       schema_drift: 1,
+      too_many_items: 1,
       unknown: 1,
     };
     for (const [kind, code] of Object.entries(documented)) {
