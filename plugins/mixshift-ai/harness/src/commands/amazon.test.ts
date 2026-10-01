@@ -735,12 +735,24 @@ describe('report FATAL surfaces amazon_error (mx-ops#93)', () => {
   it("text mode flags Amazon's generic text as naming no parameter", async () => {
     vi.mocked(pollReport).mockResolvedValue({
       ...withReason,
-      amazonError: 'SYNTH: please double check that your parameters are valid.',
+      amazonError: 'A client error occurred. Please double check that your parameters are valid.',
     });
     await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1');
     const err = stderrChunks.join('');
     expect(err).toMatch(/generic text and names no parameter/);
     expect(err).toContain('describe-report');
+  });
+
+  it('text mode for a merchant-type refusal says so instead of "names no parameter"', async () => {
+    vi.mocked(pollReport).mockResolvedValue({
+      ...withReason,
+      amazonError:
+        'A client error occurred. This API is not available to vendors. Please double check that your parameters are valid.',
+    });
+    await runCli('amazon', 'report', 'poll', 'SYNTH-RUN-1');
+    const err = stderrChunks.join('');
+    expect(err).toMatch(/not available for this type of account/);
+    expect(err).not.toMatch(/names no parameter/);
   });
 
   it('report get surfaces the reason too (all FATAL paths share the emitter)', async () => {
@@ -958,6 +970,16 @@ describe('report run — throttled start', () => {
       document: JSON.stringify({ reportSpecification: {}, dataByAsin: [] }),
       bytes: 2,
     } as any);
+    // `report run --out` fetches the document metadata and streams it to the
+    // file; set both here instead of inheriting whatever an earlier test left
+    // behind (vi.clearAllMocks keeps implementations).
+    vi.mocked(getReportDocumentMeta).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: { url: 'https://example.invalid/x', compressionAlgorithm: null },
+    } as any);
+    vi.mocked(streamReportDocumentToFile).mockResolvedValue({ ok: true, bytes: 2 } as any);
 
     await runCli(
       'amazon', 'report', 'run',

@@ -1095,6 +1095,41 @@ describe('cleanAmazonError', () => {
     expect(out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f]/);
   });
 
+  it('strips C1 controls and bidi overrides/isolates', () => {
+    const out = cleanAmazonError('a\u009bb‮c⁦d⁩e\u0085f') as string;
+    expect(out).toBe('a b c d e f');
+  });
+
+  it('never splits a surrogate pair when truncating', () => {
+    const out = cleanAmazonError('\u{1F600}'.repeat(AMAZON_ERROR_MAX_CHARS + 5)) as string;
+    expect(out.endsWith('... [truncated]')).toBe(true);
+    const body = out.slice(0, -'... [truncated]'.length);
+    expect(Array.from(body)).toHaveLength(AMAZON_ERROR_MAX_CHARS);
+    expect(body).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+  });
+
+  it('unwraps the pretty-printed errorDetails document (space before the colon)', () => {
+    const doc = '{\n  "errorDetails" : "SYNTH: dataStartTime must be a Sunday"\n}';
+    expect(cleanAmazonError(doc)).toBe('SYNTH: dataStartTime must be a Sunday');
+  });
+
+  it('unwraps the compact reportRequestError document', () => {
+    expect(cleanAmazonError('{"reportRequestError":"SYNTH: missing option"}')).toBe(
+      'SYNTH: missing option',
+    );
+  });
+
+  it('keeps bare text, and keeps JSON that has neither known key', () => {
+    expect(cleanAmazonError('SYNTH bare text')).toBe('SYNTH bare text');
+    expect(cleanAmazonError('{"other":"x"}')).toBe('{"other":"x"}');
+    expect(cleanAmazonError('{not json')).toBe('{not json');
+  });
+
+  it('treats the MixShift placeholder as no reason, bare or wrapped', () => {
+    expect(cleanAmazonError('Amazon processingStatus=FATAL')).toBeUndefined();
+    expect(cleanAmazonError('{"errorDetails":"Amazon processingStatus=FATAL"}')).toBeUndefined();
+  });
+
   it('caps very long text and marks the cut', () => {
     const out = cleanAmazonError('x'.repeat(AMAZON_ERROR_MAX_CHARS + 500)) as string;
     expect(out.length).toBeLessThan(AMAZON_ERROR_MAX_CHARS + 40);
@@ -1112,6 +1147,17 @@ describe('classifyAmazonError (telemetry reason_class)', () => {
   it.each([
     ['This report is now deprecated.', 'deprecated'],
     ['Please double check that your parameters are valid.', 'generic'],
+    ['A client error occurred. Please double check that your parameters are valid.', 'generic'],
+    ['A client error occurred. This API is not available to vendors. Please double check that your parameters are valid.', 'wrong_merchant_type'],
+    ['This report type is not available for vendors', 'wrong_merchant_type'],
+    ['Error in report request: The values for dataStartTime and dataEndTime provided in the createReport request describe a prohibited date range that does not align with the requirements for the specified reportPeriod. An example of a prohibited date range includes a dataStartTime that is not a Sunday or a dataEndTime that is not a Saturday when reportPeriod=WEEK.', 'period_alignment'],
+    ['dataEndTime must be the last day of a month when reportPeriod=MONTH.', 'period_alignment'],
+    ['The requested range must span exactly one reporting period.', 'period_alignment'],
+    ['This report type requires the report option(s): asin', 'missing_option'],
+    ['A client error occurred. Something specific. Please double check that your parameters are valid.', 'other'],
+    ['dataEndTime is not yet available; modify dataEndTime to be an earlier date', 'data_not_available'],
+    ['Invalid distributorView. Valid values are CONSIGNMENT', 'invalid_option_value'],
+    ['Report type availability changed', 'other'],
     ['Reporting data for end date 2000-01-01 and time period monthly is not available yet. This date may not have finished processing, or may fall outside the available data range.', 'data_not_available'],
     ['Data is not available for the specified end date. Data for the previous day is usually available at 2pm Pacific, up to 72 hours.', 'data_not_available'],
     ['dataStartTime must be a Sunday when reportPeriod=WEEK', 'period_alignment'],
