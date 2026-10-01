@@ -1232,10 +1232,13 @@ function renderAmazonReason(text: string): string {
     .split(/\r?\n/)
     .map((l, i) => (i === 0 ? `  Amazon's reason: ${l}` : `    ${l}`))
     .join('\n');
+  const cls = classifyAmazonError(text);
   const generic =
-    classifyAmazonError(text) === 'generic'
+    cls === 'generic'
       ? "\n  This is Amazon's generic text and names no parameter to change. Run `mixshift amazon describe-report <type>` for the window and option rules."
-      : '';
+      : cls === 'wrong_merchant_type'
+        ? '\n  Amazon says this report or API is not available for this type of account (seller or vendor). Check that the merchant is the right kind for it; changing dates or options will not help.'
+        : '';
   return `${body}${generic}\n`;
 }
 
