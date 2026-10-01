@@ -1627,7 +1627,10 @@ export function classifyAmazonError(text: string): ReportReasonClass {
   if (/double check that your parameters/.test(t)) {
     const rest = t
       .replace(/a client error occurred/g, ' ')
-      .replace(/(please )?double check that your parameters are valid/g, ' ')
+      .replace(
+        /(please )?double check that your parameters are valid( and fulfill the requirements of the report type)?/g,
+        ' ',
+      )
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
     return rest === '' ? 'generic' : 'other';

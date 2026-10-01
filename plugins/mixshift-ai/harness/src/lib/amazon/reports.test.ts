@@ -1168,6 +1168,10 @@ describe('classifyAmazonError (telemetry reason_class)', () => {
     ['This report is now deprecated.', 'deprecated'],
     ['Please double check that your parameters are valid.', 'generic'],
     ['A client error occurred. Please double check that your parameters are valid.', 'generic'],
+    // Amazon's exact boilerplate, the most common FATAL text (gateway error_detail).
+    ['A client error occurred. Please double check that your parameters are valid and fulfill the requirements of the report type.', 'generic'],
+    ['A client error occurred. This API is not available to vendors. Please double check that your parameters are valid and fulfill the requirements of the report type.', 'wrong_merchant_type'],
+    ['A client error occurred. Something specific. Please double check that your parameters are valid and fulfill the requirements of the report type.', 'other'],
     ['A client error occurred. This API is not available to vendors. Please double check that your parameters are valid.', 'wrong_merchant_type'],
     ['This report type is not available for vendors', 'wrong_merchant_type'],
     ['Error in report request: The values for dataStartTime and dataEndTime provided in the createReport request describe a prohibited date range that does not align with the requirements for the specified reportPeriod. An example of a prohibited date range includes a dataStartTime that is not a Sunday or a dataEndTime that is not a Saturday when reportPeriod=WEEK.', 'period_alignment'],
