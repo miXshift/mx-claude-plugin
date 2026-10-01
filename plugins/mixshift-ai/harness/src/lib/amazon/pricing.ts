@@ -82,7 +82,7 @@ export type CompetitiveSummaryIncludedData =
   | 'lowestPricedOffers';
 
 export interface CompetitiveSummaryBatchInput extends MerchantSelection {
-  /** Keyed by ASIN. 1..200 for sync; 1..5000 for async. */
+  /** Keyed by ASIN. 1..100 for sync; 1..5000 for async. */
   asins: string[];
   /** Defaults to ['featuredBuyingOptions','referencePrices']. */
   includedData?: CompetitiveSummaryIncludedData[];

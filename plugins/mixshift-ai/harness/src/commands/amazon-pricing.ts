@@ -208,7 +208,7 @@ function registerCompetitiveSummaryCommand(pricing: Command): void {
     .alias('cs-batch')
     .description(
       'Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, ' +
-        'optional lowest-priced offers. Keyed by ASIN. Sync cap 200; --async for larger jobs.',
+        'optional lowest-priced offers. Keyed by ASIN. Sync cap 100; --async for larger jobs.',
     )
     .option('--asins <list>', 'Comma-separated ASINs. Mutually exclusive with --asins-file.')
     .option('--asins-file <path>', 'File with one ASIN per line.')
