@@ -293,6 +293,7 @@ try {
   process.exitCode = await handleTopLevelError(err, {
     json: program.opts<{ json?: boolean }>().json === true,
     argv: process.argv.slice(2),
+    program,
   });
 } finally {
   // Drain every event queued during this run before we exit. Adds

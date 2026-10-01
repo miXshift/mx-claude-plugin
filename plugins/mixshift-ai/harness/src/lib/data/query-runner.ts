@@ -213,6 +213,60 @@ function querySqlTelemetry(
 }
 
 /**
+ * Words MySQL 8 reserves that agents reach for as a column alias
+ * (`COUNT(*) AS rows` is the observed one). A reserved word as an unquoted
+ * alias is an ER_PARSE_ERROR whose message points at the clause after it, not
+ * at the alias, so name it explicitly.
+ */
+const RESERVED_ALIAS_WORDS = [
+  'rows', 'lines', 'rank', 'groups', 'window', 'lead', 'lag', 'system', 'row', 'row_number',
+  'dense_rank', 'over', 'lateral', 'empty', 'range', 'key', 'keys', 'interval', 'condition',
+];
+// An unquoted alias: `AS rows`, or an implicit one right after an expression: `COUNT(*) lines,`.
+const RESERVED_ALIAS_RE = new RegExp(
+  `(?:\\bas\\s+|\\)\\s+)(${RESERVED_ALIAS_WORDS.join('|')})(?=\\s*(?:,|$|\\b(?:from|group|order|limit|union)\\b))`,
+  'i',
+);
+
+/**
+ * Append the next step to a syntax failure so a wrong guess is recoverable on
+ * the next call: an unknown column points at `data describe` (the curated
+ * column list and gotchas, rather than a raw INFORMATION_SCHEMA read), and a
+ * reserved-word alias names the word and the fix. Every other message is
+ * returned unchanged. `table` is the primary table from the query shape.
+ * Copy rule: no em dashes (customer-facing).
+ */
+export function syntaxErrorGuidance(
+  friendly: string,
+  failure: { kind: string; raw_code?: string; message?: string },
+  sql: string,
+  table: string | null | undefined,
+): string {
+  if (failure.kind !== 'syntax_error') return friendly;
+  const text = `${failure.message ?? ''} ${friendly}`;
+  if (failure.raw_code === 'ER_BAD_FIELD_ERROR' || /unknown column/i.test(text)) {
+    const describe = table
+      ? `\`mixshift data describe ${table}\``
+      : '`mixshift data describe <table>`';
+    return (
+      `${friendly}\nCheck the column name against the table. ` +
+      `Run ${describe} for the real column names and gotchas ` +
+      '(`mixshift data list-tables` shows the tables it covers).'
+    );
+  }
+  if (failure.raw_code === 'ER_PARSE_ERROR') {
+    const word = RESERVED_ALIAS_RE.exec(sql)?.[1];
+    if (word) {
+      return (
+        `${friendly}\n\`${word.toLowerCase()}\` is a reserved word in MySQL 8, so it cannot be used as an alias ` +
+        `as written. Alias it something else (for example \`row_count\`) or wrap it in backticks.`
+      );
+    }
+  }
+  return friendly;
+}
+
+/**
  * Educational user-facing message for the datahub gateway's two output-size
  * caps. These arrive as the failure envelope's `kind` from POST /api/query:
  *   - 'too_many_rows'      the 50k-row cap
@@ -1197,7 +1251,11 @@ async function runMysqlQuery<Row>(
       durationMs,
     };
   } catch (err) {
-    const failure = classify(err);
+    const classified = classify(err);
+    const failure: DataQueryFailure = {
+      ...classified,
+      friendly: syntaxErrorGuidance(classified.friendly, classified, sql, options.query_shape?.table),
+    };
     void track(
       {
         event_name: EventName.QueryFailed,
@@ -1406,7 +1464,12 @@ async function runDatahubQuery<Row>(
       table_name: json.table_name,
       raw_code: json.raw_code,
       message: json.message ?? 'Query failed',
-      friendly: capFriendlyMessage(serverKind, serverFriendly),
+      friendly: syntaxErrorGuidance(
+        capFriendlyMessage(serverKind, serverFriendly),
+        { kind: serverKind, raw_code: json.raw_code, message: json.message },
+        sql,
+        options.query_shape?.table,
+      ),
       durationMs,
       // Cap-rejection size hints (Track B), when the service provides them.
       ...(typeof json.actualRowCount === 'number' ? { actualRowCount: json.actualRowCount } : {}),

@@ -112,6 +112,7 @@ describe('cli.ts routes a commander usage error through the top-level catch', ()
         status: 'error',
         error_class: 'usage_error',
         message: "unknown option '--seller-id'",
+        hint: expect.stringContaining('WHERE SellerID = <numeric warehouse SellerID>'),
       });
       const crashes = posted.filter((e) => e.event_name === 'plugin.crashed');
       expect(crashes).toHaveLength(1);
@@ -119,6 +120,17 @@ describe('cli.ts routes a commander usage error through the top-level catch', ()
         error_class: 'usage_error',
         payload: { user_facing: true, commander_code: 'commander.unknownOption' },
       });
+    },
+    60_000,
+  );
+
+  it(
+    'unknown command in plain text: commander line, then the real command, exit 1',
+    async () => {
+      const r = await runCli(['data', 'tables']);
+      expect(r.status, r.stderr).toBe(1);
+      expect(r.stderr).toContain("error: unknown command 'tables'");
+      expect(r.stderr).toMatch(/hint: .*mixshift data list-tables/);
     },
     60_000,
   );

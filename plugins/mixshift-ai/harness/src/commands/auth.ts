@@ -15,6 +15,7 @@ import { formatZodError } from '../lib/profile/format-error.js';
 import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { serviceCredsSchema } from '../lib/auth/schema.js';
 import { saveService, getValidAccessToken } from '../lib/auth/credentials.js';
+import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
 import { exchangeSetupCode } from '../lib/auth/setup-code.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
@@ -67,6 +68,7 @@ export function registerAuthCommands(program: Command): void {
   registerLoginSubcommand(auth);
   registerDeviceInitSubcommand(auth);
   registerDevicePollSubcommand(auth);
+  registerStatusSubcommand(auth);
   registerServiceSetupSubcommand(auth);
 
   auth
@@ -699,6 +701,116 @@ function registerServiceSetupSubcommand(auth: Command): void {
         }
         process.exitCode = 1;
       }
+    });
+}
+
+/** How to sign in when an agent is driving: two phases, never a blocking login. */
+const SIGN_IN_HINT_AGENT =
+  "say 'sign in to MixShift', or run `mixshift auth device-init --person-label <work email>`, " +
+  'open the login_url it returns, then run `mixshift auth device-poll <device_code> --person-label <work email>`';
+
+export interface AuthStatusReport {
+  signed_in: boolean;
+  credential: 'human' | 'service' | 'legacy_mysql' | 'none';
+  actor?: string;
+  tenant_login?: string;
+  service?: string;
+  client_id?: string;
+  label?: string;
+  access_expires_at?: string;
+  access_expired?: boolean;
+  /** True when the sign-in can no longer renew itself and a new sign-in is needed. */
+  needs_sign_in: boolean;
+  next_step?: string;
+}
+
+/** Pure: turn the shared local summary into the `auth status` report. */
+export function buildAuthStatusReport(a: AuthSummary): AuthStatusReport {
+  if (!a.signedIn) {
+    return {
+      signed_in: false,
+      credential: 'none',
+      needs_sign_in: true,
+      next_step: `Sign in: ${SIGN_IN_HINT_AGENT}.`,
+    };
+  }
+  if (a.kind === 'interactive') {
+    const dead = a.refreshExpired === true;
+    return {
+      signed_in: !dead,
+      credential: 'human',
+      actor: a.personLabel ?? a.email,
+      tenant_login: a.email,
+      service: a.apiBase,
+      access_expires_at: a.accessExpiresAt,
+      access_expired: a.accessExpired,
+      needs_sign_in: dead,
+      ...(dead ? { next_step: `The saved sign-in has expired. Sign in again: ${SIGN_IN_HINT_AGENT}.` } : {}),
+    };
+  }
+  if (a.kind === 'service') {
+    return {
+      signed_in: true,
+      credential: 'service',
+      actor: a.label ?? a.clientId,
+      service: a.apiBase,
+      client_id: a.clientId,
+      label: a.label,
+      needs_sign_in: false,
+    };
+  }
+  return {
+    signed_in: true,
+    credential: 'legacy_mysql',
+    service: undefined,
+    needs_sign_in: false,
+    next_step: `This is the older direct-database credential. To move to token sign-in: ${SIGN_IN_HINT_AGENT}.`,
+  };
+}
+
+function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
+  const out: string[] = [];
+  if (!r.signed_in) {
+    out.push(r.credential === 'human' ? 'Not signed in (saved sign-in expired).' : 'Not signed in.');
+  } else if (r.credential === 'human') {
+    out.push(`Signed in (human sign-in) as ${r.actor ?? '?'}`);
+    if (r.tenant_login && r.tenant_login !== r.actor) out.push(`  tenant login: ${r.tenant_login}`);
+    out.push(`  service: ${r.service ?? '?'}`);
+    if (r.access_expired) {
+      out.push('  access token: expired (renews itself on the next call)');
+    } else if (r.access_expires_at) {
+      out.push(`  access token valid until ${r.access_expires_at}`);
+    }
+    if (a.refreshExpiresAt) out.push(`  sign-in renewable until ${a.refreshExpiresAt}`);
+  } else if (r.credential === 'service') {
+    out.push(`Signed in (service credential) ${r.actor ?? ''}`.trimEnd());
+    out.push(`  service: ${r.service ?? '?'}`);
+    out.push('  tokens are minted on demand; there is no expiry to track');
+  } else {
+    out.push('Signed in (older direct-database credential).');
+  }
+  if (r.next_step) out.push(r.next_step);
+  return out.join('\n') + '\n';
+}
+
+function registerStatusSubcommand(auth: Command): void {
+  auth
+    .command('status')
+    .description(
+      'Show whether you are signed in, as whom, the tenant login, and when the access token expires. ' +
+        'Read-only: reads the local credentials file only. It never signs in, refreshes a token, ' +
+        'prompts, or calls the network.',
+    )
+    .action(async (_opts: Record<string, never>, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const summary = await summarizeAuth(root.dataDir);
+      const report = buildAuthStatusReport(summary);
+      if (root.json) {
+        process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      } else {
+        process.stdout.write(renderAuthStatus(report, summary));
+      }
+      // Reporting "not signed in" is a successful answer, not a failure.
     });
 }
 

@@ -18,6 +18,7 @@ import { CommanderError, type Command } from 'commander';
 import { InvalidOptionValueError, UserFacingError } from '../errors.js';
 import { track, EventName } from '../telemetry/index.js';
 import { redactArgs } from '../telemetry/redact.js';
+import { usageHint } from './usage-hints.js';
 
 /** commander exits that print help or the version: not errors. */
 const DISPLAY_CODES = new Set(['commander.helpDisplayed', 'commander.help', 'commander.version']);
@@ -37,6 +38,8 @@ export interface TopLevelErrorContext {
   json: boolean;
   /** process.argv.slice(2); redacted before it reaches telemetry. */
   argv: readonly string[];
+  /** The command tree, so a usage error can name the right command or flag. */
+  program?: Command;
 }
 
 export interface TopLevelErrorIo {
@@ -70,6 +73,8 @@ export async function handleTopLevelError(
   let extra: Record<string, unknown> = {};
   // commander has already written its own "error: ..." line to stderr.
   let alreadyPrinted = false;
+  // A pointer to the right command or flag; extends commander's message, never replaces it.
+  let hint: string | undefined;
 
   if (err instanceof CommanderError) {
     message = err.message.replace(/^error: /, '');
@@ -77,6 +82,11 @@ export async function handleTopLevelError(
     telemetryMessage = scrubCommanderMessage(message);
     extra = { user_facing: true, commander_code: err.code };
     alreadyPrinted = true;
+    const h = ctx.program ? usageHint(err.code, message, ctx.argv, ctx.program) : undefined;
+    if (h) {
+      hint = h.text;
+      extra.hint_id = h.id;
+    }
   } else if (err instanceof InvalidOptionValueError) {
     // The message can echo the rejected value; telemetry gets the flag name
     // and the value's shape only.
@@ -100,9 +110,16 @@ export async function handleTopLevelError(
   }
 
   if (ctx.json) {
-    io.stdout(JSON.stringify({ status: 'error', error_class: errorClass, message }, null, 2) + '\n');
-  } else if (!alreadyPrinted) {
-    io.stderr(`error: ${message}\n`);
+    io.stdout(
+      JSON.stringify(
+        { status: 'error', error_class: errorClass, message, ...(hint ? { hint } : {}) },
+        null,
+        2,
+      ) + '\n',
+    );
+  } else {
+    if (!alreadyPrinted) io.stderr(`error: ${message}\n`);
+    if (hint) io.stderr(`hint: ${hint}\n`);
   }
 
   // Awaited so the event is on disk before cli.ts's `finally` flushes the

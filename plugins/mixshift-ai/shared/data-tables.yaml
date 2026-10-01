@@ -72,6 +72,7 @@ tables:
       - "There is no `Date` column. Filter on `DateTime` (datetime), or `DateKey` (int, YYYYMMDD)."
       - "There is no `SalesAmount` here; that is a business_reports_dpst_date column. Ad sales is `Sales`, spend is `Cost`."
       - "There is no `OrderQuantity`. Order counts live in the attribution columns (`AttributedConversions*`, `attributedOrders*`), which are windowed."
+      - "There is no `Spend` (spend is `Cost`) and no `AttributedConversions7d`. The classic windowed columns are spelled `AttributedConversions7day` and `AttributedSales7day` (also 1day, 14day, 30day), with `day`, not `d`. Only the newer new-to-brand style columns end in `14d`."
 
   adgroupmetric:
     description: "Ad-group-level daily ad metrics. Same fields as campaignmetric, one level deeper. Joins to adgroup for DefaultBid + naming."
@@ -137,6 +138,8 @@ tables:
     category: dimensional
     time_series: false
     requires_seller_id: true
+    gotchas:
+      - "The primary key is `ID`, not `CampaignID`. campaignmetric.CampaignID joins to campaign.ID (`AmazonCampaignID` is Amazon's own id)."
 
   adgroup:
     description: "Ad-group metadata: AdGroupName, DefaultBid, BidOptimization, CreativeType. Joins to campaign on CampaignID."
@@ -188,10 +191,13 @@ tables:
     requires_seller_id: true
 
   seller:
-    description: "Seller account metadata: SellerID, Name (canonical brand), MerchantAlias (Amazon storefront), MerchantType, marketplace, access flags. Drives `mixshift brand discover`."
+    description: "Seller account metadata: ID (the SellerID other tables join on), Name (canonical brand), MerchantAlias (Amazon storefront), MerchantType, marketplace, access flags. Drives `mixshift brand discover`."
     category: dimensional
     time_series: false
     requires_seller_id: false
+    gotchas:
+      - "The primary key is `ID`. There is no `SellerID` column here; other tables join as `<other>.SellerID = seller.ID`."
+      - "The brand name is `Name`. There is no `SellerName` column here (that column exists on the metric and item tables) and no `MerchantID`. Amazon's own merchant token is `AmazonSellerID`."
 
   marketplace:
     description: "Marketplace ID-to-name mapping (US, CA, UK, etc.) including AmazonMarketPlaceId. Useful for joins when reports include AmazonMarketplaceId only."
@@ -304,7 +310,7 @@ tables:
       units: UnitsOrdered
       asin: ChildAsin
     gotchas:
-      - "There is no `Date` or `ReportDate` column. Filter on `DateTime`."
+      - "There is no `Date`, `ReportDate` or `SnapshotDate` column. Filter on `DateTime`."
       - "Sales here is `Amount`, NOT `SalesAmount` (that is the day-level sibling business_reports_dpst_date) and NOT `OrderedProductSales` (which does not exist in this warehouse)."
       - "The ASIN columns are `ChildAsin` and `ParentAsin`, spelled exactly that way. There is no `ASIN`, `Asin` or `ChildASIN`."
 
@@ -424,6 +430,8 @@ tables:
     account_types: [VC]
     time_series: false
     requires_seller_id: true
+    gotchas:
+      - "There is no `Title`; the item name is `ItemName`. `Brand` is Amazon's label and `CustomBrand` is your override."
 
   # ---------------------------------------------------------------------
   # Inventory (Seller Central)
