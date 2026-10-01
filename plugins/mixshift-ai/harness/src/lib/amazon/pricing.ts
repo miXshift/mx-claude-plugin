@@ -10,7 +10,7 @@
  *   - getCompetitiveSummary               (keyed by ASIN)
  *
  * Each is exposed in two modes:
- *   - sync  (capped at 200 items, returns full responses inline)
+ *   - sync  (capped at 200 FOEP SKUs / 100 Competitive Summary ASINs, returns full responses inline)
  *   - async (no cap, returns runId; poll + fetch separately)
  *
  * Plus run-lifecycle calls used by either async variant:

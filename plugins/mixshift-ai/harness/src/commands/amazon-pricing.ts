@@ -7,7 +7,9 @@
  *   - get-competitive-summary-batch           (keyed by ASIN)
  *
  * Each runs in one of two modes:
- *   - sync (default, cap 200 items, response inline, ~3 min worst case)
+ *   - sync (default, response inline; cap 200 items for FOEP and 100 ASINs for
+ *     Competitive Summary, which the service sends in paced batches of 20;
+ *     about 2.5 to 3 min worst case)
  *   - async via --async (no cap, returns runId; poll separately)
  *
  * Plus run-lifecycle commands:

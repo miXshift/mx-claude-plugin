@@ -439,14 +439,16 @@ fan-out rules) carries over unchanged from "Merchant selection" above.
 `--marketplace` accepts a country code (`US`, `UK`, ...) or a raw
 marketplaceId, same as the report commands.
 
-### Sync vs --async (the 200-item cap, and what it means in chat)
+### Sync vs --async (the sync caps, and what it means in chat)
 
-- **Sync is the default.** It caps at 200 items and returns the full per-item
-  `responses` array inline. The service works the list in batches of 40 with
-  ~35 s pacing between batches, so a full 200-item sync job can take ~3
-  minutes. Fine in a terminal; fatal in chat, where the Bash tool ceiling is
-  ~45 seconds. **In chat, keep sync calls to a couple dozen items at most**
-  (comfortably inside one service-side batch); anything larger goes `--async`.
+- **Sync is the default.** It returns the full per-item `responses` array
+  inline and caps at 200 items for FOEP and 100 ASINs for Competitive Summary.
+  The service works the list in batches (40 for FOEP, 20 for Competitive
+  Summary, Amazon's limit) with ~35 s pacing between batches, so a full sync
+  job can take ~2.5 to 3 minutes. Fine in a terminal; fatal in chat, where the
+  Bash tool ceiling is ~45 seconds. **In chat, keep Competitive Summary sync
+  calls to 20 ASINs (one batch) and FOEP to a couple dozen items at most**
+  (one service-side batch each); anything larger goes `--async`.
 - **`--async` is for larger lists** (the client models up to 5,000 items per
   run; chunk beyond that). It returns `{ runId, status, itemsTotal }`
   immediately and you poll across calls, same discipline as reports.
@@ -717,7 +719,9 @@ You:  1. Resolve the merchant row (amazon merchants --json) and carry its
 ### Pattern 8 - Catalog-wide pricing job (async, poll across turns)
 ```
 User: "Competitive summary for our full 800-ASIN catalog"
-You:  1. Resolve the merchant row. 800 items is over the sync cap, so
+You:  1. Resolve the merchant row. 800 items is over the sync cap (100 for
+         Competitive Summary), and the service runs it as 40 paced batches of
+         20 (roughly 25 minutes), so
          --async is mandatory (and the right call in chat anyway):
          mixshift amazon pricing cs-batch --legacy-seller-id <id> \
            --asins <comma-separated list> --async --json
@@ -921,8 +925,9 @@ These supersede other instructions:
 - **Gate pricing runs on `status: DONE`.** The pricing surface has no `ready`
   boolean and no exit-10 convention; `FATAL` / `CANCELLED` are terminal.
 - **Never block in chat.** Use start / poll / get as separate tool calls. Save
-  `report run` for terminals. Pricing sync calls count too: past a couple
-  dozen items they can outlive the chat Bash ceiling, so go `--async` and poll.
+  `report run` for terminals. Pricing sync calls count too: past one
+  batch (20 ASINs, or a couple dozen SKUs) they can outlive the chat Bash
+  ceiling, so go `--async` and poll.
 - **Exit 10 is not an error.** It means "not ready yet" or "timed out
   waiting." The run is still valid; keep polling. (Report surface only:
   pricing commands never use exit 10.)
