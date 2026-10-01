@@ -147,3 +147,60 @@ describe('renderHeadline', () => {
     expect(text.split('\n')).toHaveLength(2); // marker line + meta line, no totals line
   });
 });
+
+describe('forecasting answers (no meta envelope)', () => {
+  const track = (extra: Record<string, unknown> = {}) =>
+    ({
+      ok: true,
+      service: 'forecasting',
+      kind: 'track',
+      scope_id: 'src:demo:1',
+      metric: 'revenue',
+      month: '2026-02',
+      forecast_state: 'not_provided',
+      reason: 'never_published',
+      friendly: 'No forecast has been published for this scope and metric.',
+      report_data: null,
+      ...extra,
+    }) as unknown as InsightResult;
+
+  it('takes the insight id from the id the CLI ran and renders a one-line forecast summary', () => {
+    const h = extractRunHeadline(track(), 'FCT-TRACK-01');
+    expect(h.insightId).toBe('FCT-TRACK-01');
+    expect(renderHeadline(h)).toBe('✓ FCT-TRACK-01 · forecast not provided (never_published) · revenue 2026-02 · src:demo:1');
+  });
+
+  it('a current forecast names its vintage and age, and never a figure', () => {
+    const h = extractRunHeadline(
+      track({
+        forecast_state: 'provided_current',
+        reason: undefined,
+        report_data: { figures: [{ id: 'forecast.expected.rolling.sales.month', value: 98765.43 }] },
+        published: { gateway_revision: 3, age_days: 2 },
+        limitations: ['Served from the published copy.'],
+      }),
+      'FCT-TRACK-01',
+    );
+    const text = renderHeadline(h);
+    expect(text.split('\n')[0]).toBe('✓ FCT-TRACK-01 · forecast current, vintage 3, 2 days old · revenue 2026-02 · src:demo:1');
+    expect(text).toContain('limitations: 1');
+    expect(text).not.toContain('98765');
+    expect(text).not.toContain('Served from');
+  });
+
+  it('a meta insight id still wins (FCT-READINESS-01 carries one)', () => {
+    const h = extractRunHeadline(
+      { ok: true, service: 'forecasting', kind: 'readiness', verdict: 'recommended', limitations: [], meta: baseMeta({ insightId: 'FCT-READINESS-01' }) },
+      'something-else',
+    );
+    expect(h.insightId).toBe('FCT-READINESS-01');
+    expect(renderHeadline(h).split('\n')[0]).toBe('✓ FCT-READINESS-01 · readiness verdict recommended');
+  });
+
+  it('the fallback id is ignored for every other answer, which reads exactly as before', () => {
+    const h = extractRunHeadline({ ok: true } as unknown as InsightResult, 'INS-OPS-BRIDGE-01');
+    expect(h.insightId).toBeUndefined();
+    expect(h.forecastSummary).toBeUndefined();
+    expect(renderHeadline(h)).toBe('✓ (insight id unknown)');
+  });
+});
