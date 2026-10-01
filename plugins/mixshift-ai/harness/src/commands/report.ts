@@ -15,7 +15,12 @@ import {
   CompositeSelectionError,
   type CompositeSelection,
 } from '../lib/report-contract/extract.js';
-import { extractForecast, checkForecast, isForecastTrackResponse } from '../lib/report-contract/forecast.js';
+import {
+  extractForecast,
+  checkForecast,
+  isForecastTrackResponse,
+  ForecastMonthMismatchError,
+} from '../lib/report-contract/forecast.js';
 import {
   renderMonthlyReport,
   scanForecastVocabulary,
@@ -441,11 +446,12 @@ export function registerReportCommands(program: Command): void {
     )
     .option('--out <path>', 'write the figures document here (default: stdout)')
     .option('--check', 'run the extraction invariants (delta identity, SKU split, bridge footing)', false)
+    .option('--expect-month <YYYY-MM>', 'for a FCT-TRACK-01 answer: refuse one about any other month (a file left by an earlier run)')
     .option(
       '--select <envelope>',
       `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(' | ')}`,
     )
-    .action(async (file: string, opts: { out?: string; check: boolean; select?: string }, cmd: Command) => {
+    .action(async (file: string, opts: { out?: string; check: boolean; select?: string; expectMonth?: string }, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       await withReportErrorHandling(!!root.json, async () => {
         const response = await readJson<unknown>(file);
@@ -453,7 +459,13 @@ export function registerReportCommands(program: Command): void {
           if (opts.select) {
             throw new UserFacingError('--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.', 'report_bad_selection');
           }
-          const fdoc = extractForecast(response);
+          let fdoc;
+          try {
+            fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+          } catch (err) {
+            if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, 'report_forecast_month_mismatch');
+            throw err;
+          }
           const ffindings = opts.check ? checkForecast(fdoc) : [];
           const fbody = JSON.stringify(fdoc, null, 2);
           if (opts.out) await writeReportOutput(opts.out, fbody + '\n');

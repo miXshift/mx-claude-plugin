@@ -29,6 +29,7 @@ import { Command } from 'commander';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { registerReportCommands } from './report.js';
 import { COMPOSITE_SELECTIONS } from '../lib/report-contract/extract.js';
@@ -313,6 +314,35 @@ describe('report extract -- composite bundle guard (INS-MONTHLY-01 mom/yoy unwra
     expect(parsed.ok).toBe(true);
     expect(parsed.figures).toBeGreaterThan(0);
     expect(process.exitCode).toBe(0);
+  });
+
+  it('a FCT-TRACK-01 answer extracts to a forecast figures document, --json mode', async () => {
+    const answer = JSON.parse(await readFile(fileURLToPath(new URL('../../testdata/fct-track-01.revenue.current.json', import.meta.url)), 'utf8'));
+    const file = await writeJsonFile('forecast.json', answer);
+    const out = join(dir, 'figures.forecast.json');
+    await runCli({ json: true }, 'extract', file, '--check', '--expect-month', '2026-02', '--out', out);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed).toMatchObject({ ok: true, kind: 'forecast_figures', forecast_state: 'provided_current' });
+    expect(parsed.figures).toBeGreaterThan(50);
+    expect(JSON.parse(await readFile(out, 'utf8')).kind).toBe('forecast_figures');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('a FCT-TRACK-01 answer for another month is refused (report_forecast_month_mismatch), --json mode', async () => {
+    const answer = JSON.parse(await readFile(fileURLToPath(new URL('../../testdata/fct-track-01.revenue.current.json', import.meta.url)), 'utf8'));
+    const file = await writeJsonFile('forecast.json', answer);
+    await runCli({ json: true }, 'extract', file, '--expect-month', '2026-09');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.status).toBe('error');
+    expect(parsed.error_class).toBe('report_forecast_month_mismatch');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('a FCT-TRACK-01 answer takes no --select', async () => {
+    const answer = JSON.parse(await readFile(fileURLToPath(new URL('../../testdata/fct-track-01.never-published.json', import.meta.url)), 'utf8'));
+    const file = await writeJsonFile('forecast.json', answer);
+    await runCli({ json: true }, 'extract', file, '--select', 'mom.ops');
+    expect(JSON.parse(stdoutText()).error_class).toBe('report_bad_selection');
   });
 
   it('an unknown --select value fails with report_bad_selection, --json mode', async () => {

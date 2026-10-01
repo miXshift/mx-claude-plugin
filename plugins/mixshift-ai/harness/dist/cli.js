@@ -94651,19 +94651,34 @@ function checkFigures(out) {
 }
 
 // src/lib/report-contract/forecast.ts
+var ForecastMonthMismatchError = class extends Error {
+  constructor(expected, got) {
+    super(
+      `The forecast answer is for ${got || "no month"}, not the report month ${expected}. It is an earlier run's file: treat the forecast as absent for this report.`
+    );
+    this.expected = expected;
+    this.got = got;
+    this.name = "ForecastMonthMismatchError";
+  }
+  expected;
+  got;
+};
 var isRec = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 function isForecastTrackResponse(response) {
   return isRec(response) && response.ok === true && response.service === "forecasting" && response.kind === "track";
 }
 function roleOfId(id) {
   if (!id.startsWith("forecast.")) return null;
+  const MONTH = String.raw`\d{4}-\d{2}$`;
   const rules = [
+    // The year-start forecast stands in for a plan nobody has recorded: internal only.
+    [/\.expected\.year_start\.|actual_vs_year_start/, "year_start"],
     // The current model, fitted with the month in it: what the app shows.
     [/(^|\.)(fit|projection)(\.|$)|actual_vs_projection|projection_vs_/, "projection"],
-    // What the model said before the month closed, and what it assumed.
-    [/\.expected\.|actual_vs_rolling|actual_vs_forecast|actual_vs_year_start|\.assumed_yoy\.|\.range\.(lower|upper)\.[a-z]+\.month$|\.tolerance\./, "forecast"],
-    // Months still to come, each at the spend it stands on.
-    [/\.projected\.|\.spend\.\d{4}-\d{2}$|\.range\.(lower|upper)\.[a-z]+\.\d{4}-\d{2}$/, "outlook"],
+    // Months still to come, each at the spend it stands on (incl. what each assumes about last year).
+    [new RegExp(String.raw`\.projected\.|\.spend\.${MONTH}|\.range\.(lower|upper)\.[a-z]+\.${MONTH}|\.assumed_yoy\.[a-z]+\.${MONTH}`), "outlook"],
+    // What the model said before the report month closed, and what it assumed.
+    [/\.expected\.|actual_vs_rolling|actual_vs_forecast|\.assumed_yoy\.[a-z]+\.month$|\.range\.(lower|upper)\.[a-z]+\.month$|\.tolerance\./, "forecast"],
     // What the model is, how it moved, and the corrections it stands on.
     [/\.model\.|\.overlay\./, "basis"],
     // What happened.
@@ -94679,16 +94694,22 @@ function roleOfClaim(id) {
   if (/basis$/.test(id)) return "basis";
   return null;
 }
+var CLIENT_ROLES = /* @__PURE__ */ new Set(["actual", "forecast", "outlook"]);
 var str = (v) => typeof v === "string" ? v : null;
 var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
-function extractForecast(response) {
+var strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+function extractForecast(response, opts = {}) {
   if (!isForecastTrackResponse(response)) {
     throw new Error('Not a FCT-TRACK-01 answer (expected ok:true, service "forecasting", kind "track").');
   }
   const r = response;
   const metric = r.metric === "units" ? "units" : "revenue";
   const month = str(r.month) ?? "";
-  const state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
+  if (opts.expectMonth !== void 0 && opts.expectMonth !== month) {
+    throw new ForecastMonthMismatchError(opts.expectMonth, month);
+  }
+  let state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
+  let reason = str(r.reason);
   const pub = isRec(r.published) ? r.published : null;
   const published = pub && num(pub.gateway_revision) !== null ? {
     at: str(pub.at) ?? "",
@@ -94700,9 +94721,7 @@ function extractForecast(response) {
     document_version: num(pub.document_version),
     overlay_revisions: num(pub.overlay_revisions)
   } : null;
-  const attestation = published ? `FCT-TRACK-01 ${metric} ${month}: published forecast vintage ${published.gateway_revision} (${published.published_run_id}), published ${published.at.slice(0, 10)}` : `FCT-TRACK-01 ${metric} ${month}: no forecast served (${str(r.reason) ?? state})`;
   const spendBasis = r.spend_basis === "ads_plus_dsp" ? "ads_plus_dsp" : r.spend_basis === "ads_only" ? "ads_only" : null;
-  const limitations = Array.isArray(r.limitations) ? r.limitations.filter((l) => typeof l === "string") : [];
   const doc = {
     schema_version: "2.0-draft",
     kind: "forecast_figures",
@@ -94712,11 +94731,13 @@ function extractForecast(response) {
       month,
       scope_id: str(r.scope_id),
       forecast_state: state,
-      reason: str(r.reason),
+      reason,
       friendly: str(r.friendly),
       spend_basis: spendBasis,
+      ytd_runs_past_report_month: r.ytd_runs_past_report_month === true,
+      unrecognised: [],
       published,
-      attestation
+      attestation: ""
     },
     forecast: { state, report_month: month, metric },
     currency: null,
@@ -94725,80 +94746,119 @@ function extractForecast(response) {
     derived: [],
     claims: [],
     sections: [],
-    limitations
+    limitations: []
   };
   const rd = isRec(r.report_data) ? r.report_data : null;
-  if (state !== "provided_current" || !rd) return doc;
-  doc.currency = str(rd.currency);
-  doc.caveat_registry = isRec(rd.caveat_registry) ? rd.caveat_registry : {};
-  for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
-    if (!isRec(f)) continue;
-    const id = str(f.id) ?? "";
-    doc.figures.push({
-      id,
-      label: str(f.label) ?? "",
-      value: f.value,
-      unit: str(f.unit) ?? "",
-      basis: str(f.basis) ?? "",
-      source_path: str(f.source_path) ?? "",
-      caveats: Array.isArray(f.caveats) ? f.caveats : [],
-      confidence: "published",
-      forecast_role: roleOfId(id) ?? "unclassified",
-      ...num(f.precision) !== null ? { precision: num(f.precision) } : {},
-      ...f.population !== void 0 ? { population: f.population } : {}
-    });
+  if (state === "provided_current" && rd) {
+    const registry2 = isRec(rd.caveat_registry) ? rd.caveat_registry : {};
+    const blocking = (keys) => keys.some((k) => registry2[k]?.severity === "blocking");
+    const figures2 = [];
+    for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
+      if (!isRec(f)) continue;
+      const id = str(f.id) ?? "";
+      const role = roleOfId(id);
+      const caveats = strs(f.caveats);
+      figures2.push({
+        id,
+        label: str(f.label) ?? "",
+        value: f.value,
+        unit: str(f.unit) ?? "",
+        basis: str(f.basis) ?? "",
+        source_path: str(f.source_path) ?? "",
+        caveats,
+        confidence: "published",
+        forecast_role: role ?? "unclassified",
+        client_safe: role !== null && CLIENT_ROLES.has(role) && !blocking(caveats),
+        ...num(f.precision) !== null ? { precision: num(f.precision) } : {},
+        ...f.population !== void 0 ? { population: f.population } : {}
+      });
+    }
+    const safe = new Map(figures2.map((f) => [f.id, f.client_safe]));
+    const derived = [];
+    for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
+      if (!isRec(d)) continue;
+      const id = str(d.id) ?? "";
+      const role = roleOfId(id);
+      const inputs = strs(d.inputs);
+      derived.push({
+        id,
+        label: str(d.label) ?? "",
+        value: d.value,
+        unit: str(d.unit) ?? "",
+        basis: str(d.basis) ?? "",
+        inputs,
+        why_not_published: str(d.why_not_published) ?? "",
+        forecast_role: role ?? "unclassified",
+        client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe.get(i) === true)
+      });
+    }
+    const claims = [];
+    for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
+      if (!isRec(c)) continue;
+      const id = str(c.id) ?? "";
+      claims.push({
+        id,
+        kind: str(c.kind) ?? "",
+        text: str(c.text) ?? "",
+        figure_refs: strs(c.figure_refs),
+        forecast_role: roleOfClaim(id) ?? "unclassified",
+        ...str(c.comparison_basis) ? { comparison_basis: str(c.comparison_basis) } : {}
+      });
+    }
+    const unrecognised = [...figures2, ...derived, ...claims].filter((x) => x.forecast_role === "unclassified").map((x) => x.id);
+    if (unrecognised.length > 0) {
+      state = "not_provided";
+      reason = "unrecognised_figures";
+      doc.source.unrecognised = unrecognised;
+    } else {
+      doc.currency = str(rd.currency);
+      doc.caveat_registry = registry2;
+      doc.figures = figures2;
+      doc.derived = derived;
+      doc.claims = claims;
+      for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
+        if (!isRec(s)) continue;
+        doc.sections.push({
+          id: str(s.id) ?? "",
+          kind: "forecast",
+          audience: "internal",
+          figure_refs: strs(s.figure_refs),
+          claim_refs: strs(s.claim_refs),
+          caveats_rendered: strs(s.caveats_rendered),
+          display_text: str(s.display_text) ?? ""
+        });
+      }
+      doc.limitations = strs(r.limitations);
+    }
+  } else if (state === "provided_current") {
+    state = "not_provided";
+    reason = reason ?? "no_report_data";
   }
-  for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
-    if (!isRec(d)) continue;
-    const id = str(d.id) ?? "";
-    doc.derived.push({
-      id,
-      label: str(d.label) ?? "",
-      value: d.value,
-      unit: str(d.unit) ?? "",
-      basis: str(d.basis) ?? "",
-      inputs: Array.isArray(d.inputs) ? d.inputs : [],
-      why_not_published: str(d.why_not_published) ?? "",
-      forecast_role: roleOfId(id) ?? "unclassified"
-    });
-  }
-  for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
-    if (!isRec(c)) continue;
-    const id = str(c.id) ?? "";
-    doc.claims.push({
-      id,
-      kind: str(c.kind) ?? "",
-      text: str(c.text) ?? "",
-      figure_refs: Array.isArray(c.figure_refs) ? c.figure_refs : [],
-      forecast_role: roleOfClaim(id) ?? "unclassified",
-      ...str(c.comparison_basis) ? { comparison_basis: str(c.comparison_basis) } : {}
-    });
-  }
-  for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
-    if (!isRec(s)) continue;
-    doc.sections.push({
-      id: str(s.id) ?? "",
-      kind: "forecast",
-      audience: "internal",
-      figure_refs: Array.isArray(s.figure_refs) ? s.figure_refs : [],
-      claim_refs: Array.isArray(s.claim_refs) ? s.claim_refs : [],
-      caveats_rendered: Array.isArray(s.caveats_rendered) ? s.caveats_rendered : [],
-      display_text: str(s.display_text) ?? ""
-    });
-  }
+  doc.forecast.state = state;
+  doc.source.forecast_state = state;
+  doc.source.reason = reason;
+  doc.source.attestation = state === "provided_current" && published ? `FCT-TRACK-01 ${metric} ${month}: published forecast vintage ${published.gateway_revision} (${published.published_run_id}), published ${published.at.slice(0, 10)}` : `FCT-TRACK-01 ${metric} ${month}: no forecast figures used (${reason ?? state})`;
   return doc;
 }
-var ROLES = /* @__PURE__ */ new Set(["actual", "forecast", "projection", "outlook", "basis"]);
+var ROLES = /* @__PURE__ */ new Set(["actual", "forecast", "year_start", "projection", "outlook", "basis"]);
 function checkForecast(doc) {
   const findings = [];
   const current = doc.forecast.state === "provided_current";
-  if (!current && (doc.figures.length || doc.derived.length || doc.claims.length || doc.sections.length)) {
-    findings.push({ rule: "FORECAST-GATE", subject: doc.forecast.state, detail: "a forecast that is not provided_current must carry no figures, claims or sections" });
+  if (!current && (doc.figures.length || doc.derived.length || doc.claims.length || doc.sections.length || doc.limitations.length)) {
+    findings.push({ rule: "FORECAST-GATE", subject: doc.forecast.state, detail: "a forecast that is not provided_current must carry no content" });
   }
   if (current && doc.figures.length === 0) {
     findings.push({ rule: "FORECAST-GATE", subject: "provided_current", detail: "a current forecast arrived with no figures" });
   }
-  const ids = /* @__PURE__ */ new Set([...doc.figures.map((f) => f.id), ...doc.derived.map((d) => d.id)]);
+  for (const id of doc.source.unrecognised) {
+    findings.push({ rule: "FORECAST-ROLE", subject: id, detail: "id not recognised; the forecast was withheld" });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const x of [...doc.figures, ...doc.derived]) {
+    if (seen.has(x.id)) findings.push({ rule: "FORECAST-DUPLICATE", subject: x.id, detail: "id appears twice" });
+    seen.add(x.id);
+  }
+  const role = new Map([...doc.figures, ...doc.derived].map((x) => [x.id, x.forecast_role]));
   const claimIds = new Set(doc.claims.map((c) => c.id));
   const otherMetric = doc.forecast.metric === "units" ? ".sales." : ".units.";
   for (const f of doc.figures) {
@@ -94806,22 +94866,45 @@ function checkForecast(doc) {
       if (!f[k]) findings.push({ rule: "REQUIRED", subject: f.id || "(no id)", detail: `missing ${k}` });
     }
     if (typeof f.value !== "number" || !Number.isFinite(f.value)) findings.push({ rule: "NUMERIC", subject: f.id, detail: "value is not a finite number" });
-    if (!ROLES.has(f.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: f.id, detail: "id not recognised as actual, forecast, projection, outlook or basis" });
+    if (!ROLES.has(f.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: f.id, detail: "id not recognised" });
     if (f.id.includes(otherMetric)) findings.push({ rule: "FORECAST-METRIC", subject: f.id, detail: `a ${doc.forecast.metric} document carries the other metric's figure` });
     for (const c of f.caveats) if (!doc.caveat_registry[c]) findings.push({ rule: "FORECAST-TRACE", subject: f.id, detail: `caveat ${c} is not in the registry` });
   }
   for (const d of doc.derived) {
+    if (typeof d.value !== "number" || !Number.isFinite(d.value)) findings.push({ rule: "NUMERIC", subject: d.id, detail: "value is not a finite number" });
+    if (!d.why_not_published) findings.push({ rule: "REQUIRED", subject: d.id, detail: "missing why_not_published" });
     if (!ROLES.has(d.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: d.id, detail: "derived id not recognised" });
-    for (const i of d.inputs) if (!ids.has(i)) findings.push({ rule: "FORECAST-TRACE", subject: d.id, detail: `input ${i} is not a figure here` });
+    for (const i of d.inputs) if (!role.has(i)) findings.push({ rule: "FORECAST-TRACE", subject: d.id, detail: `input ${i} is not a figure here` });
   }
   for (const c of doc.claims) {
     if (!ROLES.has(c.forecast_role)) findings.push({ rule: "FORECAST-ROLE", subject: c.id, detail: "claim id not recognised" });
-    for (const ref of c.figure_refs) if (!ids.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: c.id, detail: `figure ${ref} is not here` });
+    for (const ref of c.figure_refs) {
+      if (!role.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: c.id, detail: `figure ${ref} is not here` });
+      else if (c.forecast_role === "forecast" && role.get(ref) === "projection") {
+        findings.push({ rule: "FORECAST-CLAIM-BASIS", subject: c.id, detail: `a forecast claim cites the projection figure ${ref}` });
+      }
+    }
   }
   for (const s of doc.sections) {
-    for (const ref of s.figure_refs) if (!ids.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `figure ${ref} is not here` });
+    for (const ref of s.figure_refs) if (!role.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `figure ${ref} is not here` });
     for (const ref of s.claim_refs) if (!claimIds.has(ref)) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `claim ${ref} is not here` });
     for (const c of s.caveats_rendered) if (!doc.caveat_registry[c]) findings.push({ rule: "FORECAST-TRACE", subject: s.id, detail: `caveat ${c} is not in the registry` });
+  }
+  if (current && doc.figures.length > 0) {
+    const asReport = {
+      schema_version: "2.0-draft",
+      currency: doc.currency ?? void 0,
+      figures: doc.figures,
+      derived: doc.derived,
+      caveat_registry: doc.caveat_registry,
+      claims: doc.claims,
+      sections: doc.sections
+    };
+    for (const f of validateReportData(asReport)) {
+      if ((f.severity ?? "error") === "error") {
+        findings.push({ rule: "FORECAST-CONTRACT", subject: f.subject, detail: `${f.rule}: ${f.detail}` });
+      }
+    }
   }
   return findings;
 }
@@ -95490,7 +95573,7 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
   });
   report.command("extract <response.json>").description(
     "Deterministically extract typed figures from an intelligence run response (the model never reads raw envelope JSON). Use --check to enforce the extraction invariants; exit 0 = ok, 1 = check findings. A FCT-TRACK-01 answer yields a forecast figures document: empty unless the forecast is current, every figure tagged with its role (forecast, projection, ...)."
-  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).option(
+  ).option("--out <path>", "write the figures document here (default: stdout)").option("--check", "run the extraction invariants (delta identity, SKU split, bridge footing)", false).option("--expect-month <YYYY-MM>", "for a FCT-TRACK-01 answer: refuse one about any other month (a file left by an earlier run)").option(
     "--select <envelope>",
     `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(" | ")}`
   ).action(async (file2, opts, cmd) => {
@@ -95501,7 +95584,13 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
         if (opts.select) {
           throw new UserFacingError("--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.", "report_bad_selection");
         }
-        const fdoc = extractForecast(response);
+        let fdoc;
+        try {
+          fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+        } catch (err) {
+          if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, "report_forecast_month_mismatch");
+          throw err;
+        }
         const ffindings = opts.check ? checkForecast(fdoc) : [];
         const fbody = JSON.stringify(fdoc, null, 2);
         if (opts.out) await writeReportOutput(opts.out, fbody + "\n");

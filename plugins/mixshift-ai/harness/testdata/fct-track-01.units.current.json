@@ -6,6 +6,7 @@
   "metric": "units",
   "month": "2026-02",
   "forecast_state": "provided_current",
+  "ytd_runs_past_report_month": false,
   "report_data": {
     "schema_version": "2.0-draft",
     "brand_slug": "demo-brand",
@@ -1459,7 +1460,7 @@
   },
   "published": {
     "at": "2026-09-30T10:00:00.000Z",
-    "by": "svc:forecast-bridge-demo",
+    "by": "svc:example-publisher",
     "producer": "app",
     "gateway_revision": 3,
     "published_run_id": "7d1f0c2e-0000-4000-8000-000000000001",
@@ -1474,9 +1475,9 @@
     "schema_version": "internal.units/v0",
     "schema_revision": 6,
     "contract": {
-      "version": "0.1.0",
-      "build_id": "469fcf1b4aaef3804d95d703e1159f12be5a02e61055d6b474bd4217ebb3d7c2",
-      "upstream_sha": "fda676ac6ba445691d88b1c839df7ac1805cb5d2"
+      "version": "0.0.0",
+      "build_id": "example-build",
+      "upstream_sha": "example-sha"
     }
   },
   "spend_basis": "ads_only",

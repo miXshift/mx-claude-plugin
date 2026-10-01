@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkForecast,
   extractForecast,
+  ForecastMonthMismatchError,
   isForecastTrackResponse,
   roleOfClaim,
   roleOfId,
@@ -13,88 +14,135 @@ import {
  * The forecast extractor over REAL FCT-TRACK-01 answers: testdata/fct-track-01.*.json
  * were produced by the service's own entry code over the forecasting contract's
  * worked demo document (revenue and units for a closed month, the same scope for
- * a month after the last closed one, and a scope never published).
+ * a month after the last closed one, and a scope never published), with
+ * publisher and build identifiers replaced by placeholders.
  */
 
 const load = (name: string) =>
   JSON.parse(readFileSync(fileURLToPath(new URL(`../testdata/fct-track-01.${name}.json`, import.meta.url)), 'utf8'));
+const fixture = (rel: string) =>
+  JSON.parse(readFileSync(fileURLToPath(new URL(`../src/lib/report-contract/fixtures/${rel}`, import.meta.url)), 'utf8'));
 
 describe('forecast extractor', () => {
-  it('recognises a FCT-TRACK-01 answer and nothing else', () => {
+  it('recognises a FCT-TRACK-01 answer and nothing else, existing envelopes included', () => {
     expect(isForecastTrackResponse(load('revenue.current'))).toBe(true);
-    expect(isForecastTrackResponse({ ok: true, service: 'attribution', kind: 'track' })).toBe(false);
+    expect(isForecastTrackResponse(fixture('envelope-minimal.json'))).toBe(false);
+    expect(isForecastTrackResponse({ ok: true, service: 'forecasting', kind: 'readiness' })).toBe(false);
+    expect(isForecastTrackResponse({ ok: true, service: 'forecasting', kind: 'baseline' })).toBe(false);
     expect(isForecastTrackResponse({ ok: false, kind: 'unknown_insight' })).toBe(false);
     expect(() => extractForecast({ ok: true })).toThrow(/Not a FCT-TRACK-01 answer/);
   });
 
-  it('a current forecast: every figure, derived figure and claim has a role, sections are internal forecast sections, CHECK passes', () => {
+  it('a current forecast: every item has a role, sections are internal forecast sections, CHECK passes', () => {
     for (const name of ['revenue.current', 'units.current']) {
       const doc = extractForecast(load(name));
       expect(doc.forecast.state).toBe('provided_current');
       expect(doc.figures.length).toBeGreaterThan(50);
       expect(checkForecast(doc)).toEqual([]);
       const roles = new Set([...doc.figures, ...doc.derived, ...doc.claims].map((x) => x.forecast_role));
-      expect([...roles].sort()).toEqual(['actual', 'basis', 'forecast', 'outlook', 'projection']);
-      expect(doc.sections.length).toBeGreaterThan(0);
-      for (const s of doc.sections) {
-        expect(s.kind).toBe('forecast');
-        expect(s.audience).toBe('internal');
-      }
+      expect([...roles].sort()).toEqual(['actual', 'basis', 'forecast', 'outlook', 'projection', 'year_start']);
+      for (const s of doc.sections) expect(s).toMatchObject({ kind: 'forecast', audience: 'internal' });
       expect(doc.source.attestation).toMatch(/published forecast vintage 3 \(7d1f0c2e-[0-9a-f-]+\), published 2026-09-30/);
-      expect(doc.currency).toBe('USD');
+      expect(doc.limitations.length).toBeGreaterThan(0);
     }
   });
 
-  it('THE GATE: a stale or unpublished forecast carries nothing forecast-flavoured', () => {
+  it('THE GATE: a stale or unpublished answer carries no figure, claim, section, caveat or limitation', () => {
     for (const [name, state, reason] of [
-      ['revenue.stale', 'stale', null],
+      ['revenue.stale', 'stale', 'report_month_not_closed'],
       ['never-published', 'not_provided', 'never_published'],
     ] as const) {
       const doc = extractForecast(load(name));
       expect(doc.forecast.state).toBe(state);
       expect(doc.source.reason).toBe(reason);
-      expect(doc.figures).toEqual([]);
-      expect(doc.derived).toEqual([]);
-      expect(doc.claims).toEqual([]);
-      expect(doc.sections).toEqual([]);
+      expect([doc.figures, doc.derived, doc.claims, doc.sections, doc.limitations]).toEqual([[], [], [], [], []]);
       expect(doc.caveat_registry).toEqual({});
+      expect(doc.source.attestation).toMatch(/no forecast figures used/);
       expect(checkForecast(doc)).toEqual([]);
     }
   });
 
-  it('the forecast and the projection are never confused', () => {
+  it('the gate holds even when a non-current answer still carries report_data and limitations', () => {
+    const answer = load('revenue.current');
+    answer.forecast_state = 'stale';
+    const doc = extractForecast(answer);
+    expect(doc.figures).toEqual([]);
+    expect(doc.limitations).toEqual([]);
+    expect(doc.source.attestation).toMatch(/no forecast figures used \(stale\)/);
+  });
+
+  it('the forecast, the projection and the year-start forecast are never confused', () => {
     const doc = extractForecast(load('revenue.current'));
-    const role = (id: string) => doc.figures.find((f) => f.id === id)?.forecast_role ?? doc.derived.find((d) => d.id === id)?.forecast_role;
-    // The current model's fit with the month in it: what the app shows.
+    const role = (id: string) => [...doc.figures, ...doc.derived].find((x) => x.id === id)?.forecast_role;
     expect(role('forecast.projection.sales.month')).toBe('projection');
     expect(role('forecast.fit.sales.ytd')).toBe('projection');
     expect(role('forecast.variance.actual_vs_projection.month')).toBe('projection');
-    // What was said before the month closed: the only basis for a beat or miss.
     expect(role('forecast.expected.rolling.sales.month')).toBe('forecast');
     expect(role('forecast.expected.at_actual_spend.sales.month')).toBe('forecast');
-    expect(role('forecast.variance.actual_vs_rolling.month')).toBe('forecast');
     expect(role('forecast.variance.actual_vs_forecast_at_actual_spend.month')).toBe('forecast');
     expect(role('forecast.range.lower.sales.month')).toBe('forecast');
-    // Months to come, and the basis.
+    expect(role('forecast.assumed_yoy.sales.month')).toBe('forecast');
+    expect(role('forecast.expected.year_start.sales.ytd')).toBe('year_start');
+    expect(role('forecast.variance.actual_vs_year_start.ytd')).toBe('year_start');
+    // The months still to come, including what each assumes about last year.
+    expect(role('forecast.assumed_yoy.sales.2026-03')).toBe('outlook');
     expect(role('forecast.projected.sales.rest_of_window')).toBe('outlook');
     expect(role('forecast.overlay.sales.corrected')).toBe('basis');
-    expect(role('forecast.model.sales.per_ad_dollar')).toBe('basis');
     expect(role('forecast.actual.sales.month')).toBe('actual');
     expect(roleOfClaim('claim.forecast.projection_line')).toBe('projection');
     expect(roleOfClaim('claim.forecast.month_line')).toBe('forecast');
   });
 
-  it('an id the extractor cannot place, a dangling reference, or the other metric fails CHECK', () => {
+  it('client_safe: only actual, forecast or outlook figures with no blocking caveat (and derived from such)', () => {
+    const doc = extractForecast(load('revenue.current'));
+    for (const f of doc.figures) {
+      const blocking = f.caveats.some((c) => doc.caveat_registry[c]?.severity === 'blocking');
+      expect(f.client_safe, f.id).toBe(['actual', 'forecast', 'outlook'].includes(f.forecast_role) && !blocking);
+    }
+    expect(doc.figures.filter((f) => f.forecast_role === 'projection').every((f) => !f.client_safe)).toBe(true);
+    expect(doc.figures.filter((f) => f.forecast_role === 'year_start').every((f) => !f.client_safe)).toBe(true);
+    expect(doc.figures.some((f) => f.client_safe)).toBe(true);
+  });
+
+  it('FAIL CLOSED: one id the extractor cannot place withholds the whole forecast', () => {
     expect(roleOfId('forecast.something_new.sales.month')).toBeNull();
     const answer = load('revenue.current');
     answer.report_data.figures.push({ ...answer.report_data.figures[0], id: 'forecast.something_new.sales.month' });
+    const doc = extractForecast(answer);
+    expect(doc.forecast.state).toBe('not_provided');
+    expect(doc.source.reason).toBe('unrecognised_figures');
+    expect(doc.source.unrecognised).toEqual(['forecast.something_new.sales.month']);
+    expect(doc.figures).toEqual([]);
+    expect(checkForecast(doc).map((f) => f.rule)).toContain('FORECAST-ROLE');
+  });
+
+  it('CHECK catches dangling references, the other metric, duplicates, a forecast claim citing the fit, and contract breaks', () => {
+    const answer = load('revenue.current');
     answer.report_data.figures.push({ ...answer.report_data.figures[0], id: 'forecast.actual.units.ytd' });
+    answer.report_data.figures.push({ ...answer.report_data.figures[0] });
     answer.report_data.sections[0].figure_refs.push('forecast.not_here');
-    const findings = checkForecast(extractForecast(answer));
-    const rules = findings.map((f) => `${f.rule}:${f.subject}`);
-    expect(rules).toContain('FORECAST-ROLE:forecast.something_new.sales.month');
+    const monthLine = answer.report_data.claims.find((c: { id: string }) => c.id === 'claim.forecast.month_line');
+    monthLine.figure_refs.push('forecast.projection.sales.month');
+    // A blocking caveat no longer rendered where its figure is quoted (the report contract's CAVEAT-1).
+    for (const s of answer.report_data.sections) s.caveats_rendered = [];
+    const rules = checkForecast(extractForecast(answer)).map((f) => `${f.rule}:${f.subject}`);
     expect(rules).toContain('FORECAST-METRIC:forecast.actual.units.ytd');
+    expect(rules).toContain(`FORECAST-DUPLICATE:${answer.report_data.figures[0].id}`);
     expect(rules).toContain('FORECAST-TRACE:sec.forecast.tracking');
+    expect(rules).toContain('FORECAST-CLAIM-BASIS:claim.forecast.month_line');
+    expect(rules.some((r) => r.startsWith('FORECAST-CONTRACT:'))).toBe(true);
+  });
+
+  it('refuses an answer about another month (a file left by an earlier run)', () => {
+    expect(() => extractForecast(load('revenue.current'), { expectMonth: '2026-03' })).toThrow(ForecastMonthMismatchError);
+    expect(extractForecast(load('revenue.current'), { expectMonth: '2026-02' }).forecast.state).toBe('provided_current');
+  });
+
+  it('carries the year-to-date-runs-past flag', () => {
+    const answer = load('revenue.current');
+    expect(extractForecast(answer).source.ytd_runs_past_report_month).toBe(false);
+    answer.ytd_runs_past_report_month = true;
+    expect(extractForecast(answer).source.ytd_runs_past_report_month).toBe(true);
   });
 
   it('a units answer keeps its own metric and carries the uncorrected-units caveat and limitation', () => {
