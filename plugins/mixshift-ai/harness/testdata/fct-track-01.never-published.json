@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "service": "forecasting",
+  "kind": "track",
+  "scope_id": "src:demo:1",
+  "metric": "revenue",
+  "month": "2026-02",
+  "forecast_state": "not_provided",
+  "reason": "never_published",
+  "friendly": "No forecast has been published for this scope and metric.",
+  "report_data": null
+}
