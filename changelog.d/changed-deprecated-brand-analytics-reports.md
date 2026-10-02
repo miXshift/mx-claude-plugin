@@ -1,1 +1,0 @@
-- **Two Brand Analytics reports that Amazon has retired are now marked as retired.** Alternate Purchase and Item Comparison no longer work: Amazon refuses every request for them. The report list and the report details now say so up front, instead of offering them as working reports.

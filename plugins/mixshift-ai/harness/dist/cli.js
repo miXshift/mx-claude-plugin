@@ -1913,9 +1913,9 @@ var require_dispatcher_base = __commonJS({
       }
       close(callback) {
         if (callback === void 0) {
-          return new Promise((resolve4, reject) => {
+          return new Promise((resolve5, reject) => {
             this.close((err, data) => {
-              return err ? reject(err) : resolve4(data);
+              return err ? reject(err) : resolve5(data);
             });
           });
         }
@@ -1953,12 +1953,12 @@ var require_dispatcher_base = __commonJS({
           err = null;
         }
         if (callback === void 0) {
-          return new Promise((resolve4, reject) => {
+          return new Promise((resolve5, reject) => {
             this.destroy(err, (err2, data) => {
               return err2 ? (
                 /* istanbul ignore next: should never error */
                 reject(err2)
-              ) : resolve4(data);
+              ) : resolve5(data);
             });
           });
         }
@@ -4225,8 +4225,8 @@ var require_util2 = __commonJS({
     function createDeferredPromise() {
       let res;
       let rej;
-      const promise2 = new Promise((resolve4, reject) => {
-        res = resolve4;
+      const promise2 = new Promise((resolve5, reject) => {
+        res = resolve5;
         rej = reject;
       });
       return { promise: promise2, resolve: res, reject: rej };
@@ -6463,12 +6463,12 @@ upgrade: ${upgrade}\r
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve4, reject) => {
+      const waitForDrain = () => new Promise((resolve5, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve4;
+          callback = resolve5;
         }
       });
       socket.on("close", onDrain).on("drain", onDrain);
@@ -7105,12 +7105,12 @@ var require_client_h2 = __commonJS({
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve4, reject) => {
+      const waitForDrain = () => new Promise((resolve5, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve4;
+          callback = resolve5;
         }
       });
       h2stream.on("close", onDrain).on("drain", onDrain);
@@ -7588,16 +7588,16 @@ var require_client = __commonJS({
         return this[kNeedDrain] < 2;
       }
       async [kClose]() {
-        return new Promise((resolve4) => {
+        return new Promise((resolve5) => {
           if (this[kSize]) {
-            this[kClosedResolve] = resolve4;
+            this[kClosedResolve] = resolve5;
           } else {
-            resolve4(null);
+            resolve5(null);
           }
         });
       }
       async [kDestroy](err) {
-        return new Promise((resolve4) => {
+        return new Promise((resolve5) => {
           const requests = this[kQueue].splice(this[kPendingIdx]);
           for (let i = 0; i < requests.length; i++) {
             const request = requests[i];
@@ -7608,7 +7608,7 @@ var require_client = __commonJS({
               this[kClosedResolve]();
               this[kClosedResolve] = null;
             }
-            resolve4(null);
+            resolve5(null);
           };
           if (this[kHTTPContext]) {
             this[kHTTPContext].destroy(err, callback);
@@ -7659,7 +7659,7 @@ var require_client = __commonJS({
         });
       }
       try {
-        const socket = await new Promise((resolve4, reject) => {
+        const socket = await new Promise((resolve5, reject) => {
           client[kConnector]({
             host,
             hostname: hostname4,
@@ -7671,7 +7671,7 @@ var require_client = __commonJS({
             if (err) {
               reject(err);
             } else {
-              resolve4(socket2);
+              resolve5(socket2);
             }
           });
         });
@@ -8007,8 +8007,8 @@ var require_pool_base = __commonJS({
         if (this[kQueue].isEmpty()) {
           await Promise.all(this[kClients].map((c) => c.close()));
         } else {
-          await new Promise((resolve4) => {
-            this[kClosedResolve] = resolve4;
+          await new Promise((resolve5) => {
+            this[kClosedResolve] = resolve5;
           });
         }
       }
@@ -9223,7 +9223,7 @@ var require_readable = __commonJS({
         if (this._readableState.closeEmitted) {
           return null;
         }
-        return await new Promise((resolve4, reject) => {
+        return await new Promise((resolve5, reject) => {
           if (this[kContentLength] > limit) {
             this.destroy(new AbortError());
           }
@@ -9236,7 +9236,7 @@ var require_readable = __commonJS({
             if (signal?.aborted) {
               reject(signal.reason ?? new AbortError());
             } else {
-              resolve4(null);
+              resolve5(null);
             }
           }).on("error", noop).on("data", function(chunk) {
             limit -= chunk.length;
@@ -9255,7 +9255,7 @@ var require_readable = __commonJS({
     }
     async function consume(stream, type) {
       assert2(!stream[kConsume]);
-      return new Promise((resolve4, reject) => {
+      return new Promise((resolve5, reject) => {
         if (isUnusable(stream)) {
           const rState = stream._readableState;
           if (rState.destroyed && rState.closeEmitted === false) {
@@ -9272,7 +9272,7 @@ var require_readable = __commonJS({
             stream[kConsume] = {
               type,
               stream,
-              resolve: resolve4,
+              resolve: resolve5,
               reject,
               length: 0,
               body: []
@@ -9342,18 +9342,18 @@ var require_readable = __commonJS({
       return buffer;
     }
     function consumeEnd(consume2) {
-      const { type, body, resolve: resolve4, stream, length } = consume2;
+      const { type, body, resolve: resolve5, stream, length } = consume2;
       try {
         if (type === "text") {
-          resolve4(chunksDecode(body, length));
+          resolve5(chunksDecode(body, length));
         } else if (type === "json") {
-          resolve4(JSON.parse(chunksDecode(body, length)));
+          resolve5(JSON.parse(chunksDecode(body, length)));
         } else if (type === "arrayBuffer") {
-          resolve4(chunksConcat(body, length).buffer);
+          resolve5(chunksConcat(body, length).buffer);
         } else if (type === "blob") {
-          resolve4(new Blob(body, { type: stream[kContentType] }));
+          resolve5(new Blob(body, { type: stream[kContentType] }));
         } else if (type === "bytes") {
-          resolve4(chunksConcat(body, length));
+          resolve5(chunksConcat(body, length));
         }
         consumeFinish(consume2);
       } catch (err) {
@@ -9610,9 +9610,9 @@ var require_api_request = __commonJS({
     };
     function request(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           request.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve4(data);
+            return err ? reject(err) : resolve5(data);
           });
         });
       }
@@ -9835,9 +9835,9 @@ var require_api_stream = __commonJS({
     };
     function stream(opts, factory, callback) {
       if (callback === void 0) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           stream.call(this, opts, factory, (err, data) => {
-            return err ? reject(err) : resolve4(data);
+            return err ? reject(err) : resolve5(data);
           });
         });
       }
@@ -10122,9 +10122,9 @@ var require_api_upgrade = __commonJS({
     };
     function upgrade(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           upgrade.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve4(data);
+            return err ? reject(err) : resolve5(data);
           });
         });
       }
@@ -10216,9 +10216,9 @@ var require_api_connect = __commonJS({
     };
     function connect(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           connect.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve4(data);
+            return err ? reject(err) : resolve5(data);
           });
         });
       }
@@ -14080,7 +14080,7 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url2 = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        return new Promise((resolve4, reject) => agent.dispatch(
+        return new Promise((resolve5, reject) => agent.dispatch(
           {
             path: url2.pathname + url2.search,
             origin: url2.origin,
@@ -14156,7 +14156,7 @@ var require_fetch = __commonJS({
                 }
               }
               const onError = this.onError.bind(this);
-              resolve4({
+              resolve5({
                 status,
                 statusText,
                 headersList,
@@ -14202,7 +14202,7 @@ var require_fetch = __commonJS({
               for (let i = 0; i < rawHeaders.length; i += 2) {
                 headersList.append(bufferToLowerCasedHeaderName(rawHeaders[i]), rawHeaders[i + 1].toString("latin1"), true);
               }
-              resolve4({
+              resolve5({
                 status,
                 statusText: STATUS_CODES[status],
                 headersList,
@@ -17894,8 +17894,8 @@ var require_util8 = __commonJS({
       return true;
     }
     function delay(ms) {
-      return new Promise((resolve4) => {
-        setTimeout(resolve4, ms).unref();
+      return new Promise((resolve5) => {
+        setTimeout(resolve5, ms).unref();
       });
     }
     module.exports = {
@@ -61662,11 +61662,11 @@ var require_connection2 = __commonJS({
             const config2 = this.config;
             tracePromise(
               connectChannel,
-              () => new Promise((resolve4, reject) => {
+              () => new Promise((resolve5, reject) => {
                 let onConnect, onError;
                 onConnect = (param) => {
                   this.removeListener("error", onError);
-                  resolve4(param);
+                  resolve5(param);
                 };
                 onError = (err) => {
                   this.removeListener("connect", onConnect);
@@ -62091,9 +62091,9 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(queryChannel)) {
           tracePromise(
             queryChannel,
-            () => new Promise((resolve4, reject) => {
+            () => new Promise((resolve5, reject) => {
               cmdQuery.once("error", reject);
-              cmdQuery.once("end", () => resolve4());
+              cmdQuery.once("end", () => resolve5());
               this.addCommand(cmdQuery);
             }),
             () => {
@@ -62240,12 +62240,12 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(executeChannel)) {
           tracePromise(
             executeChannel,
-            () => new Promise((resolve4, reject) => {
+            () => new Promise((resolve5, reject) => {
               prepareAndExecute((err) => {
                 executeCommand.emit("error", err);
               });
               executeCommand.once("error", reject);
-              executeCommand.once("end", () => resolve4());
+              executeCommand.once("end", () => resolve5());
             }),
             () => {
               const server = getServerContext(this.config);
@@ -62512,13 +62512,13 @@ var require_make_done_cb = __commonJS({
   "node_modules/mysql2/lib/promise/make_done_cb.js"(exports, module) {
     "use strict";
     var { applyCapturedStack } = require_capture_local_err();
-    function makeDoneCb(resolve4, reject, stackHolder) {
+    function makeDoneCb(resolve5, reject, stackHolder) {
       return function(err, rows, fields) {
         if (err) {
           applyCapturedStack(err, stackHolder);
           reject(err);
         } else {
-          resolve4([rows, fields]);
+          resolve5([rows, fields]);
         }
       };
     }
@@ -62542,8 +62542,8 @@ var require_prepared_statement_info = __commonJS({
         const stackHolder = captureStackHolder(
           _PromisePreparedStatementInfo.prototype.execute
         );
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           if (parameters) {
             s.execute(parameters, done);
           } else {
@@ -62552,9 +62552,9 @@ var require_prepared_statement_info = __commonJS({
         });
       }
       close() {
-        return new this.Promise((resolve4) => {
+        return new this.Promise((resolve5) => {
           this.statement.close();
-          resolve4();
+          resolve5();
         });
       }
     };
@@ -62627,8 +62627,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           if (params !== void 0) {
             c.query(query, params, done);
           } else {
@@ -62644,8 +62644,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           if (params !== void 0) {
             c.execute(query, params, done);
           } else {
@@ -62654,8 +62654,8 @@ var require_connection3 = __commonJS({
         });
       }
       end() {
-        return new this.Promise((resolve4) => {
-          this.connection.end(resolve4);
+        return new this.Promise((resolve5) => {
+          this.connection.end(resolve5);
         });
       }
       async [Symbol.asyncDispose]() {
@@ -62668,16 +62668,16 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.beginTransaction
         );
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           c.beginTransaction(done);
         });
       }
       commit() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.commit);
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           c.commit(done);
         });
       }
@@ -62686,21 +62686,21 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.rollback
         );
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           c.rollback(done);
         });
       }
       ping() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.ping);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           c.ping((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4(true);
+              resolve5(true);
             }
           });
         });
@@ -62708,13 +62708,13 @@ var require_connection3 = __commonJS({
       reset() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.reset);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           c.reset((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4();
+              resolve5();
             }
           });
         });
@@ -62722,13 +62722,13 @@ var require_connection3 = __commonJS({
       connect() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.connect);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           c.connect((err, param) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4(param);
+              resolve5(param);
             }
           });
         });
@@ -62737,7 +62737,7 @@ var require_connection3 = __commonJS({
         const c = this.connection;
         const promiseImpl = this.Promise;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.prepare);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           c.prepare(options, (err, statement) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
@@ -62747,7 +62747,7 @@ var require_connection3 = __commonJS({
                 statement,
                 promiseImpl
               );
-              resolve4(wrappedStatement);
+              resolve5(wrappedStatement);
             }
           });
         });
@@ -62757,13 +62757,13 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.changeUser
         );
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           c.changeUser(options, (err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4();
+              resolve5();
             }
           });
         });
@@ -63230,12 +63230,12 @@ var require_pool3 = __commonJS({
       }
       getConnection() {
         const corePool = this.pool;
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           corePool.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve4(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve5(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63251,8 +63251,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           if (args !== void 0) {
             corePool.query(sql, args, done);
           } else {
@@ -63268,8 +63268,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           if (args) {
             corePool.execute(sql, args, done);
           } else {
@@ -63280,13 +63280,13 @@ var require_pool3 = __commonJS({
       end() {
         const corePool = this.pool;
         const stackHolder = captureStackHolder(_PromisePool.prototype.end);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           corePool.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4();
+              resolve5();
             }
           });
         });
@@ -63718,12 +63718,12 @@ var require_pool_cluster2 = __commonJS({
       }
       getConnection() {
         const corePoolNamespace = this.poolNamespace;
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           corePoolNamespace.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve4(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve5(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63738,8 +63738,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           corePoolNamespace.query(sql, values, done);
         });
       }
@@ -63753,8 +63753,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           corePoolNamespace.execute(sql, values, done);
         });
       }
@@ -63793,9 +63793,9 @@ var require_promise = __commonJS({
           "no Promise implementation available.Use promise-enabled node version or pass userland Promise implementation as parameter, for example: { Promise: require('bluebird') }"
         );
       }
-      return new thePromise((resolve4, reject) => {
+      return new thePromise((resolve5, reject) => {
         coreConnection.once("connect", () => {
-          resolve4(new PromiseConnection(coreConnection, thePromise));
+          resolve5(new PromiseConnection(coreConnection, thePromise));
         });
         coreConnection.once("error", (err) => {
           applyCapturedStack(err, stackHolder);
@@ -63822,7 +63822,7 @@ var require_promise = __commonJS({
       }
       getConnection(pattern, selector) {
         const corePoolCluster = this.poolCluster;
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           corePoolCluster.getConnection(
             pattern,
             selector,
@@ -63830,7 +63830,7 @@ var require_promise = __commonJS({
               if (err) {
                 reject(err);
               } else {
-                resolve4(new PromisePoolConnection(coreConnection, this.Promise));
+                resolve5(new PromisePoolConnection(coreConnection, this.Promise));
               }
             }
           );
@@ -63844,8 +63844,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           corePoolCluster.query(sql, args, done);
         });
       }
@@ -63859,8 +63859,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve4, reject) => {
-          const done = makeDoneCb(resolve4, reject, stackHolder);
+        return new this.Promise((resolve5, reject) => {
+          const done = makeDoneCb(resolve5, reject, stackHolder);
           corePoolCluster.execute(sql, args, done);
         });
       }
@@ -63873,13 +63873,13 @@ var require_promise = __commonJS({
       end() {
         const corePoolCluster = this.poolCluster;
         const stackHolder = captureStackHolder(_PromisePoolCluster.prototype.end);
-        return new this.Promise((resolve4, reject) => {
+        return new this.Promise((resolve5, reject) => {
           corePoolCluster.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve4();
+              resolve5();
             }
           });
         });
@@ -65416,11 +65416,30 @@ var init_events = __esm({
       // `mixshift intelligence`). Privacy: capture insight id + run id + duration
       // + outcome + cache hit/miss + limitation COUNT only — never the insight
       // envelope itself (customer performance numbers, not telemetry).
+      // run_retrieved for a forecasting-service answer (FCT-*) adds service, kind,
+      // forecast_state / available / verdict, reason, metric, month, scope_id,
+      // vintage, vintage_age_days, ytd_runs_past_report_month and served: bounded
+      // labels, ids and booleans (lib/intelligence/forecast-answer.ts), never a
+      // forecast figure and never the service's free text.
       IntelligenceCatalogListed: "intelligence.catalog_listed",
       IntelligenceRunStarted: "intelligence.run_started",
       IntelligenceRunPolled: "intelligence.run_polled",
       IntelligenceRunRetrieved: "intelligence.run_retrieved",
       IntelligenceRunFailed: "intelligence.run_failed",
+      // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
+      // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
+      // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,
+      // figures, derived, claims, sections, client_safe (COUNTS), check_findings?
+      // (count, only when --check ran), expect_month (bool)}. forecast_failed
+      // (error_class forecast_month_mismatch | unrecognised_figures |
+      // check_findings | not_a_forecast_answer | extract_error): the forecast was
+      // withheld for a defect or the forecast path errored; same identifying
+      // fields plus check rule ids (max 20) or up to 10 of the contract's own
+      // figure ids it could not place (contract-drift evidence). A stale or
+      // not-provided forecast is NOT a failure. Privacy: never a figure value,
+      // label, claim or section text, nor the service's free text.
+      ReportForecastExtracted: "report.forecast_extracted",
+      ReportForecastFailed: "report.forecast_failed",
       // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
       // Privacy: payloads carry brand slugs, per-action doc counts, force flag,
       // duration + outcome — never doc content or file paths.
@@ -65914,6 +65933,73 @@ function querySqlTelemetry(sql, queryId) {
   return {
     sql_normalized: sql.length > 2e3 ? `${sql.slice(0, 2e3)}...` : sql
   };
+}
+function blankLiterals(sql) {
+  let out = "";
+  let quote2 = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (quote2) {
+      if (quote2 !== "`" && ch === "\\") {
+        out += "  ";
+        i++;
+        continue;
+      }
+      if (ch === quote2) {
+        quote2 = null;
+        out += ch;
+      } else {
+        out += quote2 === "`" ? ch : " ";
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") quote2 = ch;
+    out += ch;
+  }
+  return out;
+}
+function referencedTables(sql) {
+  const clean = blankLiterals(stripSqlComments(sql));
+  const out = /* @__PURE__ */ new Map();
+  const re = /\b(?:from|join)\s+`?([\w$]+(?:\.[\w$]+)?)`?(?:\s+(?:as\s+)?`?([\w$]+)`?)?/gi;
+  for (let m = re.exec(clean); m; m = re.exec(clean)) {
+    const table = m[1].split(".").pop().toLowerCase();
+    out.set(table, table);
+    const alias = m[2]?.toLowerCase();
+    if (alias && !NOT_AN_ALIAS.has(alias)) out.set(alias, table);
+  }
+  return out;
+}
+function unknownColumnTable(text, sql, shapeTable) {
+  const refs = referencedTables(sql);
+  const tables = [...new Set(refs.values())];
+  const col = /unknown column '([^']+)'/i.exec(text)?.[1];
+  if (col && col.includes(".")) {
+    const parts = col.split(".");
+    const q = parts[parts.length - 2].toLowerCase();
+    const resolved = refs.get(q);
+    return resolved ? { table: resolved, candidates: [] } : { candidates: tables };
+  }
+  if (tables.length > 1) return { candidates: tables };
+  return { table: shapeTable ?? tables[0] ?? void 0, candidates: [] };
+}
+function syntaxErrorGuidance(friendly, failure, sql, table) {
+  if (failure.kind !== "syntax_error") return friendly;
+  const text = `${failure.message ?? ""} ${friendly}`;
+  if (failure.raw_code === "ER_BAD_FIELD_ERROR" || /unknown column/i.test(text)) {
+    const target = unknownColumnTable(text, sql, table);
+    const describe3 = target.table ? `\`mixshift data describe ${target.table}\`` : "`mixshift data describe <table>`" + (target.candidates.length ? ` (tables in this query: ${target.candidates.join(", ")})` : "");
+    return `${friendly}
+Check the column name against the table. Run ${describe3} for the real column names and gotchas (\`mixshift data list-tables\` shows the tables it covers).`;
+  }
+  if (failure.raw_code === "ER_PARSE_ERROR") {
+    const word = RESERVED_ALIAS_RE.exec(blankLiterals(stripSqlComments(sql)))?.[1];
+    if (word) {
+      return `${friendly}
+\`${word.toLowerCase()}\` is a reserved word in MySQL 8, so it cannot be used as an alias as written. Alias it something else (for example \`row_count\`) or wrap it in backticks.`;
+    }
+  }
+  return friendly;
 }
 function capFriendlyMessage(kind, serverFriendly) {
   if (kind === "too_many_rows") {
@@ -66451,7 +66537,11 @@ async function runMysqlQuery(creds, sql, params, options) {
       durationMs
     };
   } catch (err) {
-    const failure = classify(err);
+    const classified = classify(err);
+    const failure = {
+      ...classified,
+      friendly: syntaxErrorGuidance(classified.friendly, classified, sql, options.query_shape?.table)
+    };
     void track(
       {
         event_name: EventName.QueryFailed,
@@ -66573,7 +66663,12 @@ async function runDatahubQuery(creds, sql, params, options) {
       table_name: json2.table_name,
       raw_code: json2.raw_code,
       message: json2.message ?? "Query failed",
-      friendly: capFriendlyMessage(serverKind, serverFriendly),
+      friendly: syntaxErrorGuidance(
+        capFriendlyMessage(serverKind, serverFriendly),
+        { kind: serverKind, raw_code: json2.raw_code, message: json2.message },
+        sql,
+        options.query_shape?.table
+      ),
       durationMs,
       // Cap-rejection size hints (Track B), when the service provides them.
       ...typeof json2.actualRowCount === "number" ? { actualRowCount: json2.actualRowCount } : {},
@@ -66934,7 +67029,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, DatahubNetworkError, DatahubDownloadTimeoutError, CLIENT_BUDGET_RAW_CODE, CLIENT_BUDGET_DOWNLOAD_RAW_CODE;
+var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, RESERVED_ALIAS_WORDS, RESERVED_ALIAS_RE, NOT_AN_ALIAS, DatahubNetworkError, DatahubDownloadTimeoutError, CLIENT_BUDGET_RAW_CODE, CLIENT_BUDGET_DOWNLOAD_RAW_CODE;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -66952,6 +67047,54 @@ var init_query_runner = __esm({
     PAGE_MAX_ROWS = SERVICE_ROW_CAP;
     FIRST_PAGE_PROBE_ROWS = 5e3;
     MAX_PAGINATED_ROWS = 2e6;
+    RESERVED_ALIAS_WORDS = [
+      "rows",
+      "lines",
+      "rank",
+      "groups",
+      "window",
+      "lead",
+      "lag",
+      "system",
+      "row",
+      "row_number",
+      "dense_rank",
+      "over",
+      "lateral",
+      "empty",
+      "range",
+      "key",
+      "keys",
+      "interval",
+      "condition"
+    ];
+    RESERVED_ALIAS_RE = new RegExp(
+      `(?:\\bas\\s+|\\)\\s+)(${RESERVED_ALIAS_WORDS.join("|")})(?=\\s*(?:,|$|\\b(?:from|group|order|limit|union)\\b))`,
+      "i"
+    );
+    NOT_AN_ALIAS = /* @__PURE__ */ new Set([
+      "where",
+      "on",
+      "using",
+      "join",
+      "left",
+      "right",
+      "inner",
+      "outer",
+      "cross",
+      "natural",
+      "full",
+      "group",
+      "order",
+      "limit",
+      "union",
+      "having",
+      "straight_join",
+      "set",
+      "select",
+      "for",
+      "window"
+    ]);
     DatahubNetworkError = class extends Error {
       /** Sandbox-aware, doctor-pointing text classified from the raw fetch
        *  failure at the point it was thrown (see datahubAuthedPost's doFetch) —
@@ -68238,8 +68381,8 @@ async function raceDeadline(op, ms) {
   try {
     return await Promise.race([
       op,
-      new Promise((resolve4) => {
-        timer = setTimeout(() => resolve4(DEADLINE), ms);
+      new Promise((resolve5) => {
+        timer = setTimeout(() => resolve5(DEADLINE), ms);
         timer.unref?.();
       })
     ]);
@@ -81725,13 +81868,13 @@ var PromisePolyfill = class extends Promise {
   // Available starting from Node 22
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers
   static withResolver() {
-    let resolve4;
+    let resolve5;
     let reject;
     const promise2 = new Promise((res, rej) => {
-      resolve4 = res;
+      resolve5 = res;
       reject = rej;
     });
-    return { promise: promise2, resolve: resolve4, reject };
+    return { promise: promise2, resolve: resolve5, reject };
   }
 };
 
@@ -81768,7 +81911,7 @@ function createPrompt(view) {
     });
     output.mute();
     const screen = new ScreenManager(rl);
-    const { promise: promise2, resolve: resolve4, reject } = PromisePolyfill.withResolver();
+    const { promise: promise2, resolve: resolve5, reject } = PromisePolyfill.withResolver();
     const cancel = () => reject(new CancelPromptError());
     if (signal) {
       const abort = () => reject(new AbortPromptError({ cause: signal.reason }));
@@ -81799,7 +81942,7 @@ function createPrompt(view) {
           try {
             const nextView = view(config2, (value) => {
               if (effectsSettled) {
-                resolve4(value);
+                resolve5(value);
               } else {
                 pendingDone = { value };
               }
@@ -81822,7 +81965,7 @@ function createPrompt(view) {
           if (pendingDone !== null) {
             const { value } = pendingDone;
             pendingDone = null;
-            resolve4(value);
+            resolve5(value);
           }
         });
       };
@@ -82385,9 +82528,9 @@ var defaultOpenBrowser = async (url2) => {
     stdio: "ignore",
     shell: true
   });
-  await new Promise((resolve4, reject) => {
+  await new Promise((resolve5, reject) => {
     child.once("error", reject);
-    setImmediate(() => resolve4());
+    setImmediate(() => resolve5());
   });
   child.unref();
 };
@@ -82545,7 +82688,7 @@ function buildLoginUrl(opts, pkce, redirectUri) {
   return `${opts.apiBase}/login?${params.toString()}`;
 }
 function startCallbackServer(expectedState) {
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     let resolveCallback = () => {
     };
     let rejectCallback = () => {
@@ -82617,14 +82760,14 @@ function startCallbackServer(expectedState) {
         reject(new Error("Could not determine local callback port"));
         return;
       }
-      resolve4({ server, port: addr.port, callbackPromise });
+      resolve5({ server, port: addr.port, callbackPromise });
     });
     server.on("error", (err) => reject(err));
   });
 }
 function closeServer(server) {
-  return new Promise((resolve4) => {
-    server.close(() => resolve4());
+  return new Promise((resolve5) => {
+    server.close(() => resolve5());
   });
 }
 function respondHtml(res, status, body) {
@@ -82820,6 +82963,54 @@ init_format_error();
 init_schema3();
 init_credentials();
 
+// src/lib/auth/summary.ts
+init_credentials();
+init_resolve();
+init_token_claims();
+async function summarizeAuth(dataDirOverride) {
+  let credentials = null;
+  try {
+    credentials = (await loadCredentials(dataDirOverride)).credentials;
+  } catch {
+    return { signedIn: false, kind: "none", unreadable: true, credentialsPath: credentialsPath(dataDirOverride) };
+  }
+  if (!credentials) return { signedIn: false, kind: "none" };
+  if (credentials.datahub) {
+    const d = credentials.datahub;
+    const claims = decodeAccessTokenClaims(d.access_token);
+    return {
+      signedIn: true,
+      kind: "interactive",
+      email: d.email,
+      personLabel: d.person_label,
+      apiBase: d.api_base,
+      accessExpiresAt: d.expires_at,
+      accessExpired: Date.parse(d.expires_at) <= Date.now(),
+      refreshExpiresAt: d.refresh_expires_at,
+      refreshExpired: Date.parse(d.refresh_expires_at) <= Date.now(),
+      tokenActor: claims.actor,
+      tokenEmail: claims.email
+    };
+  }
+  if (credentials.service) {
+    return {
+      signedIn: true,
+      kind: "service",
+      apiBase: credentials.service.api_base,
+      clientId: credentials.service.client_id,
+      label: credentials.service.label
+    };
+  }
+  if (credentials.mysql) {
+    return {
+      signedIn: true,
+      kind: "legacy_mysql",
+      database: credentials.mysql.database
+    };
+  }
+  return { signedIn: false, kind: "none" };
+}
+
 // src/lib/auth/setup-code.ts
 var EXCHANGE_TIMEOUT_MS = 3e4;
 async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
@@ -82882,6 +83073,7 @@ function registerAuthCommands(program3) {
   registerLoginSubcommand(auth);
   registerDeviceInitSubcommand(auth);
   registerDevicePollSubcommand(auth);
+  registerStatusSubcommand(auth);
   registerServiceSetupSubcommand(auth);
   auth.command("setup").description("Walk through interactive auth onboarding (one-time per user)").option("--non-interactive", "fail if input is required (for CI)", false).option(
     "--from-file <path>",
@@ -83284,6 +83476,99 @@ Unattended runs now authenticate as ${service.label ?? service.client_id}.
 `);
       }
       process.exitCode = 1;
+    }
+  });
+}
+var SIGN_IN_HINT_AGENT = "say 'sign in to MixShift', or run `mixshift auth device-init --person-label <work email>`, open the login_url it returns, then run `mixshift auth device-poll <device_code> --person-label <work email>`";
+function buildAuthStatusReport(a) {
+  if (a.unreadable) {
+    return {
+      signed_in: false,
+      credential: "unreadable",
+      credentials_path: a.credentialsPath,
+      needs_sign_in: true,
+      next_step: `The saved sign-in file${a.credentialsPath ? ` (${a.credentialsPath})` : ""} cannot be read, so signing in would fail to save. Delete it (or rename it aside), then sign in: ${SIGN_IN_HINT_AGENT}.`
+    };
+  }
+  if (!a.signedIn) {
+    return {
+      signed_in: false,
+      credential: "none",
+      needs_sign_in: true,
+      next_step: `Sign in: ${SIGN_IN_HINT_AGENT}.`
+    };
+  }
+  if (a.kind === "interactive") {
+    const dead = a.refreshExpired === true;
+    return {
+      signed_in: !dead,
+      credential: "human",
+      // The token's own claims are what the server and telemetry use; the stored copies can drift.
+      actor: a.tokenActor ?? a.personLabel ?? a.email,
+      tenant_login: a.tokenEmail ?? a.email,
+      service: a.apiBase,
+      access_expires_at: a.accessExpiresAt,
+      access_expired: a.accessExpired,
+      needs_sign_in: dead,
+      ...dead ? { next_step: `The saved sign-in has expired. Sign in again: ${SIGN_IN_HINT_AGENT}.` } : {}
+    };
+  }
+  if (a.kind === "service") {
+    return {
+      signed_in: true,
+      credential: "service",
+      actor: a.label ?? a.clientId,
+      service: a.apiBase,
+      client_id: a.clientId,
+      label: a.label,
+      needs_sign_in: false
+    };
+  }
+  return {
+    signed_in: true,
+    credential: "legacy_mysql",
+    service: void 0,
+    needs_sign_in: false,
+    next_step: `This is the older direct-database credential. To move to token sign-in: ${SIGN_IN_HINT_AGENT}.`
+  };
+}
+function renderAuthStatus(r, a) {
+  const out = [];
+  if (!r.signed_in) {
+    out.push(
+      r.credential === "human" ? "Not signed in (saved sign-in expired)." : r.credential === "unreadable" ? "Not signed in (the saved sign-in file cannot be read)." : "Not signed in."
+    );
+  } else if (r.credential === "human") {
+    out.push(`Signed in (human sign-in) as ${r.actor ?? "?"}`);
+    if (r.tenant_login && r.tenant_login !== r.actor) out.push(`  tenant login: ${r.tenant_login}`);
+    out.push(`  service: ${r.service ?? "?"}`);
+    if (r.access_expired) {
+      out.push("  access token: expired (renews itself on the next call)");
+    } else if (r.access_expires_at) {
+      out.push(`  access token valid until ${r.access_expires_at}`);
+    }
+    if (a.refreshExpiresAt) out.push(`  sign-in renewable until ${a.refreshExpiresAt}`);
+  } else if (r.credential === "service") {
+    out.push(`Signed in (service credential) ${r.actor ?? ""}`.trimEnd());
+    out.push(`  service: ${r.service ?? "?"}`);
+    out.push("  tokens are minted on demand; there is no expiry to track");
+  } else {
+    out.push("Signed in (older direct-database credential).");
+  }
+  if (r.next_step) out.push(r.next_step);
+  return out.join("\n") + "\n";
+}
+function registerStatusSubcommand(auth) {
+  auth.command("status").description(
+    "Show whether you are signed in, as whom, the tenant login, and when the access token expires. Read-only: reads the local credentials file only. It never signs in, prompts, contacts the sign-in service, or refreshes your session."
+  ).action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const summary = await summarizeAuth(root.dataDir);
+    const report = buildAuthStatusReport(summary);
+    if (root.json) {
+      process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    } else {
+      process.stdout.write(renderAuthStatus(report, summary));
     }
   });
 }
@@ -84852,10 +85137,10 @@ function createCsvFileSink(outPath) {
   }
   function waitDrain(s) {
     if (!s.writableNeedDrain) return Promise.resolve();
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       const onDrain = () => {
         cleanup();
-        resolve4();
+        resolve5();
       };
       const onError = (err) => {
         cleanup();
@@ -84880,7 +85165,7 @@ function createCsvFileSink(outPath) {
     if (!stream || closed) return Promise.resolve();
     const s = stream;
     closed = true;
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       if (streamError) {
         s.destroy();
         reject(streamError);
@@ -84892,7 +85177,7 @@ function createCsvFileSink(outPath) {
       };
       const onFinish = () => {
         cleanup();
-        resolve4();
+        resolve5();
       };
       const onError = (err) => {
         cleanup();
@@ -89334,8 +89619,8 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
 }
 function closeWritable(out) {
   if (out.closed) return Promise.resolve();
-  return new Promise((resolve4) => {
-    out.once("close", () => resolve4());
+  return new Promise((resolve5) => {
+    out.once("close", () => resolve5());
     if (!out.destroyed) out.destroy();
   });
 }
@@ -89571,6 +89856,7 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "merchant_inactive",
   "profile_not_authorized",
   "bad_request",
+  "too_many_items",
   "restricted_report",
   "merchant_not_found",
   "throttled",
@@ -89597,12 +89883,65 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
 function isServerFailureEnvelope(json2) {
   return typeof json2 === "object" && json2 !== null && json2.ok === false;
 }
+var AMAZON_ERROR_MAX_CHARS = 1e3;
+var NO_REASON_PLACEHOLDER = "amazon processingstatus=fatal";
+function cleanAmazonError(v) {
+  if (typeof v !== "string") return void 0;
+  let text = v.trim();
+  if (text.startsWith("{")) {
+    try {
+      const doc = JSON.parse(text);
+      if (doc && typeof doc === "object") {
+        for (const key of ["errorDetails", "reportRequestError"]) {
+          const inner = doc[key];
+          if (typeof inner === "string" && inner.trim() !== "") {
+            text = inner.trim();
+            break;
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  const cleaned = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, " ").trim();
+  if (cleaned.length === 0 || cleaned.toLowerCase() === NO_REASON_PLACEHOLDER) return void 0;
+  const points = Array.from(cleaned);
+  return points.length > AMAZON_ERROR_MAX_CHARS ? points.slice(0, AMAZON_ERROR_MAX_CHARS).join("") + "... [truncated]" : cleaned;
+}
+function classifyAmazonError(text) {
+  const t = text.toLowerCase();
+  if (/deprecated|no longer (available|supported)/.test(t)) return "deprecated";
+  if (/not available (to|for) (vendors|sellers)/.test(t)) return "wrong_merchant_type";
+  if (/not yet available|not available yet|data is not available|may not have finished processing|outside the available data range/.test(t)) {
+    return "data_not_available";
+  }
+  if (/must (be|start on|begin on) (a )?(sunday|monday|saturday)|must start on|calendar month|first day of|not a sunday|not a saturday|does not align|last day of|span exactly one|prohibited date range/.test(t)) {
+    return "period_alignment";
+  }
+  if (/more than \d+ (days?|years?)|more than (one|two|three|four|five|six|seven|eight|nine|ten) (days?|years?)|exceeds? |maximum|at most \d+/.test(t)) {
+    return "span_exceeds_max";
+  }
+  if (/requires? the .* to be specified|requires? the report option|please provide|must (be )?(provided|specified)|is required|missing/.test(t)) {
+    return "missing_option";
+  }
+  if (/valid values? (are|is)|not a valid|invalid/.test(t)) return "invalid_option_value";
+  if (/double check that your parameters/.test(t)) {
+    const rest = t.replace(/a client error occurred/g, " ").replace(
+      /(please )?double check that your parameters are valid( and fulfill the requirements of the report type)?/g,
+      " "
+    ).replace(/[^a-z0-9]+/g, " ").trim();
+    return rest === "" ? "generic" : "other";
+  }
+  return "other";
+}
 function toReportFailure(json2, httpStatus, surface) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
   const recognized = KNOWN_KINDS.has(rawKind);
   const amazonErrorCode = strOrUndef(json2.amazon_error_code);
+  const amazonError = cleanAmazonError(json2.amazon_error);
   const kind = recognized ? rawKind : safeKindForStatus(httpStatus, amazonErrorCode);
-  const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
+  const rawFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
+  const serverFriendly = kind === "report_fatal" && amazonError === void 0 && rawFriendly !== void 0 ? rawFriendly.replace(/\s*See amazon_error for the reason Amazon gave\.?/, " Check the report type and date range.").trim() : rawFriendly;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
     ok: false,
@@ -89620,6 +89959,7 @@ function toReportFailure(json2, httpStatus, surface) {
     ...amazonErrorCode !== void 0 ? { amazonErrorCode } : {},
     ...numOrUndef(json2.status) !== void 0 ? { amazonStatus: numOrUndef(json2.status) } : {},
     ...json2.responsePayload !== void 0 ? { responsePayload: json2.responsePayload } : {},
+    ...amazonError !== void 0 ? { amazonError } : {},
     ...strOrUndef(json2.responseText) !== void 0 ? { responseText: strOrUndef(json2.responseText) } : {}
   };
 }
@@ -89711,6 +90051,8 @@ function defaultFriendly(kind, surface) {
       return "Amazon says the advertising account this merchant is connected through does not have access to it. The MixShift connection itself is working, so re-authorizing will not change this. Check that the advertising login has access to this advertiser in Amazon Ads, or contact MixShift support so the merchant can be re-mapped. Retrying unchanged will not help.";
     case "bad_request":
       return `${requestLabel(surface)} was rejected by Amazon because of the request itself, not a MixShift or Amazon outage. Retrying it unchanged will not help.`;
+    case "too_many_items":
+      return "That is too many items for a single synchronous call. Start it as a background run (--async) and poll it, or send fewer items. Retrying it unchanged will not help.";
     case "restricted_report":
       return surface === "report" ? "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report." : "Amazon denied access to this operation. It may need a role or restricted-data access that MixShift does not hold, or this merchant's authorization may predate that role and need re-authorizing.";
     case "merchant_not_found":
@@ -89784,7 +90126,8 @@ function normalize3(raw) {
     group: raw.group,
     reportOptions: normalizeOptions(raw.report_options),
     parseHints: raw.parse_hints,
-    notes: raw.notes
+    notes: raw.notes,
+    ...typeof raw.deprecated === "string" && raw.deprecated.trim() !== "" ? { deprecated: raw.deprecated.trim() } : {}
   };
 }
 function normalizeAppliesTo(v) {
@@ -90086,7 +90429,7 @@ Handle saved to pricing-runs.json; any later call can list it: mixshift amazon p
 }
 function registerCompetitiveSummaryCommand(pricing) {
   pricing.command("get-competitive-summary-batch").alias("cs-batch").description(
-    "Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, optional lowest-priced offers. Keyed by ASIN. Sync cap 200; --async for larger jobs."
+    "Competitive Summary: who currently wins the Featured Offer per ASIN, reference prices, optional lowest-priced offers. Keyed by ASIN. Sync cap 100; --async for larger jobs."
   ).option("--asins <list>", "Comma-separated ASINs. Mutually exclusive with --asins-file.").option("--asins-file <path>", "File with one ASIN per line.").option("--marketplace <code>", "Country code or raw marketplaceId.").option("--amazon-seller-id <id>", "AmazonSellerID.").option("--legacy-seller-id <id>", "Exact legacySellerId.").option(
     "--included-data <list>",
     "Comma-separated: featuredBuyingOptions,referencePrices,lowestPricedOffers"
@@ -91542,7 +91885,10 @@ async function trackFailure2(eventName, failure, startedAt, dataDir, reportType,
         // amazonSellerId on reauth_required, reportId/status on report_fatal).
         ...failure.amazonSellerId !== void 0 ? { amazon_seller_id: failure.amazonSellerId } : {},
         ...failure.reportId !== void 0 ? { report_id: failure.reportId } : {},
-        ...failure.status !== void 0 ? { report_status: failure.status } : {}
+        ...failure.status !== void 0 ? { report_status: failure.status } : {},
+        // Low-cardinality class of Amazon's stated reason (deprecated,
+        // span_exceeds_max, ...). The reason TEXT is never sent to telemetry.
+        ...failure.amazonError !== void 0 ? { reason_class: classifyAmazonError(failure.amazonError) } : {}
       }
     },
     dataDir
@@ -91563,6 +91909,8 @@ function emitFailure4(failure, json2) {
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
+      // Amazon's own stated reason on a FATAL report (absent when Amazon gave none).
+      amazon_error: failure.amazonError,
       // Multi-marketplace merchant_not_found: the rows to disambiguate with.
       candidates: failure.candidates
     });
@@ -91570,11 +91918,19 @@ function emitFailure4(failure, json2) {
     process.stderr.write(`
 \u2717 ${failure.friendly}
 `);
+    if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
     if (failure.candidates && failure.candidates.length > 0) {
       process.stderr.write(renderCandidates(failure.candidates));
     }
   }
   process.exitCode = exitCodeForKind(failure.kind);
+}
+function renderAmazonReason(text) {
+  const body = text.split(/\r?\n/).map((l, i) => i === 0 ? `  Amazon's reason: ${l}` : `    ${l}`).join("\n");
+  const cls = classifyAmazonError(text);
+  const generic = cls === "generic" ? "\n  This is Amazon's generic text and names no parameter to change. Run `mixshift amazon describe-report <type>` for the window and option rules." : cls === "wrong_merchant_type" ? "\n  Amazon says this report or API is not available for this type of account (seller or vendor). Check that the merchant is the right kind for it; changing dates or options will not help." : "";
+  return `${body}${generic}
+`;
 }
 function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
   if (json2) {
@@ -91588,6 +91944,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
       amazon_seller_id: failure.amazonSellerId,
       report_type: failure.reportType,
       retry_after_ms: failure.retryAfterMs,
+      amazon_error: failure.amazonError,
       candidates: failure.candidates,
       chunk,
       chunks: totalChunks,
@@ -91597,6 +91954,7 @@ function emitChunkFailure(failure, json2, chunk, totalChunks, completedRunIds) {
     process.stderr.write(`
 \u2717 [SQP chunk ${chunk}/${totalChunks}] ${failure.friendly}
 `);
+    if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
     if (completedRunIds.length > 0) {
       process.stderr.write(
         `  ${completedRunIds.length} chunk(s) completed before this failure: ${completedRunIds.join(", ")}
@@ -91719,13 +92077,14 @@ function renderReportList(entries) {
     lines.push("");
     lines.push(`## ${group}`);
     for (const e of list) {
+      const purpose = e.deprecated ? `DEPRECATED BY AMAZON, do not request. ${e.deprecated}` : e.purpose;
       const tags = [
         e.appliesTo !== "both" ? e.appliesTo : "",
         e.documentFormat,
         e.window === "required" ? "window-required" : e.window === "forbidden" ? "no-window" : "",
         e.warehouseCoverage !== "none" ? `warehouse:${e.warehouseCoverage}` : ""
       ].filter(Boolean).join(", ");
-      lines.push(`- \`${e.reportType}\`  \u2014  ${e.purpose}` + (tags ? `  *(${tags})*` : ""));
+      lines.push(`- \`${e.reportType}\`  \u2014  ${purpose}` + (tags ? `  *(${tags})*` : ""));
     }
   }
   return lines.join("\n");
@@ -91736,6 +92095,10 @@ function renderReportDetail(e) {
   lines.push(`# ${e.title}`);
   lines.push(`\`${e.reportType}\``);
   lines.push("");
+  if (e.deprecated) {
+    lines.push(`**DEPRECATED BY AMAZON: do not request this report.** ${e.deprecated}`);
+    lines.push("");
+  }
   lines.push(e.purpose);
   lines.push("");
   lines.push(`- **applies to**: ${e.appliesTo}`);
@@ -92841,6 +93204,119 @@ async function listIntelligenceRuns(dataDirOverride) {
   return { runs: await loadLedger2(path2), path: path2 };
 }
 
+// src/lib/intelligence/forecast-answer.ts
+var isRec = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function isForecastingAnswer(result) {
+  return isRec(result) && result.service === "forecasting";
+}
+var LABEL_RE = /^[A-Za-z0-9_-]{1,48}$/;
+var SCOPE_ID_RE = /^src:[A-Za-z0-9_]+:[0-9]+(:scope:[a-z0-9]{4,32})?$/;
+var MONTH_RE2 = /^\d{4}-(0[1-9]|1[0-2])$/;
+function boundedLabel(v) {
+  if (typeof v !== "string") return void 0;
+  const t = v.trim();
+  return LABEL_RE.test(t) ? t.toLowerCase().replace(/-/g, "_") : void 0;
+}
+function boundedScopeId(v) {
+  return typeof v === "string" && SCOPE_ID_RE.test(v) ? v : void 0;
+}
+function boundedMonth(v) {
+  return typeof v === "string" && MONTH_RE2.test(v) ? v : void 0;
+}
+function boundedCount(v, max) {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max ? v : void 0;
+}
+function summarizeForecastAnswer(result) {
+  if (!isForecastingAnswer(result)) return void 0;
+  const kind = boundedLabel(result.kind);
+  const pub = isRec(result.published) ? result.published : void 0;
+  const vintage = pub ? boundedCount(pub.gateway_revision, 1e6) : void 0;
+  const age = pub ? boundedCount(pub.age_days, 1e5) : void 0;
+  const s = { served: false };
+  if (kind !== void 0) s.kind = kind;
+  if (kind === "track") {
+    const state = boundedLabel(result.forecast_state);
+    if (state !== void 0) s.forecastState = state;
+    s.hasReportData = isRec(result.report_data);
+    if (typeof result.ytd_runs_past_report_month === "boolean") {
+      s.ytdRunsPastReportMonth = result.ytd_runs_past_report_month;
+    }
+    s.served = state === "provided_current" && s.hasReportData;
+  } else if (kind === "baseline") {
+    if (typeof result.available === "boolean") s.available = result.available;
+    s.served = result.available === true;
+  } else if (kind === "readiness") {
+    const verdict = boundedLabel(result.verdict);
+    if (verdict !== void 0) s.verdict = verdict;
+  }
+  const reason = boundedLabel(result.reason);
+  if (reason !== void 0) s.reason = reason;
+  const metric = boundedLabel(result.metric);
+  if (metric !== void 0) s.metric = metric;
+  const month = boundedMonth(result.month);
+  if (month !== void 0) s.month = month;
+  const scopeId = boundedScopeId(result.scope_id);
+  if (scopeId !== void 0) s.scopeId = scopeId;
+  if (vintage !== void 0) s.vintage = vintage;
+  if (age !== void 0) s.vintageAgeDays = age;
+  return s;
+}
+function forecastTelemetryFields(result) {
+  const s = summarizeForecastAnswer(result);
+  if (!s) return {};
+  const out = { service: "forecasting" };
+  const put = (k, v) => {
+    if (v !== void 0) out[k] = v;
+  };
+  put("kind", s.kind);
+  put("forecast_state", s.forecastState);
+  put("available", s.available);
+  put("verdict", s.verdict);
+  put("reason", s.reason);
+  put("metric", s.metric);
+  put("month", s.month);
+  put("scope_id", s.scopeId);
+  put("vintage", s.vintage);
+  put("vintage_age_days", s.vintageAgeDays);
+  put("ytd_runs_past_report_month", s.ytdRunsPastReportMonth);
+  out.served = s.served;
+  return out;
+}
+function vintagePhrase(s) {
+  if (s.vintage === void 0) return "";
+  let phrase = `, vintage ${s.vintage}`;
+  if (s.vintageAgeDays !== void 0) {
+    const days = Math.floor(s.vintageAgeDays);
+    phrase += days === 0 ? ", under a day old" : `, ${days} day${days === 1 ? "" : "s"} old`;
+  }
+  return phrase;
+}
+function renderForecastSummary(s) {
+  const reason = s.reason ? ` (${s.reason})` : "";
+  let head;
+  if (s.kind === "track") {
+    const state = s.forecastState ?? "state unknown";
+    if (state === "provided_current") {
+      head = `forecast current${vintagePhrase(s)}${s.hasReportData ? "" : " (no report data)"}`;
+    } else if (state === "not_provided") {
+      head = `forecast not provided${reason}`;
+    } else {
+      head = `forecast ${state}${reason}${vintagePhrase(s)}`;
+    }
+  } else if (s.kind === "baseline") {
+    head = s.available === true ? `baseline available${vintagePhrase(s)}` : s.available === false ? `baseline unavailable${reason}` : `baseline${reason}`;
+  } else if (s.kind === "readiness") {
+    head = `readiness verdict ${s.verdict ?? "unknown"}`;
+  } else {
+    head = `forecasting answer (kind ${s.kind ?? "unknown"})${reason}`;
+  }
+  const parts = [head];
+  const metricMonth = [s.metric, s.month].filter((x) => !!x).join(" ");
+  if (metricMonth) parts.push(metricMonth);
+  if (s.scopeId) parts.push(s.scopeId);
+  return parts.join(" \xB7 ");
+}
+
 // src/lib/intelligence/headline.ts
 var CANDIDATE_TOTALS = [
   {
@@ -92897,7 +93373,7 @@ function formatCache(cache) {
     return void 0;
   }
 }
-function extractRunHeadline(result) {
+function extractRunHeadline(result, fallbackInsightId) {
   const meta3 = result.meta && typeof result.meta === "object" ? result.meta : {};
   const limitations = Array.isArray(result.limitations) ? result.limitations : void 0;
   const keyTotals = {};
@@ -92910,20 +93386,24 @@ function extractRunHeadline(result) {
       }
     }
   }
+  const forecasting = isForecastingAnswer(result);
+  const metaInsightId = typeof meta3.insightId === "string" ? meta3.insightId : void 0;
+  const forecastSummary = forecasting ? summarizeForecastAnswer(result) : void 0;
   return {
     ok: result.ok === true,
-    insightId: typeof meta3.insightId === "string" ? meta3.insightId : void 0,
+    insightId: metaInsightId ?? (forecasting && fallbackInsightId ? fallbackInsightId : void 0),
     revision: typeof meta3.revision === "string" ? meta3.revision : void 0,
     computedAt: typeof meta3.computedAt === "string" ? meta3.computedAt : void 0,
     cache: formatCache(meta3.cache),
     limitationCount: limitations ? limitations.length : void 0,
+    ...forecastSummary ? { forecastSummary: renderForecastSummary(forecastSummary) } : {},
     keyTotals
   };
 }
 function renderHeadline(h) {
   const lines = [];
   lines.push(
-    `${h.ok ? "\u2713" : "\u2717"} ${h.insightId ?? "(insight id unknown)"}${h.cache ? `  cache: ${h.cache}` : ""}`
+    `${h.ok ? "\u2713" : "\u2717"} ${h.insightId ?? "(insight id unknown)"}${h.forecastSummary ? ` \xB7 ${h.forecastSummary}` : ""}${h.cache ? `  cache: ${h.cache}` : ""}`
   );
   const meta3 = [];
   if (h.revision) meta3.push(`revision: ${h.revision}`);
@@ -92941,6 +93421,13 @@ function renderHeadline(h) {
 init_resolve();
 init_local();
 init_telemetry();
+function safeForecastFields(result) {
+  try {
+    return forecastTelemetryFields(result);
+  } catch {
+    return {};
+  }
+}
 function registerIntelligenceCommands(program3) {
   const intelligence = program3.command("intelligence").description(
     "MixShift Intelligence: read finished insight envelopes (Ops Bridge and friends) from the MixShift Intelligence service."
@@ -93099,15 +93586,16 @@ function registerGetCommand(intelligence) {
         return emitFailure6(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, "DONE", root.dataDir);
-      const headlineForId = extractRunHeadline(result);
-      const brandSlug = await brandForRunId(runId, root.dataDir);
+      const handle = await ledgerHandleForRunId(runId, root.dataDir);
+      const headlineForId = extractRunHeadline(result, handle.insightId);
+      const isForecasting = result?.service === "forecasting";
       await emitInsightResult(
-        headlineForId.insightId ?? "insight",
+        isForecasting ? headlineForId.insightId ?? handle.insightId : headlineForId.insightId ?? "insight",
         result,
         opts.out,
         startedAt,
         root,
-        brandSlug,
+        handle.brand,
         runId
       );
     } catch (err) {
@@ -93195,19 +93683,24 @@ function merchantEcho(params) {
 function brandSlugFromParams(params) {
   return merchantEcho(params).brand;
 }
-async function brandForRunId(runId, dataDir) {
+async function ledgerHandleForRunId(runId, dataDir) {
   try {
     const { runs } = await listIntelligenceRuns(dataDir);
-    const brand = runs.find((r) => r.run_id === runId)?.brand;
-    return brand && isSafeBrandSlug(brand) ? brand : void 0;
+    const entry = runs.find((r) => r.run_id === runId);
+    const brand = entry?.brand;
+    const insightId = entry?.insight_id;
+    return {
+      ...brand && isSafeBrandSlug(brand) ? { brand } : {},
+      ...typeof insightId === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(insightId) ? { insightId } : {}
+    };
   } catch {
-    return void 0;
+    return {};
   }
 }
 async function emitInsightResult(id, result, outOverride, startedAt, root, brandSlug, runIdForTracking) {
-  const headline = extractRunHeadline(result);
+  const headline = extractRunHeadline(result, id);
   const artifactPath = outOverride ? resolvePath3(outOverride) : intelligenceOutputPath(
-    sanitizeForFilename2(id),
+    sanitizeForFilename2(id ?? "insight"),
     fsSafeTimestamp(),
     brandSlug,
     root.dataDir,
@@ -93221,10 +93714,12 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
       outcome: "ok",
       duration_ms: Date.now() - startedAt,
       payload: {
-        insight_id: headline.insightId ?? id,
+        insight_id: headline.insightId ?? id ?? "insight",
         cache: headline.cache,
         limitation_count: headline.limitationCount,
-        ...runIdForTracking ? { run_id: runIdForTracking } : {}
+        ...runIdForTracking ? { run_id: runIdForTracking } : {},
+        // Forecasting answers only ({} otherwise): what the person's run got.
+        ...safeForecastFields(result)
       }
     },
     root.dataDir
@@ -94663,9 +95158,9 @@ var ForecastMonthMismatchError = class extends Error {
   expected;
   got;
 };
-var isRec = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var isRec2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 function isForecastTrackResponse(response) {
-  return isRec(response) && response.ok === true && response.service === "forecasting" && response.kind === "track";
+  return isRec2(response) && response.ok === true && response.service === "forecasting" && response.kind === "track";
 }
 function roleOfId(id) {
   if (!id.startsWith("forecast.")) return null;
@@ -94710,7 +95205,7 @@ function extractForecast(response, opts = {}) {
   }
   let state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
   let reason = str(r.reason);
-  const pub = isRec(r.published) ? r.published : null;
+  const pub = isRec2(r.published) ? r.published : null;
   const published = pub && num(pub.gateway_revision) !== null ? {
     at: str(pub.at) ?? "",
     by: str(pub.by) ?? "",
@@ -94748,13 +95243,13 @@ function extractForecast(response, opts = {}) {
     sections: [],
     limitations: []
   };
-  const rd = isRec(r.report_data) ? r.report_data : null;
+  const rd = isRec2(r.report_data) ? r.report_data : null;
   if (state === "provided_current" && rd) {
-    const registry2 = isRec(rd.caveat_registry) ? rd.caveat_registry : {};
+    const registry2 = isRec2(rd.caveat_registry) ? rd.caveat_registry : {};
     const blocking = (keys) => keys.some((k) => registry2[k]?.severity === "blocking");
     const figures2 = [];
     for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
-      if (!isRec(f)) continue;
+      if (!isRec2(f)) continue;
       const id = str(f.id) ?? "";
       const role = roleOfId(id);
       const caveats = strs(f.caveats);
@@ -94776,7 +95271,7 @@ function extractForecast(response, opts = {}) {
     const safe = new Map(figures2.map((f) => [f.id, f.client_safe]));
     const derived = [];
     for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
-      if (!isRec(d)) continue;
+      if (!isRec2(d)) continue;
       const id = str(d.id) ?? "";
       const role = roleOfId(id);
       const inputs = strs(d.inputs);
@@ -94794,7 +95289,7 @@ function extractForecast(response, opts = {}) {
     }
     const claims = [];
     for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
-      if (!isRec(c)) continue;
+      if (!isRec2(c)) continue;
       const id = str(c.id) ?? "";
       claims.push({
         id,
@@ -94817,7 +95312,7 @@ function extractForecast(response, opts = {}) {
       doc.derived = derived;
       doc.claims = claims;
       for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
-        if (!isRec(s)) continue;
+        if (!isRec2(s)) continue;
         doc.sections.push({
           id: str(s.id) ?? "",
           kind: "forecast",
@@ -94908,6 +95403,154 @@ function checkForecast(doc) {
   }
   return findings;
 }
+
+// src/lib/report-contract/forecast-telemetry.ts
+init_errors3();
+init_events();
+var MAX_RULES = 20;
+var MAX_UNRECOGNISED = 10;
+var RULE_RE = /^[A-Z0-9][A-Z0-9:-]{0,63}$/;
+var ID_RE = /^[A-Za-z0-9_.:-]{1,120}$/;
+var isRec3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function compact(o) {
+  const out = {};
+  for (const [k, v] of Object.entries(o)) if (v !== void 0) out[k] = v;
+  return out;
+}
+function vintageOf(v) {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1e6 ? v : void 0;
+}
+function docIdentity(doc) {
+  return compact({
+    state: boundedLabel(doc.forecast.state),
+    reason: boundedLabel(doc.source.reason),
+    metric: boundedLabel(doc.forecast.metric),
+    month: boundedMonth(doc.forecast.report_month),
+    scope_id: boundedScopeId(doc.source.scope_id),
+    vintage: vintageOf(doc.source.published?.gateway_revision)
+  });
+}
+function answerIdentity(response) {
+  if (!isRec3(response)) return {};
+  const pub = isRec3(response.published) ? response.published : void 0;
+  return compact({
+    state: boundedLabel(response.forecast_state),
+    reason: boundedLabel(response.reason),
+    metric: boundedLabel(response.metric),
+    month: boundedMonth(response.month),
+    scope_id: boundedScopeId(response.scope_id),
+    vintage: vintageOf(pub?.gateway_revision)
+  });
+}
+function findingRules(findings) {
+  const rules = /* @__PURE__ */ new Set();
+  for (const f of findings) {
+    let rule = f.rule;
+    if (f.rule === "FORECAST-CONTRACT") {
+      const sub = /^([A-Z][A-Z0-9-]{0,30}):/.exec(f.detail)?.[1];
+      if (sub) rule = `${f.rule}:${sub}`;
+    }
+    if (RULE_RE.test(rule)) rules.add(rule);
+    if (rules.size >= MAX_RULES) break;
+  }
+  return [...rules];
+}
+function forecastExtractedPayload(doc, findings, ctx) {
+  const clientSafe = doc.figures.filter((f) => f.client_safe === true).length + doc.derived.filter((d) => d.client_safe === true).length;
+  return {
+    ...docIdentity(doc),
+    figures: doc.figures.length,
+    derived: doc.derived.length,
+    claims: doc.claims.length,
+    sections: doc.sections.length,
+    client_safe: clientSafe,
+    ...ctx.checkRan ? { check_findings: findings.length } : {},
+    expect_month: ctx.expectMonth !== void 0
+  };
+}
+function classifyWithheldForecast(doc, findings, ctx) {
+  const unrecognised = doc.source.unrecognised;
+  if (unrecognised.length === 0 && findings.length === 0) return void 0;
+  const payload = { ...docIdentity(doc), expect_month: ctx.expectMonth !== void 0 };
+  if (unrecognised.length > 0) {
+    payload.unrecognised_count = unrecognised.length;
+    payload.unrecognised = [
+      ...new Set(unrecognised.filter((id) => ID_RE.test(id)).map((id) => id.split(".").slice(0, 2).join(".")))
+    ].slice(0, MAX_UNRECOGNISED);
+  }
+  if (findings.length > 0) {
+    payload.check_findings = findings.length;
+    payload.rules = findingRules(findings);
+  }
+  return { errorClass: unrecognised.length > 0 ? "unrecognised_figures" : "check_findings", payload };
+}
+function forecastExtractEvents(doc, findings, ctx) {
+  const events = [
+    {
+      event_name: EventName.ReportForecastExtracted,
+      outcome: "ok",
+      ...ctx.durationMs !== void 0 ? { duration_ms: ctx.durationMs } : {},
+      payload: forecastExtractedPayload(doc, findings, ctx)
+    }
+  ];
+  const withheld = classifyWithheldForecast(doc, findings, ctx);
+  if (withheld) {
+    events.push({
+      event_name: EventName.ReportForecastFailed,
+      outcome: "failed",
+      error_class: withheld.errorClass,
+      ...ctx.durationMs !== void 0 ? { duration_ms: ctx.durationMs } : {},
+      payload: withheld.payload
+    });
+  }
+  return events;
+}
+function classifyForecastError(err) {
+  if (err instanceof ForecastMonthMismatchError || err instanceof UserFacingError && err.errorClass === "report_forecast_month_mismatch") {
+    return { errorClass: "forecast_month_mismatch" };
+  }
+  const cause = err instanceof UserFacingError ? boundedLabel(err.errorClass) : err instanceof Error ? boundedLabel(err.name) : void 0;
+  return { errorClass: "extract_error", ...cause ? { cause } : {} };
+}
+function forecastErrorEvent(response, err, ctx) {
+  const { errorClass, cause } = classifyForecastError(err);
+  return {
+    event_name: EventName.ReportForecastFailed,
+    outcome: "failed",
+    error_class: errorClass,
+    ...ctx.durationMs !== void 0 ? { duration_ms: ctx.durationMs } : {},
+    payload: compact({
+      ...answerIdentity(response),
+      expect_month: ctx.expectMonth !== void 0,
+      expected_month: errorClass === "forecast_month_mismatch" ? boundedMonth(ctx.expectMonth) : void 0,
+      cause
+    })
+  };
+}
+function notAForecastAnswerEvent(response, ctx) {
+  const forecasting = isRec3(response) && response.service === "forecasting";
+  if (ctx.expectMonth === void 0 && !forecasting) return void 0;
+  const r = isRec3(response) ? response : {};
+  return {
+    event_name: EventName.ReportForecastFailed,
+    outcome: "failed",
+    error_class: "not_a_forecast_answer",
+    ...ctx.durationMs !== void 0 ? { duration_ms: ctx.durationMs } : {},
+    payload: compact({
+      expect_month: ctx.expectMonth !== void 0,
+      expected_month: boundedMonth(ctx.expectMonth),
+      service: boundedLabel(r.service),
+      kind: boundedLabel(r.kind),
+      ok: typeof r.ok === "boolean" ? r.ok : void 0,
+      metric: boundedLabel(r.metric),
+      month: boundedMonth(r.month),
+      scope_id: boundedScopeId(r.scope_id)
+    })
+  };
+}
+
+// src/commands/report.ts
+init_telemetry();
 
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
@@ -95353,6 +95996,15 @@ init_query_runner();
 init_load2();
 init_local();
 init_clients();
+async function trackForecast(build, dataDir) {
+  try {
+    const built = build();
+    for (const event of Array.isArray(built) ? built : built ? [built] : []) {
+      await track(event, dataDir);
+    }
+  } catch {
+  }
+}
 async function readJson(file2) {
   try {
     return JSON.parse(await readFile45(file2, "utf8"));
@@ -95578,51 +96230,65 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
     `for a composite run bundle (INS-MONTHLY-01), which envelope to extract: ${COMPOSITE_SELECTIONS.join(" | ")}`
   ).action(async (file2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const telemetryCtx = () => ({
+      checkRan: !!opts.check,
+      ...opts.expectMonth !== void 0 ? { expectMonth: opts.expectMonth } : {},
+      durationMs: Date.now() - startedAt
+    });
     await withReportErrorHandling(!!root.json, async () => {
       const response = await readJson(file2);
       if (isForecastTrackResponse(response)) {
-        if (opts.select) {
-          throw new UserFacingError("--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.", "report_bad_selection");
-        }
         let fdoc;
+        let ffindings;
         try {
-          fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+          if (opts.select) {
+            throw new UserFacingError("--select is for a composite run bundle; a FCT-TRACK-01 answer takes none.", "report_bad_selection");
+          }
+          try {
+            fdoc = extractForecast(response, opts.expectMonth ? { expectMonth: opts.expectMonth } : {});
+          } catch (err) {
+            if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, "report_forecast_month_mismatch");
+            throw err;
+          }
+          ffindings = opts.check ? checkForecast(fdoc) : [];
+          const fbody = JSON.stringify(fdoc, null, 2);
+          if (opts.out) await writeReportOutput(opts.out, fbody + "\n");
+          if (root.json) {
+            console.log(
+              JSON.stringify(
+                {
+                  ok: ffindings.length === 0,
+                  kind: "forecast_figures",
+                  forecast_state: fdoc.forecast.state,
+                  reason: fdoc.source.reason,
+                  figures: fdoc.figures.length,
+                  attestation: fdoc.source.attestation,
+                  out: opts.out ?? null,
+                  findings: ffindings
+                },
+                null,
+                2
+              )
+            );
+          } else {
+            if (!opts.out) console.log(fbody);
+            console.log(
+              `
+forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` + (fdoc.source.reason ? ` (${fdoc.source.reason})` : "") + `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ""}`
+            );
+            for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+            if (opts.check) console.log(ffindings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${ffindings.length})`);
+          }
         } catch (err) {
-          if (err instanceof ForecastMonthMismatchError) throw new UserFacingError(err.message, "report_forecast_month_mismatch");
+          await trackForecast(() => forecastErrorEvent(response, err, telemetryCtx()), root.dataDir);
           throw err;
         }
-        const ffindings = opts.check ? checkForecast(fdoc) : [];
-        const fbody = JSON.stringify(fdoc, null, 2);
-        if (opts.out) await writeReportOutput(opts.out, fbody + "\n");
-        if (root.json) {
-          console.log(
-            JSON.stringify(
-              {
-                ok: ffindings.length === 0,
-                kind: "forecast_figures",
-                forecast_state: fdoc.forecast.state,
-                reason: fdoc.source.reason,
-                figures: fdoc.figures.length,
-                attestation: fdoc.source.attestation,
-                out: opts.out ?? null,
-                findings: ffindings
-              },
-              null,
-              2
-            )
-          );
-        } else {
-          if (!opts.out) console.log(fbody);
-          console.log(
-            `
-forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` + (fdoc.source.reason ? ` (${fdoc.source.reason})` : "") + `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ""}`
-          );
-          for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
-          if (opts.check) console.log(ffindings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${ffindings.length})`);
-        }
+        await trackForecast(() => forecastExtractEvents(fdoc, ffindings, telemetryCtx()), root.dataDir);
         process.exitCode = ffindings.length === 0 ? 0 : 1;
         return;
       }
+      await trackForecast(() => notAForecastAnswerEvent(response, telemetryCtx()), root.dataDir);
       if (opts.select && !COMPOSITE_SELECTIONS.includes(opts.select)) {
         throw new UserFacingError(
           `Unknown --select ${opts.select}. Choices: ${COMPOSITE_SELECTIONS.join(", ")}.`,
@@ -96455,45 +97121,6 @@ async function assembleFullReport(opts) {
     update,
     ok
   };
-}
-async function summarizeAuth(dataDirOverride) {
-  let credentials = null;
-  try {
-    credentials = (await loadCredentials(dataDirOverride)).credentials;
-  } catch {
-    return { signedIn: false, kind: "none" };
-  }
-  if (!credentials) return { signedIn: false, kind: "none" };
-  if (credentials.datahub) {
-    const d = credentials.datahub;
-    return {
-      signedIn: true,
-      kind: "interactive",
-      email: d.email,
-      personLabel: d.person_label,
-      apiBase: d.api_base,
-      accessExpiresAt: d.expires_at,
-      accessExpired: Date.parse(d.expires_at) <= Date.now(),
-      refreshExpiresAt: d.refresh_expires_at
-    };
-  }
-  if (credentials.service) {
-    return {
-      signedIn: true,
-      kind: "service",
-      apiBase: credentials.service.api_base,
-      clientId: credentials.service.client_id,
-      label: credentials.service.label
-    };
-  }
-  if (credentials.mysql) {
-    return {
-      signedIn: true,
-      kind: "legacy_mysql",
-      database: credentials.mysql.database
-    };
-  }
-  return { signedIn: false, kind: "none" };
 }
 function renderBuildSection(build) {
   const out = [];
@@ -99092,6 +99719,88 @@ function isNumericLike(arg) {
   return /^-\d/.test(arg);
 }
 
+// src/lib/cli/usage-hints.ts
+var COMMAND_ALIASES = {
+  "data tables": { targets: ["data list-tables"], then: "`mixshift data describe <table>` for one table" },
+  "data list": { targets: ["data list-tables"] },
+  "amazon list": { targets: ["amazon list-reports", "amazon merchants"] },
+  "amazon ops": { targets: ["amazon operations"] },
+  retail: {
+    targets: ["amazon merchants", "amazon operations", "amazon call"],
+    note: "there is no `retail` command; Amazon retail data is under `amazon`, and warehouse tables are under `data`"
+  }
+};
+var ROOT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["--data-dir", "--surface"]);
+function resolve4(program3, argv) {
+  let cmd = program3;
+  const path2 = [];
+  for (let i = 0; i < argv.length; i++) {
+    const tok = argv[i];
+    if (tok === "--") break;
+    if (tok.startsWith("-")) {
+      if (ROOT_VALUE_OPTIONS.has(tok)) i++;
+      continue;
+    }
+    const next = cmd.commands.find((c) => c.name() === tok || c.aliases().includes(tok));
+    if (next) {
+      cmd = next;
+      path2.push(next.name());
+      continue;
+    }
+    if (cmd.commands.length === 0) break;
+    return { path: path2, cmd, unknown: tok };
+  }
+  return { path: path2, cmd };
+}
+function commandExists(program3, target) {
+  let cmd = program3;
+  for (const part of target.split(" ")) {
+    const next = cmd.commands.find((c) => c.name() === part);
+    if (!next) return false;
+    cmd = next;
+  }
+  return true;
+}
+function listSubcommands(cmd) {
+  return cmd.commands.filter((c) => c.name() !== "help").map((c) => c.name()).join(", ");
+}
+function usageHint(code, message, argv, program3) {
+  const r = resolve4(program3, argv);
+  if (code === "commander.unknownOption") {
+    const flag = /unknown option '(--[^'=\s]+)/.exec(message)?.[1];
+    if (flag === "--seller-id" && r.path.join(" ") === "data query") {
+      return {
+        id: "data_query_seller_id",
+        text: "`data query` takes SQL and has no --seller-id. Filter in the SQL instead: WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). (`data sample` and `data export` do take --seller-id.)"
+      };
+    }
+    return void 0;
+  }
+  if (code === "commander.unknownCommand" && r.unknown !== void 0) {
+    const key = r.path.length ? `${r.path.join(" ")} ${r.unknown}` : r.unknown;
+    const alias = COMMAND_ALIASES[key];
+    if (alias) {
+      const targets = alias.targets.filter((t) => commandExists(program3, t)).map((t) => `\`mixshift ${t}\``);
+      const list = targets.length > 1 ? `${targets.slice(0, -1).join(", ")} or ${targets.at(-1)}` : targets[0];
+      if (targets.length) {
+        return {
+          id: "command_alias",
+          text: `${alias.note ? `${alias.note}. ` : ""}Try ${list}${alias.then ? ` (then ${alias.then})` : ""}.`
+        };
+      }
+    }
+    const where = r.path.length ? `mixshift ${r.path.join(" ")}` : "mixshift";
+    const subs = listSubcommands(r.cmd);
+    if (subs) {
+      return {
+        id: "command_list",
+        text: `Commands under \`${where}\`: ${subs}. Run \`${where} --help\` for details.`
+      };
+    }
+  }
+  return void 0;
+}
+
 // src/lib/cli/top-level-error.ts
 var DISPLAY_CODES = /* @__PURE__ */ new Set(["commander.helpDisplayed", "commander.help", "commander.version"]);
 function applyExitOverride(cmd) {
@@ -99112,12 +99821,18 @@ async function handleTopLevelError(err, ctx, io = defaultIo) {
   let telemetryMessage;
   let extra = {};
   let alreadyPrinted = false;
+  let hint;
   if (err instanceof CommanderError) {
     message = err.message.replace(/^error: /, "");
     errorClass = err.code === "commander.invalidArgument" ? "invalid_argument" : "usage_error";
     telemetryMessage = scrubCommanderMessage(message);
     extra = { user_facing: true, commander_code: err.code };
     alreadyPrinted = true;
+    const h = ctx.program ? usageHint(err.code, message, ctx.argv, ctx.program) : void 0;
+    if (h) {
+      hint = h.text;
+      extra.hint_id = h.id;
+    }
   } else if (err instanceof InvalidOptionValueError) {
     message = err.message;
     errorClass = err.errorClass;
@@ -99134,9 +99849,17 @@ async function handleTopLevelError(err, ctx, io = defaultIo) {
     telemetryMessage = message;
   }
   if (ctx.json) {
-    io.stdout(JSON.stringify({ status: "error", error_class: errorClass, message }, null, 2) + "\n");
-  } else if (!alreadyPrinted) {
-    io.stderr(`error: ${message}
+    io.stdout(
+      JSON.stringify(
+        { status: "error", error_class: errorClass, message, ...hint ? { hint } : {} },
+        null,
+        2
+      ) + "\n"
+    );
+  } else {
+    if (!alreadyPrinted) io.stderr(`error: ${message}
+`);
+    if (hint) io.stderr(`hint: ${hint}
 `);
   }
   await io.track({
@@ -99262,7 +99985,8 @@ try {
 } catch (err) {
   process.exitCode = await handleTopLevelError(err, {
     json: program2.opts().json === true,
-    argv: process.argv.slice(2)
+    argv: process.argv.slice(2),
+    program: program2
   });
 } finally {
   const flushResult = await maybeFlush();

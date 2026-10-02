@@ -3,6 +3,98 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.16
+
+
+### Added
+
+- **You can now see your live Amazon promotions: coupons, deals, price
+  discounts, and basket-building offers.** Ask which promotions are running or
+  scheduled on your products and you get Amazon's current answer, including
+  each promotion's dates, discount, budget, the products it covers, and any
+  problems Amazon has flagged, without requesting a report and waiting for it.
+  Available for seller accounts.
+
+- **You can now build Amazon Marketing Cloud audiences by describing them.**
+  Say "build an audience of everyone who bought in the last year and push it
+  to DSP" or "lapsed buyers, 180 to 365 days ago, refreshed weekly", and the
+  audience is written, checked and created on your DSP advertiser or
+  sponsored-ads account, after you confirm the preview. The checks catch the
+  things Amazon only reports after a failed run: a refresh Amazon does not
+  allow, date arithmetic the clean room rejects, a query that reads a paid
+  dataset your instance does not have. You can list the audiences on an
+  instance, read why one failed, fix and resubmit it, or delete a failed one.
+
+- **New `mixshift auth status` shows whether you are signed in.** It reports who
+  you are signed in as, which tenant login, whether it is a person or a service
+  credential, and when the access token expires, as text or `--json`. It only
+  reads what is saved on your computer: it never signs you in, prompts, contacts
+  the sign-in service or refreshes your session. When you are signed out it tells
+  you how to sign in from a chat.
+
+- **Monthly Performance Report Max can include your forecast.** When the MixShift
+  forecasting service holds a forecast for the brand that is current for the month being
+  reported, the client brief compares the month with what was forecast before it closed,
+  and the internal companion adds what the forecast stands on and the current model's view.
+  Brands without a current forecast see no forecast content. A new forecast setting turns it
+  off, keeps it in the internal companion, adds units, or points it at a sub-brand.
+
+- **Forecast problems reach MixShift without you reporting them.** When Monthly Performance
+  Report Max reads a forecast, the plugin tells MixShift whether the forecast made it into
+  the report or was held back, and why. No forecast figures are sent.
+
+### Changed
+
+- **Your assistant now knows how to answer four more live Amazon questions.**
+  Ask where your FBA inbound shipments are, what customers praise and complain
+  about in reviews of a product, how your Subscribe & Save program is doing,
+  or what Amazon requires to list a type of product, and it picks the right
+  lookup and reads the result correctly, including which date range each
+  Subscribe & Save figure covers.
+
+- **Two Brand Analytics reports that Amazon has retired are now marked as retired.** Alternate Purchase and Item Comparison no longer work: Amazon refuses every request for them. The report list and the report details now say so up front, instead of offering them as working reports.
+
+- **A forecast request now says what came back.** Asking the MixShift forecasting service
+  for a forecast prints a one-line summary: whether the forecast is current, out of date or
+  not yet published, and which published copy it came from and how old that copy is.
+
+- **Report Max calls an open-window ACOS estimate a "settled estimate".** Where a brand has a
+  capture-rate calibration, the report used to say ACOS "projects to" a settled figure; it now
+  says the figure "should settle at" that level and grades last month's settled estimate the
+  same way as before. Only the wording changes.
+
+### Fixed
+
+- **When Amazon refuses a report, you now see why, and the report guide states the date rules Amazon enforces.** A report that came back failed used to tell you to look for the reason Amazon gave and then show nothing, so assistants retried the same request again and again. The reason Amazon gives (for example that the start date must be a Sunday, or that daily vendor reports can cover at most 15 days) now appears right under the failure message, so the one thing Amazon named can be changed before trying again. The report guide and the report catalog also now spell out the date rules: weekly reports run Sunday to Saturday (the guide's own examples were Monday to Sunday, which Amazon refuses), monthly reports cover a whole month, vendor daily reports cover at most 15 days, and the newest few days are not ready yet.
+
+- **A wrong guess now tells your assistant the right command or column, so it
+  recovers on the next try instead of stopping.** Passing `--seller-id` to
+  `mixshift data query` now explains that data query takes SQL and the seller goes
+  in the SQL (`WHERE SellerID = ...`), and common mistyped commands such as
+  `data tables`, `amazon list` or `amazon ops` name the command that exists. A
+  query that fails on a column that does not exist now points to
+  `mixshift data describe <table>`, a reserved word used as a column alias (like
+  `rows` or `lines`) is called out with the fix, and the table notes now list the
+  wrong column names people most often try on `seller`, `campaign`,
+  `campaignmetric`, `business_reports_dpst_sku` and `vendor_items`.
+
+- **Competitive Summary now works for lists longer than 20 ASINs.** Asking for
+  Buy Box and competitive prices on 21 or more ASINs used to fail outright,
+  because Amazon only accepts 20 at a time and the service sent more. The
+  service now splits the list into batches of 20 for you, so the request
+  works the first time. A single call accepts up to 100 ASINs and takes a
+  few minutes; for larger lists, run it in the background and check back for the
+  results.
+
+- **Feedback and usage reports are no longer lost when several commands run at
+  once, and one that can't be stored no longer holds up the rest.** When your
+  assistant ran MixShift commands in parallel, a report written by one of them
+  could be lost before it was sent. And a single report the server could not
+  store could hold up every report queued behind it on that computer. Reports
+  now wait on your computer until they are sent; one the server refuses is set
+  aside there instead of blocking the others, is tried again after your next
+  plugin update, and `mixshift telemetry status` tells you if any are waiting.
+
 ## 0.8.15
 
 
