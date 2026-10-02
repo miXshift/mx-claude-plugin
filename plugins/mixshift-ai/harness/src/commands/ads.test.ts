@@ -15,6 +15,7 @@ import { Command } from 'commander';
 import { registerAdsCommands } from './ads.js';
 import { adsCall } from '../lib/amazon/ads-call.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
+import { track } from '../lib/telemetry/index.js';
 
 vi.mock('../lib/amazon/ads-call.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/amazon/ads-call.js')>();
@@ -186,5 +187,47 @@ describe('ads call --commit → timeline emission', () => {
     expect(process.exitCode).toBe(1);
     expect(adsCall).not.toHaveBeenCalled();
     expect(emitAdsCommitEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('ads call failure: unknown outcome reaches --json and telemetry', () => {
+  it('emits request_outcome, automatic_retry and retry_after_ms, and records the outcome', async () => {
+    vi.mocked(adsCall).mockResolvedValue({
+      ok: false,
+      kind: 'upstream_unavailable',
+      friendly: 'Amazon may have already accepted this request.',
+      message: 'HTTP 503',
+      httpStatus: 502,
+      requestOutcome: 'unknown',
+      automaticRetry: false,
+      retryAfterMs: 5000,
+    });
+    const out: string[] = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      out.push(String(chunk));
+      return true;
+    });
+    await buildProgram().parseAsync([
+      'node',
+      'mixshift',
+      '--json',
+      'ads',
+      'call',
+      'reporting_v1.create_report',
+      '--legacy-seller-id',
+      '71',
+    ]);
+    const emitted = JSON.parse(out.join(''));
+    expect(emitted).toMatchObject({
+      status: 'error',
+      failure_kind: 'upstream_unavailable',
+      request_outcome: 'unknown',
+      automatic_retry: false,
+      retry_after_ms: 5000,
+    });
+    expect(emitted).not.toHaveProperty('concurrency_cap');
+    const payload = vi.mocked(track).mock.calls[0]?.[0]?.payload as Record<string, unknown>;
+    expect(payload).toMatchObject({ request_outcome: 'unknown' });
+    expect(process.exitCode).not.toBe(0);
   });
 });

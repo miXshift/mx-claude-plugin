@@ -726,6 +726,12 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. |
 
+**If a failure carries `request_outcome: "unknown"`** (the message says the call
+may still have gone through), the report you were creating may already exist.
+Do not resend `dsp.create_report` or `reporting_v1.create_report` blindly: a v1
+resend makes a second report that holds one of the two slots. Follow the
+unknown-outcome rule in `mx-amazon-ads` ("Reactive error handling").
+
 Four DSP-specific cases that need their own handling:
 
 - **`REQUEST_BODY_FIELD_REPORT_DATE_OLD` (HTTP 422) on `dsp.create_report`** is
