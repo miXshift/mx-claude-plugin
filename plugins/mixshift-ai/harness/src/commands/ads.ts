@@ -325,6 +325,10 @@ function registerCall(ads: Command): void {
             ...(result.unrecognizedKind
               ? { unrecognized_kind: result.unrecognizedKind }
               : {}),
+            // A lost answer on a create or write: how often users land here
+            // decides whether report creation needs real dedup. One word, no
+            // identifiers.
+            ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
           });
           return emitFailure(result, !!root.json);
         }
@@ -466,6 +470,12 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
+      // 'unknown' = the call may have gone through (report create or write):
+      // check before resending. Dropped until now, so --json callers could not
+      // tell a lost answer from a refusal.
+      request_outcome: failure.requestOutcome,
+      automatic_retry: failure.automaticRetry,
+      concurrency_cap: failure.concurrencyCap,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);

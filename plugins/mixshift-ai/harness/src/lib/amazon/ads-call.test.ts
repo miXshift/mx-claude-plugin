@@ -280,3 +280,169 @@ describe('adsCall writes (dryRun contract)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Unknown outcomes. The service sends a report create to Amazon only once, so
+// a 5xx, a timeout or a lost answer cannot prove nothing was created, and a
+// blind resend can make a duplicate. These envelopes are the PRODUCER's own
+// output, captured from mx-legacy-auth's SpApiError.toEnvelope() for its
+// retryPolicy 'never' path (2026-10-02), not written by hand; the HTTP status
+// is the one its Ads route maps each kind to.
+// ---------------------------------------------------------------------------
+
+const UNCERTAIN_FRIENDLY =
+  'Amazon may have already accepted this request. MixShift did not automatically retry it. ' +
+  'Check its outcome before submitting it again to avoid creating a duplicate report.';
+
+const GATEWAY_ENVELOPES = {
+  uncertain5xx: {
+    status: 502,
+    body: {
+      ok: false,
+      kind: 'upstream_unavailable',
+      friendly: UNCERTAIN_FRIENDLY,
+      message: 'HTTP 503',
+      status: 503,
+      responsePayload: {},
+      automaticRetry: false,
+      requestOutcome: 'unknown',
+    },
+  },
+  lostBody: {
+    status: 500,
+    body: {
+      ok: false,
+      kind: 'unknown',
+      friendly: UNCERTAIN_FRIENDLY,
+      message: 'Amazon answered HTTP 207 but the response body was empty or unreadable.',
+      status: 207,
+      automaticRetry: false,
+      requestOutcome: 'unknown',
+    },
+  },
+  concurrency429: {
+    status: 429,
+    body: {
+      ok: false,
+      kind: 'throttled',
+      friendly:
+        'Amazon refused this because too many reports are already running, not because Amazon ' +
+        'Ads API requests are arriving too quickly. Waiting and retrying will NOT clear it. Free a ' +
+        'slot by deleting a report you no longer need, or wait for one already running to finish, ' +
+        'then send this again.',
+      message:
+        'Received 429 from the Amazon Ads API. Concurrency cap, not a rate cap: back-off does not clear it.',
+      concurrencyCap: true,
+      automaticRetry: false,
+    },
+  },
+} as const;
+
+const CREATE = { operation: 'reporting_v1.create_report', legacySellerId: 71, body: {} };
+
+describe('adsCall unknown outcomes', () => {
+  it.each(['uncertain5xx', 'lostBody'] as const)(
+    'passes the service verdict through on %s',
+    async (name) => {
+      const env = GATEWAY_ENVELOPES[name];
+      const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(env.status, env.body));
+      const r = await adsCall(CREATE, injected(fetchImpl));
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.kind).toBe(env.body.kind);
+      expect(r.friendly).toBe(UNCERTAIN_FRIENDLY);
+      expect(r.requestOutcome).toBe('unknown');
+      expect(r.automaticRetry).toBe(false);
+      expect(r.concurrencyCap).toBeUndefined();
+    },
+  );
+
+  it('keeps a concurrency-cap refusal a refusal (no unknown outcome)', async () => {
+    const env = GATEWAY_ENVELOPES.concurrency429;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(env.status, env.body));
+    const r = await adsCall(CREATE, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('throttled');
+    expect(r.concurrencyCap).toBe(true);
+    expect(r.automaticRetry).toBe(false);
+    expect(r.requestOutcome).toBeUndefined();
+    expect(r.friendly).toBe(env.body.friendly);
+  });
+
+  it('says the outcome is unknown when its own timeout fires, and does not resend', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    const r = await adsCall(CREATE, injected(fetchImpl));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('host_unreachable');
+    expect(r.requestOutcome).toBe('unknown');
+    expect(r.friendly).toMatch(/did not answer within 90 seconds/);
+    expect(r.friendly).toMatch(/may still have gone through/);
+    expect(r.friendly).toMatch(/check whether it did before sending it again/);
+    expect(r.friendly).not.toMatch(/unreachable|try again in a minute/i);
+  });
+
+  it('treats a real request deadline the same way', async () => {
+    const fetchImpl = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error('Missing request deadline');
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }),
+    );
+    const r = await adsCall(CREATE, { ...injected(fetchImpl as never), timeoutMs: 5 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.requestOutcome).toBe('unknown');
+  });
+
+  it('keeps a connection failure "unreachable": nothing was sent', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    const r = await adsCall(CREATE, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('host_unreachable');
+    expect(r.requestOutcome).toBeUndefined();
+    expect(r.friendly).toMatch(/unreachable/);
+  });
+
+  it('says the outcome is unknown when a 2xx answer is unreadable', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"ok":true,"operation":', { status: 200 }));
+    const r = await adsCall(CREATE, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('unknown');
+    expect(r.httpStatus).toBe(200);
+    expect(r.requestOutcome).toBe('unknown');
+    expect(r.friendly).toMatch(/answer was lost/);
+  });
+
+  it('waits 90 s by default, longer than the 60 s the service gives Amazon', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, operation: 'x', payload: {} }));
+    await adsCall(CREATE, injected(fetchImpl));
+    expect(timeout).toHaveBeenCalledWith(90_000);
+    timeout.mockRestore();
+  });
+
+  it('leaves a read-only surface timeout as "unreachable"', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    const r = await listAdsProfiles(injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('host_unreachable');
+    expect(r.requestOutcome).toBeUndefined();
+  });
+});

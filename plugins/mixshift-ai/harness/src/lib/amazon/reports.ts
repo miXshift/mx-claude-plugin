@@ -214,6 +214,19 @@ export interface ReportFailure {
    *  request and often names the one parameter to change. Absent when Amazon
    *  gave no reason. Sanitized and length-capped (see `cleanAmazonError`). */
   amazonError?: string;
+  /** `'unknown'` when the request may still have taken effect: the service
+   *  sends some calls (report creation) to Amazon only once, and a 5xx,
+   *  timeout, redirect or lost response then cannot prove nothing happened.
+   *  Also set by this client when its OWN timeout fires on a call that can
+   *  change something. A caller must not resend a create or a write blindly
+   *  on it. Absent when the outcome is known. Kept as a string so a new
+   *  service value stays visible instead of being dropped. */
+  requestOutcome?: string;
+  /** `false` when the service deliberately did NOT retry the call itself. */
+  automaticRetry?: boolean;
+  /** On `throttled` from report creation: Amazon is capping reports already
+   *  running, not the request rate, so waiting alone does not clear it. */
+  concurrencyCap?: boolean;
 }
 
 export interface ListMerchantsResult {
@@ -1313,6 +1326,15 @@ interface RequestSpec {
    * yields wording that names no surface: vaguer, never wrong.
    */
   surface?: AmazonSurface;
+  /**
+   * The call can create or change something at Amazon (an Ads call: report
+   * creation, or a committed write). If THIS client's timeout fires, or a
+   * 2xx arrives with an unreadable body, the service already had the request
+   * and may have finished it, so the failure says the outcome is unknown
+   * instead of "unreachable, try again". Connection failures (DNS, refused,
+   * TLS) are unaffected: nothing was sent.
+   */
+  mayChangeState?: boolean;
 }
 
 export type AmazonRequestSpec = RequestSpec;
@@ -1345,7 +1367,7 @@ export async function amazonRequest(
 
   const doFetch = async (
     bearer: string,
-  ): Promise<{ res: Response } | { networkError: string }> => {
+  ): Promise<{ res: Response } | { networkError: string; timedOut: boolean }> => {
     try {
       const res = await fetchImpl(`${apiBase}${spec.path}`, {
         method: spec.method,
@@ -1359,9 +1381,20 @@ export async function amazonRequest(
       });
       return { res };
     } catch (err) {
-      return { networkError: err instanceof Error ? err.message : String(err) };
+      return {
+        networkError: err instanceof Error ? err.message : String(err),
+        timedOut: isTimeoutError(err),
+      };
     }
   };
+  const networkFailure = (a: { networkError: string; timedOut: boolean }): ReportFailure =>
+    a.timedOut && spec.mayChangeState
+      ? uncertainOutcome(
+          `MixShift did not answer within ${Math.ceil(timeoutMs / 1000)} seconds, so this call ` +
+            'may still have gone through.',
+          a.networkError,
+        )
+      : hostUnreachable(a.networkError);
 
   let token: string;
   try {
@@ -1371,7 +1404,7 @@ export async function amazonRequest(
   }
 
   let attempt = await doFetch(token);
-  if ('networkError' in attempt) return hostUnreachable(attempt.networkError);
+  if ('networkError' in attempt) return networkFailure(attempt);
   let res = attempt.res;
 
   // Mid-session 401: token looked fresh client-side but the server rejected
@@ -1383,7 +1416,7 @@ export async function amazonRequest(
       return sessionFailureFromError(err);
     }
     attempt = await doFetch(token);
-    if ('networkError' in attempt) return hostUnreachable(attempt.networkError);
+    if ('networkError' in attempt) return networkFailure(attempt);
     res = attempt.res;
     if (res.status === 401) {
       return {
@@ -1403,7 +1436,17 @@ export async function amazonRequest(
   let json: unknown;
   try {
     json = await res.json();
-  } catch {
+  } catch (err) {
+    // The service answered 2xx, so it finished the call; only its answer was
+    // lost (an unreadable body, or our timeout firing mid-read).
+    if (res.ok && spec.mayChangeState) {
+      return uncertainOutcome(
+        'MixShift finished this call but its answer was lost on the way back, so it may have ' +
+          'gone through.',
+        err instanceof Error ? err.message : String(err),
+        res.status,
+      );
+    }
     return statusOnlyFailure(res.status, undefined, spec.surface);
   }
 
@@ -1683,6 +1726,11 @@ function toReportFailure(
     ...(strOrUndef(json.responseText) !== undefined
       ? { responseText: strOrUndef(json.responseText) }
       : {}),
+    ...(strOrUndef(json.requestOutcome) !== undefined
+      ? { requestOutcome: strOrUndef(json.requestOutcome) }
+      : {}),
+    ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
+    ...(json.concurrencyCap === true ? { concurrencyCap: true } : {}),
   };
 }
 
@@ -1780,6 +1828,32 @@ function statusToKind(httpStatus: number): ReportFailureKind {
     default:
       return 'unknown';
   }
+}
+
+/** A call that can change something ended without an answer we can trust.
+ *  Mirrors the service's own unknown-outcome envelope (`requestOutcome`), so a
+ *  caller handles a lost answer the same way wherever it was lost. */
+function uncertainOutcome(lead: string, message: string, httpStatus?: number): ReportFailure {
+  return {
+    ok: false,
+    // No answer at all reads like the service's own timeout; a 2xx whose body
+    // was lost is not an unreachable service.
+    kind: httpStatus === undefined ? 'host_unreachable' : 'unknown',
+    friendly:
+      `${lead} If it creates or changes something (a report, a bid, a negative ` +
+      'keyword), check whether it did before sending it again: resending can make a ' +
+      'duplicate. Reading data is safe to retry.',
+    message,
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+    requestOutcome: 'unknown',
+  };
+}
+
+/** `AbortSignal.timeout` rejects fetch with a DOMException named TimeoutError. */
+function isTimeoutError(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'TimeoutError'
+  );
 }
 
 function hostUnreachable(message: string): ReportFailure {

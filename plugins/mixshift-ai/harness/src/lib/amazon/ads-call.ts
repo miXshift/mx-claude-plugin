@@ -236,9 +236,15 @@ export async function adsCall(
   // default (TRUE for writes) is the safety contract.
   if (input.dryRun !== undefined) body.dryRun = input.dryRun;
 
+  // Outlast the service: it gives Amazon 60 s per call and sends a report
+  // create only once, so a client deadline of 60 s gave up first and told the
+  // user to try again while the create could still land. 90 s leaves 30 s for
+  // the service's own work (token, profile lookup, pacing) on top of Amazon's
+  // 60. mayChangeState: a timeout here is an unknown outcome, not an
+  // unreachable service.
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/ads/call', body, surface: 'ads' },
-    { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
+    { method: 'POST', path: '/api/amazon/ads/call', body, surface: 'ads', mayChangeState: true },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 90_000 },
   );
   if (!r.ok) return r;
   const json = r.json as Partial<AdsCallSuccess>;
