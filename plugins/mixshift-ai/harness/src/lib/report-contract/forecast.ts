@@ -23,8 +23,8 @@
  *      forecast (state `not_provided`, reason `unrecognised_figures`), so a
  *      change in the service's ids can never let a projection reach a client
  *      brief under the forecast's name.
- *   4. CLIENT-SAFE. `client_safe` is true only for an actual, forecast or
- *      outlook figure that carries no blocking caveat (and, for a derived
+ *   4. CLIENT-SAFE. `client_safe` is true only for an actual, projection,
+ *      forecast or outlook figure that carries no blocking caveat (and, for a derived
  *      figure, whose inputs are all client-safe). The client brief quotes
  *      nothing else.
  *
@@ -200,7 +200,10 @@ export function roleOfClaim(id: string): ForecastRole | null {
   return null;
 }
 
-const CLIENT_ROLES: ReadonlySet<ForecastRole> = new Set(['actual', 'forecast', 'outlook']);
+// D-089: the current model's projection leads the comparison in the client brief too (it is the
+// number the forecasting app shows), named as that with its in-sample disclosure; the year-start
+// forecast and the basis stay internal.
+const CLIENT_ROLES: ReadonlySet<ForecastRole> = new Set(['actual', 'projection', 'forecast', 'outlook']);
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);

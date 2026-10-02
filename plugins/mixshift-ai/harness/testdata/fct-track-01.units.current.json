@@ -9,7 +9,7 @@
   "ytd_runs_past_report_month": false,
   "report_data": {
     "schema_version": "2.0-draft",
-    "brand_slug": "demo-brand",
+    "brand_slug": "demo-data",
     "currency": "USD",
     "forecast": {
       "state": "provided_current",
@@ -20,10 +20,10 @@
       {
         "id": "forecast.actual.units.ytd",
         "label": "Actual units, year to date",
-        "value": 1450731.1,
+        "value": 46481,
         "unit": "count",
         "basis": "final_months_with_overlay",
-        "source_path": "document:figures.tracking.actual.sales",
+        "source_path": "document:figures.tracking.actual.units",
         "caveats": [
           "forecast_units_uncorrected"
         ],
@@ -33,13 +33,13 @@
           "members": [
             {
               "key": "2026-01",
-              "units": 713072,
-              "source_units": 713072
+              "units": 23026,
+              "source_units": 23026
             },
             {
               "key": "2026-02",
-              "units": 737659.1,
-              "source_units": 737659.1
+              "units": 23455,
+              "source_units": 23455
             }
           ]
         }
@@ -47,10 +47,10 @@
       {
         "id": "forecast.expected.rolling.units.ytd",
         "label": "Forecast units year to date, rolling one month out",
-        "value": 1526546.6721578883,
+        "value": 47928.38680819073,
         "unit": "count",
         "basis": "replayed_rolling_h1",
-        "source_path": "document:figures.tracking.rolling.sales",
+        "source_path": "document:figures.tracking.rolling.units",
         "caveats": [
           "forecast_units_uncorrected"
         ],
@@ -59,22 +59,23 @@
       {
         "id": "forecast.expected.at_actual_spend.units.ytd",
         "label": "Forecast units year to date at the spend that happened",
-        "value": 1504544.5383011682,
+        "value": 47173.05957056723,
         "unit": "count",
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.tracking.rolling.atActualSpend",
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.expected.year_start.units.ytd",
         "label": "Forecast units year to date, as expected before the year began",
-        "value": 1523122.672362485,
+        "value": 47654.85256546579,
         "unit": "count",
         "basis": "replayed_year_start_h12",
-        "source_path": "document:figures.tracking.yearStart.sales",
+        "source_path": "document:figures.tracking.yearStart.units",
         "caveats": [
           "forecast_units_no_plan",
           "forecast_units_long_horizon",
@@ -85,10 +86,10 @@
       {
         "id": "forecast.fit.units.ytd",
         "label": "Projected units year to date, by the current model at the spend that happened",
-        "value": 1489207.931696074,
+        "value": 46879.96199674078,
         "unit": "count",
         "basis": "in_sample_fit",
-        "source_path": "document:figures.tracking.fit.sales",
+        "source_path": "document:figures.tracking.fit.units",
         "caveats": [
           "forecast_units_projection_in_sample",
           "forecast_units_uncorrected"
@@ -98,7 +99,7 @@
       {
         "id": "forecast.units.variance.actual_vs_projection.ytd",
         "label": "Units against the current model's projection, year to date",
-        "value": -38476.83169607399,
+        "value": -398.961996740778,
         "unit": "count",
         "basis": "in_sample_fit",
         "source_path": "document:figures.tracking.variance.actualVsFit.value",
@@ -111,7 +112,7 @@
       {
         "id": "forecast.units.variance.actual_vs_projection_pct.ytd",
         "label": "Units against the current model's projection, year to date, as a percentage",
-        "value": -2.583711171364252,
+        "value": -0.8510288399306188,
         "unit": "percent",
         "basis": "in_sample_fit",
         "source_path": "document:figures.tracking.variance.actualVsFit.pct",
@@ -124,7 +125,7 @@
       {
         "id": "forecast.units.tolerance.h1_3",
         "label": "Measured units forecasting error, one to three months out",
-        "value": 5.165265822431519,
+        "value": 6.656273119505117,
         "unit": "percent",
         "basis": "replayed_scope_h1_3",
         "source_path": "document:figures.backtest.tolerance.pct",
@@ -136,10 +137,10 @@
       {
         "id": "forecast.actual.units.month",
         "label": "Actual units, 2026-02",
-        "value": 737659.1,
+        "value": 23455,
         "unit": "count",
         "basis": "final_month_with_overlay",
-        "source_path": "document:figures.months[month=2026-02-01].sales.value",
+        "source_path": "document:figures.months[month=2026-02-01].units.value",
         "caveats": [
           "forecast_units_uncorrected"
         ],
@@ -149,8 +150,8 @@
           "members": [
             {
               "key": "2026-02",
-              "units": 737659.1,
-              "source_units": 737659.1
+              "units": 23455,
+              "source_units": 23455
             }
           ]
         }
@@ -158,7 +159,7 @@
       {
         "id": "forecast.expected.rolling.units.month",
         "label": "Forecast units for 2026-02, as made one month before",
-        "value": 796171.154116347,
+        "value": 25207.58570957349,
         "unit": "count",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.value",
@@ -171,7 +172,7 @@
       {
         "id": "forecast.range.lower.units.month",
         "label": "Forecast range for 2026-02, lower, units",
-        "value": 643256.5046931519,
+        "value": 19341.33369711584,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.band.lower",
@@ -184,7 +185,7 @@
       {
         "id": "forecast.range.upper.units.month",
         "label": "Forecast range for 2026-02, upper, units",
-        "value": 949085.803539542,
+        "value": 31073.83772203114,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.band.upper",
@@ -197,7 +198,7 @@
       {
         "id": "forecast.assumed_yoy.units.month",
         "label": "Change on the same month a year earlier that the forecast for 2026-02 assumed, units",
-        "value": 24.68025514312111,
+        "value": 16.707188803062596,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.assumedYoYPct",
@@ -210,7 +211,7 @@
       {
         "id": "forecast.units.variance.actual_vs_rolling.month",
         "label": "Units against the forecast as made one month before, 2026-02",
-        "value": -58512.05411634699,
+        "value": -1752.58570957349,
         "unit": "count",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsForecast.value",
@@ -223,7 +224,7 @@
       {
         "id": "forecast.units.variance.actual_vs_rolling_pct.month",
         "label": "Units against the forecast as made one month before, 2026-02, as a percentage",
-        "value": -7.34918036327104,
+        "value": -6.9526123198219745,
         "unit": "percent",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsForecast.pct",
@@ -236,22 +237,23 @@
       {
         "id": "forecast.expected.at_actual_spend.units.month",
         "label": "Forecast units for 2026-02 at the spend that happened",
-        "value": 782499.8188670941,
+        "value": 24737.97043587269,
         "unit": "count",
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.months[month=2026-02-01].expectation.atActualSpend.value",
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.last_year.units.month",
         "label": "Units in the same month a year earlier, 2025-02",
-        "value": 638570.36,
+        "value": 21599,
         "unit": "count",
         "basis": "training_months",
-        "source_path": "document:figures.months[month=2026-02-01].lastYear.sales",
+        "source_path": "document:figures.months[month=2026-02-01].lastYear.units",
         "caveats": [
           "forecast_units_uncorrected"
         ],
@@ -260,7 +262,7 @@
       {
         "id": "forecast.projection.units.month",
         "label": "Projected units for 2026-02, by the current model at the spend that happened",
-        "value": 775194.9872524575,
+        "value": 24528.96658318233,
         "unit": "count",
         "basis": "in_sample_fit",
         "source_path": "document:figures.months[month=2026-02-01].expectation.fit.value",
@@ -273,7 +275,7 @@
       {
         "id": "forecast.units.variance.actual_vs_projection.month",
         "label": "Units against the current model's projection, 2026-02",
-        "value": -37535.887252457556,
+        "value": -1073.9665831823295,
         "unit": "count",
         "basis": "in_sample_fit",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsFit.value",
@@ -286,7 +288,7 @@
       {
         "id": "forecast.units.variance.actual_vs_projection_pct.month",
         "label": "Units against the current model's projection, 2026-02, as a percentage",
-        "value": -4.84212202990333,
+        "value": -4.378360496926388,
         "unit": "percent",
         "basis": "in_sample_fit",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsFit.pct",
@@ -299,7 +301,7 @@
       {
         "id": "forecast.projected.units.2026-03",
         "label": "Projected units, 2026-03",
-        "value": 856267.8984657836,
+        "value": 27697.206417249035,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.value",
@@ -312,7 +314,7 @@
       {
         "id": "forecast.range.lower.units.2026-03",
         "label": "Forecast range for 2026-03, lower, units",
-        "value": 704280.5980810355,
+        "value": 21884.38957665286,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.band.lower",
@@ -325,7 +327,7 @@
       {
         "id": "forecast.range.upper.units.2026-03",
         "label": "Forecast range for 2026-03, upper, units",
-        "value": 1008255.1988505316,
+        "value": 33510.02325784521,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.band.upper",
@@ -345,12 +347,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-03",
         "label": "Change on the same month a year earlier that the projection for 2026-03 assumes, units",
-        "value": -1.346358905794646,
+        "value": -4.135378591828065,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.assumedYoYPct",
@@ -363,7 +366,7 @@
       {
         "id": "forecast.projected.units.2026-04",
         "label": "Projected units, 2026-04",
-        "value": 1063543.808032812,
+        "value": 35381.22895108471,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.value",
@@ -376,7 +379,7 @@
       {
         "id": "forecast.range.lower.units.2026-04",
         "label": "Forecast range for 2026-04, lower, units",
-        "value": 911024.5221532154,
+        "value": 29548.066106344893,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.band.lower",
@@ -389,7 +392,7 @@
       {
         "id": "forecast.range.upper.units.2026-04",
         "label": "Forecast range for 2026-04, upper, units",
-        "value": 1216063.093912409,
+        "value": 41214.39179582453,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.band.upper",
@@ -409,12 +412,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-04",
         "label": "Change on the same month a year earlier that the projection for 2026-04 assumes, units",
-        "value": 15.98521928595113,
+        "value": 15.293368584087302,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.assumedYoYPct",
@@ -427,7 +431,7 @@
       {
         "id": "forecast.projected.units.2026-05",
         "label": "Projected units, 2026-05",
-        "value": 1225202.419109176,
+        "value": 41506.6819582586,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.value",
@@ -440,7 +444,7 @@
       {
         "id": "forecast.range.lower.units.2026-05",
         "label": "Forecast range for 2026-05, lower, units",
-        "value": 1070592.6617966467,
+        "value": 35593.568173411455,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.band.lower",
@@ -453,7 +457,7 @@
       {
         "id": "forecast.range.upper.units.2026-05",
         "label": "Forecast range for 2026-05, upper, units",
-        "value": 1379812.1764217052,
+        "value": 47419.79574310575,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.band.upper",
@@ -473,12 +477,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-05",
         "label": "Change on the same month a year earlier that the projection for 2026-05 assumes, units",
-        "value": 18.951691175648147,
+        "value": 18.121409141576606,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.assumedYoYPct",
@@ -491,7 +496,7 @@
       {
         "id": "forecast.projected.units.2026-06",
         "label": "Projected units, 2026-06",
-        "value": 1187396.6000574701,
+        "value": 40614.288200156836,
         "unit": "count",
         "basis": "current_model_at_estimated_spend",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.value",
@@ -505,7 +510,7 @@
       {
         "id": "forecast.range.lower.units.2026-06",
         "label": "Forecast range for 2026-06, lower, units",
-        "value": 1026076.1826971072,
+        "value": 34444.52246058178,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.band.lower",
@@ -519,7 +524,7 @@
       {
         "id": "forecast.range.upper.units.2026-06",
         "label": "Forecast range for 2026-06, upper, units",
-        "value": 1348717.0174178332,
+        "value": 46784.05393973189,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.band.upper",
@@ -541,12 +546,13 @@
           "forecast_units_spend_estimated",
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-06",
         "label": "Change on the same month a year earlier that the projection for 2026-06 assumes, units",
-        "value": 1.1696252724347658,
+        "value": 0.5727365479455117,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.assumedYoYPct",
@@ -560,7 +566,7 @@
       {
         "id": "forecast.projected.units.2026-07",
         "label": "Projected units, 2026-07",
-        "value": 1463861.6234853142,
+        "value": 50214.72890518175,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.value",
@@ -573,7 +579,7 @@
       {
         "id": "forecast.range.lower.units.2026-07",
         "label": "Forecast range for 2026-07, lower, units",
-        "value": 1296808.4215087746,
+        "value": 43825.710459123555,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.band.lower",
@@ -586,7 +592,7 @@
       {
         "id": "forecast.range.upper.units.2026-07",
         "label": "Forecast range for 2026-07, upper, units",
-        "value": 1630914.8254618538,
+        "value": 56603.747351239945,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.band.upper",
@@ -606,12 +612,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-07",
         "label": "Change on the same month a year earlier that the projection for 2026-07 assumes, units",
-        "value": 6.374828089971767,
+        "value": 4.876209075149853,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.assumedYoYPct",
@@ -624,7 +631,7 @@
       {
         "id": "forecast.projected.units.2026-08",
         "label": "Projected units, 2026-08",
-        "value": 1392710.933755158,
+        "value": 47527.832496757386,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.value",
@@ -637,7 +644,7 @@
       {
         "id": "forecast.range.lower.units.2026-08",
         "label": "Forecast range for 2026-08, lower, units",
-        "value": 1227668.6616152758,
+        "value": 41215.72288972844,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.band.lower",
@@ -650,7 +657,7 @@
       {
         "id": "forecast.range.upper.units.2026-08",
         "label": "Forecast range for 2026-08, upper, units",
-        "value": 1557753.2058950402,
+        "value": 53839.942103786336,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.band.upper",
@@ -670,12 +677,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-08",
         "label": "Change on the same month a year earlier that the projection for 2026-08 assumes, units",
-        "value": 4.948915045711459,
+        "value": 3.589356153434725,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.assumedYoYPct",
@@ -688,7 +696,7 @@
       {
         "id": "forecast.projected.units.2026-09",
         "label": "Projected units, 2026-09",
-        "value": 1117054.9917936185,
+        "value": 37510.97960097121,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.value",
@@ -700,7 +708,7 @@
       {
         "id": "forecast.range.lower.units.2026-09",
         "label": "Forecast range for 2026-09, lower, units",
-        "value": 960404.956916317,
+        "value": 31519.834561157517,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.band.lower",
@@ -712,7 +720,7 @@
       {
         "id": "forecast.range.upper.units.2026-09",
         "label": "Forecast range for 2026-09, upper, units",
-        "value": 1273705.0266709202,
+        "value": 43502.124640784896,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.band.upper",
@@ -731,12 +739,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-09",
         "label": "Change on the same month a year earlier that the projection for 2026-09 assumes, units",
-        "value": 17.009051445165422,
+        "value": 13.090474843894023,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.assumedYoYPct",
@@ -748,7 +757,7 @@
       {
         "id": "forecast.projected.units.2026-10",
         "label": "Projected units, 2026-10",
-        "value": 865645.0373141688,
+        "value": 28144.786531194564,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.value",
@@ -760,7 +769,7 @@
       {
         "id": "forecast.range.lower.units.2026-10",
         "label": "Forecast range for 2026-10, lower, units",
-        "value": 699755.4894093967,
+        "value": 21800.272513913478,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.band.lower",
@@ -772,7 +781,7 @@
       {
         "id": "forecast.range.upper.units.2026-10",
         "label": "Forecast range for 2026-10, upper, units",
-        "value": 1031534.5852189409,
+        "value": 34489.30054847565,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.band.upper",
@@ -791,12 +800,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-10",
         "label": "Change on the same month a year earlier that the projection for 2026-10 assumes, units",
-        "value": 17.650412094682384,
+        "value": 14.65205528431874,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.assumedYoYPct",
@@ -808,7 +818,7 @@
       {
         "id": "forecast.projected.units.2026-11",
         "label": "Projected units, 2026-11",
-        "value": 778628.7031505017,
+        "value": 24415.96110508806,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.value",
@@ -820,7 +830,7 @@
       {
         "id": "forecast.range.lower.units.2026-11",
         "label": "Forecast range for 2026-11, lower, units",
-        "value": 616989.9315801278,
+        "value": 18234.019777759673,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.band.lower",
@@ -832,7 +842,7 @@
       {
         "id": "forecast.range.upper.units.2026-11",
         "label": "Forecast range for 2026-11, upper, units",
-        "value": 940267.4747208756,
+        "value": 30597.902432416446,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.band.upper",
@@ -851,12 +861,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-11",
         "label": "Change on the same month a year earlier that the projection for 2026-11 assumes, units",
-        "value": 4.23186426401867,
+        "value": 0.11054616871564808,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.assumedYoYPct",
@@ -868,7 +879,7 @@
       {
         "id": "forecast.projected.units.2026-12",
         "label": "Projected units, 2026-12",
-        "value": 751942.4285057329,
+        "value": 22927.085636782427,
         "unit": "count",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.value",
@@ -880,7 +891,7 @@
       {
         "id": "forecast.range.lower.units.2026-12",
         "label": "Forecast range for 2026-12, lower, units",
-        "value": 593942.1079758356,
+        "value": 16884.298366590574,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.band.lower",
@@ -892,7 +903,7 @@
       {
         "id": "forecast.range.upper.units.2026-12",
         "label": "Forecast range for 2026-12, upper, units",
-        "value": 909942.7490356303,
+        "value": 28969.87290697428,
         "unit": "count",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.band.upper",
@@ -911,12 +922,13 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.units.2026-12",
         "label": "Change on the same month a year earlier that the projection for 2026-12 assumes, units",
-        "value": -2.132271762144451,
+        "value": -7.2341264949122905,
         "unit": "percent",
         "basis": "forecast_against_last_year_same_month",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.assumedYoYPct",
@@ -928,19 +940,20 @@
       {
         "id": "forecast.model.units.per_ad_dollar",
         "label": "Units per 1 USD of ad spend, as fitted",
-        "value": 6.010643278433179,
+        "value": 0.20640646308427435,
         "unit": "count",
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.coefficients.adSpend",
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 4
+        "precision": 4,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.units.growth_per_month",
         "label": "Units trend per month, as fitted",
-        "value": 3306.9081436950364,
+        "value": 30.259615939783544,
         "unit": "count",
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.coefficients.time",
@@ -964,7 +977,7 @@
       {
         "id": "forecast.units.model.seasonal_amplitude",
         "label": "Seasonal swing around the units baseline, as fitted",
-        "value": 17.2761889896842,
+        "value": 21.218362458939932,
         "unit": "percent",
         "basis": "fitted_seasonal_pair",
         "source_path": "document:figures.model.derived.seasonalAmplitudePct",
@@ -988,19 +1001,20 @@
       {
         "id": "forecast.model.units.per_ad_dollar_margin",
         "label": "Margin on units per 1 USD of ad spend, one standard error",
-        "value": 1.142366618116448,
+        "value": 0.04369028135319488,
         "unit": "count",
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.standardErrors.adSpend",
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 4
+        "precision": 4,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.units.per_ad_dollar_prior",
         "label": "Units per 1 USD of ad spend, as fitted through 2026-01",
-        "value": 5.999962805291375,
+        "value": 0.20610087629556872,
         "unit": "count",
         "basis": "expanding_window_refit",
         "source_path": "document:figures.history.expandingWindow.prior.adSpend",
@@ -1008,12 +1022,13 @@
           "forecast_units_model_drift_is_a_refit",
           "forecast_units_uncorrected"
         ],
-        "precision": 4
+        "precision": 4,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.units.growth_per_month_prior",
         "label": "Units trend per month, as fitted through 2026-01",
-        "value": 3523.361434073071,
+        "value": 36.452718533108055,
         "unit": "count",
         "basis": "expanding_window_refit",
         "source_path": "document:figures.history.expandingWindow.prior.time",
@@ -1029,7 +1044,7 @@
         "value": 2,
         "unit": "count",
         "basis": "overlay_counts",
-        "source_path": "document:figures.overlay.counts.replaced.sales",
+        "source_path": "document:figures.overlay.counts.replaced.units",
         "caveats": [
           "forecast_units_uncorrected"
         ],
@@ -1045,7 +1060,8 @@
         "caveats": [
           "forecast_units_uncorrected"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.units.overlay.ignored",
@@ -1089,7 +1105,7 @@
       {
         "id": "forecast.units.variance.actual_vs_forecast_at_actual_spend.ytd",
         "label": "Units against the forecast at the spend that happened, year to date",
-        "value": -53813.43830116815,
+        "value": -692.0595705672313,
         "unit": "count",
         "basis": "replayed_at_actual_spend_h1",
         "inputs": [
@@ -1101,7 +1117,7 @@
       {
         "id": "forecast.units.variance.actual_vs_year_start.ytd",
         "label": "Units against what was expected before the year began, year to date",
-        "value": -72391.57236248488,
+        "value": -1173.8525654657933,
         "unit": "count",
         "basis": "replayed_year_start_h12",
         "inputs": [
@@ -1113,7 +1129,7 @@
       {
         "id": "forecast.units.variance.actual_vs_forecast_at_actual_spend.month",
         "label": "Units against the forecast at the spend that happened, 2026-02",
-        "value": -44840.71886709414,
+        "value": -1282.9704358726885,
         "unit": "count",
         "basis": "replayed_at_actual_spend_h1",
         "inputs": [
@@ -1125,7 +1141,7 @@
       {
         "id": "forecast.projection_vs_last_year_pct.units.month",
         "label": "The current model's projection for 2026-02 against the same month a year earlier, units",
-        "value": 21.395391300726445,
+        "value": 13.565288129924207,
         "unit": "percent",
         "basis": "projection_against_last_year_same_month",
         "inputs": [
@@ -1137,7 +1153,7 @@
       {
         "id": "forecast.projected.units.rest_of_window",
         "label": "Projected units, 2026-03 to 2026-12",
-        "value": 10702254.443669735,
+        "value": 355940.7798027246,
         "unit": "count",
         "basis": "current_model_at_each_months_spend",
         "inputs": [
@@ -1157,7 +1173,7 @@
       {
         "id": "forecast.projected.units.window_total",
         "label": "Units for 2026-01 to 2026-12, actual to date plus projected",
-        "value": 12152985.543669734,
+        "value": 402421.7798027246,
         "unit": "count",
         "basis": "actual_to_date_plus_current_model",
         "inputs": [
@@ -1178,7 +1194,7 @@
       {
         "id": "forecast.model.units.per_ad_dollar_change",
         "label": "Change in units per 1 USD of ad spend when 2026-02 was added",
-        "value": 0.010680473141803759,
+        "value": 0.00030558678870562517,
         "unit": "count",
         "basis": "expanding_window_refit",
         "inputs": [
@@ -1190,7 +1206,7 @@
       {
         "id": "forecast.model.units.growth_per_month_change",
         "label": "Change in the units trend per month when 2026-02 was added",
-        "value": -216.45329037803458,
+        "value": -6.193102593324511,
         "unit": "count",
         "basis": "expanding_window_refit",
         "inputs": [
@@ -1202,7 +1218,7 @@
     ],
     "caveat_registry": {
       "forecast_units_uncorrected": {
-        "text": "2 of the 32 months this units model trains on have corrected sales and uncorrected units, with the corrected sales about 30% above the source's figure. The revenue forecast stands on those corrections; the units forecast still stands on the unit counts the source reports for the same months, so the two do not describe the same history.",
+        "text": "2 of the 32 months this units model trains on have corrected sales and uncorrected units. The revenue forecast stands on those corrections; the units forecast still stands on the unit counts the source reports for the same months, so the two do not describe the same history.",
         "severity": "blocking"
       },
       "forecast_units_no_plan": {
@@ -1242,7 +1258,7 @@
       {
         "id": "claim.forecast.units.projection_line",
         "kind": "tracking",
-        "text": "Units year to date are 1,450,731 against 1,489,208 projected by the current model at the spend that happened, a difference of -2.6%.",
+        "text": "Units year to date are 46,481 against 46,880 projected by the current model at the spend that happened, a difference of -0.9%.",
         "figure_refs": [
           "forecast.actual.units.ytd",
           "forecast.fit.units.ytd",
@@ -1252,7 +1268,7 @@
       {
         "id": "claim.forecast.units.operator_line",
         "kind": "tracking",
-        "text": "Units year to date are 1,450,731 against 1,504,545 forecast at the spend that actually happened, a difference of -3.6% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out.",
+        "text": "Units year to date are 46,481 against 47,173 forecast at the spend that actually happened, a difference of -1.5% against a measured error of 6.7% (this scope, replayed over 21 closed months) one to three months out.",
         "figure_refs": [
           "forecast.actual.units.ytd",
           "forecast.expected.at_actual_spend.units.ytd"
@@ -1261,7 +1277,7 @@
       {
         "id": "claim.forecast.units.month_projection_line",
         "kind": "tracking",
-        "text": "Units for 2026-02 were 737,659 against 775,195 projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier.",
+        "text": "Units for 2026-02 were 23,455 against 24,529 projected by the current model at the spend that happened, a difference of -4.4%. That projection is 13.6% above the same month a year earlier.",
         "figure_refs": [
           "forecast.actual.units.month",
           "forecast.projection.units.month",
@@ -1272,7 +1288,7 @@
       {
         "id": "claim.forecast.units.month_line",
         "kind": "tracking",
-        "text": "Before the month closed, it stood against 782,500 forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier.",
+        "text": "Before the month closed, it stood against 24,738 forecast at the spend that actually happened, a difference of -5.2% against a measured error of 6.7% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 16.7% on the same month a year earlier.",
         "figure_refs": [
           "forecast.actual.units.month",
           "forecast.expected.at_actual_spend.units.month",
@@ -1282,7 +1298,7 @@
       {
         "id": "claim.forecast.units.outlook",
         "kind": "tracking",
-        "text": "Units for 2026-03 to 2026-12 are projected at 10,702,254 over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated.",
+        "text": "Units for 2026-03 to 2026-12 are projected at 355,941 over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated.",
         "figure_refs": [
           "forecast.projected.units.2026-03",
           "forecast.projected.units.2026-04",
@@ -1299,7 +1315,7 @@
       {
         "id": "claim.forecast.units.basis",
         "kind": "provenance",
-        "text": "The units model is fitted on 32 months, 2023-05 to 2026-02, and reads 6.0106 units per 1 USD of ad spend. Adding 2026-02 moved it from 6.0000 to 6.0106, a change of +0.0107 against a margin of 1.1424 either way (one standard error), which is inside that margin. It stands on what was entered in the forecasting app: 2 corrected units figures, 0 corrected ad spend figures, 1 month left out of training and 1 figure withheld. 1 correction sits on a source figure that has since moved.",
+        "text": "The units model is fitted on 32 months, 2023-05 to 2026-02, and reads 0.2064 units per 1 USD of ad spend. Adding 2026-02 moved it from 0.2061 to 0.2064, a change of +0.0003 against a margin of 0.0437 either way (one standard error), which is inside that margin. It stands on what was entered in the forecasting app: 2 corrected units figures, 0 corrected ad spend figures, 1 month left out of training and 1 figure withheld. 1 correction sits on a source figure that has since moved.",
         "figure_refs": [
           "forecast.units.model.training_months",
           "forecast.model.units.per_ad_dollar",
@@ -1336,7 +1352,7 @@
           "forecast_units_long_horizon",
           "forecast_units_projection_in_sample"
         ],
-        "display_text": "Units year to date are 1,450,731 over 2 closed months, against 1,489,208 projected by the current model (-2.6%), 1,504,545 forecast one month ahead at the spend that happened (-3.6%) and 1,523,123 expected before the year began (-4.8%; this brand has no approved plan, so that series stands in for one)."
+        "display_text": "Units year to date are 46,481 over 2 closed months, against 46,880 projected by the current model (-0.9%), 47,173 forecast one month ahead at the spend that happened (-1.5%) and 47,655 expected before the year began (-2.5%; this brand has no approved plan, so that series stands in for one)."
       },
       {
         "id": "sec.forecast.units.month",
@@ -1363,7 +1379,7 @@
           "forecast_units_month_spend_estimated_at_origin",
           "forecast_units_projection_in_sample"
         ],
-        "display_text": "Units for 2026-02 were 737,659 against 775,195 projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier. Before the month closed, it stood against 782,500 forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier."
+        "display_text": "Units for 2026-02 were 23,455 against 24,529 projected by the current model at the spend that happened, a difference of -4.4%. That projection is 13.6% above the same month a year earlier. Before the month closed, it stood against 24,738 forecast at the spend that actually happened, a difference of -5.2% against a measured error of 6.7% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 16.7% on the same month a year earlier."
       },
       {
         "id": "sec.forecast.units.outlook",
@@ -1427,7 +1443,7 @@
           "forecast_units_uncorrected",
           "forecast_units_spend_estimated"
         ],
-        "display_text": "Units for 2026-03 to 2026-12 are projected at 10,702,254 over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated."
+        "display_text": "Units for 2026-03 to 2026-12 are projected at 355,941 over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated."
       },
       {
         "id": "sec.forecast.units.basis",
@@ -1454,7 +1470,7 @@
           "forecast_units_model_drift_is_a_refit",
           "forecast_units_overlay_source_moved"
         ],
-        "display_text": "The units model is fitted on 32 months, 2023-05 to 2026-02, and reads 6.0106 units per 1 USD of ad spend. Adding 2026-02 moved it from 6.0000 to 6.0106, a change of +0.0107 against a margin of 1.1424 either way (one standard error), which is inside that margin. It stands on what was entered in the forecasting app: 2 corrected units figures, 0 corrected ad spend figures, 1 month left out of training and 1 figure withheld. 1 correction sits on a source figure that has since moved."
+        "display_text": "The units model is fitted on 32 months, 2023-05 to 2026-02, and reads 0.2064 units per 1 USD of ad spend. Adding 2026-02 moved it from 0.2061 to 0.2064, a change of +0.0003 against a margin of 0.0437 either way (one standard error), which is inside that margin. It stands on what was entered in the forecasting app: 2 corrected units figures, 0 corrected ad spend figures, 1 month left out of training and 1 figure withheld. 1 correction sits on a source figure that has since moved."
       }
     ]
   },
@@ -1472,7 +1488,7 @@
     "last_closed_month": "2026-02",
     "document_version": 29,
     "overlay_revisions": 28,
-    "schema_version": "internal.units/v0",
+    "schema_version": "forecast_bridge.units_document/v1",
     "schema_revision": 6,
     "contract": {
       "version": "0.0.0",

@@ -9,7 +9,7 @@
   "ytd_runs_past_report_month": false,
   "report_data": {
     "schema_version": "2.0-draft",
-    "brand_slug": "demo-brand",
+    "brand_slug": "demo-data",
     "currency": "USD",
     "forecast": {
       "state": "provided_current",
@@ -60,7 +60,8 @@
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.tracking.rolling.atActualSpend",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.expected.year_start.sales.ytd",
@@ -221,7 +222,8 @@
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.months[month=2026-02-01].expectation.atActualSpend.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.last_year.sales.month",
@@ -313,7 +315,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-03-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-03",
@@ -371,7 +374,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-04-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-04",
@@ -429,7 +433,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-05-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-05",
@@ -492,7 +497,8 @@
         "caveats": [
           "forecast_spend_estimated"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-06",
@@ -551,7 +557,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-07-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-07",
@@ -609,7 +616,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-08-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-08",
@@ -661,7 +669,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-09-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-09",
@@ -711,7 +720,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-10-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-10",
@@ -761,7 +771,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-11-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-11",
@@ -811,7 +822,8 @@
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-12-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-12",
@@ -831,7 +843,8 @@
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.coefficients.adSpend",
         "caveats": [],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.growth_per_month",
@@ -881,7 +894,8 @@
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.standardErrors.adSpend",
         "caveats": [],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.per_ad_dollar_prior",
@@ -893,7 +907,8 @@
         "caveats": [
           "forecast_model_drift_is_a_refit"
         ],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.growth_per_month_prior",
@@ -925,7 +940,8 @@
         "basis": "overlay_counts",
         "source_path": "document:figures.overlay.counts.replaced.adSpend",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.overlay.ignored",

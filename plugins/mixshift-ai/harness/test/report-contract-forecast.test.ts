@@ -93,13 +93,17 @@ describe('forecast extractor', () => {
     expect(roleOfClaim('claim.forecast.month_line')).toBe('forecast');
   });
 
-  it('client_safe: only actual, forecast or outlook figures with no blocking caveat (and derived from such)', () => {
+  it('client_safe (D-089): actual, projection, forecast or outlook figures with no blocking caveat (and derived from such)', () => {
     const doc = extractForecast(load('revenue.current'));
     for (const f of doc.figures) {
       const blocking = f.caveats.some((c) => doc.caveat_registry[c]?.severity === 'blocking');
-      expect(f.client_safe, f.id).toBe(['actual', 'forecast', 'outlook'].includes(f.forecast_role) && !blocking);
+      expect(f.client_safe, f.id).toBe(['actual', 'projection', 'forecast', 'outlook'].includes(f.forecast_role) && !blocking);
     }
-    expect(doc.figures.filter((f) => f.forecast_role === 'projection').every((f) => !f.client_safe)).toBe(true);
+    // The projection leads the client brief now; its in-sample caveat is a disclosure, rendered beside it.
+    const projection = doc.figures.filter((f) => f.forecast_role === 'projection');
+    expect(projection.length).toBeGreaterThan(0);
+    expect(projection.every((f) => f.client_safe && f.caveats.includes('forecast_projection_in_sample'))).toBe(true);
+    expect(doc.caveat_registry['forecast_projection_in_sample']?.severity).toBe('disclosure');
     expect(doc.figures.filter((f) => f.forecast_role === 'year_start').every((f) => !f.client_safe)).toBe(true);
     expect(doc.figures.some((f) => f.client_safe)).toBe(true);
   });
