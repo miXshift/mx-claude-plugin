@@ -191,7 +191,7 @@ describe('ads call --commit → timeline emission', () => {
 });
 
 describe('ads call failure: unknown outcome reaches --json and telemetry', () => {
-  it('emits request_outcome, automatic_retry and concurrency_cap, and records the outcome', async () => {
+  it('emits request_outcome, automatic_retry and retry_after_ms, and records the outcome', async () => {
     vi.mocked(adsCall).mockResolvedValue({
       ok: false,
       kind: 'upstream_unavailable',
@@ -200,6 +200,7 @@ describe('ads call failure: unknown outcome reaches --json and telemetry', () =>
       httpStatus: 502,
       requestOutcome: 'unknown',
       automaticRetry: false,
+      retryAfterMs: 5000,
     });
     const out: string[] = [];
     vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
@@ -222,6 +223,7 @@ describe('ads call failure: unknown outcome reaches --json and telemetry', () =>
       failure_kind: 'upstream_unavailable',
       request_outcome: 'unknown',
       automatic_retry: false,
+      retry_after_ms: 5000,
     });
     expect(emitted).not.toHaveProperty('concurrency_cap');
     const payload = vi.mocked(track).mock.calls[0]?.[0]?.payload as Record<string, unknown>;

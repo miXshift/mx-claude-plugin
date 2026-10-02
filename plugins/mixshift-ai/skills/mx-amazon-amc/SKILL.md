@@ -692,6 +692,13 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `insufficient_scope` | 11 | The credential cannot write (audience creates, updates and deletes need `ads:write`). Signed-in user sessions hold it; a machine credential needs it issued. Hand the user the audience definition; do NOT retry. |
 | `bad_request` | 12 | The request itself was refused: either by the service's audience preflight (the message names the exact field or rule: refresh outside 0 to 21, interval date arithmetic, a missing create field, a paid dataset the instance lacks) or by Amazon (`amazon_error_code` + `detail`). **Terminal: never retry unchanged.** Fix what the message names and resend. |
 
+**If a failure carries `request_outcome: "unknown"`** (the message says the call
+may still have gone through), a workflow execution or a committed audience
+create may already exist. Do not resend it blindly. For an audience, run
+`amc.list_audiences` first. A workflow execution has no list operation here, so
+resend it at most once and tell the user a duplicate run may exist. See the
+unknown-outcome rule in `mx-amazon-ads` ("Reactive error handling").
+
 Two AMC-specific cases that are NOT failure envelopes and need their own
 handling:
 

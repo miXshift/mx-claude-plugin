@@ -325,9 +325,10 @@ function registerCall(ads: Command): void {
             ...(result.unrecognizedKind
               ? { unrecognized_kind: result.unrecognizedKind }
               : {}),
-            // A lost answer on a create or write: how often users land here
-            // decides whether report creation needs real dedup. One word, no
-            // identifiers.
+            // A lost answer on a create or committed write (set by the service
+            // on report creates, or by this client on its own deadline): how
+            // often users land here, per `operation`, decides whether report
+            // creation needs real dedup. One word, no identifiers.
             ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
           });
           return emitFailure(result, !!root.json);
@@ -476,6 +477,8 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       request_outcome: failure.requestOutcome,
       automatic_retry: failure.automaticRetry,
       concurrency_cap: failure.concurrencyCap,
+      // The skill's `throttled` row has promised this; it was never emitted.
+      retry_after_ms: failure.retryAfterMs,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);

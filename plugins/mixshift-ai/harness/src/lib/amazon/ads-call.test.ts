@@ -371,19 +371,18 @@ describe('adsCall unknown outcomes', () => {
     expect(r.friendly).toBe(env.body.friendly);
   });
 
+  const TIMEOUT = () =>
+    new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
   it('says the outcome is unknown when its own timeout fires, and does not resend', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    const fetchImpl = vi.fn().mockRejectedValue(TIMEOUT());
     const r = await adsCall(CREATE, injected(fetchImpl));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.kind).toBe('host_unreachable');
     expect(r.requestOutcome).toBe('unknown');
-    expect(r.friendly).toMatch(/did not answer within 90 seconds/);
     expect(r.friendly).toMatch(/may still have gone through/);
-    expect(r.friendly).toMatch(/check whether it did before sending it again/);
     expect(r.friendly).not.toMatch(/unreachable|try again in a minute/i);
   });
 
@@ -402,9 +401,20 @@ describe('adsCall unknown outcomes', () => {
     if (!r.ok) expect(r.requestOutcome).toBe('unknown');
   });
 
+  it('treats a socket closed after sending as an unknown outcome', async () => {
+    const err = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
+    });
+    const r = await adsCall(CREATE, injected(vi.fn().mockRejectedValue(err)));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.requestOutcome).toBe('unknown');
+  });
+
   it('keeps a connection failure "unreachable": nothing was sent', async () => {
-    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
-    const r = await adsCall(CREATE, injected(fetchImpl));
+    const err = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+    });
+    const r = await adsCall(CREATE, injected(vi.fn().mockRejectedValue(err)));
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.kind).toBe('host_unreachable');
@@ -412,34 +422,77 @@ describe('adsCall unknown outcomes', () => {
     expect(r.friendly).toMatch(/unreachable/);
   });
 
-  it('says the outcome is unknown when a 2xx answer is unreadable', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(new Response('{"ok":true,"operation":', { status: 200 }));
-    const r = await adsCall(CREATE, injected(fetchImpl));
+  it.each([
+    ['an unparseable body', () => new Response('{"ok":true,"operation":', { status: 200 })],
+    ['a proxy page', () => new Response('<html>Welcome</html>', { status: 200 })],
+    [
+      'our deadline firing mid-read',
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"ok":true,'));
+              controller.error(TIMEOUT());
+            },
+          }),
+          { status: 200 },
+        ),
+    ],
+  ])('says the outcome is unknown when a 2xx arrives with %s', async (_label, make) => {
+    const r = await adsCall(CREATE, injected(vi.fn().mockResolvedValueOnce(make())));
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.kind).toBe('unknown');
     expect(r.httpStatus).toBe(200);
     expect(r.requestOutcome).toBe('unknown');
-    expect(r.friendly).toMatch(/answer was lost/);
+    expect(r.friendly).toMatch(/may still have gone through/);
+  });
+
+  it('treats a non-JSON 5xx from the edge as an unknown outcome on a create only', async () => {
+    const edge = () => new Response('<html>502 Bad Gateway</html>', { status: 502 });
+    const create = await adsCall(CREATE, injected(vi.fn().mockResolvedValueOnce(edge())));
+    const read = await adsCall(
+      { operation: 'sp.list_campaigns', legacySellerId: 71 },
+      injected(vi.fn().mockResolvedValueOnce(edge())),
+    );
+    expect(create.ok || read.ok).toBe(false);
+    if (create.ok || read.ok) return;
+    expect(create.requestOutcome).toBe('unknown');
+    expect(read.requestOutcome).toBeUndefined();
+  });
+
+  // Only a create or a committed write can leave something behind; a read or a
+  // dry run keeps the plain "unreachable" wording.
+  it.each([
+    ['a read', { operation: 'sp.list_campaigns', legacySellerId: 71 }, undefined],
+    ['a write dry run', { operation: 'sp.update_keywords', legacySellerId: 71, body: [] }, undefined],
+    [
+      'a committed write',
+      { operation: 'sp.update_keywords', legacySellerId: 71, body: [], dryRun: false },
+      'unknown',
+    ],
+    ['a report create', CREATE, 'unknown'],
+  ])('on a timeout, %s has requestOutcome %s', async (_label, input, expected) => {
+    const r = await adsCall(input, injected(vi.fn().mockRejectedValue(TIMEOUT())));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.requestOutcome).toBe(expected);
   });
 
   it('waits 90 s by default, longer than the 60 s the service gives Amazon', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout');
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { ok: true, operation: 'x', payload: {} }));
-    await adsCall(CREATE, injected(fetchImpl));
-    expect(timeout).toHaveBeenCalledWith(90_000);
-    timeout.mockRestore();
+    try {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true, operation: 'x', payload: {} }));
+      await adsCall(CREATE, injected(fetchImpl));
+      expect(timeout).toHaveBeenCalledWith(90_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it('leaves a read-only surface timeout as "unreachable"', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
-    const r = await listAdsProfiles(injected(fetchImpl));
+    const r = await listAdsProfiles(injected(vi.fn().mockRejectedValue(TIMEOUT())));
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.kind).toBe('host_unreachable');

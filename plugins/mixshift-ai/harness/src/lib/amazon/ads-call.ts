@@ -236,14 +236,18 @@ export async function adsCall(
   // default (TRUE for writes) is the safety contract.
   if (input.dryRun !== undefined) body.dryRun = input.dryRun;
 
-  // Outlast the service: it gives Amazon 60 s per call and sends a report
+  // Outlast the service on a report create: it gives Amazon 60 s and sends a
   // create only once, so a client deadline of 60 s gave up first and told the
   // user to try again while the create could still land. 90 s leaves 30 s for
   // the service's own work (token, profile lookup, pacing) on top of Amazon's
-  // 60. mayChangeState: a timeout here is an unknown outcome, not an
-  // unreachable service.
+  // 60. Reads and committed writes can still run longer (the service retries
+  // their throttles), which is what mayChangeState is for: a lost answer on a
+  // create or a commit is an unknown outcome, not an unreachable service. The
+  // catalog's retry policy is not visible here, so "create" is read from the
+  // operation id; a dry run or a read changes nothing and keeps the old wording.
+  const mayChangeState = input.dryRun === false || /\.create_/.test(input.operation);
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/ads/call', body, surface: 'ads', mayChangeState: true },
+    { method: 'POST', path: '/api/amazon/ads/call', body, surface: 'ads', mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 90_000 },
   );
   if (!r.ok) return r;
