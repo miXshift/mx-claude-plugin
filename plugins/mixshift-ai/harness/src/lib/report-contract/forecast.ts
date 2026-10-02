@@ -23,8 +23,8 @@
  *      forecast (state `not_provided`, reason `unrecognised_figures`), so a
  *      change in the service's ids can never let a projection reach a client
  *      brief under the forecast's name.
- *   4. CLIENT-SAFE. `client_safe` is true only for an actual, forecast or
- *      outlook figure that carries no blocking caveat (and, for a derived
+ *   4. CLIENT-SAFE. `client_safe` is true only for an actual, projection,
+ *      forecast or outlook figure that carries no blocking caveat (and, for a derived
  *      figure, whose inputs are all client-safe). The client brief quotes
  *      nothing else.
  *
@@ -200,7 +200,10 @@ export function roleOfClaim(id: string): ForecastRole | null {
   return null;
 }
 
-const CLIENT_ROLES: ReadonlySet<ForecastRole> = new Set(['actual', 'forecast', 'outlook']);
+// D-089: the current model's projection leads the comparison in the client brief too (it is the
+// number the forecasting app shows), named as that with its in-sample disclosure; the year-start
+// forecast and the basis stay internal.
+const CLIENT_ROLES: ReadonlySet<ForecastRole> = new Set(['actual', 'projection', 'forecast', 'outlook']);
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -284,6 +287,21 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
         ...(num(f.precision) !== null ? { precision: num(f.precision)! } : {}),
         ...(f.population !== undefined ? { population: f.population } : {}),
       });
+    }
+    // The projection may lead the client brief only where the served actual-vs-projection
+    // variance for the same period is itself clean: when the report month carries a
+    // correction, the package puts a blocking caveat on that variance (and on the actual),
+    // and the projection then stays in the internal companion.
+    const periodOf = (id: string): string | null => (/\.month$/.test(id) ? 'month' : /\.ytd$/.test(id) ? 'ytd' : null);
+    const varianceClean = new Map<string, boolean>();
+    for (const f of figures) {
+      const p = /actual_vs_projection(_pct)?\.(month|ytd)$/.test(f.id) ? periodOf(f.id) : null;
+      if (p) varianceClean.set(p, (varianceClean.get(p) ?? true) && !blocking(f.caveats));
+    }
+    for (const f of figures) {
+      if (f.forecast_role !== 'projection' || !f.client_safe) continue;
+      const p = periodOf(f.id);
+      if (!p || varianceClean.get(p) !== true) f.client_safe = false;
     }
     const safe = new Map(figures.map((f) => [f.id, f.client_safe]));
     const derived: ForecastDerived[] = [];

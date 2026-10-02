@@ -9,7 +9,7 @@
   "ytd_runs_past_report_month": false,
   "report_data": {
     "schema_version": "2.0-draft",
-    "brand_slug": "demo-brand",
+    "brand_slug": "demo-data",
     "currency": "USD",
     "forecast": {
       "state": "provided_current",
@@ -20,7 +20,7 @@
       {
         "id": "forecast.actual.sales.ytd",
         "label": "Actual revenue, year to date",
-        "value": 1450731.1,
+        "value": 889298.1643000001,
         "unit": "currency",
         "basis": "final_months_with_overlay",
         "source_path": "document:figures.tracking.actual.sales",
@@ -31,13 +31,13 @@
           "members": [
             {
               "key": "2026-01",
-              "revenue": 713072,
-              "source_revenue": 713072
+              "revenue": 437113.136,
+              "source_revenue": 437113.136
             },
             {
               "key": "2026-02",
-              "revenue": 737659.1,
-              "source_revenue": 737659.1
+              "revenue": 452185.0283,
+              "source_revenue": 452185.0283
             }
           ]
         }
@@ -45,7 +45,7 @@
       {
         "id": "forecast.expected.rolling.sales.ytd",
         "label": "Forecast revenue year to date, rolling one month out",
-        "value": 1526546.6721578883,
+        "value": 935773.1100327856,
         "unit": "currency",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.tracking.rolling.sales",
@@ -55,17 +55,18 @@
       {
         "id": "forecast.expected.at_actual_spend.sales.ytd",
         "label": "Forecast revenue year to date at the spend that happened",
-        "value": 1504544.5383011682,
+        "value": 922285.8019786162,
         "unit": "currency",
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.tracking.rolling.atActualSpend",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.expected.year_start.sales.ytd",
         "label": "Forecast revenue year to date, as expected before the year began",
-        "value": 1523122.672362485,
+        "value": 933674.1981582033,
         "unit": "currency",
         "basis": "replayed_year_start_h12",
         "source_path": "document:figures.tracking.yearStart.sales",
@@ -78,7 +79,7 @@
       {
         "id": "forecast.fit.sales.ytd",
         "label": "Projected revenue year to date, by the current model at the spend that happened",
-        "value": 1489207.931696074,
+        "value": 912884.4621296934,
         "unit": "currency",
         "basis": "in_sample_fit",
         "source_path": "document:figures.tracking.fit.sales",
@@ -90,7 +91,7 @@
       {
         "id": "forecast.variance.actual_vs_projection.ytd",
         "label": "Revenue against the current model's projection, year to date",
-        "value": -38476.83169607399,
+        "value": -23586.297829693354,
         "unit": "currency",
         "basis": "in_sample_fit",
         "source_path": "document:figures.tracking.variance.actualVsFit.value",
@@ -124,7 +125,7 @@
       {
         "id": "forecast.actual.sales.month",
         "label": "Actual revenue, 2026-02",
-        "value": 737659.1,
+        "value": 452185.0283,
         "unit": "currency",
         "basis": "final_month_with_overlay",
         "source_path": "document:figures.months[month=2026-02-01].sales.value",
@@ -135,8 +136,8 @@
           "members": [
             {
               "key": "2026-02",
-              "revenue": 737659.1,
-              "source_revenue": 737659.1
+              "revenue": 452185.0283,
+              "source_revenue": 452185.0283
             }
           ]
         }
@@ -144,7 +145,7 @@
       {
         "id": "forecast.expected.rolling.sales.month",
         "label": "Forecast revenue for 2026-02, as made one month before",
-        "value": 796171.154116347,
+        "value": 488052.9174733207,
         "unit": "currency",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.value",
@@ -156,7 +157,7 @@
       {
         "id": "forecast.range.lower.sales.month",
         "label": "Forecast range for 2026-02, lower",
-        "value": 643256.5046931519,
+        "value": 394316.23737690214,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.band.lower",
@@ -168,7 +169,7 @@
       {
         "id": "forecast.range.upper.sales.month",
         "label": "Forecast range for 2026-02, upper",
-        "value": 949085.803539542,
+        "value": 581789.5975697392,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-02-01].expectation.forecast.band.upper",
@@ -192,7 +193,7 @@
       {
         "id": "forecast.variance.actual_vs_rolling.month",
         "label": "Revenue against the forecast as made one month before, 2026-02",
-        "value": -58512.05411634699,
+        "value": -35867.889173320706,
         "unit": "currency",
         "basis": "replayed_rolling_h1",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsForecast.value",
@@ -216,17 +217,18 @@
       {
         "id": "forecast.expected.at_actual_spend.sales.month",
         "label": "Forecast revenue for 2026-02 at the spend that happened",
-        "value": 782499.8188670941,
+        "value": 479672.3889655287,
         "unit": "currency",
         "basis": "replayed_at_actual_spend_h1",
         "source_path": "document:figures.months[month=2026-02-01].expectation.atActualSpend.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.last_year.sales.month",
         "label": "Revenue in the same month a year earlier, 2025-02",
-        "value": 638570.36,
+        "value": 391443.63068,
         "unit": "currency",
         "basis": "training_months",
         "source_path": "document:figures.months[month=2026-02-01].lastYear.sales",
@@ -236,7 +238,7 @@
       {
         "id": "forecast.projection.sales.month",
         "label": "Projected revenue for 2026-02, by the current model at the spend that happened",
-        "value": 775194.9872524575,
+        "value": 475194.5271857565,
         "unit": "currency",
         "basis": "in_sample_fit",
         "source_path": "document:figures.months[month=2026-02-01].expectation.fit.value",
@@ -248,7 +250,7 @@
       {
         "id": "forecast.variance.actual_vs_projection.month",
         "label": "Revenue against the current model's projection, 2026-02",
-        "value": -37535.887252457556,
+        "value": -23009.498885756482,
         "unit": "currency",
         "basis": "in_sample_fit",
         "source_path": "document:figures.months[month=2026-02-01].variance.vsFit.value",
@@ -272,7 +274,7 @@
       {
         "id": "forecast.projected.sales.2026-03",
         "label": "Projected revenue, 2026-03",
-        "value": 856267.8984657836,
+        "value": 524892.2217595254,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.value",
@@ -284,7 +286,7 @@
       {
         "id": "forecast.range.lower.sales.2026-03",
         "label": "Forecast range for 2026-03, lower",
-        "value": 704280.5980810355,
+        "value": 431724.00662367477,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.band.lower",
@@ -296,7 +298,7 @@
       {
         "id": "forecast.range.upper.sales.2026-03",
         "label": "Forecast range for 2026-03, upper",
-        "value": 1008255.1988505316,
+        "value": 618060.4368953758,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-03-01].expectation.forecast.band.upper",
@@ -308,12 +310,13 @@
       {
         "id": "forecast.spend.2026-03",
         "label": "Ad spend the revenue projection stands on, 2026-03",
-        "value": 82125,
+        "value": 50342.625,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-03-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-03",
@@ -330,7 +333,7 @@
       {
         "id": "forecast.projected.sales.2026-04",
         "label": "Projected revenue, 2026-04",
-        "value": 1063543.808032812,
+        "value": 651952.3543241138,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.value",
@@ -342,7 +345,7 @@
       {
         "id": "forecast.range.lower.sales.2026-04",
         "label": "Forecast range for 2026-04, lower",
-        "value": 911024.5221532154,
+        "value": 558458.032079921,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.band.lower",
@@ -354,7 +357,7 @@
       {
         "id": "forecast.range.upper.sales.2026-04",
         "label": "Forecast range for 2026-04, upper",
-        "value": 1216063.093912409,
+        "value": 745446.6765683066,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-04-01].expectation.forecast.band.upper",
@@ -366,12 +369,13 @@
       {
         "id": "forecast.spend.2026-04",
         "label": "Ad spend the revenue projection stands on, 2026-04",
-        "value": 103682,
+        "value": 63557.066,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-04-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-04",
@@ -388,7 +392,7 @@
       {
         "id": "forecast.projected.sales.2026-05",
         "label": "Projected revenue, 2026-05",
-        "value": 1225202.419109176,
+        "value": 751049.0829139248,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.value",
@@ -400,7 +404,7 @@
       {
         "id": "forecast.range.lower.sales.2026-05",
         "label": "Forecast range for 2026-05, lower",
-        "value": 1070592.6617966467,
+        "value": 656273.3016813444,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.band.lower",
@@ -412,7 +416,7 @@
       {
         "id": "forecast.range.upper.sales.2026-05",
         "label": "Forecast range for 2026-05, upper",
-        "value": 1379812.1764217052,
+        "value": 845824.8641465052,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-05-01].expectation.forecast.band.upper",
@@ -424,12 +428,13 @@
       {
         "id": "forecast.spend.2026-05",
         "label": "Ad spend the revenue projection stands on, 2026-05",
-        "value": 120000,
+        "value": 73560.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-05-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-05",
@@ -446,7 +451,7 @@
       {
         "id": "forecast.projected.sales.2026-06",
         "label": "Projected revenue, 2026-06",
-        "value": 1187396.6000574701,
+        "value": 727874.1158352292,
         "unit": "currency",
         "basis": "current_model_at_estimated_spend",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.value",
@@ -459,7 +464,7 @@
       {
         "id": "forecast.range.lower.sales.2026-06",
         "label": "Forecast range for 2026-06, lower",
-        "value": 1026076.1826971072,
+        "value": 628984.6999933267,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.band.lower",
@@ -472,7 +477,7 @@
       {
         "id": "forecast.range.upper.sales.2026-06",
         "label": "Forecast range for 2026-06, upper",
-        "value": 1348717.0174178332,
+        "value": 826763.5316771318,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-06-01].expectation.forecast.band.upper",
@@ -485,14 +490,15 @@
       {
         "id": "forecast.spend.2026-06",
         "label": "Ad spend the revenue projection stands on, 2026-06",
-        "value": 108170,
+        "value": 66308.20999999999,
         "unit": "currency",
         "basis": "spend_estimated",
         "source_path": "document:figures.months[month=2026-06-01].budget.value",
         "caveats": [
           "forecast_spend_estimated"
         ],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-06",
@@ -510,7 +516,7 @@
       {
         "id": "forecast.projected.sales.2026-07",
         "label": "Projected revenue, 2026-07",
-        "value": 1463861.6234853142,
+        "value": 897347.1751964976,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.value",
@@ -522,7 +528,7 @@
       {
         "id": "forecast.range.lower.sales.2026-07",
         "label": "Forecast range for 2026-07, lower",
-        "value": 1296808.4215087746,
+        "value": 794943.5623848789,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.band.lower",
@@ -534,7 +540,7 @@
       {
         "id": "forecast.range.upper.sales.2026-07",
         "label": "Forecast range for 2026-07, upper",
-        "value": 1630914.8254618538,
+        "value": 999750.7880081163,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-07-01].expectation.forecast.band.upper",
@@ -546,12 +552,13 @@
       {
         "id": "forecast.spend.2026-07",
         "label": "Ad spend the revenue projection stands on, 2026-07",
-        "value": 155000,
+        "value": 95015.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-07-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-07",
@@ -568,7 +575,7 @@
       {
         "id": "forecast.projected.sales.2026-08",
         "label": "Projected revenue, 2026-08",
-        "value": 1392710.933755158,
+        "value": 853731.8023919119,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.value",
@@ -580,7 +587,7 @@
       {
         "id": "forecast.range.lower.sales.2026-08",
         "label": "Forecast range for 2026-08, lower",
-        "value": 1227668.6616152758,
+        "value": 752560.889570164,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.band.lower",
@@ -592,7 +599,7 @@
       {
         "id": "forecast.range.upper.sales.2026-08",
         "label": "Forecast range for 2026-08, upper",
-        "value": 1557753.2058950402,
+        "value": 954902.7152136596,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-08-01].expectation.forecast.band.upper",
@@ -604,12 +611,13 @@
       {
         "id": "forecast.spend.2026-08",
         "label": "Ad spend the revenue projection stands on, 2026-08",
-        "value": 150000,
+        "value": 91950.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-08-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-08",
@@ -626,7 +634,7 @@
       {
         "id": "forecast.projected.sales.2026-09",
         "label": "Projected revenue, 2026-09",
-        "value": 1117054.9917936185,
+        "value": 684754.7099694882,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.value",
@@ -636,7 +644,7 @@
       {
         "id": "forecast.range.lower.sales.2026-09",
         "label": "Forecast range for 2026-09, lower",
-        "value": 960404.956916317,
+        "value": 588728.2385897023,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.band.lower",
@@ -646,7 +654,7 @@
       {
         "id": "forecast.range.upper.sales.2026-09",
         "label": "Forecast range for 2026-09, upper",
-        "value": 1273705.0266709202,
+        "value": 780781.1813492741,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-09-01].expectation.forecast.band.upper",
@@ -656,12 +664,13 @@
       {
         "id": "forecast.spend.2026-09",
         "label": "Ad spend the revenue projection stands on, 2026-09",
-        "value": 115000,
+        "value": 70495.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-09-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-09",
@@ -676,7 +685,7 @@
       {
         "id": "forecast.projected.sales.2026-10",
         "label": "Projected revenue, 2026-10",
-        "value": 865645.0373141688,
+        "value": 530640.4078735855,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.value",
@@ -686,7 +695,7 @@
       {
         "id": "forecast.range.lower.sales.2026-10",
         "label": "Forecast range for 2026-10, lower",
-        "value": 699755.4894093967,
+        "value": 428950.1150079601,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.band.lower",
@@ -696,7 +705,7 @@
       {
         "id": "forecast.range.upper.sales.2026-10",
         "label": "Forecast range for 2026-10, upper",
-        "value": 1031534.5852189409,
+        "value": 632330.7007392107,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-10-01].expectation.forecast.band.upper",
@@ -706,12 +715,13 @@
       {
         "id": "forecast.spend.2026-10",
         "label": "Ad spend the revenue projection stands on, 2026-10",
-        "value": 85000,
+        "value": 52105.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-10-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-10",
@@ -726,7 +736,7 @@
       {
         "id": "forecast.projected.sales.2026-11",
         "label": "Projected revenue, 2026-11",
-        "value": 778628.7031505017,
+        "value": 477299.39503125753,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.value",
@@ -736,7 +746,7 @@
       {
         "id": "forecast.range.lower.sales.2026-11",
         "label": "Forecast range for 2026-11, lower",
-        "value": 616989.9315801278,
+        "value": 378214.82805861835,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.band.lower",
@@ -746,7 +756,7 @@
       {
         "id": "forecast.range.upper.sales.2026-11",
         "label": "Forecast range for 2026-11, upper",
-        "value": 940267.4747208756,
+        "value": 576383.9620038967,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-11-01].expectation.forecast.band.upper",
@@ -756,12 +766,13 @@
       {
         "id": "forecast.spend.2026-11",
         "label": "Ad spend the revenue projection stands on, 2026-11",
-        "value": 80000,
+        "value": 49040.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-11-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-11",
@@ -776,7 +787,7 @@
       {
         "id": "forecast.projected.sales.2026-12",
         "label": "Projected revenue, 2026-12",
-        "value": 751942.4285057329,
+        "value": 460940.70867401425,
         "unit": "currency",
         "basis": "current_model_at_saved_spend",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.value",
@@ -786,7 +797,7 @@
       {
         "id": "forecast.range.lower.sales.2026-12",
         "label": "Forecast range for 2026-12, lower",
-        "value": 593942.1079758356,
+        "value": 364086.51218918717,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.band.lower",
@@ -796,7 +807,7 @@
       {
         "id": "forecast.range.upper.sales.2026-12",
         "label": "Forecast range for 2026-12, upper",
-        "value": 909942.7490356303,
+        "value": 557794.9051588413,
         "unit": "currency",
         "basis": "prediction_interval_95",
         "source_path": "document:figures.months[month=2026-12-01].expectation.forecast.band.upper",
@@ -806,12 +817,13 @@
       {
         "id": "forecast.spend.2026-12",
         "label": "Ad spend the revenue projection stands on, 2026-12",
-        "value": 80000,
+        "value": 49040.0,
         "unit": "currency",
         "basis": "spend_saved",
         "source_path": "document:figures.months[month=2026-12-01].budget.value",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.assumed_yoy.sales.2026-12",
@@ -831,12 +843,13 @@
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.coefficients.adSpend",
         "caveats": [],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.growth_per_month",
         "label": "Revenue trend per month, as fitted",
-        "value": 3306.9081436950364,
+        "value": 2027.1346920850574,
         "unit": "currency",
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.coefficients.time",
@@ -881,7 +894,8 @@
         "basis": "fitted_coefficient",
         "source_path": "document:figures.model.standardErrors.adSpend",
         "caveats": [],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.per_ad_dollar_prior",
@@ -893,12 +907,13 @@
         "caveats": [
           "forecast_model_drift_is_a_refit"
         ],
-        "precision": 2
+        "precision": 2,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.model.sales.growth_per_month_prior",
         "label": "Revenue trend per month, as fitted through 2026-01",
-        "value": 3523.361434073071,
+        "value": 2159.8205590867924,
         "unit": "currency",
         "basis": "expanding_window_refit",
         "source_path": "document:figures.history.expandingWindow.prior.time",
@@ -925,7 +940,8 @@
         "basis": "overlay_counts",
         "source_path": "document:figures.overlay.counts.replaced.adSpend",
         "caveats": [],
-        "precision": 0
+        "precision": 0,
+        "spend_basis": "ads_only"
       },
       {
         "id": "forecast.overlay.ignored",
@@ -964,7 +980,7 @@
       {
         "id": "forecast.variance.actual_vs_forecast_at_actual_spend.ytd",
         "label": "Revenue against the forecast at the spend that happened, year to date",
-        "value": -53813.43830116815,
+        "value": -32987.637678616076,
         "unit": "currency",
         "basis": "replayed_at_actual_spend_h1",
         "inputs": [
@@ -976,7 +992,7 @@
       {
         "id": "forecast.variance.actual_vs_year_start.ytd",
         "label": "Revenue against what was expected before the year began, year to date",
-        "value": -72391.57236248488,
+        "value": -44376.03385820323,
         "unit": "currency",
         "basis": "replayed_year_start_h12",
         "inputs": [
@@ -988,7 +1004,7 @@
       {
         "id": "forecast.variance.actual_vs_forecast_at_actual_spend.month",
         "label": "Revenue against the forecast at the spend that happened, 2026-02",
-        "value": -44840.71886709414,
+        "value": -27487.360665528708,
         "unit": "currency",
         "basis": "replayed_at_actual_spend_h1",
         "inputs": [
@@ -1012,7 +1028,7 @@
       {
         "id": "forecast.projected.sales.rest_of_window",
         "label": "Projected revenue, 2026-03 to 2026-12",
-        "value": 10702254.443669735,
+        "value": 6560481.973969547,
         "unit": "currency",
         "basis": "current_model_at_each_months_spend",
         "inputs": [
@@ -1032,7 +1048,7 @@
       {
         "id": "forecast.projected.sales.window_total",
         "label": "Revenue for 2026-01 to 2026-12, actual to date plus projected",
-        "value": 12152985.543669734,
+        "value": 7449780.138269546,
         "unit": "currency",
         "basis": "actual_to_date_plus_current_model",
         "inputs": [
@@ -1065,7 +1081,7 @@
       {
         "id": "forecast.model.sales.growth_per_month_change",
         "label": "Change in the revenue trend per month when 2026-02 was added",
-        "value": -216.45329037803458,
+        "value": -132.6858670017352,
         "unit": "currency",
         "basis": "expanding_window_refit",
         "inputs": [
@@ -1113,7 +1129,7 @@
       {
         "id": "claim.forecast.projection_line",
         "kind": "tracking",
-        "text": "Revenue year to date is 1,450,731 USD against 1,489,208 USD projected by the current model at the spend that happened, a difference of -2.6%.",
+        "text": "Revenue year to date is 889,298 USD against 912,885 USD projected by the current model at the spend that happened, a difference of -2.6%.",
         "figure_refs": [
           "forecast.actual.sales.ytd",
           "forecast.fit.sales.ytd",
@@ -1123,7 +1139,7 @@
       {
         "id": "claim.forecast.operator_line",
         "kind": "tracking",
-        "text": "Revenue year to date is 1,450,731 USD against 1,504,545 USD forecast at the spend that actually happened, a difference of -3.6% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out.",
+        "text": "Revenue year to date is 889,298 USD against 922,286 USD forecast at the spend that actually happened, a difference of -3.6% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out.",
         "figure_refs": [
           "forecast.actual.sales.ytd",
           "forecast.expected.at_actual_spend.sales.ytd"
@@ -1132,7 +1148,7 @@
       {
         "id": "claim.forecast.month_projection_line",
         "kind": "tracking",
-        "text": "Revenue for 2026-02 was 737,659 USD against 775,195 USD projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier.",
+        "text": "Revenue for 2026-02 was 452,185 USD against 475,195 USD projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier.",
         "figure_refs": [
           "forecast.actual.sales.month",
           "forecast.projection.sales.month",
@@ -1143,7 +1159,7 @@
       {
         "id": "claim.forecast.month_line",
         "kind": "tracking",
-        "text": "Before the month closed, it stood against 782,500 USD forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier.",
+        "text": "Before the month closed, it stood against 479,672 USD forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier.",
         "figure_refs": [
           "forecast.actual.sales.month",
           "forecast.expected.at_actual_spend.sales.month",
@@ -1153,7 +1169,7 @@
       {
         "id": "claim.forecast.outlook",
         "kind": "tracking",
-        "text": "Revenue for 2026-03 to 2026-12 is projected at 10,702,254 USD over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated.",
+        "text": "Revenue for 2026-03 to 2026-12 is projected at 6,560,482 USD over 10 months, at 661,413 USD of ad spend; 1 month of those stands on spend the app estimated.",
         "figure_refs": [
           "forecast.projected.sales.2026-03",
           "forecast.projected.sales.2026-04",
@@ -1206,7 +1222,7 @@
           "forecast_long_horizon",
           "forecast_projection_in_sample"
         ],
-        "display_text": "Revenue year to date is 1,450,731 USD over 2 closed months, against 1,489,208 USD projected by the current model (-2.6%), 1,504,545 USD forecast one month ahead at the spend that happened (-3.6%) and 1,523,123 USD expected before the year began (-4.8%; this brand has no approved plan, so that series stands in for one)."
+        "display_text": "Revenue year to date is 889,298 USD over 2 closed months, against 912,885 USD projected by the current model (-2.6%), 922,286 USD forecast one month ahead at the spend that happened (-3.6%) and 933,674 USD expected before the year began (-4.8%; this brand has no approved plan, so that series stands in for one)."
       },
       {
         "id": "sec.forecast.month",
@@ -1232,7 +1248,7 @@
           "forecast_month_spend_estimated_at_origin",
           "forecast_projection_in_sample"
         ],
-        "display_text": "Revenue for 2026-02 was 737,659 USD against 775,195 USD projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier. Before the month closed, it stood against 782,500 USD forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier."
+        "display_text": "Revenue for 2026-02 was 452,185 USD against 475,195 USD projected by the current model at the spend that happened, a difference of -4.8%. That projection is 21.4% above the same month a year earlier. Before the month closed, it stood against 479,672 USD forecast at the spend that actually happened, a difference of -5.7% against a measured error of 5.2% (this scope, replayed over 21 closed months) one to three months out. The forecast made at the end of 2026-01 assumed growth of 24.7% on the same month a year earlier."
       },
       {
         "id": "sec.forecast.outlook",
@@ -1295,7 +1311,7 @@
           "forecast_month_without_actuals",
           "forecast_spend_estimated"
         ],
-        "display_text": "Revenue for 2026-03 to 2026-12 is projected at 10,702,254 USD over 10 months, at 1,078,977 USD of ad spend; 1 month of those stands on spend the app estimated."
+        "display_text": "Revenue for 2026-03 to 2026-12 is projected at 6,560,482 USD over 10 months, at 661,413 USD of ad spend; 1 month of those stands on spend the app estimated."
       },
       {
         "id": "sec.forecast.basis",
