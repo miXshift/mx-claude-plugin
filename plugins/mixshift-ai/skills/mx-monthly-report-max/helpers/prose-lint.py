@@ -365,7 +365,7 @@ def check_superlatives(body):
 COMPARATIVE_AFTER_PCT = re.compile(r'\d+(?:\.\d+)?\s*%\s+(less|fewer|more|off|lower|higher|below|above)\b', re.I)
 BASIS = re.compile(
     r'\b(MoM|YoY|vs\.?|versus|against|than|compared|month[- ]over[- ]month|year[- ]over[- ]year'
-    r'|last year|prior month|prior year|a year ago|year earlier|the forecast|forecast|plan'
+    r'|last year|prior month|prior year|a year ago|year earlier|the forecast|forecast|plan|projection'
     r'|on (?:January|February|March|April|May|June|July|August|September|October|November|December)'
     r'|from (?:January|February|March|April|May|June|July|August|September|October|November|December))\b', re.I)
 
@@ -383,6 +383,31 @@ def check_change_basis(body):
         elif re.search(r'\d+(?:\.\d+)?\s*(?:pts?\b|points\b)', s) and not BASIS.search(s):
             out.append(('pts-without-basis',
                         'a points value with no MoM | YoY | vs forecast | on <month> basis in the sentence. In: %s' % s[:110]))
+    return out
+
+# The current model's projection (the forecasting app's number, fitted with the month
+# included) leads the forecast comparison but is never beaten or missed, never sits beside a
+# forecasting error, and is never quoted without saying the model has already seen the month.
+PROJECTION = re.compile(r"\bprojection\b", re.I)
+PROJECTION_FORBIDDEN = re.compile(r"\b(beat|beats|beating|missed|misses|missing|error)\b", re.I)
+PROJECTION_DISCLOSURE = re.compile(r"fitted (?:on|with)|already (?:seen|includes?)|has seen|includes? (?:that|the) month|in-sample", re.I)
+
+def check_projection_language(body):
+    out = []
+    mentioned = False
+    for s in sentences(body):
+        if "current model" in s.lower() and PROJECTION.search(s):
+            mentioned = True
+            m = PROJECTION_FORBIDDEN.search(s)
+            if m:
+                out.append(('projection-beat-or-error',
+                            'the current model\'s projection is never beaten, missed or set beside a forecasting '
+                            'error ("%s"); state the signed figure against it, and keep beat, miss and error for the '
+                            'forecast made before the month closed. In: %s' % (m.group(0), s[:110])))
+    if mentioned and not PROJECTION_DISCLOSURE.search(body):
+        out.append(('projection-without-disclosure',
+                    'the current model\'s projection is quoted without saying the model was fitted with that month '
+                    'included; add the disclosure in plain words beside it.'))
     return out
 
 # A4: an instruction addressed to nobody ("Ask where the traffic is coming from") is
@@ -499,7 +524,8 @@ def check_voice_lint(body, rules):
             out.append(('voice-lint', '"%s"%s' % (m.group(0), (' -> use "%s"' % use) if use else ' is on the brand\'s banned list')))
     return out
 
-CHECKS = [check_bold_openers, check_rest_fragments, check_template_repetition,
+CHECKS = [
+    check_projection_language,check_bold_openers, check_rest_fragments, check_template_repetition,
           check_dash_density, check_no_dashes, check_ambiguous_metrics,
           check_number_precision, check_unitless_signed_deltas, check_sentence_length,
           check_superlatives, check_change_basis, check_literal_double_percent,

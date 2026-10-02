@@ -597,12 +597,17 @@ and "the forecasting service did not answer" when it does not.
 **Two expectations, and where each may appear.** Every figure, derived figure and claim
 carries `forecast_role`:
 - `projection`: the current model's figure WITH the month included, the number the
-  forecasting app's Table shows for a closed month. It LEADS the comparison in both documents
-  (D-089): state the actual against it first, always named "the current model's projection",
-  with its disclosure (the `forecast_projection_in_sample` caveat: the model was fitted on that
-  month) in plain words beside it. Say "above" or "below" the projection, never "beat" or
-  "missed" it; never call it "the forecast", and never put it in the same sentence as a
-  forecasting error. The brand can find this number in the app, which is why it leads.
+  forecasting app's Table shows for a closed month. It LEADS the comparison in both documents:
+  state the actual against it first, always named "the current model's projection", with its
+  disclosure (the `forecast_projection_in_sample` caveat: the model was fitted with that month
+  included) in plain words beside it. Quote the served `forecast.variance.actual_vs_projection.*`
+  figure as a signed change ("-4.8% against the current model's projection"), never a figure you
+  recomputed, and never "beat", "missed" or "error" in the same sentence. Never call it "the
+  forecast". The brand can find this number in the app, which is why it leads. It leads only
+  when its projection figures come out `client_safe` (the extractor withholds them when the
+  month's variance carries a blocking caveat, as it does when the month was corrected in the
+  app) and the forecast's actual is within the actuals tolerance below; otherwise it stays in
+  the internal companion and the brief opens with the forecast made before the month closed.
 - `forecast`: what the model said BEFORE the month closed. It FOLLOWS the projection, named
   "the forecast made before the month closed" (later "the forecast"), with its measured error
   beside it. It is the ONLY expectation a beat or miss, or a forecasting error, is stated
@@ -615,7 +620,8 @@ carries `forecast_role`:
 
 The client brief quotes ONLY figures with `client_safe: true` (an actual, projection, forecast
 or outlook figure carrying no blocking caveat), in your own sentences under the house rules. In No-YoY
-mode it quotes no last-year or assumed-change-on-last-year figure from the forecast either.
+mode it quotes no last-year, projection-versus-last-year (`forecast.projection_vs_last_year_pct.*`)
+or assumed-change-on-last-year figure from the forecast either.
 The internal companion may quote any figure. Its `sections` are the map of which figures
 belong together, not text to paste: write the sentences yourself under Step 7's vocabulary,
 and wherever you quote a figure that carries a blocking caveat, render that caveat's
@@ -831,8 +837,8 @@ what the model said before the month closed. The current model's figure for a cl
 is "the current model's projection", the forecasting app's own word: it leads the comparison
 in both documents with its disclosure that the model was fitted on that month, and is never
 called the forecast, never beaten or missed, never beside a forecasting error. The forecast
-made before the month closed follows it, with its measured error (D-089, Step 3d; it moves to
-the lead once the forecasting app shows the pre-close forecast on its Table). "Plan" is banned: no brand plan is recorded in the
+made before the month closed follows it, with its measured error (Step 3d; it moves to the
+lead once the forecasting app shows the pre-close forecast on its Table). "Plan" is banned: no brand plan is recorded in the
 service yet. Never reference a seasonal driver without the forecasting model's seasonal
 index behind it.
 

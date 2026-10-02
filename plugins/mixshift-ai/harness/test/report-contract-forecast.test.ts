@@ -108,6 +108,21 @@ describe('forecast extractor', () => {
     expect(doc.figures.some((f) => f.client_safe)).toBe(true);
   });
 
+  it('the projection leads only where its served variance is clean: a blocking caveat on the month variance keeps the month projection internal', () => {
+    const answer = load('revenue.current');
+    const v = answer.report_data.figures.find((f: { id: string }) => f.id === 'forecast.variance.actual_vs_projection.month');
+    v.caveats = [...v.caveats, 'forecast_month_without_actuals'];
+    const doc = extractForecast(answer);
+    const safe = (id: string) => doc.figures.find((f) => f.id === id)?.client_safe;
+    expect(safe('forecast.projection.sales.month')).toBe(false);
+    expect(safe('forecast.variance.actual_vs_projection.month')).toBe(false);
+    expect(safe('forecast.variance.actual_vs_projection_pct.month')).toBe(false);
+    // The year to date's variance is clean, so its projection still leads.
+    expect(safe('forecast.fit.sales.ytd')).toBe(true);
+    // Derived figures built on the withheld month projection are withheld too.
+    for (const d of doc.derived.filter((x) => x.inputs.includes('forecast.projection.sales.month'))) expect(d.client_safe, d.id).toBe(false);
+  });
+
   it('FAIL CLOSED: one id the extractor cannot place withholds the whole forecast', () => {
     expect(roleOfId('forecast.something_new.sales.month')).toBeNull();
     const answer = load('revenue.current');

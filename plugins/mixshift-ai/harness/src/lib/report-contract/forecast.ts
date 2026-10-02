@@ -288,6 +288,21 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
         ...(f.population !== undefined ? { population: f.population } : {}),
       });
     }
+    // The projection may lead the client brief only where the served actual-vs-projection
+    // variance for the same period is itself clean: when the report month carries a
+    // correction, the package puts a blocking caveat on that variance (and on the actual),
+    // and the projection then stays in the internal companion.
+    const periodOf = (id: string): string | null => (/\.month$/.test(id) ? 'month' : /\.ytd$/.test(id) ? 'ytd' : null);
+    const varianceClean = new Map<string, boolean>();
+    for (const f of figures) {
+      const p = /actual_vs_projection(_pct)?\.(month|ytd)$/.test(f.id) ? periodOf(f.id) : null;
+      if (p) varianceClean.set(p, (varianceClean.get(p) ?? true) && !blocking(f.caveats));
+    }
+    for (const f of figures) {
+      if (f.forecast_role !== 'projection' || !f.client_safe) continue;
+      const p = periodOf(f.id);
+      if (!p || varianceClean.get(p) !== true) f.client_safe = false;
+    }
     const safe = new Map(figures.map((f) => [f.id, f.client_safe]));
     const derived: ForecastDerived[] = [];
     for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
