@@ -214,6 +214,19 @@ export interface ReportFailure {
    *  request and often names the one parameter to change. Absent when Amazon
    *  gave no reason. Sanitized and length-capped (see `cleanAmazonError`). */
   amazonError?: string;
+  /** `'unknown'` when the request may still have taken effect: the service
+   *  sends some calls (report creation) to Amazon only once, and a 5xx,
+   *  timeout, redirect or lost response then cannot prove nothing happened.
+   *  Also set by this client when its OWN timeout fires on a call that can
+   *  change something. A caller must not resend a create or a write blindly
+   *  on it. Absent when the outcome is known. Kept as a string so a new
+   *  service value stays visible instead of being dropped. */
+  requestOutcome?: string;
+  /** `false` when the service deliberately did NOT retry the call itself. */
+  automaticRetry?: boolean;
+  /** On `throttled` from report creation: Amazon is capping reports already
+   *  running, not the request rate, so waiting alone does not clear it. */
+  concurrencyCap?: boolean;
 }
 
 export interface ListMerchantsResult {
@@ -1313,6 +1326,18 @@ interface RequestSpec {
    * yields wording that names no surface: vaguer, never wrong.
    */
   surface?: AmazonSurface;
+  /**
+   * The call can create or change something at Amazon (an Ads create, or a
+   * committed write). When the request may have reached the service but no
+   * usable answer came back (THIS client's timeout fired, the socket closed
+   * mid-call, the edge answered a non-JSON 5xx, or a 2xx body was
+   * unreadable), the failure says the outcome is unknown instead of
+   * "unreachable, try again". Refused, DNS and TLS failures are unaffected:
+   * nothing was sent. Known limit, erring the safe way: behind an HTTP proxy
+   * a CONNECT that hangs also ends as a timeout, so a request that never
+   * left can be reported as "may have gone through".
+   */
+  mayChangeState?: boolean;
 }
 
 export type AmazonRequestSpec = RequestSpec;
@@ -1345,7 +1370,7 @@ export async function amazonRequest(
 
   const doFetch = async (
     bearer: string,
-  ): Promise<{ res: Response } | { networkError: string }> => {
+  ): Promise<{ res: Response } | { networkError: string; mayHaveArrived: boolean }> => {
     try {
       const res = await fetchImpl(`${apiBase}${spec.path}`, {
         method: spec.method,
@@ -1359,9 +1384,21 @@ export async function amazonRequest(
       });
       return { res };
     } catch (err) {
-      return { networkError: err instanceof Error ? err.message : String(err) };
+      return {
+        networkError: err instanceof Error ? err.message : String(err),
+        mayHaveArrived: mayHaveArrived(err),
+      };
     }
   };
+  const networkFailure = (a: { networkError: string; mayHaveArrived: boolean }): ReportFailure =>
+    a.mayHaveArrived && spec.mayChangeState
+      ? uncertainOutcome(
+          'host_unreachable',
+          `No answer came back from MixShift (it can take up to ${Math.ceil(timeoutMs / 1000)} ` +
+            'seconds), so this call may still have gone through.',
+          a.networkError,
+        )
+      : hostUnreachable(a.networkError);
 
   let token: string;
   try {
@@ -1371,7 +1408,7 @@ export async function amazonRequest(
   }
 
   let attempt = await doFetch(token);
-  if ('networkError' in attempt) return hostUnreachable(attempt.networkError);
+  if ('networkError' in attempt) return networkFailure(attempt);
   let res = attempt.res;
 
   // Mid-session 401: token looked fresh client-side but the server rejected
@@ -1383,7 +1420,7 @@ export async function amazonRequest(
       return sessionFailureFromError(err);
     }
     attempt = await doFetch(token);
-    if ('networkError' in attempt) return hostUnreachable(attempt.networkError);
+    if ('networkError' in attempt) return networkFailure(attempt);
     res = attempt.res;
     if (res.status === 401) {
       return {
@@ -1403,7 +1440,20 @@ export async function amazonRequest(
   let json: unknown;
   try {
     json = await res.json();
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    // An unreadable 2xx (a body cut off, our timeout firing mid-read, or a
+    // proxy page), or a non-JSON 5xx from the hosting edge (the service
+    // restarting mid-call): either way the request may have been processed.
+    if (spec.mayChangeState && (res.ok || res.status >= 500)) {
+      return uncertainOutcome(
+        res.ok ? 'unknown' : 'host_unreachable',
+        `An answer came back (HTTP ${res.status}) but it was not MixShift's reply, so this call ` +
+          'may still have gone through.',
+        detail,
+        res.status,
+      );
+    }
     return statusOnlyFailure(res.status, undefined, spec.surface);
   }
 
@@ -1683,6 +1733,11 @@ function toReportFailure(
     ...(strOrUndef(json.responseText) !== undefined
       ? { responseText: strOrUndef(json.responseText) }
       : {}),
+    ...(strOrUndef(json.requestOutcome) !== undefined
+      ? { requestOutcome: strOrUndef(json.requestOutcome) }
+      : {}),
+    ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
+    ...(json.concurrencyCap === true ? { concurrencyCap: true } : {}),
   };
 }
 
@@ -1780,6 +1835,42 @@ function statusToKind(httpStatus: number): ReportFailureKind {
     default:
       return 'unknown';
   }
+}
+
+/** A call that can change something ended without an answer we can trust.
+ *  Mirrors the service's own unknown-outcome envelope (`requestOutcome`), so a
+ *  caller handles a lost answer the same way wherever it was lost. */
+/** A call that can change something ended without an answer we can trust.
+ *  Mirrors the service's own unknown-outcome envelope, kind included: the
+ *  service keeps `host_unreachable` for an Amazon timeout and `unknown` for a
+ *  lost 2xx body, and adds `requestOutcome: 'unknown'` to both. */
+function uncertainOutcome(
+  kind: 'host_unreachable' | 'unknown',
+  lead: string,
+  message: string,
+  httpStatus?: number,
+): ReportFailure {
+  return {
+    ok: false,
+    kind,
+    friendly:
+      `${lead} Check whether it did before sending it again: resending can create a ` +
+      "duplicate report or apply a change twice. For a report, the operation's notes " +
+      '(`mixshift ads operations`) say how to check.',
+    message,
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+    requestOutcome: 'unknown',
+  };
+}
+
+/** The request may have reached the service: our own deadline fired
+ *  (`AbortSignal.timeout` rejects with a DOMException named TimeoutError), or
+ *  the socket closed after the request went out (undici UND_ERR_SOCKET).
+ *  A refused, DNS, TLS or connect-timeout failure means nothing was sent. */
+function mayHaveArrived(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { name?: unknown; cause?: { code?: unknown } };
+  return e.name === 'TimeoutError' || e.cause?.code === 'UND_ERR_SOCKET';
 }
 
 function hostUnreachable(message: string): ReportFailure {

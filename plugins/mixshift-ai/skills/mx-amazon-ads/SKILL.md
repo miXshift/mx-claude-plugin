@@ -720,6 +720,23 @@ reactively what this tenant and profile may do, and the harness returns a
 output the friendly message prints to stderr. Each kind maps to a distinct exit
 code for terminal scripts.
 
+**Check `request_outcome` before `failure_kind`.** When a failure carries
+`request_outcome: "unknown"` (in human output the message says the call "may
+still have gone through" or "may have already accepted"), the call may already
+have created or changed something, whatever its kind. This happens on report
+creates and committed writes when the answer was lost: a timeout, a server
+error, a dropped connection. **Never resend that create or write blindly**, and
+never retry it in a loop:
+
+- **A committed write:** re-list the entities it targeted and compare with the
+  change set before sending anything again.
+- **A report create:** follow the operation's notes (`mixshift ads operations`).
+  For `reporting.create_report`, resending the identical body is the way to
+  check: if the first one landed, Amazon answers 425 naming that report. For
+  `reporting_v1.create_report`, a resend makes a second report, so resend at
+  most once and tell the user a duplicate may exist.
+- **Reads** never carry this field and are always safe to retry.
+
 | `failure_kind` | Exit | What it means / what to tell the user |
 |---|---|---|
 | `not_authenticated` | 2 | Not signed in. Run `mixshift auth login`. |
@@ -731,10 +748,11 @@ code for terminal scripts.
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service. Contact MixShift ops. |
 | `merchant_not_found` | 7 | The selector matched no profile. Re-run `ads profiles` and pick a listed row (use its `legacySellerId`). A multi-marketplace selector returns a `candidates` list; pick the marketplace and re-run. |
-| `throttled` | 8 | Amazon is rate-limiting (Ads limits are dynamic). Wait a moment and retry; a `retry_after_ms` may be present. |
+| `throttled` | 8 | Amazon is rate-limiting (Ads limits are dynamic). Wait a moment and retry; a `retry_after_ms` may be present. **If `concurrency_cap` is true** (report creation), Amazon is capping reports already running, not the request rate: waiting alone does not clear it. Free a slot by deleting a report you no longer need, or wait for one to finish. |
 | `insufficient_scope` | 11 | The credential cannot write (writes need `ads:write`). Hand the user the change list; an admin must issue a write-capable credential. Do NOT retry. |
-| `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
-| `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
+| `upstream_unavailable` | 1 | Amazon's side failed (a server error). Reads were already retried by the service; retry a read later. A committed write was NOT retried and may have applied: re-list before resending. A report create carries `request_outcome` (see above). |
+| `host_unreachable` | 1 | The service is unreachable or did not answer in time. If `request_outcome` is `unknown`, see above; otherwise check the network and retry. |
+| `unknown` | 1 | Unexpected failure. If `request_outcome` is `unknown`, see above; otherwise retry shortly and relay the message. |
 
 Notes:
 
@@ -753,7 +771,9 @@ Notes:
 
 - **Throttling is expected under load.** Ads rate limits are dynamic and the
   service paces lightly and retries 429s with Retry-After; an occasional
-  `throttled` envelope just means retry. For AMC-style sequential probing the
+  `throttled` envelope just means retry. The exception is report creation,
+  which the service sends to Amazon only once, so its 429 comes back at once;
+  see the `throttled` row for `concurrency_cap`. For AMC-style sequential probing the
   rule is "never parallelize," but that lives in `mx-amazon-amc`.
 - `ads_not_configured` may currently degrade to `unknown` with the server's
   friendly text preserved if the client build predates that kind; treat the
