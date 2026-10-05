@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.5.1
+version: 2.5.2
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -120,7 +120,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
 | Forecast | `auto`: when the MixShift forecasting service holds a forecast for this brand that is current for the report month, it appears in the report (Step 3d); otherwise nothing forecast-related appears anywhere, the settings section says nothing about it, and nobody is asked | `reporting.forecast`: `auto`, `off` (no forecast request at all), or `require` (a missing, stale or failed forecast becomes one line in the internal companion's exceptions block) |
 | Forecast metrics | revenue; units are requested only when the revenue forecast came back current | `reporting.forecast_metrics: [revenue, units]` adds units; `[revenue]` is the default |
-| Forecast audience | both documents: in the client brief only figures marked client-safe; the forecast, the current model's fit and what the forecast stands on in the internal companion | `reporting.forecast_audience: internal_only` keeps it out of the client brief |
+| Forecast audience | both documents: in the client brief only figures marked client-safe, leading with the current model's projection and then the forecast made before the month closed; what the forecast stands on and the year-start forecast in the internal companion | `reporting.forecast_audience: internal_only` keeps it out of the client brief |
 | Forecast scope | the account | `reporting.forecast_scope: <scope key>` for a sub-brand or item group defined in the forecasting app |
 | Thresholds | the documented block below | `reporting.thresholds.*` in context.yaml |
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
@@ -596,20 +596,32 @@ and "the forecasting service did not answer" when it does not.
 
 **Two expectations, and where each may appear.** Every figure, derived figure and claim
 carries `forecast_role`:
-- `forecast`: what the model said BEFORE the month closed. The ONLY expectation a beat or miss
-  is stated against: `forecast.expected.at_actual_spend.*` when present (what was forecast at
-  the spend that actually happened), else `forecast.expected.rolling.*`.
-- `projection`: the current model's fit WITH the month included, the number the forecasting
-  app shows. Internal companion only, always named "the current model's fit", never "the
-  forecast", and never in the same sentence as a forecasting error.
+- `projection`: the current model's figure WITH the month included, the number the
+  forecasting app's Table shows for a closed month. It LEADS the comparison in both documents:
+  state the actual against it first, always named "the current model's projection", with its
+  disclosure (the `forecast_projection_in_sample` caveat: the model was fitted with that month
+  included) in plain words beside it. Quote the served `forecast.variance.actual_vs_projection.*`
+  figure as a signed change ("-4.8% against the current model's projection"), never a figure you
+  recomputed, and never "beat", "missed" or "error" in the same sentence. Never call it "the
+  forecast". The brand can find this number in the app, which is why it leads. It leads only
+  when its projection figures come out `client_safe` (the extractor withholds them when the
+  month's variance carries a blocking caveat, as it does when the month was corrected in the
+  app) and the forecast's actual is within the actuals tolerance below; otherwise it stays in
+  the internal companion and the brief opens with the forecast made before the month closed.
+- `forecast`: what the model said BEFORE the month closed. It FOLLOWS the projection, named
+  "the forecast made before the month closed" (later "the forecast"), with its measured error
+  beside it. It is the ONLY expectation a beat or miss, or a forecasting error, is stated
+  against: `forecast.expected.at_actual_spend.*` when present (what was forecast at the spend
+  that actually happened), else `forecast.expected.rolling.*`.
 - `year_start`: the forecast made at the start of the year. It stands in for a plan nobody has
   recorded; internal companion only, and never called a plan.
 - `actual`, `outlook` (the months still to come, each at the spend it stands on) and `basis`
   (the model, how the latest month moved it, and the figures somebody corrected in the app).
 
-The client brief quotes ONLY figures with `client_safe: true` (an actual, forecast or outlook
-figure carrying no blocking caveat), in your own sentences under the house rules. In No-YoY
-mode it quotes no last-year or assumed-change-on-last-year figure from the forecast either.
+The client brief quotes ONLY figures with `client_safe: true` (an actual, projection, forecast
+or outlook figure carrying no blocking caveat), in your own sentences under the house rules. In No-YoY
+mode it quotes no last-year, projection-versus-last-year (`forecast.projection_vs_last_year_pct.*`)
+or assumed-change-on-last-year figure from the forecast either.
 The internal companion may quote any figure. Its `sections` are the map of which figures
 belong together, not text to paste: write the sentences yourself under Step 7's vocabulary,
 and wherever you quote a figure that carries a blocking caveat, render that caveat's
@@ -822,8 +834,11 @@ series is presented as arithmetic, never as a forecast. When a forecast IS curre
 vocabulary is fixed: "the MixShift revenue forecasting model" on first mention (for units,
 "the MixShift units forecast"), "the forecasting model" for the model, "the forecast" for
 what the model said before the month closed. The current model's figure for a closed month
-is "the current model's fit": internal companion only, never called the forecast, never
-beside a forecasting error (Step 3d). "Plan" is banned: no brand plan is recorded in the
+is "the current model's projection", the forecasting app's own word: it leads the comparison
+in both documents with its disclosure that the model was fitted on that month, and is never
+called the forecast, never beaten or missed, never beside a forecasting error. The forecast
+made before the month closed follows it, with its measured error (Step 3d; it moves to the
+lead once the forecasting app shows the pre-close forecast on its Table). "Plan" is banned: no brand plan is recorded in the
 service yet. Never reference a seasonal driver without the forecasting model's seasonal
 index behind it.
 
@@ -1333,7 +1348,9 @@ The errors that survive casual proofreading:
   forecast's own year-over-year assumption.
 - Forecast content came only from a `provided_current` forecast figures document that passed
   `--check` for the report month; the client brief quotes only `client_safe` forecast figures,
-  states every beat or miss against the forecast and none beyond the actual tolerance; a run
+  leads with the actual against the current model's projection (named, with its disclosure),
+  then states every beat or miss against the forecast made before the month closed and none
+  beyond the actual tolerance; a run
   with no forecast carries no trace of one; `forecast_numbers_source` is the attestation or "none".
 - The session footing, the restatement and any promotion windows from the run's context
   block are in i06 and the run summary; no mix-versus-rate sentence came from an
