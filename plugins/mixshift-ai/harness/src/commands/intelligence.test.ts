@@ -149,6 +149,18 @@ describe('intelligence catalog', () => {
     expect(process.exitCode).toBe(exitCodeBefore);
   });
 
+  it('prints each insight’s params line and service when the catalog carries them', async () => {
+    vi.mocked(catalog).mockResolvedValue({
+      ok: true,
+      entries: [
+        { id: 'FCT-BASELINE-01', version: '1', revision: 'r1', purpose: 'The baseline.', status: 'available', service: 'forecasting', paramsDoc: 'merchant({legacySellerId}) + metric?(revenue|units)' },
+      ],
+    });
+    await runCli({ dataDir }, 'catalog');
+    expect(stdoutText()).toContain('params: merchant({legacySellerId}) + metric?(revenue|units)');
+    expect(stdoutText()).toContain('forecasting');
+  });
+
   it('emits raw entries under --json', async () => {
     vi.mocked(catalog).mockResolvedValue({
       ok: true,
@@ -432,7 +444,68 @@ describe('intelligence run --async', () => {
 // run — failure-kind mapping
 // ---------------------------------------------------------------------------
 
+describe('intelligence run <id> --help', () => {
+  const ENTRY = { id: 'FCT-BASELINE-01', version: '1', revision: 'r1', purpose: 'The baseline forecast.', status: 'available', service: 'forecasting', paramsDoc: 'merchant({legacySellerId}) + metric?(revenue|units)' };
+
+  it('prints the usage and the named insight’s purpose and params from the catalog, and never runs it', async () => {
+    vi.mocked(catalog).mockResolvedValue({ ok: true, entries: [ENTRY] });
+    await runCli({ dataDir }, 'run', 'FCT-BASELINE-01', '--help');
+    expect(run).not.toHaveBeenCalled();
+    expect(stdoutText()).toContain('Usage:');
+    expect(stdoutText()).toContain('The baseline forecast.');
+    expect(stdoutText()).toContain('params: merchant({legacySellerId}) + metric?(revenue|units)');
+    expect(stdoutText()).toContain('--params');
+    expect(process.exitCode).toBe(exitCodeBefore);
+  });
+
+  it('matches the id case-insensitively and says when the id is not in the catalog', async () => {
+    vi.mocked(catalog).mockResolvedValue({ ok: true, entries: [ENTRY] });
+    await runCli({ dataDir }, 'run', 'fct-baseline-01', '--help');
+    expect(stdoutText()).toContain('The baseline forecast.');
+    stdoutChunks.length = 0;
+    await runCli({ dataDir }, 'run', 'INS-NOPE-99', '--help');
+    expect(stdoutText()).toContain('INS-NOPE-99 is not in the catalog');
+    expect(process.exitCode).toBe(exitCodeBefore);
+  });
+
+  it('under --json emits the entry itself', async () => {
+    vi.mocked(catalog).mockResolvedValue({ ok: true, entries: [ENTRY] });
+    await runCli({ dataDir, json: true }, 'run', 'FCT-BASELINE-01', '--help');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed).toEqual({ ok: true, id: 'FCT-BASELINE-01', entry: ENTRY });
+  });
+
+  it('with no id, prints the usage alone; running with no id is an error that names the catalog', async () => {
+    await runCli({ dataDir }, 'run', '--help');
+    expect(stdoutText()).toContain('Usage:');
+    expect(catalog).not.toHaveBeenCalled();
+    await runCli({ dataDir }, 'run', '--params', '{}');
+    expect(stderrText()).toContain('intelligence catalog');
+    expect(process.exitCode).toBe(1);
+  });
+});
+
 describe('intelligence run — failure kinds', () => {
+  it('a run refused for its params answers with the params the insight takes, from the catalog', async () => {
+    vi.mocked(run).mockResolvedValue({ ok: false, kind: 'bad_params', friendly: 'Params were not what this insight takes.', message: 'merchant: Required' });
+    vi.mocked(catalog).mockResolvedValue({
+      ok: true,
+      entries: [{ id: 'FCT-BASELINE-01', version: '1', revision: 'r1', purpose: 'p', status: 'available', paramsDoc: 'merchant({legacySellerId}) + metric?(revenue|units)' }],
+    });
+    await runCli({ dataDir }, 'run', 'FCT-BASELINE-01', '--params', '{"seller_id":22}');
+    expect(stderrText()).toContain('FCT-BASELINE-01 takes: merchant({legacySellerId}) + metric?(revenue|units)');
+    expect(process.exitCode).not.toBe(exitCodeBefore);
+  });
+
+  it('a run refused for its params still points at --help when the catalog cannot be read', async () => {
+    vi.mocked(run).mockResolvedValue({ ok: false, kind: 'bad_params', friendly: 'Params were not what this insight takes.' });
+    vi.mocked(catalog).mockResolvedValue({ ok: false, kind: 'host_unreachable', friendly: 'Could not reach MixShift.' });
+    await runCli({ dataDir, json: true }, 'run', 'FCT-BASELINE-01', '--params', '{}');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.kind).toBe('bad_params');
+    expect(parsed.hint).toContain('intelligence run <id> --help');
+  });
+
   it('account_too_large_use_async hints --async and exits 7', async () => {
     vi.mocked(run).mockResolvedValue({
       ok: false,
