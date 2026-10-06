@@ -72,6 +72,8 @@ export interface ForecastAnswerSummary {
   /** True only when the person got a forecast: TRACK provided_current with
    *  report_data, or BASELINE available. */
   served: boolean;
+  /** BASELINE: 'computed' when the gateway fitted it because nothing was published; absent for the app's copy. */
+  source?: string;
 }
 
 /** Normalise a forecasting answer to bounded fields; undefined for any other answer. */
@@ -94,6 +96,8 @@ export function summarizeForecastAnswer(result: unknown): ForecastAnswerSummary 
   } else if (kind === 'baseline') {
     if (typeof result.available === 'boolean') s.available = result.available;
     s.served = result.available === true;
+    const source = boundedLabel(result.source);
+    if (source !== undefined) s.source = source;
   } else if (kind === 'readiness') {
     const verdict = boundedLabel(result.verdict);
     if (verdict !== undefined) s.verdict = verdict;
@@ -133,6 +137,7 @@ export function forecastTelemetryFields(result: unknown): Record<string, unknown
   put('scope_id', s.scopeId);
   put('vintage', s.vintage);
   put('vintage_age_days', s.vintageAgeDays);
+  put('source', s.source);
   put('ytd_runs_past_report_month', s.ytdRunsPastReportMonth);
   out.served = s.served;
   return out;
@@ -167,7 +172,7 @@ export function renderForecastSummary(s: ForecastAnswerSummary): string {
   } else if (s.kind === 'baseline') {
     head =
       s.available === true
-        ? `baseline available${vintagePhrase(s)}`
+        ? `baseline available${s.source === 'computed' ? ' (computed by the gateway, nothing published)' : vintagePhrase(s)}`
         : s.available === false
           ? `baseline unavailable${reason}`
           : `baseline${reason}`;

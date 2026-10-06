@@ -61,7 +61,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **27 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **28 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -92,6 +92,7 @@ The plugin ships **27 skills**. Each is invoked naturally in chat: say what you 
 | `mx-keyword-bid-health` | Weekly keyword-level bid review — scale-up candidates with proven conversions, pullback candidates on high-ACoS. |
 | `mx-monthly-report` | MoM / YoY performance report in MixShift's analytical voice, H-Bridge efficiency, item-group highlights, forecast beat/miss, Looking Ahead. |
 | `mx-monthly-report-max` | The max tier of MixShift reporting: a client-ready brief plus a private internal companion (talking points, numbers to keep off the call, last call's commitments checked against the data), on any cadence. Intelligence-served core figures, page-view-weighted Buy Box, live featured-offer diagnosis; works out of the box on brand-new or empty accounts. |
+| `mx-max-forecast` | The max tier of forecasting: a revenue forecast for one account, explained with its measured accuracy. Serves the forecast the MixShift forecasting app published, or one the service computes from your warehouse history with the same engine, labelled as computed. |
 | `mx-portfolio-quick-scan` | Multi-brand daily triage. One status card per brand: do I need to log in today? GREEN / YELLOW / RED verdicts. |
 | `mx-search-term-negation` | Search-term irrelevance analysis + surgical negative keywords. |
 | `mx-search-term-harvest` | Promote high-performing auto / broad search terms to explicit keyword targeting. |

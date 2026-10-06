@@ -1,0 +1,36 @@
+schema_version: 1
+skill_id: mx-max-forecast
+display_name: Forecast Max
+version: "0.1.0"
+description: >
+  The max tier of forecasting: a revenue forecast for one Amazon account, explained in
+  plain language with its measured accuracy, from the MixShift Intelligence service.
+  Serves the forecast the MixShift forecasting app published (corrections included) when
+  one exists, else a forecast the gateway computes from the warehouse with the same
+  engine, labelled as computed. Checks readiness first. Never fits a model of its own.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [insight_read, file_read, file_write]
+side_effect_policy: none
+review_required: never
+pricing_tier: enterprise
+trigger_phrases:
+  - forecast
+  - run a forecast
+  - revenue outlook
+  - what should I expect next month
+  - how accurate is the forecast
+  - is this brand forecastable
+  - forecast max
+escalation_conditions:
+  - readiness verdict below_floor (no forecast is served; the answer says what would make the account ready)
+  - computed answer with servable false (a negative fitted ad-spend effect; the figures describe a level, not what spend buys)
+sql_ids: []   # No direct warehouse queries: every figure comes from the Intelligence service (FCT-READINESS-01, FCT-BASELINE-01).
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+notes: >
+  Two metered Intelligence requests per run (readiness, then the baseline); cached answers
+  are free for a day. Writes nothing: corrections and publishing happen in the MixShift
+  forecasting app, and a published forecast replaces the computed one on the next answer.
