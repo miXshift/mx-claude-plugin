@@ -20,6 +20,7 @@ import {
   run,
   pollRun,
   getRunResult,
+  exitCodeForKind,
   type InsightResult,
   type RunAcceptedResult,
 } from '../lib/intelligence/client.js';
@@ -159,6 +160,20 @@ describe('intelligence catalog', () => {
     await runCli({ dataDir }, 'catalog');
     expect(stdoutText()).toContain('params: merchant({legacySellerId}) + metric?(revenue|units)');
     expect(stdoutText()).toContain('forecasting');
+  });
+
+  it('wraps a long params line for a person, and keeps it raw under --json', async () => {
+    const long = Array.from({ length: 40 }, (_, i) => `field${i}?(string)`).join(' + ');
+    const entries = [{ id: 'INS-LONG-01', version: '1', revision: 'r1', purpose: 'p', status: 'available', paramsDoc: long }];
+    vi.mocked(catalog).mockResolvedValue({ ok: true, entries });
+    await runCli({ dataDir }, 'catalog');
+    const paramsLines = stdoutText().split('\n').filter((l) => l.includes('field'));
+    expect(paramsLines.length).toBeGreaterThan(1);
+    expect(paramsLines.every((l) => l.length <= 104)).toBe(true);
+    expect(paramsLines.slice(1).every((l) => l.startsWith('    '))).toBe(true);
+    stdoutChunks.length = 0;
+    await runCli({ dataDir, json: true }, 'catalog');
+    expect(JSON.parse(stdoutText()).entries[0].paramsDoc).toBe(long);
   });
 
   it('emits raw entries under --json', async () => {
@@ -462,10 +477,28 @@ describe('intelligence run <id> --help', () => {
     vi.mocked(catalog).mockResolvedValue({ ok: true, entries: [ENTRY] });
     await runCli({ dataDir }, 'run', 'fct-baseline-01', '--help');
     expect(stdoutText()).toContain('The baseline forecast.');
+    expect(process.exitCode).toBe(exitCodeBefore);
     stdoutChunks.length = 0;
     await runCli({ dataDir }, 'run', 'INS-NOPE-99', '--help');
-    expect(stdoutText()).toContain('INS-NOPE-99 is not in the catalog');
-    expect(process.exitCode).toBe(exitCodeBefore);
+    expect(run).not.toHaveBeenCalled();
+    expect(stdoutText()).toContain('Usage:');
+    expect(stderrText()).toContain('(unknown_insight) INS-NOPE-99 is not in the catalog');
+    expect(stderrText()).toContain('mixshift intelligence catalog');
+    expect(process.exitCode).toBe(exitCodeForKind('unknown_insight'));
+  });
+
+  it('a catalog that cannot be read is reported as that failure, with its kind and hint, never as "not in the catalog"', async () => {
+    vi.mocked(catalog).mockResolvedValue({ ok: false, kind: 'not_authenticated', friendly: 'Sign in first.' });
+    await runCli({ dataDir }, 'run', 'FCT-BASELINE-01', '--help');
+    expect(run).not.toHaveBeenCalled();
+    expect(stdoutText()).toContain('Usage:');
+    expect(stdoutText()).not.toContain('not in the catalog');
+    expect(stderrText()).toContain('(not_authenticated) Sign in first.');
+    expect(process.exitCode).toBe(exitCodeForKind('not_authenticated'));
+    stdoutChunks.length = 0;
+    await runCli({ dataDir, json: true }, 'run', 'FCT-BASELINE-01', '--help');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed).toMatchObject({ ok: false, id: 'FCT-BASELINE-01', kind: 'not_authenticated', message: 'Sign in first.' });
   });
 
   it('under --json emits the entry itself', async () => {
@@ -473,6 +506,8 @@ describe('intelligence run <id> --help', () => {
     await runCli({ dataDir, json: true }, 'run', 'FCT-BASELINE-01', '--help');
     const parsed = JSON.parse(stdoutText());
     expect(parsed).toEqual({ ok: true, id: 'FCT-BASELINE-01', entry: ENTRY });
+    expect(run).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(exitCodeBefore);
   });
 
   it('with no id, prints the usage alone; running with no id is an error that names the catalog', async () => {
@@ -494,7 +529,17 @@ describe('intelligence run — failure kinds', () => {
     });
     await runCli({ dataDir }, 'run', 'FCT-BASELINE-01', '--params', '{"seller_id":22}');
     expect(stderrText()).toContain('FCT-BASELINE-01 takes: merchant({legacySellerId}) + metric?(revenue|units)');
-    expect(process.exitCode).not.toBe(exitCodeBefore);
+    expect(process.exitCode).toBe(exitCodeForKind('bad_params'));
+    expect(catalog).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 10_000 }));
+  });
+
+  it('a catalog that throws on the way to the hint leaves the refusal, its exit code and the generic hint intact', async () => {
+    vi.mocked(run).mockResolvedValue({ ok: false, kind: 'bad_params', friendly: 'Params were not what this insight takes.' });
+    vi.mocked(catalog).mockRejectedValue(new Error('socket hang up'));
+    await runCli({ dataDir }, 'run', 'FCT-BASELINE-01', '--params', '{}');
+    expect(stderrText()).toContain('Params were not what this insight takes.');
+    expect(stderrText()).toContain('intelligence run <id> --help');
+    expect(process.exitCode).toBe(exitCodeForKind('bad_params'));
   });
 
   it('a run refused for its params still points at --help when the catalog cannot be read', async () => {

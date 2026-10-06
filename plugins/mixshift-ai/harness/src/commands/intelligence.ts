@@ -97,7 +97,7 @@ export function registerIntelligenceCommands(program: Command): void {
 function registerCatalogCommand(intelligence: Command): void {
   intelligence
     .command('catalog')
-    .description('List the insight catalog: id, version, revision, purpose, status.')
+    .description('List the insight catalog: id, version, revision, purpose, status, service, and the params each insight takes.')
     .action(async (_opts: unknown, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -405,17 +405,25 @@ async function loadParams(
   return parsed as IntelligenceRunParams;
 }
 
-/** The catalog entry for an id, or null when the catalog cannot be read or
- *  does not list it. Best effort: never throws into the command. */
-async function catalogEntry(id: string, dataDir: string | undefined): Promise<InsightEntry | null> {
+/** One insight looked up in the catalog: the entry, or the failure that
+ *  stopped the read (not signed in, unreachable, switched off...), or that
+ *  the catalog does not list the id. The failure is kept, never folded into
+ *  "not listed": the person asking for help is the one who is stuck. */
+type CatalogLookup = { entry: InsightEntry } | { failure: IntelligenceFailure } | { missing: true };
+
+async function catalogEntry(id: string, dataDir: string | undefined): Promise<CatalogLookup> {
   try {
-    // A short budget: this is a hint on the way to an error, never worth a long wait.
+    // A short budget on the fetch: this is a hint on the way to an error,
+    // never worth a long wait. (Credential resolution and a forced token
+    // refresh before it are unbounded, as for every call in this client.)
     const result = await catalog({ dataDirOverride: dataDir, timeoutMs: 10_000 });
-    if (isIntelligenceFailure(result)) return null;
+    if (isIntelligenceFailure(result)) return { failure: result };
     const wanted = id.trim().toUpperCase();
-    return result.entries.find((e) => e.id.toUpperCase() === wanted) ?? null;
-  } catch {
-    return null;
+    const entry = result.entries.find((e) => e.id.toUpperCase() === wanted);
+    return entry ? { entry } : { missing: true };
+  } catch (err) {
+    const friendly = err instanceof Error ? err.message : String(err);
+    return { failure: { ok: false, kind: 'unknown', friendly } as IntelligenceFailure };
   }
 }
 
@@ -423,30 +431,50 @@ async function catalogEntry(id: string, dataDir: string | undefined): Promise<In
  *  params line when the catalog gives one; undefined lets emitFailure fall
  *  back to the generic bad_params hint. */
 async function paramsHint(id: string, dataDir: string | undefined): Promise<string | undefined> {
-  const entry = await catalogEntry(id, dataDir);
-  return entry?.paramsDoc ? `${entry.id} takes: ${entry.paramsDoc}` : undefined;
+  const lookup = await catalogEntry(id, dataDir);
+  return 'entry' in lookup && lookup.entry.paramsDoc ? `${lookup.entry.id} takes: ${lookup.entry.paramsDoc}` : undefined;
 }
 
 /** `run <id> --help`: the command's usage, then the insight itself (purpose,
- *  params, service) from the catalog. Without an id, the usage alone. */
+ *  params, service) from the catalog. Without an id, the usage alone. When
+ *  the catalog could not be read, or does not list the id, the usage still
+ *  prints but the question asked was not answered: the failure is shown with
+ *  its kind and hint, and the exit code says so (a skill driving this must
+ *  not read a failed lookup as success). */
 async function describeInsight(id: string | undefined, cmd: Command, root: RootOptions): Promise<void> {
-  const entry = id ? await catalogEntry(id, root.dataDir) : null;
-  if (root.json) {
-    writeJson(id ? { ok: entry !== null, id, entry } : { ok: true, usage: cmd.helpInformation() });
+  if (!id) {
+    if (root.json) writeJson({ ok: true, usage: cmd.helpInformation() });
+    else process.stdout.write(cmd.helpInformation());
     return;
   }
-  process.stdout.write(cmd.helpInformation());
-  if (!id) return;
-  if (!entry) {
+  const lookup = await catalogEntry(id, root.dataDir);
+  if ('entry' in lookup) {
+    if (root.json) {
+      writeJson({ ok: true, id, entry: lookup.entry });
+      return;
+    }
+    process.stdout.write(cmd.helpInformation());
+    process.stdout.write(`\n${renderCatalog([lookup.entry])}\n`);
     process.stdout.write(
-      `\n${id} is not in the catalog this account can see. Ids: mixshift intelligence catalog\n`,
+      '\nThe params line above is the shape to send, as one JSON object: --params \'{...}\' ' +
+        'or --params-file <path>. A merchant is named by its legacySellerId (the seller id ' +
+        '`mixshift brand list` shows) or by {sellerId, marketplaceId}.\n',
     );
     return;
   }
-  process.stdout.write(`\n${renderCatalog([entry])}\n`);
-  process.stdout.write(
-    `\nExample: mixshift intelligence run ${entry.id} --params '{"merchant":{"legacySellerId":<seller.ID>}}'\n`,
-  );
+  const failure: IntelligenceFailure =
+    'failure' in lookup
+      ? lookup.failure
+      : ({ ok: false, kind: 'unknown_insight', friendly: `${id} is not in the catalog this account can see.` } as IntelligenceFailure);
+  const hint = 'failure' in lookup ? hintForKind(failure.kind) : 'Ids: mixshift intelligence catalog';
+  if (root.json) {
+    writeJson({ ok: false, id, kind: failure.kind, message: failure.friendly, detail: failure.message, ...(hint ? { hint } : {}) });
+  } else {
+    process.stdout.write(cmd.helpInformation());
+    process.stderr.write(`\n✗ (${failure.kind}) ${failure.friendly}\n`);
+    if (hint) process.stderr.write(`  hint: ${hint}\n`);
+  }
+  process.exitCode = exitCodeForKind(failure.kind);
 }
 
 /** Best-effort echo of params.merchant for the local ledger + brand-scoped
@@ -664,6 +692,23 @@ function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
 
+/** Word-wrap one line to `width` columns, continuation lines indented, so a
+ *  long params line reads in a terminal; --json keeps the raw text. */
+function wrapIndented(text: string, width: number, indent: string): string {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(' ').filter(Boolean)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = indent + word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.join('\n');
+}
+
 function renderCatalog(entries: InsightEntry[]): string {
   if (entries.length === 0) {
     return '_(no insights in the catalog yet)_';
@@ -672,7 +717,7 @@ function renderCatalog(entries: InsightEntry[]): string {
     .map(
       (e) =>
         `- **${e.id}** v${e.version} (rev ${e.revision}, status: ${e.status}${e.service ? `, ${e.service}` : ''})\n  ${e.purpose}` +
-        (e.paramsDoc ? `\n  params: ${e.paramsDoc}` : ''),
+        (e.paramsDoc ? `\n  params: ${wrapIndented(e.paramsDoc, 100, '    ')}` : ''),
     )
     .join('\n');
 }
