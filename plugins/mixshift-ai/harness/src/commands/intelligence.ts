@@ -10,7 +10,8 @@
  * default; `not_enrolled` means MixShift switched it off for this one.
  *
  * Command shape:
- *   intelligence catalog                          browse the insight catalog
+ *   intelligence catalog                          browse the insight catalog (each id's params)
+ *   intelligence run <id> --help                  one insight: purpose and the params it takes
  *   intelligence run <id> [--params-file f | --params json] [--async]
  *   intelligence poll <runId>                     lightweight status check
  *   intelligence get <runId>                      fetch a finished async run
@@ -96,7 +97,7 @@ export function registerIntelligenceCommands(program: Command): void {
 function registerCatalogCommand(intelligence: Command): void {
   intelligence
     .command('catalog')
-    .description('List the insight catalog: id, version, revision, purpose, status.')
+    .description('List the insight catalog: id, version, revision, purpose, status, service, and the params each insight takes.')
     .action(async (_opts: unknown, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -136,15 +137,23 @@ interface RunCliOptions {
   params?: string;
   async?: boolean;
   out?: string;
+  help?: boolean;
 }
 
 function registerRunCommand(intelligence: Command): void {
   intelligence
-    .command('run <id>')
+    .command('run [id]')
     .description(
       'Run one insight (sync by default; --async for large accounts). Params are ' +
-        'a single JSON object, server-validated: run `intelligence catalog` for ids.',
+        'a single JSON object, server-validated: `intelligence run <id> --help` shows ' +
+        'the params that insight takes; `intelligence catalog` lists every id.',
     )
+    // The built-in --help knows the command, not the insight. This one fetches
+    // the catalog and prints the named insight's purpose and params, which is
+    // what someone typing `run FCT-BASELINE-01 --help` is asking (a user guessed
+    // the shape twice before finding it, 2026-10-05).
+    .helpOption(false)
+    .option('-h, --help', 'show this insight: its purpose and the exact params it takes.')
     .option('--params-file <path>', 'JSON params from a file. Mutually exclusive with --params.')
     .option('--params <json>', 'inline JSON params (small payloads; prefer --params-file).')
     .option(
@@ -152,17 +161,29 @@ function registerRunCommand(intelligence: Command): void {
       'start the run asynchronously; returns a runId to poll instead of computing inline.',
     )
     .option('--out <path>', 'write the full result JSON here instead of the default artifact path.')
-    .action(async (id: string, opts: RunCliOptions, cmd: Command) => {
+    .action(async (id: string | undefined, opts: RunCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
       try {
+        if (opts.help) {
+          return await describeInsight(id, cmd, root);
+        }
+        if (!id) {
+          throw new Error(
+            'Name the insight to run: mixshift intelligence run <id> --params \'{...}\'. ' +
+              'Ids: mixshift intelligence catalog.',
+          );
+        }
         const params = await loadParams(opts.paramsFile, opts.params);
         if (opts.async) params.async = true;
 
         const result = await runInsight({ id, params }, { dataDirOverride: root.dataDir });
         if (isIntelligenceFailure(result)) {
           await trackFailure('run', id, result, startedAt, root.dataDir);
-          return emitFailure(result, !!root.json);
+          // A refused shape answers with the shape it wanted, from the catalog,
+          // so the next attempt is not another guess.
+          const hint = result.kind === 'bad_params' ? await paramsHint(id, root.dataDir) : undefined;
+          return emitFailure(result, !!root.json, hint);
         }
 
         if (isAccepted(result)) {
@@ -384,6 +405,78 @@ async function loadParams(
   return parsed as IntelligenceRunParams;
 }
 
+/** One insight looked up in the catalog: the entry, or the failure that
+ *  stopped the read (not signed in, unreachable, switched off...), or that
+ *  the catalog does not list the id. The failure is kept, never folded into
+ *  "not listed": the person asking for help is the one who is stuck. */
+type CatalogLookup = { entry: InsightEntry } | { failure: IntelligenceFailure } | { missing: true };
+
+async function catalogEntry(id: string, dataDir: string | undefined): Promise<CatalogLookup> {
+  try {
+    // A short budget on the fetch: this is a hint on the way to an error,
+    // never worth a long wait. (Credential resolution and a forced token
+    // refresh before it are unbounded, as for every call in this client.)
+    const result = await catalog({ dataDirOverride: dataDir, timeoutMs: 10_000 });
+    if (isIntelligenceFailure(result)) return { failure: result };
+    const wanted = id.trim().toUpperCase();
+    const entry = result.entries.find((e) => e.id.toUpperCase() === wanted);
+    return entry ? { entry } : { missing: true };
+  } catch (err) {
+    const friendly = err instanceof Error ? err.message : String(err);
+    return { failure: { ok: false, kind: 'unknown', friendly } as IntelligenceFailure };
+  }
+}
+
+/** The hint for a run the service refused for its params: the insight's own
+ *  params line when the catalog gives one; undefined lets emitFailure fall
+ *  back to the generic bad_params hint. */
+async function paramsHint(id: string, dataDir: string | undefined): Promise<string | undefined> {
+  const lookup = await catalogEntry(id, dataDir);
+  return 'entry' in lookup && lookup.entry.paramsDoc ? `${lookup.entry.id} takes: ${lookup.entry.paramsDoc}` : undefined;
+}
+
+/** `run <id> --help`: the command's usage, then the insight itself (purpose,
+ *  params, service) from the catalog. Without an id, the usage alone. When
+ *  the catalog could not be read, or does not list the id, the usage still
+ *  prints but the question asked was not answered: the failure is shown with
+ *  its kind and hint, and the exit code says so (a skill driving this must
+ *  not read a failed lookup as success). */
+async function describeInsight(id: string | undefined, cmd: Command, root: RootOptions): Promise<void> {
+  if (!id) {
+    if (root.json) writeJson({ ok: true, usage: cmd.helpInformation() });
+    else process.stdout.write(cmd.helpInformation());
+    return;
+  }
+  const lookup = await catalogEntry(id, root.dataDir);
+  if ('entry' in lookup) {
+    if (root.json) {
+      writeJson({ ok: true, id, entry: lookup.entry });
+      return;
+    }
+    process.stdout.write(cmd.helpInformation());
+    process.stdout.write(`\n${renderCatalog([lookup.entry])}\n`);
+    process.stdout.write(
+      '\nThe params line above is the shape to send, as one JSON object: --params \'{...}\' ' +
+        'or --params-file <path>. A merchant is named by its legacySellerId (the seller id ' +
+        '`mixshift brand list` shows) or by {sellerId, marketplaceId}.\n',
+    );
+    return;
+  }
+  const failure: IntelligenceFailure =
+    'failure' in lookup
+      ? lookup.failure
+      : ({ ok: false, kind: 'unknown_insight', friendly: `${id} is not in the catalog this account can see.` } as IntelligenceFailure);
+  const hint = 'failure' in lookup ? hintForKind(failure.kind) : 'Ids: mixshift intelligence catalog';
+  if (root.json) {
+    writeJson({ ok: false, id, kind: failure.kind, message: failure.friendly, detail: failure.message, ...(hint ? { hint } : {}) });
+  } else {
+    process.stdout.write(cmd.helpInformation());
+    process.stderr.write(`\n✗ (${failure.kind}) ${failure.friendly}\n`);
+    if (hint) process.stderr.write(`  hint: ${hint}\n`);
+  }
+  process.exitCode = exitCodeForKind(failure.kind);
+}
+
 /** Best-effort echo of params.merchant for the local ledger + brand-scoped
  *  artifact paths. Never throws on an unexpected shape.
  *
@@ -527,6 +620,8 @@ function hintForKind(kind: IntelligenceFailureKind): string | undefined {
       return 'This run has not finished yet. Poll again shortly: mixshift intelligence poll <runId>.';
     case 'run_not_found':
       return 'Check `mixshift intelligence runs` for recent handles on this machine.';
+    case 'bad_params':
+      return 'See the params this insight takes: mixshift intelligence run <id> --help';
     default:
       return undefined;
   }
@@ -563,8 +658,8 @@ async function trackFailure(
   );
 }
 
-function emitFailure(failure: IntelligenceFailure, json: boolean): void {
-  const hint = hintForKind(failure.kind);
+function emitFailure(failure: IntelligenceFailure, json: boolean, hintOverride?: string): void {
+  const hint = hintOverride ?? hintForKind(failure.kind);
   if (json) {
     writeJson({
       ok: false,
@@ -597,11 +692,32 @@ function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
 
+/** Word-wrap one line to `width` columns, continuation lines indented, so a
+ *  long params line reads in a terminal; --json keeps the raw text. */
+function wrapIndented(text: string, width: number, indent: string): string {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(' ').filter(Boolean)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = indent + word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.join('\n');
+}
+
 function renderCatalog(entries: InsightEntry[]): string {
   if (entries.length === 0) {
     return '_(no insights in the catalog yet)_';
   }
   return entries
-    .map((e) => `- **${e.id}** v${e.version} (rev ${e.revision}, status: ${e.status})\n  ${e.purpose}`)
+    .map(
+      (e) =>
+        `- **${e.id}** v${e.version} (rev ${e.revision}, status: ${e.status}${e.service ? `, ${e.service}` : ''})\n  ${e.purpose}` +
+        (e.paramsDoc ? `\n  params: ${wrapIndented(e.paramsDoc, 100, '    ')}` : ''),
+    )
     .join('\n');
 }

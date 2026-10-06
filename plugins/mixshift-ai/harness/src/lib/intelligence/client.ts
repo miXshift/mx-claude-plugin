@@ -53,6 +53,11 @@ export interface InsightEntry {
   revision: string;
   purpose: string;
   status: string;
+  /** The params the insight takes, in the service's own words (served since
+   *  2026-09-03; absent from an older service). */
+  paramsDoc?: string;
+  /** The service family the id belongs to (e.g. 'forecasting'). */
+  service?: string;
 }
 
 export interface CatalogResult {
