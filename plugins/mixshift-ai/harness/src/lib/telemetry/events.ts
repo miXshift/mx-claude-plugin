@@ -226,7 +226,8 @@ export const EventName = {
   // envelope itself (customer performance numbers, not telemetry).
   // run_retrieved for a forecasting-service answer (FCT-*) adds service, kind,
   // forecast_state / available / verdict, reason, metric, month, scope_id,
-  // vintage, vintage_age_days, ytd_runs_past_report_month and served: bounded
+  // vintage, vintage_age_days, ytd_runs_past_report_month, source (baseline:
+  // 'computed' when the service fitted it because nothing was published) and served: bounded
   // labels, ids and booleans (lib/intelligence/forecast-answer.ts), never a
   // forecast figure and never the service's free text.
   IntelligenceCatalogListed: 'intelligence.catalog_listed',

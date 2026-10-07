@@ -597,13 +597,15 @@ require` only, add one plain line to the internal companion's exceptions block, 
 it does not.
 
 **Nothing published means one question, after delivery.** When the answer's reason is
-`never_published` (no forecast exists for this account at all), ask the user ONCE, after the
+`never_published` (no forecast exists for this account at all) and a person is present (an
+interactive session, not a service-credential or scheduled run), ask the user ONCE, after the
 documents are delivered and never inside them: "No forecast is published for <brand> yet.
-Want me to run one now (the forecast max skill gives you a computed forecast for your own
-planning), or set one up in the MixShift forecasting app so future briefs carry it?" Record
-`forecast: prompted` in the end payload. Do not ask for `stale`, `withdrawn` or a failed run,
-and do not ask twice for the same brand in one conversation. A computed forecast never enters
-a brief: briefs carry published forecasts only.
+Want me to check whether the account is forecastable and run one now (the forecast max
+skill), or set one up in the MixShift forecasting app so future briefs carry it?" Record
+`forecast: prompted` in the end payload and `forecast_prompted: true` in the run record, and
+do not ask again for the brand while the prior run record carries it; a scheduled run records
+`absent`. Do not ask for `stale`, `withdrawn` or a failed run. A computed forecast never
+enters a brief: briefs carry published forecasts only.
 
 **Two expectations, and where each may appear.** Every figure, derived figure and claim
 carries `forecast_role`:

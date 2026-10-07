@@ -18,8 +18,8 @@ dependencies:
   - The token-based sign-in (`mixshift auth login`, or a service credential for unattended runs)
   - Brand context (optional; only the account list is needed)
 trigger_phrases:
-  - forecast
   - run a forecast
+  - forecast for this brand
   - revenue outlook
   - what should I expect next month
   - how accurate is the forecast
@@ -27,10 +27,11 @@ trigger_phrases:
   - forecast max
 sample_input: "What should I expect from Acme Goods over the next six months?"
 sample_output: |
-  Acme Goods (US seller account), next 6 months: expected revenue between $4.8M and $5.9M,
-  most likely $5.3M. This is the forecast the forecasting app published on 2026-10-01 with
-  your corrections. Over the last twelve months it missed by 7% in a typical month, three
-  months out, and beat last year's same month as a guess every time.
+  Acme Goods (US seller account): the published forecast covers through December, so three
+  months, not the six asked. October is expected at $1.1M (range $0.9M to $1.3M); the three
+  months together come to $3.4M on the point figures. This is the forecast the forecasting app
+  published on 2026-10-01 with your corrections. One to three months out it has missed by 7%
+  in a typical month, and beat last year's same month as a guess in four folds of five.
 standalone: true
 handoff_optional: true
 ---
@@ -135,10 +136,12 @@ mixshift intelligence run FCT-READINESS-01 \
 Read `verdict`, `training.months`, `training.floorClearsAt`, `coverage`, `requirements`.
 
 - `below_floor`: stop here, with the answer. Tell the user how many trainable months the
-  account has, the floor (12), when the floor clears if both feeds keep landing
-  (`floorClearsAt.floor`), and the `requirements` in plain words (a missing ad-spend history
-  is the usual one, and the answer names the backfill that would fill it). Outcome `ok`,
-  payload `source: none`, `reason: below_floor`.
+  account has, the floor (12), when the floor clears if both feeds keep landing (only when
+  `floorClearsAt` is present and `floorClearsAt.floor` is a month; when the block is null the
+  feeds are not landing monthly and no date can be promised, which `requirements` says), and
+  the `requirements` in plain words (a missing ad-spend history is the usual one, and the
+  answer names the backfill that would fill it). Outcome `ok`, payload `source: none`,
+  `reason: below_floor`.
 - `floor` (12 to 17 months): continue, and say in the explanation that the model stands on
   one season of history and reads as a planning level, not a forecast, seven months out and
   beyond.
@@ -157,19 +160,27 @@ mixshift intelligence run FCT-BASELINE-01 \
 `detail: "full"` adds the per-fold backtest rows; use it only when the user asks how the
 accuracy was measured. Read the answer file, not the headline.
 
-**Published** (`available: true`, `published` set): the figures are the app's document.
-`figures.months[]` holds each month's `projected` figure and its range; `published.at`,
-`published.by` and `published.age_days` say whose copy and how old; `figures.backtest` the
-measured accuracy; `figures.readiness` what it trained on. Corrections entered in the app
-since `published.at` reach the answer on the app's next push.
+**Published** (`available: true`, `published` set): the figures are the app's document, in
+the document's own shape. Each row of `figures.months[]` has `status` (`closed`, `current`,
+`open`), `expectation.forecast` (null when the model made none for that month; else `value`
+and `band.lower` / `band.upper`), `sales.value` (the actual, closed months), `budget.value`
+with `budget.kind` (`actual`, `saved`, or `estimated` when nobody set a budget). `published.at`
+and `published.age_days` say when the copy was published and how old it is (never quote
+`published.by`: it is a person's address). `figures.backtest` is null or carries `verdict`
+(`measured`, `too_few_folds`, `not_measured`) and `byHorizon.h1_3` / `h4_6` / `h7_12`, each
+with `apeMedian`, `mae`, `naiveWinsShare`, `n`. `figures.readiness` says what it trained on.
+The published window is the calendar year of the document's last closed month: the open
+months it holds may be fewer than the horizon asked. Corrections entered in the app since
+`published.at` reach the answer on the app's next push.
 
 **Computed** (`available: true`, `source: "computed"`, `published: null`): the figures are
-the gateway's fit. `figures.label` is the sentence to repeat. `figures.months[]` holds
-`projected_sales`, `lower_limit_95`, `upper_limit_95` and `budgeted_spend` per month (an
-estimate when `is_budget_placeholder` is true: nobody set a budget, the engine carried spend
-from the history). `figures.training` says the months trained on and the months left out and
+the gateway's fit. `figures.label` is the sentence to repeat. `figures.months[]` starts at the
+month after the last complete month and holds `projected_sales`, `lower_limit_95`,
+`upper_limit_95` and `budgeted_spend` per month (an estimate when `is_budget_placeholder` is
+true: nobody set a budget, the engine carried spend from the history). `figures.training` says the months trained on and the months left out and
 why; `figures.corrections.applied` how many correction rows the gateway holds for the account;
-`figures.backtest.summary` the measured accuracy; `figures.cautions[]` what to warn about;
+`figures.backtest.summary` the measured accuracy (`ape.medianByHorizon[0]` one month out,
+`[2]` three months out, `forecast.mae`, `seasonalNaive.forecastMae` against `naiveMae`); `figures.cautions[]` what to warn about;
 `figures.servable` false means no spend-driven figure should be planned on it (the fitted
 ad-spend effect is negative): say so plainly and give the level only.
 
@@ -177,7 +188,7 @@ ad-spend effect is negative): say so plainly and give the level only.
 
 | reason | what to say |
 |---|---|
-| `history_below_floor` | Nothing is published and the warehouse history is below the floor; repeat the readiness answer. |
+| `history_below_floor` | Nothing is published and the warehouse history is below the floor (`computed.training_months`, `computed.readiness`); repeat the readiness answer. |
 | `fit_failed` | Nothing is published and the engine could not fit this history; `computed.detail` says why. |
 | `withdrawn` | The forecasting app withdrew the forecast; it has to be republished there. |
 | `below_floor` | The app's published forecast is below the floor; the app shows what it needs. |
@@ -185,25 +196,37 @@ ad-spend effect is negative): say so plainly and give the level only.
 | `scope_not_computed` | A sub-brand forecast needs the app's definitions; the account as a whole is available. |
 | `unparseable_vintage` | The published copy cannot be read by this service build; MixShift is on it. |
 
-Never retry the same request. Outcome `ok`, payload `source: none` with the reason.
+Never retry the same request, with one exception: `account_too_large_use_async` (readiness or
+the baseline on a large account) means re-run that one request ONCE with `--async`, then
+`mixshift intelligence poll <runId>` until it is ready and `mixshift intelligence get <runId>
+--out <the same file>`. That is the only permitted re-run. Otherwise outcome `ok`, payload
+`source: none` with the reason.
 
 ### Step 4. Explain it
 
 Lead with the answer, then the basis, then the accuracy, then what would sharpen it. Round
 to the precision the range supports (a range of hundreds of thousands gets no cents).
 
-1. **The expectation.** For the horizon asked: the sum of `projected` (published) or
-   `projected_sales` (computed) across the months, with the range from the 95% limits, and
-   the next month on its own. Name the spend the figures stand on (`budgeted_spend` per
-   month; say when it is an estimate).
+1. **The expectation.** First the open months actually served: computed, every row of
+   `months[]`; published, the rows whose `status` is not `closed` and whose
+   `expectation.forecast` is set. Count them; when fewer than the horizon asked, say so
+   ("the published copy covers through December: three months, not six") and never
+   extrapolate. Then: the next month's figure with its own range, and the total of the point
+   figures across the served months. The ranges are per month; never add them up as a range
+   for the total. Name the spend the figures stand on (`budgeted_spend` or `budget.value`;
+   say when it is an estimate).
 2. **Where it comes from.** One sentence. Published: "the forecast the forecasting app
-   published on <date> with your corrections". Computed: the label, in full, the first time;
-   after that "the computed forecast".
-3. **How accurate.** From `backtest.summary` (computed) or `figures.backtest` (published):
-   the median absolute percentage error one month out and three months out, in words a client
-   can repeat ("in a typical month it has missed by 7%, three months out"), and whether it
-   beat last year's same month as a guess (`seasonalNaive`). A floor-verdict account: say the
-   history is one season.
+   published on <date> with your corrections". Computed: the label, in full, the first time
+   (say "the MixShift service" for the gateway in client-facing text); after that "the
+   computed forecast".
+3. **How accurate.** Computed: from `backtest.summary`, the median absolute percentage error
+   one month out and three months out, and whether the forecast's error beat last year's same
+   month as a guess (`seasonalNaive.forecastMae` below `naiveMae`). Published: from
+   `figures.backtest.byHorizon.h1_3`, the median error one to three months out (`apeMedian`)
+   and the share of folds that beat last year's same month (`naiveWinsShare`); when
+   `backtest` is null or its `verdict` is not `measured`, say the accuracy was not measured on
+   this copy and quote nothing. In words a client can repeat ("one to three months out it has
+   missed by 7% in a typical month"). A floor-verdict account: say the history is one season.
 4. **What it stands on.** Months trained on, the months left out and why (currency change,
    partial feed months, months marked draft), corrections applied. Computed: say the gateway
    holds no corrections when `corrections.applied` is 0, and that corrections made in the

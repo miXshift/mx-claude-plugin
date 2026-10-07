@@ -16,8 +16,8 @@ side_effect_policy: none
 review_required: never
 pricing_tier: enterprise
 trigger_phrases:
-  - forecast
   - run a forecast
+  - forecast for this brand
   - revenue outlook
   - what should I expect next month
   - how accurate is the forecast
@@ -31,6 +31,6 @@ required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type
 notes: >
-  Two metered Intelligence requests per run (readiness, then the baseline); cached answers
-  are free for a day. Writes nothing: corrections and publishing happen in the MixShift
+  Two metered Intelligence requests per run (readiness, then the baseline); a cached answer
+  is served free while its cache holds. Writes nothing: corrections and publishing happen in the MixShift
   forecasting app, and a published forecast replaces the computed one on the next answer.
