@@ -187,3 +187,23 @@ describe('renderForecastSummary', () => {
     expect(line({ ok: true, service: 'forecasting', kind: 'plan' })).toBe('forecasting answer (kind plan)');
   });
 });
+
+describe('BASELINE computed by the gateway (nothing published)', () => {
+  const computed = { service: 'forecasting', kind: 'baseline', available: true, reason: 'computed', source: 'computed', published: null, metric: 'revenue', scope_id: 'src:tenant:113' };
+
+  it('is served, carries source in telemetry, and never a vintage', () => {
+    const s = summarizeForecastAnswer(computed)!;
+    expect(s).toMatchObject({ kind: 'baseline', available: true, served: true, source: 'computed', reason: 'computed' });
+    expect(s.vintage).toBeUndefined();
+    expect(forecastTelemetryFields(computed)).toMatchObject({ service: 'forecasting', kind: 'baseline', served: true, source: 'computed' });
+  });
+
+  it('the summary line says it was computed, and a published copy keeps its vintage line', () => {
+    expect(renderForecastSummary(summarizeForecastAnswer(computed)!)).toMatch(/baseline available \(computed by the gateway, nothing published\)/);
+    const published = { ...computed, source: undefined, reason: undefined, published: { gateway_revision: 3, age_days: 2 } };
+    const line = renderForecastSummary(summarizeForecastAnswer(published)!);
+    expect(line).toMatch(/baseline available/);
+    expect(line).not.toMatch(/computed/);
+    expect(forecastTelemetryFields(published)).not.toHaveProperty('source');
+  });
+});

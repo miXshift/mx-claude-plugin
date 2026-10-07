@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.5.2
+version: 2.5.3
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -74,7 +74,7 @@ mixshift telemetry emit skill.trigger_phrase_matched --skill mx-monthly-report-m
 At the END, run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped> --payload-json '{"forecast_setting":"<auto|off|require>","forecast":"<used|absent|withheld|off|skipped>"}'
+mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped> --payload-json '{"forecast_setting":"<auto|off|require>","forecast":"<used|absent|prompted|withheld|off|skipped>"}'
 ```
 
 Run it in bash, on one line. If the payload is rejected, run the same command again without
@@ -90,8 +90,10 @@ records whether the forecast reached the report (Step 3d). Take the first that a
 3. `withheld`: an answer came back but `mixshift report extract` refused it (including a
    month mismatch from `--expect-month`) or its `--check` failed.
 4. `used`: forecast sections were rendered from a current answer.
-5. `absent`: the forecast was requested and no current forecast came back (stale, not
-   published, or the request failed).
+5. `prompted`: no forecast exists for the account (`never_published`) and the user was asked,
+   after delivery, whether to run or set one up (Step 3d).
+6. `absent`: the forecast was requested and no current forecast came back (stale, withdrawn,
+   or the request failed) and no question was asked.
 
 ## The knobs (every one has a working default; none is required)
 
@@ -587,12 +589,23 @@ includes units AND the revenue document came back `provided_current`.
 **No forecast means no trace of one.** The extracted document carries figures, claims,
 sections and limitations ONLY when `forecast.state` is `provided_current`. In every other
 case (`stale`, `not_provided`, a failed or refused run, a missing output file, an `--expect-month`
-refusal, a `--check` failure) treat the forecast as absent: no forecast section, no forecast
-vocabulary anywhere (Step 7's suppression rule), no settings line about it, and no question to
-the user. Never retry the request and never send feedback about it: a forecast that is not
-there is the normal case. Under `reporting.forecast: require` only, add one plain line to the
-internal companion's exceptions block, built from `source.friendly` when the document exists
-and "the forecasting service did not answer" when it does not.
+refusal, a `--check` failure) treat the forecast as absent in the documents: no forecast
+section, no forecast vocabulary anywhere (Step 7's suppression rule), no settings line about
+it. Never retry the request and never send feedback about it. Under `reporting.forecast:
+require` only, add one plain line to the internal companion's exceptions block, built from
+`source.friendly` when the document exists and "the forecasting service did not answer" when
+it does not.
+
+**Nothing published means one question, after delivery.** When the answer's reason is
+`never_published` (no forecast exists for this account at all) and a person is present (an
+interactive session, not a service-credential or scheduled run), ask the user ONCE, after the
+documents are delivered and never inside them: "No forecast is published for <brand> yet.
+Want me to check whether the account is forecastable and run one now (the forecast max
+skill), or set one up in the MixShift forecasting app so future briefs carry it?" Record
+`forecast: prompted` in the end payload and `forecast_prompted: true` in the run record, and
+do not ask again for the brand while the prior run record carries it; a scheduled run records
+`absent`. Do not ask for `stale`, `withdrawn` or a failed run. A computed forecast never
+enters a brief: briefs carry published forecasts only.
 
 **Two expectations, and where each may appear.** Every figure, derived figure and claim
 carries `forecast_role`:

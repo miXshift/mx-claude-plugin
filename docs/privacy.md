@@ -46,7 +46,7 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 
 **MixShift Intelligence and forecast events:**
 - Which insight ran, its run id, whether a cached result was reused, how many limitations it carried, duration, and the failure class when it failed
-- For a forecast: whether one was current, out of date or not yet published (with the service's short reason), the metric and report month, the scope it was for, which published copy was used and how old it was
+- For a forecast: whether one was current, out of date or not yet published (with the service's short reason), whether it was the published copy or one the service computed because nothing was published, the metric and report month, the scope it was for, which published copy was used and how old it was
 - When a report reads a forecast: how many figures it contained, whether the report used it, and the rule or check that held it back when it did not (including the names of figure types the plugin did not recognise)
 - We do **not** collect the forecast figures, the insight results, or the service's explanatory text
 

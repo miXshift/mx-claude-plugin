@@ -61,7 +61,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **27 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **28 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -82,6 +82,7 @@ The plugin ships **27 skills**. Each is invoked naturally in chat: say what you 
 | `mx-feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |
 | `mx-share-skill` | Share a skill you built with the plugin so MixShift can add it to the library. Say "I built a skill". |
 | `mx-brand-context` | One-time per brand: build the brand-context layer that unlocks every analytical skill below. Walks you through SellerID confirmation, campaign-structure detection, brand-term collection, and posture / target capture. (Formerly `mx-account-cold-start`.) |
+| `mx-max-forecast` | The max tier of forecasting: a revenue forecast for one account, explained with its measured accuracy. Serves the forecast the MixShift forecasting app published, or one the service computes from your warehouse history with the same engine, labelled as computed. |
 
 ### Require brand context (run `mx-brand-context <brand>` first)
 
