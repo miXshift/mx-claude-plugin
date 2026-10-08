@@ -260,25 +260,34 @@ tables:
   # ---------------------------------------------------------------------
 
   sqp_weekly:
-    description: "Brand Analytics Search Query Performance, WEEKLY, per ASIN x search query. Full SQP schema: SearchQuery, SearchQueryVolume, and impression / click / cart-add / purchase counts plus the ASIN's SHARE of each, with median prices and shipping-speed splits. Use for search-term demand, conversion-funnel share, and competitive share-of-voice. StartDate/EndDate bound the week; ReportDate is the report date. Fed by the SQP node service (not the ad crons)."
+    description: "Brand Analytics Search Query Performance (Seller Central only; vendors have no SQP), WEEKLY, one row per ASIN x SearchQuery x week (StartDate = week start; ReportDate is the LOAD date, never key a period on it). The query-level columns (SearchQueryVolume, Total*Count, Total*Rate, Total*Median*Price, Total*Shipping*) are stated once per query per week and REPEATED on each of the seller's ASIN rows, so never SUM them across ASINs; only the Asin*Count columns add up. Safe pattern: MAX the query-level columns and SUM the Asin*Count columns per (SearchQuery, StartDate), then add the weeks. Ready-made: shared/sql-library/LIB-SQP-01.sql (see gotchas)."
     category: brand_analytics
     time_series: true
     requires_seller_id: true
     date_column: ReportDate
+    gotchas:
+      - "Do not SUM(SearchQueryVolume) or SUM(Total*Count) across ASIN rows: the value repeats on every ASIN row of the query, so the sum overstates search volume by roughly the number of ASINs that showed for it. Take MAX per (SearchQuery, StartDate), then sum over weeks."
+      - "Shares: compute 100 * SUM(own Asin*Count) / SUM(per-week Total*Count), only over weeks with a positive total. Never AVG or SUM the rounded Asin*Share percent columns."
+      - "Filter and group periods on StartDate, never ReportDate (the load date). The table only holds queries where at least one of the seller's ASINs showed, so a period-over-period change is valid only over queries present in both periods."
+      - "SQP clicks do not foot to sessions and must not be divided by ad clicks. GROUP BY SearchQuery merges a few accent variants (the collation ignores accents)."
 
   sqp_monthly:
-    description: "Brand Analytics Search Query Performance, MONTHLY rollup. Same schema + grain semantics as sqp_weekly, aggregated to the month."
+    description: "Brand Analytics Search Query Performance, MONTHLY (Seller Central only). Same grain and the same repeated-query-level-column rule as sqp_weekly, with StartDate = month start: never SUM SearchQueryVolume or Total*Count across ASIN rows, take MAX per (SearchQuery, StartDate) and SUM the Asin*Count columns. See sqp_weekly and shared/sql-library/LIB-SQP-01.sql."
     category: brand_analytics
     time_series: true
     requires_seller_id: true
     date_column: ReportDate
+    gotchas:
+      - "Query-level columns repeat on every ASIN row of the query: MAX them per (SearchQuery, StartDate), never SUM them across ASINs. Compute shares from counts, not from the Asin*Share percent columns."
 
   sqp_quarterly:
-    description: "Brand Analytics Search Query Performance, QUARTERLY rollup. Same schema as sqp_weekly, aggregated to the quarter."
+    description: "Brand Analytics Search Query Performance, QUARTERLY (Seller Central only). Same grain and the same repeated-query-level-column rule as sqp_weekly, with StartDate = quarter start: never SUM SearchQueryVolume or Total*Count across ASIN rows, take MAX per (SearchQuery, StartDate) and SUM the Asin*Count columns. See sqp_weekly and shared/sql-library/LIB-SQP-01.sql."
     category: brand_analytics
     time_series: true
     requires_seller_id: true
     date_column: ReportDate
+    gotchas:
+      - "Query-level columns repeat on every ASIN row of the query: MAX them per (SearchQuery, StartDate), never SUM them across ASINs. Compute shares from counts, not from the Asin*Share percent columns."
 
   # ---------------------------------------------------------------------
   # Retail revenue (Seller Central — SP-API / MWS)

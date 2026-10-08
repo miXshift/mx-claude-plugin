@@ -123,6 +123,9 @@ right one:
 The retail-operations surface and the warehouse also overlap, so reason about
 which fits before calling (see "When to use this skill").
 
+For Search Query Performance on data already in the warehouse, use `shared/sql-library/LIB-SQP-01.sql`
+(see mx-data-explore) rather than summing `SearchQueryVolume` across ASIN rows, which overstates demand.
+
 ## When to use this skill
 
 Trigger when the user wants a **live answer about their Amazon catalog,

@@ -425,6 +425,19 @@ queries:
       Cross-skill query. Use when context.yaml::structural_events includes an
       active price_test event. Filter by Title LIKE pattern from event metadata.
 
+  - id: LIB-SQP-01
+    file: LIB-SQP-01.sql
+    purpose: Search demand and share per search query for one Seller Central seller over a date range (optional single-ASIN filter), from sqp_weekly with query volume counted once per query per week and shares computed from counts.
+    consumers: [mx-data-explore]
+    tier: 1
+    notes: |
+      Use for any Search Query Performance question on weekly data instead of
+      writing SQL from scratch. Params: seller_id, start_date and end_date
+      (week start dates, inclusive), asin (one ASIN or NULL). The query-level
+      columns repeat on every ASIN row, so they are MAX'd per (query, week)
+      and only the Asin*Count columns are summed. Not for vendors. Not a
+      skill sql_ids entry: it is read on demand, not prefetched.
+
   - id: RSC-01
     file: RSC-01.sql
     dispatch: named   # SQL served server-side from the mx-legacy-auth query pack; .sql kept as fallback + byte-diff reference until the Phase 5 sweep
