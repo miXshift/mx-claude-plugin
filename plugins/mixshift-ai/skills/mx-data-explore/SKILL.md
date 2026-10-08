@@ -338,6 +338,13 @@ It applies the canonical latest-`dtUpdatedOn`/tie-on-`ID` rule for you and
 returns `{titles, missing}` — `missing` is the ASINs with no listing row, which
 you then resolve live via mx-amazon-retail `catalog.search_items`.
 
+**Search Query Performance (`sqp_weekly`, `sqp_monthly`, `sqp_quarterly`).** Do not write SQP
+SQL from scratch: `SearchQueryVolume` and the `Total*` columns repeat on every ASIN row, so
+summing them across ASINs overstates demand. Read the plugin's `shared/sql-library/LIB-SQP-01.sql`
+(volume counted once per query per week, shares from counts), put the seller, the two week-start
+dates and the ASIN (or NULL for all) into it as literals, and run it as a custom query (Pattern 4).
+See also `mixshift data describe sqp_weekly`.
+
 ### Pattern 4 — Custom query
 ```
 User: "Total spend by campaign type last 30 days for Ridgepak"
