@@ -270,9 +270,8 @@ describe('newly served statement groups flow through unmodified', () => {
 
 describe('detail tails take their id from parentId (evidence >= 0.6.0)', () => {
   /**
-   * PRODUCER SHAPE, copied from the engine's evidence library
-   * (`finalizeEvidenceGroups`, bridge-driver-catalog.ts at mx-ops-bridge
-   * 556b009f, evidence 0.17.0): a finding whose questions carry `details` is
+   * PRODUCER SHAPE, copied from the evidence library's
+   * `finalizeEvidenceGroups` (evidence 0.17.0): a finding whose questions carry `details` is
    * split in two. The finding keeps its `id`, becomes
    * `presentationKind: 'finding'` and loses the `details`; the list becomes
    * a TAIL group with NO `id`, `head: "<finding head> — details"`, the
@@ -353,6 +352,12 @@ describe('detail tails take their id from parentId (evidence >= 0.6.0)', () => {
       expect(doc.evidence![0]!.id, String(bad)).toBe('mom.evidence.ad_spend.what_changed_on_campaigns_details');
       expect(doc.evidence![0]!.parent_kind).toBeUndefined();
     }
+  });
+
+  it('a parentId on a group that is not a details tail is ignored', () => {
+    const doc = run([tail('ads-campaign-actions', 'what changed on campaigns', { presentationKind: 'finding' })]);
+    expect(doc.evidence![0]!.id).toBe('mom.evidence.ad_spend.what_changed_on_campaigns_details');
+    expect(doc.evidence![0]!.parent_kind).toBeUndefined();
   });
 
   it('a group carrying its own id keeps it; parentId does not override', () => {

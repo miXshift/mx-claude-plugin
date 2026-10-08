@@ -1053,7 +1053,11 @@ function extractEvidence(
       // tail's identity is its parent's, so the id is derived from `parentId`
       // (same shape gate as `id`, same reason) and stays put across rewording.
       // A tail whose parent is unstamped keeps the head slug, exactly as before.
-      const rawParent = kind === null && typeof g.parentId === 'string' ? g.parentId.trim() : '';
+      // Only a group the producer marks as a details tail: `parentId` is
+      // defined on tails today, and a future non-tail group carrying one must
+      // not be renamed `<parent>.details`.
+      const isTail = g.presentationKind === 'details';
+      const rawParent = kind === null && isTail && typeof g.parentId === 'string' ? g.parentId.trim() : '';
       const parentKind = SERVED_KIND_RE.test(rawParent) ? rawParent : null;
       const slug =
         kind ??
