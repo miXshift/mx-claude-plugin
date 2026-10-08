@@ -102,8 +102,11 @@ describe('forecast budget', () => {
     const out = JSON.parse(stdout.join(''));
     expect(out).toMatchObject({ ok: true, scope_id: SCOPE, written: 2, budgets: [{ month: '2026-10', sponsored_budget: 50000 }, { month: '2026-11', sponsored_budget: 40000 }] });
     expect(posts).toHaveLength(1);
-    expect(rows.get(monthKey(SCOPE, '2026-11'))!.doc).toMatchObject({ sales: { mode: 'replace', value: 5 }, status: 'final', note: '2026 budget sheet', adBudget: { mode: 'replace', value: 40000 } });
-    expect(track).toHaveBeenCalledWith(expect.objectContaining({ event_name: EventName.ForecastBudgetSet, payload: { scope_id: SCOPE, months: 2, written: 2, unchanged: 0 } }), undefined);
+    // November's existing note explains its sales correction: kept, and said so. October is new: it takes the note.
+    expect(rows.get(monthKey(SCOPE, '2026-11'))!.doc).toMatchObject({ sales: { mode: 'replace', value: 5 }, status: 'final', note: 'kept', adBudget: { mode: 'replace', value: 40000 } });
+    expect(rows.get(monthKey(SCOPE, '2026-10'))!.doc.note).toBe('2026 budget sheet');
+    expect(out.notes_kept).toEqual(['2026-11']);
+    expect(track).toHaveBeenCalledWith(expect.objectContaining({ event_name: EventName.ForecastBudgetSet, payload: { scope_id: SCOPE, months: 2, written: 2, unchanged: 0, notes_kept: 1 } }), undefined);
     // Telemetry never carries an amount or the note.
     expect(JSON.stringify(vi.mocked(track).mock.calls)).not.toMatch(/50000|40000|budget sheet/);
 
@@ -117,7 +120,15 @@ describe('forecast budget', () => {
     stdout = [];
     await run(true, 'clear', '--scope', SCOPE, '--month', '2026-10', '--month', '2026-12');
     expect(JSON.parse(stdout.join(''))).toMatchObject({ ok: true, cleared: 1, not_set: ['2026-12'] });
+    // October held only the budget and the note this command gave it: kept as a row, since the note stays.
     expect(rows.get(monthKey(SCOPE, '2026-10'))!.doc.adBudget).toEqual({ mode: 'inherit', value: null });
+  });
+
+  it('--dry-run shows the change and saves nothing', async () => {
+    await run(true, 'set', '--scope', SCOPE, '--set', '2026-10=50000', '--dry-run');
+    expect(JSON.parse(stdout.join(''))).toMatchObject({ ok: true, dry_run: true, changes: [{ month: '2026-10', from: null, to: 50000 }] });
+    expect(posts).toHaveLength(0);
+    expect(rows.size).toBe(0);
   });
 
   it('refuses a closed month, a bad scope and a bad pair before any call', async () => {
@@ -129,6 +140,12 @@ describe('forecast budget', () => {
     expect(stderr.join('')).toMatch(/not a forecast scope/);
     await run(false, 'set', '--scope', SCOPE, '--set', '2026-10');
     expect(stderr.join('')).toMatch(/YYYY-MM=amount/);
+    await run(false, 'set', '--scope', `${SCOPE}:scope:outdoor`, '--set', '2026-10=1');
+    expect(stderr.join('')).toMatch(/is a sub-brand; a budget is entered for the account as a whole/);
+    await run(false, 'set', '--scope', SCOPE, '--set', '2027-11=1');
+    expect(stderr.join('')).toMatch(/2027-11 is past the furthest month a forecast reaches \(2027-10\)/);
+    await run(false, 'set', '--scope', SCOPE, '--set', '2026-10=1', '--note', 'hidden‮text');
+    expect(stderr.join('')).toMatch(/--note: a note is plain text/);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 

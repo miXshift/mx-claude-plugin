@@ -18,7 +18,7 @@ author: Claude
 last_updated: 2026-10-08
 dependencies:
   - MixShift Intelligence service (FCT-READINESS-01 and FCT-BASELINE-01 via `mixshift intelligence`)
-  - The forecast budget store (`mixshift forecast budget`; the same months the forecasting app shows)
+  - The forecast budget store (`mixshift forecast budget`; the computed forecast reads it, and the forecasting app will once it reads MixShift's forecast store)
   - The token-based sign-in (`mixshift auth login`, or a service credential for unattended runs)
   - Brand context (optional; only the account list is needed)
 trigger_phrases:
@@ -64,10 +64,9 @@ mixshift telemetry emit skill.completed --skill mx-max-forecast --outcome <ok|fa
 Run it in bash, on one line. If the payload is rejected, run the same command again without
 `--payload-json`. `source` is where the figures came from (`published`: the app's copy;
 `computed`: the gateway's fit; `none`: no forecast was served). `reason` is the service's
-`reason` when nothing was served, else `ok`. `budget` is what Step 3b found: `entered` (the
-user gave a budget and it was saved), `declined` (asked, the user had none or said no),
-`existing` (months already held a budget), `not_asked` (published forecast, or the question
-did not apply). Outcomes: `ok` (a forecast or a readiness answer
+`reason` when nothing was served, else `ok`. `budget` is what Step 3b found: `entered` (the user gave a budget and it was saved),
+`declined` (asked; the user had none or said no), `existing` (months already held a budget),
+`not_asked` (a published forecast, or a computed one already shaped by corrections). Outcomes: `ok` (a forecast or a readiness answer
 was delivered), `failed` (a CLI error or a missing prerequisite), `deferred` (waiting on the
 user to choose an account), `skipped` (the user opted out).
 
@@ -210,8 +209,9 @@ ad-spend effect is negative): say so plainly and give the level only.
 Never retry the same request, with one exception: `account_too_large_use_async` (readiness or
 the baseline on a large account) means re-run that one request ONCE with `--async`, then
 `mixshift intelligence poll <runId>` until it is ready and `mixshift intelligence get <runId>
---out <the same file>`. That is the only permitted re-run. Otherwise outcome `ok`, payload
-`source: none` with the reason.
+--out <the same file>`. The only other permitted re-run is the one after a budget is saved
+(Step 3b), which may itself need `--async` once. Otherwise outcome `ok`, payload `source: none`
+with the reason.
 
 ### Step 3b. The budget (computed forecasts)
 
@@ -234,18 +234,27 @@ layout without the values); if no connector is available, ask the user to paste 
 **Ask in one message.** Give the headline first (next month's figure and the total, "on
 estimated spend of about $X a month"), then: do they have a sponsored ads budget for these
 months that the forecast should use? When the context or a sheet holds one, show those months
-and amounts and ask whether to use them. A budget that includes DSP is entered without the DSP
-part, because the forecast stands on sponsored ad spend only; say so in one clause.
+and amounts and ask whether to use them. The forecast stands on sponsored ad spend only, so a
+budget that includes DSP is entered without it: when the sheet splits sponsored and DSP, take
+the sponsored line and say so in one clause; when it holds only a total, ask the user for the
+sponsored part (never subtract a guess).
 
-**On yes**, save the months the user confirmed (the month in progress or later; one call):
+**On yes**, save the months the user confirmed: the month in progress or later, at most twelve
+months ahead (one call). The note lands on months that have none; a month that already carries
+a note keeps it (it usually explains another correction), and the command says which:
 
 ```bash
 mixshift forecast budget set --scope <scope_id from the answer> \
   --set 2026-10=50000 --set 2026-11=40000 --note "<where the budget came from>"
 ```
 
-Then run Step 3 again (one more metered request: the saved budget changes the answer, so it
-is not served from cache) and explain the new answer. **On no**, explain the answer you have
+When a month already holds a different budget, run the same command with `--dry-run` first and
+show the user what changes before saving.
+
+Then run Step 3 again, with a horizon that covers the last month saved (up to 12): the saved
+budget changes the answer, so it is one more metered request, not a cache hit. Compare the
+months saved with `figures.months[]` in the new answer and name any saved month the answer does
+not use (outside the horizon). Then explain the new answer. **On no**, explain the answer you have
 and say the spend is estimated. A refused save (`state_home_elsewhere`, `insufficient_scope`,
 `scope_not_yours`) is reported in the CLI's own words; the forecast you already have still
 stands. Check what is saved at any time with `mixshift forecast budget show --scope <scope_id>`;
@@ -316,7 +325,8 @@ explanation beyond "the MixShift forecasting app".
 - **Horizon 1 to 12.** Seven months out and beyond is a planning level on any account:
   the service's own backtests show no training depth beats last year's same month there.
 - **Metered.** Readiness and the forecast are each one metered request; cached answers are free
-  for a day. Saving a budget is not metered; the re-run after it is one request.
+  for a day. Saving a budget is two small requests on the account's usage (a read and a save),
+  and the re-run after it is one more forecast request.
 - **Sponsored only.** The budget is sponsored ad spend, the basis the computed forecast stands
   on; DSP is not part of it.
 

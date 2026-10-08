@@ -67,7 +67,7 @@ shapes:
       prefetch     — invoke pre-fetch-data.py
       ads_write    — mutating Amazon Ads API calls via `mixshift ads call ... --commit` (dry-run default; user-confirmed)
       insight_read — reads finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run|poll|get`; no warehouse SQL, no writes
-      forecast_write — saves the user's own forecast inputs (the monthly sponsored budget) via `mixshift forecast budget set`; user-confirmed
+      forecast_write — saves the user's own forecast inputs (the monthly sponsored budget) via `mixshift forecast budget set`; user-confirmed, `--dry-run` previews
 
   side_effect_policy:
     enum: [none, artifact_write, context_write, recommendation_only, write_gated]

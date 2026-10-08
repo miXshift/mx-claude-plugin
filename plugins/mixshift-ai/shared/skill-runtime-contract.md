@@ -81,7 +81,7 @@ update before use.
 | `prefetch` | Invoke pre-fetch-data.py to collect and stage query results |
 | `insight_read` | Read finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run\|poll\|get` (no warehouse SQL, no writes) |
 | `ads_write` | Gated mutating Amazon Ads API calls via `mixshift ads call ... --commit`. Preview/dry-run by default; nothing reaches Amazon until the user confirms the exact change set; every commit is audited server-side. Skills carrying this token pair it with `side_effect_policy: write_gated`. |
-| `forecast_write` | Save the user's own forecast inputs (the monthly sponsored ads budget) via `mixshift forecast budget set`, into the same months the forecasting app shows. Written only after the user has seen the exact months and amounts and said yes. Pairs with `side_effect_policy: write_gated`. |
+| `forecast_write` | Save the user's own forecast inputs (the monthly sponsored ads budget) via `mixshift forecast budget set`; the computed forecast uses them as planned spend. Written only after the user has seen the exact months and amounts and said yes; `--dry-run` previews a change. Pairs with `side_effect_policy: write_gated`. |
 
 No skill has permission to write to the SQL database, modify skill definitions,
 or alter schedules — those paths are not in this vocabulary and must be

@@ -49,14 +49,42 @@ export interface BudgetEntry {
 /** The most months one `set` writes: a year of horizon plus the month in progress, with room. */
 export const MAX_BUDGET_MONTHS = 24;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
-/** Account scope `src:<schema>:<seller>`, or a sub-brand scope `...:scope:<key>` (the app's). */
-const SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)(:scope:[A-Za-z0-9_-]+)?$/;
+/**
+ * Account scope `src:<schema>:<seller>` only. A sub-brand scope (`...:scope:<key>`) is
+ * the forecasting app's: the computed forecast never serves one, so a budget there
+ * could only ever be wrong (red team 2026-10-08).
+ */
+const SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)$/;
+const SUB_BRAND_RE = /^src:[A-Za-z0-9_]+:\d+:scope:/;
 
-/** The scope id as the gateway stores it (schema lowercased), or null when it is not one. */
+/** The scope id as the gateway stores it (schema lowercased), or null when it is not an account scope. */
 export function canonicalScopeId(raw: string): string | null {
   const m = SCOPE_RE.exec(raw.trim());
   if (!m) return null;
-  return `src:${m[1]!.toLowerCase()}:${Number(m[2])}${m[3] ?? ''}`;
+  return `src:${m[1]!.toLowerCase()}:${Number(m[2])}`;
+}
+
+/** A sub-brand scope, which this command refuses with its own sentence. */
+export function isSubBrandScope(raw: string): boolean {
+  return SUB_BRAND_RE.test(raw.trim());
+}
+
+/** The largest monthly budget accepted: a sanity bound, far above any real account. */
+export const MAX_BUDGET_AMOUNT = 1_000_000_000;
+/** A plain amount, or one with thousands grouped by commas; up to two decimals. */
+const AMOUNT_RE = /^(\d+|\d{1,3}(,\d{3})+)(\.\d{1,2})?$/;
+
+/**
+ * A note as the app's change log can show it: plain text (new lines allowed), no
+ * control, bidi or zero-width characters (the gateway's own unsafe-text rule, less
+ * the new line), at most 2,000 characters.
+ */
+const NOTE_UNSAFE_RE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
+export const NOTE_MAX = 2000;
+export function noteProblem(note: string): string | null {
+  if (note.length > NOTE_MAX) return `a note is at most ${NOTE_MAX} characters`;
+  if (NOTE_UNSAFE_RE.test(note)) return 'a note is plain text: no control, direction or zero-width characters';
+  return null;
 }
 
 /**
@@ -71,12 +99,17 @@ export function parseBudgetEntries(values: readonly string[]): BudgetEntry[] {
     const eq = raw.indexOf('=');
     if (eq < 0) throw new Error(`"${raw}" is not YYYY-MM=amount (e.g. --set 2026-10=50000).`);
     const month = raw.slice(0, eq).trim();
-    const amountText = raw.slice(eq + 1).trim().replace(/^\$/, '').replace(/,/g, '');
+    const given = raw.slice(eq + 1).trim();
+    const amountText = given.replace(/^\$/, '');
     if (!MONTH_RE.test(month)) throw new Error(`"${month}" is not a month; write it as YYYY-MM (e.g. 2026-10).`);
-    if (!/^\d+(\.\d{1,2})?$/.test(amountText)) {
-      throw new Error(`"${raw.slice(eq + 1).trim()}" for ${month} is not an amount; write a number such as 50000 or 50000.50.`);
+    // Commas only as thousands separators: "50,000" is fifty thousand, "50,00" is refused
+    // (a decimal comma would otherwise read a hundred times too large).
+    if (!AMOUNT_RE.test(amountText)) {
+      throw new Error(`"${given}" for ${month} is not an amount; write a number such as 50000, 50,000 or 50000.50.`);
     }
-    byMonth.set(month, Number(amountText));
+    const amount = Number(amountText.replace(/,/g, ''));
+    if (amount > MAX_BUDGET_AMOUNT) throw new Error(`${given} for ${month} is larger than any monthly budget this accepts (${MAX_BUDGET_AMOUNT.toLocaleString('en-US')}).`);
+    byMonth.set(month, amount);
   }
   if (byMonth.size > MAX_BUDGET_MONTHS) throw new Error(`At most ${MAX_BUDGET_MONTHS} months per call; ${byMonth.size} were given.`);
   return [...byMonth.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, amount]) => ({ month, amount }));
@@ -98,6 +131,18 @@ export function parseMonths(values: readonly string[]): string[] {
 /** `YYYY-MM` of a date, in UTC (the computed forecast takes the current month in UTC). */
 export function utcMonth(d: Date): string {
   return d.toISOString().slice(0, 7);
+}
+
+/** The latest month any forecast can use: twelve months after the month in progress. */
+export function lastUsableMonth(now: Date): string {
+  const y = now.getUTCFullYear() + 1;
+  return `${y}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Months past the furthest a forecast reaches (a 12-month horizon). */
+export function beyondHorizon(months: readonly string[], now: Date): string[] {
+  const last = lastUsableMonth(now);
+  return months.filter((m) => m > last);
 }
 
 /** Months before the month in progress: a budget there cannot move a forecast. */
@@ -137,11 +182,19 @@ export function budgetOf(doc: Record<string, unknown> | null | undefined): numbe
   return b && b.mode === 'replace' && typeof b.value === 'number' ? b.value : null;
 }
 
-/** One write for the batch endpoint. */
+/** One write for the batch endpoint; `doc: null` deletes the row. */
 export interface MonthRowWrite {
   key: string;
   expected_version: number;
-  doc: Record<string, unknown>;
+  doc: Record<string, unknown> | null;
+}
+
+/** The month a key holds when it is exactly a month row of this scope (not a sub-brand's), else null. */
+export function monthOfKey(scopeId: string, key: string): string | null {
+  const prefix = monthPrefix(scopeId);
+  if (!key.startsWith(prefix)) return null;
+  const rest = key.slice(prefix.length);
+  return /^\d{4}-(0[1-9]|1[0-2])-01$/.test(rest) ? rest.slice(0, 7) : null;
 }
 
 function withoutStamps(doc: Record<string, unknown>): Record<string, unknown> {
@@ -161,26 +214,34 @@ export function planBudgetSet(
   stored: ReadonlyMap<string, StoredMonthRow>,
   entries: readonly BudgetEntry[],
   note?: string,
-): { writes: MonthRowWrite[]; unchanged: string[] } {
+): { writes: MonthRowWrite[]; unchanged: string[]; notesKept: string[] } {
   const writes: MonthRowWrite[] = [];
   const unchanged: string[] = [];
+  const notesKept: string[] = [];
   for (const e of entries) {
     const key = monthKey(scopeId, e.month);
     const row = stored.get(key);
     if (row) {
+      // A month's note usually explains another correction (a stockout, a one-off);
+      // the app's change log does not record a note that changes beside a budget, so
+      // an existing note is never overwritten here (red team 2026-10-08, P1).
+      const storedNote = typeof row.doc.note === 'string' && row.doc.note.trim() !== '' ? row.doc.note : null;
+      const writeNote = note !== undefined && storedNote === null;
+      if (note !== undefined && storedNote !== null && storedNote !== note) notesKept.push(e.month);
       const sameBudget = budgetOf(row.doc) === e.amount;
-      const sameNote = note === undefined || (row.doc.note ?? null) === note;
-      if (sameBudget && sameNote) {
+      if (sameBudget && !writeNote) {
         unchanged.push(e.month);
         continue;
       }
+      const storedBudget = row.doc.adBudget && typeof row.doc.adBudget === 'object' ? (row.doc.adBudget as Record<string, unknown>) : {};
       writes.push({
         key,
         expected_version: row.version,
         doc: {
           ...withoutStamps(row.doc),
-          adBudget: { mode: 'replace', value: e.amount },
-          ...(note !== undefined ? { note } : {}),
+          // Keep any field the app keeps on the budget that this build does not know.
+          adBudget: { ...storedBudget, mode: 'replace', value: e.amount },
+          ...(writeNote ? { note } : {}),
         },
       });
     } else {
@@ -199,7 +260,22 @@ export function planBudgetSet(
       });
     }
   }
-  return { writes, unchanged };
+  return { writes, unchanged, notesKept };
+}
+
+/** A row that, with its budget cleared, holds nothing: every field the default and no other key. */
+function isEmptyAfterClear(doc: Record<string, unknown>): boolean {
+  const inherit = (f: unknown): boolean => f === undefined || (!!f && typeof f === 'object' && (f as { mode?: unknown }).mode === 'inherit');
+  const known = new Set(['scopeId', 'month', 'sales', 'units', 'adSpend', 'adBudget', 'dspSpend', 'status', 'note', ...STAMPED]);
+  if (Object.keys(doc).some((k) => !known.has(k))) return false;
+  return (
+    inherit(doc.sales) &&
+    inherit(doc.units) &&
+    inherit(doc.adSpend) &&
+    inherit(doc.dspSpend) &&
+    doc.status === 'auto' &&
+    (doc.note === null || doc.note === undefined || doc.note === '')
+  );
 }
 
 /**
@@ -221,10 +297,11 @@ export function planBudgetClear(
       notSet.push(month);
       continue;
     }
+    // A row that held only this budget is removed rather than left as an empty row.
     writes.push({
       key,
       expected_version: row.version,
-      doc: { ...withoutStamps(row.doc), adBudget: { mode: 'inherit', value: null } },
+      doc: isEmptyAfterClear(row.doc) ? null : { ...withoutStamps(row.doc), adBudget: { mode: 'inherit', value: null } },
     });
   }
   return { writes, notSet };
@@ -269,6 +346,7 @@ export type BudgetFailureKind =
   | 'too_large'
   | 'not_found'
   | 'throttled'
+  | 'unavailable' // the gateway could not check the database's home login; retry
   // --- local ---
   | 'not_authenticated'
   | 'session_expired'
@@ -285,6 +363,7 @@ const KNOWN: ReadonlySet<string> = new Set<BudgetFailureKind>([
   'too_large',
   'not_found',
   'throttled',
+  'unavailable',
 ]);
 
 export interface BudgetFailure {
@@ -329,6 +408,8 @@ function friendlyFor(kind: BudgetFailureKind): string {
       return 'Nothing is stored for that month.';
     case 'throttled':
       return 'The MixShift service is rate limiting requests; try again in a minute.';
+    case 'unavailable':
+      return 'The MixShift service could not check where this account\'s forecast state lives; nothing was written. Try again in a minute.';
     case 'not_authenticated':
       return "You're not signed in to MixShift. Run `mixshift auth login` first.";
     case 'session_expired':
@@ -439,7 +520,8 @@ export async function readMonthRows(
     if (!r.ok) return r;
     const docs = Array.isArray(r.json.docs) ? (r.json.docs as StoredMonthRow[]) : [];
     for (const d of docs) {
-      if (d && typeof d.key === 'string' && typeof d.version === 'number' && d.doc && typeof d.doc === 'object') rows.set(d.key, d);
+      // The prefix also matches a sub-brand's rows (`<scope>:scope:<key>:<month>`); only this scope's months count.
+      if (d && typeof d.key === 'string' && monthOfKey(scopeId, d.key) && typeof d.version === 'number' && d.doc && typeof d.doc === 'object') rows.set(d.key, d);
     }
     after = typeof r.json.next_after === 'string' && r.json.next_after ? r.json.next_after : null;
     if (!after || docs.length === 0) return { ok: true, rows };
@@ -466,16 +548,31 @@ export async function writeMonthRows(
 export async function applyBudgetPlan<T extends { writes: MonthRowWrite[] }>(
   scopeId: string,
   plan: (rows: ReadonlyMap<string, StoredMonthRow>) => T,
-  opts: BudgetClientOptions = {},
-): Promise<{ ok: true; plan: T; written: number } | BudgetFailure> {
+  opts: BudgetClientOptions & { dryRun?: boolean } = {},
+): Promise<{ ok: true; plan: T; written: number; current: Map<string, number | null> } | BudgetFailure> {
+  let firstBudgets: Map<string, number | null> | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const read = await readMonthRows(scopeId, opts);
     if (!read.ok) return read;
     const planned = plan(read.rows);
-    if (planned.writes.length === 0) return { ok: true, plan: planned, written: 0 };
+    const current = new Map(planned.writes.map((w) => [w.key, budgetOf(read.rows.get(w.key)?.doc)]));
+    if (firstBudgets) {
+      // A retry only re-takes the OTHER fields from the fresh row; if the budget itself
+      // changed meanwhile (someone saved one in the app), stop and say so.
+      for (const [key, before] of firstBudgets) {
+        const now = budgetOf(read.rows.get(key)?.doc);
+        if (now !== before) {
+          return failure('conflict', {
+            friendly: `The budget for ${key.slice(-10, -3)} was changed while this was being saved (now ${now === null ? 'none' : now.toLocaleString('en-US')}); nothing was written. Check it and run the command again.`,
+          });
+        }
+      }
+    }
+    if (opts.dryRun || planned.writes.length === 0) return { ok: true, plan: planned, written: 0, current };
     const w = await writeMonthRows(planned.writes, opts);
-    if (w.ok) return { ok: true, plan: planned, written: w.results.filter((x) => x.changed).length };
+    if (w.ok) return { ok: true, plan: planned, written: w.results.filter((x) => x.changed).length, current };
     if (w.kind !== 'conflict' || attempt === 1) return w;
+    firstBudgets = current;
   }
   return failure('conflict');
 }

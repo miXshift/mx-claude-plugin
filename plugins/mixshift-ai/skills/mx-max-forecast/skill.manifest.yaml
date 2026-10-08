@@ -36,6 +36,7 @@ required_context_fields:
 notes: >
   Two metered Intelligence requests per run (readiness, then the baseline); a cached answer
   is served free while its cache holds; a re-run after a saved budget is one more. Writes one
-  thing, on the user's yes: the monthly sponsored budget (`mixshift forecast budget set`), into the
-  same months the forecasting app shows. Other corrections and publishing happen in the app, and a
-  published forecast replaces the computed one on the next answer.
+  thing, on the user's yes: the monthly sponsored budget (`mixshift forecast budget set`), which the
+  computed forecast uses as planned spend (and the forecasting app will show once it reads MixShift's
+  forecast store). Other corrections and publishing happen in the app, and a published forecast
+  replaces the computed one on the next answer.
