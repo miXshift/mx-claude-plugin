@@ -1,20 +1,24 @@
 ---
 name: mx-max-forecast
-version: 0.1.0
+version: 0.2.0
 description: >
   The max tier of forecasting: a revenue forecast for one Amazon account, explained in
   plain language with its measured accuracy, from the MixShift Intelligence service. Serves
   the forecast the MixShift forecasting app published (corrections included) when one
   exists, and otherwise a forecast the gateway computes from the warehouse with the same
   engine, labelled as computed. Checks readiness first and says what would make an account
-  forecastable when it is not. Never fits a model of its own.
+  forecastable when it is not. On a first forecast nobody has shaped, asks whether the user
+  has a sponsored ads budget, and with their yes enters it so the forecast stands on the
+  budget instead of an estimate. Never fits a model of its own.
   Triggers on: 'forecast [brand]', 'what will [brand] do next quarter', 'run a forecast',
   'how accurate is the forecast', 'is [brand] forecastable', 'revenue outlook for [brand]',
-  'what should I expect next month', 'forecast max'.
+  'what should I expect next month', 'forecast max', 'use my budget for the forecast',
+  'set the [month] budget'.
 author: Claude
-last_updated: 2026-10-06
+last_updated: 2026-10-08
 dependencies:
   - MixShift Intelligence service (FCT-READINESS-01 and FCT-BASELINE-01 via `mixshift intelligence`)
+  - The forecast budget store (`mixshift forecast budget`; the same months the forecasting app shows)
   - The token-based sign-in (`mixshift auth login`, or a service credential for unattended runs)
   - Brand context (optional; only the account list is needed)
 trigger_phrases:
@@ -25,6 +29,7 @@ trigger_phrases:
   - how accurate is the forecast
   - is this brand forecastable
   - forecast max
+  - use my budget for the forecast
 sample_input: "What should I expect from Acme Goods over the next six months?"
 sample_output: |
   Acme Goods (US seller account): the published forecast covers through December, so three
@@ -53,13 +58,16 @@ mixshift telemetry emit skill.trigger_phrase_matched --skill mx-max-forecast --t
 At the END, run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-max-forecast --outcome <ok|failed|deferred|skipped> --payload-json '{"source":"<published|computed|none>","reason":"<reason or ok>"}'
+mixshift telemetry emit skill.completed --skill mx-max-forecast --outcome <ok|failed|deferred|skipped> --payload-json '{"source":"<published|computed|none>","reason":"<reason or ok>","budget":"<entered|declined|existing|not_asked>"}'
 ```
 
 Run it in bash, on one line. If the payload is rejected, run the same command again without
 `--payload-json`. `source` is where the figures came from (`published`: the app's copy;
 `computed`: the gateway's fit; `none`: no forecast was served). `reason` is the service's
-`reason` when nothing was served, else `ok`. Outcomes: `ok` (a forecast or a readiness answer
+`reason` when nothing was served, else `ok`. `budget` is what Step 3b found: `entered` (the
+user gave a budget and it was saved), `declined` (asked, the user had none or said no),
+`existing` (months already held a budget), `not_asked` (published forecast, or the question
+did not apply). Outcomes: `ok` (a forecast or a readiness answer
 was delivered), `failed` (a CLI error or a missing prerequisite), `deferred` (waiting on the
 user to choose an account), `skipped` (the user opted out).
 
@@ -80,9 +88,12 @@ These rules supersede any other instruction.
 - **Disclose the metered cost once, before the first call.** Each `mixshift intelligence run`
   is a metered MixShift Intelligence request (a cached answer is served free). One sentence,
   then run.
-- **Ask, never auto-write.** This skill writes no brand context, no timeline event and no
-  correction. When the user names a correction (a stockout month, a one-off), point them at
-  the forecasting app, where corrections are made and published.
+- **One write, only on the user's yes.** The only thing this skill writes is the account's
+  monthly sponsored ads budget, with `mixshift forecast budget set`, after the user has seen
+  the exact months and amounts and said yes. Never invent a budget, never take one from brand
+  context or a sheet without showing the figures first, and never write a budget for a
+  published forecast (the app holds that one). It writes no brand context and no timeline
+  event. Other corrections (a stockout month, a one-off) are made in the forecasting app.
 
 ## Preflight
 
@@ -202,6 +213,48 @@ the baseline on a large account) means re-run that one request ONCE with `--asyn
 --out <the same file>`. That is the only permitted re-run. Otherwise outcome `ok`, payload
 `source: none` with the reason.
 
+### Step 3b. The budget (computed forecasts)
+
+A computed forecast stands on spend. When nobody has entered a budget, the engine estimates
+each month's spend from the account's history, and the forecast moves with that guess.
+
+**When to ask.** Ask once, before the full explanation, when all of these hold: `source` is
+`computed`, `figures.corrections.applied` is 0, and every row of `figures.months[]` has
+`is_budget_placeholder: true`. That is a first forecast nobody has shaped. Do not ask on a
+published forecast (the app holds its budget), and do not ask when any month already carries
+a budget (`is_budget_placeholder: false`): say which months stand on the user's budget instead
+(`budget: existing`).
+
+**Look before asking.** Check the brand's context (`~/.mixshift/clients/<brand-slug>/context.yaml`,
+`structural_events` and `goals`) for a stated sponsored ads budget or a link to a budget
+sheet. Budgets usually live in a spreadsheet or document the team maintains, often a Google
+Sheet. To read one, use the Drive connector's download as CSV (the plain read can return the
+layout without the values); if no connector is available, ask the user to paste the months.
+
+**Ask in one message.** Give the headline first (next month's figure and the total, "on
+estimated spend of about $X a month"), then: do they have a sponsored ads budget for these
+months that the forecast should use? When the context or a sheet holds one, show those months
+and amounts and ask whether to use them. A budget that includes DSP is entered without the DSP
+part, because the forecast stands on sponsored ad spend only; say so in one clause.
+
+**On yes**, save the months the user confirmed (the month in progress or later; one call):
+
+```bash
+mixshift forecast budget set --scope <scope_id from the answer> \
+  --set 2026-10=84450 --set 2026-11=53700 --note "<where the budget came from>"
+```
+
+Then run Step 3 again (one more metered request: the saved budget changes the answer, so it
+is not served from cache) and explain the new answer. **On no**, explain the answer you have
+and say the spend is estimated. A refused save (`state_home_elsewhere`, `insufficient_scope`,
+`scope_not_yours`) is reported in the CLI's own words; the forecast you already have still
+stands. Check what is saved at any time with `mixshift forecast budget show --scope <scope_id>`;
+`mixshift forecast budget clear --scope <scope_id> --month YYYY-MM` takes a month back to the
+estimate.
+
+The same command serves a later request ("set the November budget to 60k"): confirm the
+months and amounts, save, re-run.
+
 ### Step 4. Explain it
 
 Lead with the answer, then the basis, then the accuracy, then what would sharpen it. Round
@@ -213,8 +266,10 @@ to the precision the range supports (a range of hundreds of thousands gets no ce
    ("the published copy covers through December: three months, not six") and never
    extrapolate. Then: the next month's figure with its own range, and the total of the point
    figures across the served months. The ranges are per month; never add them up as a range
-   for the total. Name the spend the figures stand on (`budgeted_spend` or `budget.value`;
-   say when it is an estimate).
+   for the total. Name the spend the figures stand on (`budgeted_spend` or `budget.value`),
+   month by month where it differs: the user's budget (`is_budget_placeholder: false`, or
+   `budget.kind` `saved`) or an estimate (`is_budget_placeholder: true`, or `budget.kind`
+   `estimated`).
 2. **Where it comes from.** One sentence. Published: "the forecast the forecasting app
    published on <date> with your corrections". Computed: the label, in full, the first time
    (say "the MixShift service" for the gateway in client-facing text); after that "the
@@ -233,7 +288,8 @@ to the precision the range supports (a range of hundreds of thousands gets no ce
    forecasting app reach the answer once the app publishes.
 5. **Cautions.** Each entry of `cautions[]` as its own sentence beside the claim it limits.
    `servable: false`: say the figures describe a level, not what spend buys.
-6. **Next step.** One line: corrections and publishing happen in the MixShift forecasting app
+6. **Next step.** One line: a budget can be entered or changed here at any time (Step 3b);
+   other corrections and publishing happen in the MixShift forecasting app
    (https://forecast.mixshift.ai); a published forecast replaces the computed one on the next
    answer and reaches reports (Report Max reads published forecasts only).
 
@@ -247,6 +303,8 @@ explanation beyond "the MixShift forecasting app".
 - [ ] Accuracy stated from the backtest, in plain words, with the horizon it was measured at
 - [ ] Months left out and corrections applied are mentioned when they exist
 - [ ] Every caution surfaced; `servable: false` handled as a level, not a plan
+- [ ] Budget: asked only on a first, unshaped computed forecast; written only after the user
+      saw the months and amounts and said yes; sponsored only; the answer re-run after a save
 - [ ] The forecast is never called the plan
 - [ ] No em dashes, no emojis, no internal tool names in the client-facing text
 - [ ] Telemetry: `skill.completed` emitted with `source` and `reason`
@@ -258,7 +316,9 @@ explanation beyond "the MixShift forecasting app".
 - **Horizon 1 to 12.** Seven months out and beyond is a planning level on any account:
   the service's own backtests show no training depth beats last year's same month there.
 - **Metered.** Readiness and the forecast are each one metered request; cached answers are free
-  for a day.
+  for a day. Saving a budget is not metered; the re-run after it is one request.
+- **Sponsored only.** The budget is sponsored ad spend, the basis the computed forecast stands
+  on; DSP is not part of it.
 
 ## Output Format
 

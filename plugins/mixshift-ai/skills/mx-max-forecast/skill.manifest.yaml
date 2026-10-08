@@ -1,19 +1,21 @@
 schema_version: 1
 skill_id: mx-max-forecast
 display_name: Forecast Max
-version: "0.1.0"
+version: "0.2.0"
 description: >
   The max tier of forecasting: a revenue forecast for one Amazon account, explained in
   plain language with its measured accuracy, from the MixShift Intelligence service.
   Serves the forecast the MixShift forecasting app published (corrections included) when
   one exists, else a forecast the gateway computes from the warehouse with the same
-  engine, labelled as computed. Checks readiness first. Never fits a model of its own.
+  engine, labelled as computed. Checks readiness first. On a first forecast nobody has
+  shaped, asks for a sponsored ads budget and, with the user's yes, saves it so the
+  forecast stands on it. Never fits a model of its own.
 run_kind: per_account
 cadence: on_demand
 risk_tier: 2
-allowed_tools: [insight_read, file_read, file_write]
-side_effect_policy: none
-review_required: never
+allowed_tools: [insight_read, file_read, file_write, forecast_write]
+side_effect_policy: write_gated   # saves the user's monthly sponsored budget via `mixshift forecast budget set`, only after the user saw the months and said yes
+review_required: always           # the budget write requires explicit user confirmation of the exact months and amounts
 pricing_tier: enterprise
 trigger_phrases:
   - run a forecast
@@ -23,6 +25,7 @@ trigger_phrases:
   - how accurate is the forecast
   - is this brand forecastable
   - forecast max
+  - use my budget for the forecast
 escalation_conditions:
   - readiness verdict below_floor (no forecast is served; the answer says what would make the account ready)
   - computed answer with servable false (a negative fitted ad-spend effect; the figures describe a level, not what spend buys)
@@ -32,5 +35,7 @@ required_context_fields:
   - accounts[*].account_type
 notes: >
   Two metered Intelligence requests per run (readiness, then the baseline); a cached answer
-  is served free while its cache holds. Writes nothing: corrections and publishing happen in the MixShift
-  forecasting app, and a published forecast replaces the computed one on the next answer.
+  is served free while its cache holds; a re-run after a saved budget is one more. Writes one
+  thing, on the user's yes: the monthly sponsored budget (`mixshift forecast budget set`), into the
+  same months the forecasting app shows. Other corrections and publishing happen in the app, and a
+  published forecast replaces the computed one on the next answer.

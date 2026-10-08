@@ -56,7 +56,7 @@ shapes:
 
   allowed_tools:
     type: list
-    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch, ads_write, insight_read]
+    valid_tokens: [db_read, file_read, file_write, renderer, validator, web_search, prefetch, ads_write, insight_read, forecast_write]
     note: |
       db_read      — SQL queries via pre-fetch-data.py
       file_read    — read context.yaml, narrative.md, sidecars, artifacts
@@ -67,6 +67,7 @@ shapes:
       prefetch     — invoke pre-fetch-data.py
       ads_write    — mutating Amazon Ads API calls via `mixshift ads call ... --commit` (dry-run default; user-confirmed)
       insight_read — reads finished insight envelopes from the MixShift Intelligence service via `mixshift intelligence run|poll|get`; no warehouse SQL, no writes
+      forecast_write — saves the user's own forecast inputs (the monthly sponsored budget) via `mixshift forecast budget set`; user-confirmed
 
   side_effect_policy:
     enum: [none, artifact_write, context_write, recommendation_only, write_gated]
@@ -75,7 +76,7 @@ shapes:
       artifact_write     — writes to tmp/ only (transient, reviewable)
       context_write      — writes to shared/clients/<brand>/ (durable)
       recommendation_only — writes report to tmp/; execution requires human approval
-      write_gated        — mutates external state (Amazon Ads API) via the bundled CLI; dry-run/preview by default, every commit requires explicit user confirmation (pairs with review_required: always)
+      write_gated        — mutates external state (Amazon Ads API, or the user's own forecast inputs) via the bundled CLI; dry-run/preview by default, every commit requires explicit user confirmation (pairs with review_required: always)
 
   review_required:
     enum: [never, on_non_green, always]

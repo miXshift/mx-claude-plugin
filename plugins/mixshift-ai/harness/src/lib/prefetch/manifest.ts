@@ -33,6 +33,9 @@ const allowedToolEnum = z.enum([
   // Already valid in shared/skill-manifest.schema.yaml; kept in sync here so
   // the first skill to declare it passes this Zod mirror too.
   'insight_read',
+  // The user's own forecast inputs (the monthly sponsored budget) via
+  // `mixshift forecast budget set`; user-confirmed, pairs with write_gated.
+  'forecast_write',
 ]);
 
 const artifactSchema = z.object({
