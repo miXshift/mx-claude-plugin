@@ -69,12 +69,12 @@ export function parseBudgetEntries(values: readonly string[]): BudgetEntry[] {
   const byMonth = new Map<string, number>();
   for (const raw of values) {
     const eq = raw.indexOf('=');
-    if (eq < 0) throw new Error(`"${raw}" is not YYYY-MM=amount (e.g. --set 2026-10=84450).`);
+    if (eq < 0) throw new Error(`"${raw}" is not YYYY-MM=amount (e.g. --set 2026-10=50000).`);
     const month = raw.slice(0, eq).trim();
     const amountText = raw.slice(eq + 1).trim().replace(/^\$/, '').replace(/,/g, '');
     if (!MONTH_RE.test(month)) throw new Error(`"${month}" is not a month; write it as YYYY-MM (e.g. 2026-10).`);
     if (!/^\d+(\.\d{1,2})?$/.test(amountText)) {
-      throw new Error(`"${raw.slice(eq + 1).trim()}" for ${month} is not an amount; write a number such as 84450 or 84450.50.`);
+      throw new Error(`"${raw.slice(eq + 1).trim()}" for ${month} is not an amount; write a number such as 50000 or 50000.50.`);
     }
     byMonth.set(month, Number(amountText));
   }

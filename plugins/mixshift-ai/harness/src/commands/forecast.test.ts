@@ -24,7 +24,7 @@ vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
   return { ...actual, track: vi.fn(async () => {}) };
 });
 
-const SCOPE = 'src:fake_db:71';
+const SCOPE = 'src:fake_db:42';
 type Row = { key: string; version: number; doc: Record<string, unknown> };
 let rows: Map<string, Row>;
 let posts: Array<{ writes: Array<{ key: string; expected_version: number; doc: Record<string, unknown> }>; reason?: string }>;
@@ -97,21 +97,21 @@ describe('forecast budget', () => {
       version: 2,
       doc: { scopeId: SCOPE, month: '2026-11-01', sales: { mode: 'replace', value: 5, sourceObserved: 4 }, adSpend: { mode: 'inherit', value: null, sourceObserved: null }, adBudget: { mode: 'inherit', value: null }, status: 'final', note: 'kept', version: 2 },
     });
-    await run(true, 'set', '--scope', 'src:FAKE_DB:71', '--set', '2026-10=84,450', '--set', '2026-11=53700', '--note', '2026 budget sheet');
+    await run(true, 'set', '--scope', 'src:FAKE_DB:42', '--set', '2026-10=50,000', '--set', '2026-11=40000', '--note', '2026 budget sheet');
     expect(process.exitCode).toBeUndefined();
     const out = JSON.parse(stdout.join(''));
-    expect(out).toMatchObject({ ok: true, scope_id: SCOPE, written: 2, budgets: [{ month: '2026-10', sponsored_budget: 84450 }, { month: '2026-11', sponsored_budget: 53700 }] });
+    expect(out).toMatchObject({ ok: true, scope_id: SCOPE, written: 2, budgets: [{ month: '2026-10', sponsored_budget: 50000 }, { month: '2026-11', sponsored_budget: 40000 }] });
     expect(posts).toHaveLength(1);
-    expect(rows.get(monthKey(SCOPE, '2026-11'))!.doc).toMatchObject({ sales: { mode: 'replace', value: 5 }, status: 'final', note: '2026 budget sheet', adBudget: { mode: 'replace', value: 53700 } });
+    expect(rows.get(monthKey(SCOPE, '2026-11'))!.doc).toMatchObject({ sales: { mode: 'replace', value: 5 }, status: 'final', note: '2026 budget sheet', adBudget: { mode: 'replace', value: 40000 } });
     expect(track).toHaveBeenCalledWith(expect.objectContaining({ event_name: EventName.ForecastBudgetSet, payload: { scope_id: SCOPE, months: 2, written: 2, unchanged: 0 } }), undefined);
     // Telemetry never carries an amount or the note.
-    expect(JSON.stringify(vi.mocked(track).mock.calls)).not.toMatch(/84450|53700|budget sheet/);
+    expect(JSON.stringify(vi.mocked(track).mock.calls)).not.toMatch(/50000|40000|budget sheet/);
 
     stdout = [];
     await run(true, 'show', '--scope', SCOPE);
     expect(JSON.parse(stdout.join('')).budgets.map((b: { month: string; sponsored_budget: number }) => [b.month, b.sponsored_budget])).toEqual([
-      ['2026-10', 84450],
-      ['2026-11', 53700],
+      ['2026-10', 50000],
+      ['2026-11', 40000],
     ]);
 
     stdout = [];
@@ -125,7 +125,7 @@ describe('forecast budget', () => {
     expect(stderr.join('')).toMatch(/2026-09 is already closed/);
     expect(process.exitCode).toBe(4);
     process.exitCode = undefined;
-    await run(false, 'set', '--scope', 'dashamazon:71', '--set', '2026-10=1');
+    await run(false, 'set', '--scope', 'fake_db:42', '--set', '2026-10=1');
     expect(stderr.join('')).toMatch(/not a forecast scope/);
     await run(false, 'set', '--scope', SCOPE, '--set', '2026-10');
     expect(stderr.join('')).toMatch(/YYYY-MM=amount/);
@@ -145,6 +145,6 @@ describe('forecast budget', () => {
 
   it('show on a scope with no budget says the forecast estimates spend', async () => {
     await run(false, 'show', '--scope', SCOPE);
-    expect(stdout.join('')).toMatch(/No budget entered for src:fake_db:71/);
+    expect(stdout.join('')).toMatch(/No budget entered for src:fake_db:42/);
   });
 });

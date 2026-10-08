@@ -241,7 +241,7 @@ part, because the forecast stands on sponsored ad spend only; say so in one clau
 
 ```bash
 mixshift forecast budget set --scope <scope_id from the answer> \
-  --set 2026-10=84450 --set 2026-11=53700 --note "<where the budget came from>"
+  --set 2026-10=50000 --set 2026-11=40000 --note "<where the budget came from>"
 ```
 
 Then run Step 3 again (one more metered request: the saved budget changes the answer, so it

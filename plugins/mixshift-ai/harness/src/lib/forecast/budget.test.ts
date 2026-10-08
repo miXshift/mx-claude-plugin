@@ -15,7 +15,7 @@ import {
   type StoredMonthRow,
 } from './budget.js';
 
-const SCOPE = 'src:fake_db:71';
+const SCOPE = 'src:fake_db:42';
 
 /**
  * A stored month row exactly as the gateway's docs endpoint returns it
@@ -49,17 +49,17 @@ const rowsOf = (...rows: StoredMonthRow[]) => new Map(rows.map((r) => [r.key, r]
 
 describe('inputs', () => {
   it('canonicalises the scope id the way the gateway stores it, and refuses anything else', () => {
-    expect(canonicalScopeId('src:DashAmazon:071')).toBe('src:dashamazon:71');
-    expect(canonicalScopeId(' src:fake_db:71:scope:outdoor ')).toBe('src:fake_db:71:scope:outdoor');
-    for (const bad of ['dashamazon:71', 'src:fake db:71', 'src:fake_db:', 'fb:override:src:x:1:2026-10-01']) {
+    expect(canonicalScopeId('src:Fake_DB:042')).toBe('src:fake_db:42');
+    expect(canonicalScopeId(' src:fake_db:42:scope:outdoor ')).toBe('src:fake_db:42:scope:outdoor');
+    for (const bad of ['fake_db:42', 'src:fake db:42', 'src:fake_db:', 'fb:override:src:x:1:2026-10-01']) {
       expect(canonicalScopeId(bad)).toBeNull();
     }
   });
 
   it('parses YYYY-MM=amount with $ and commas; a repeated month keeps its last amount; months sorted', () => {
-    expect(parseBudgetEntries(['2026-11=53,700', '2026-10=$84,450', '2026-10=84450.5'])).toEqual([
-      { month: '2026-10', amount: 84450.5 },
-      { month: '2026-11', amount: 53700 },
+    expect(parseBudgetEntries(['2026-11=40,000', '2026-10=$50,000', '2026-10=50000.5'])).toEqual([
+      { month: '2026-10', amount: 50000.5 },
+      { month: '2026-11', amount: 40000 },
     ]);
   });
 
@@ -82,18 +82,18 @@ describe('inputs', () => {
 
 describe('planning', () => {
   it('a new month becomes a full month row with only the budget set', () => {
-    const { writes, unchanged } = planBudgetSet(SCOPE, rowsOf(), [{ month: '2026-10', amount: 84450 }]);
+    const { writes, unchanged } = planBudgetSet(SCOPE, rowsOf(), [{ month: '2026-10', amount: 50000 }]);
     expect(unchanged).toEqual([]);
     expect(writes).toEqual([
       {
-        key: 'fb:override:src:fake_db:71:2026-10-01',
+        key: 'fb:override:src:fake_db:42:2026-10-01',
         expected_version: 0,
         doc: {
           scopeId: SCOPE,
           month: '2026-10-01',
           sales: { mode: 'inherit', value: null, sourceObserved: null },
           adSpend: { mode: 'inherit', value: null, sourceObserved: null },
-          adBudget: { mode: 'replace', value: 84450 },
+          adBudget: { mode: 'replace', value: 50000 },
           status: 'auto',
           note: null,
         },
@@ -103,12 +103,12 @@ describe('planning', () => {
 
   it("an existing month keeps every other correction, its note, and the version it was read at; the gateway's stamps are not sent back", () => {
     const { writes } = planBudgetSet(SCOPE, rowsOf(storedRow('2026-10', { units: { mode: 'replace', value: 900, sourceObserved: 880 } })), [
-      { month: '2026-10', amount: 84450 },
+      { month: '2026-10', amount: 50000 },
     ]);
     expect(writes).toHaveLength(1);
     expect(writes[0]!.expected_version).toBe(3);
     const doc = writes[0]!.doc;
-    expect(doc.adBudget).toEqual({ mode: 'replace', value: 84450 });
+    expect(doc.adBudget).toEqual({ mode: 'replace', value: 50000 });
     expect(doc.sales).toEqual({ mode: 'replace', value: 713105, sourceObserved: 698220 });
     expect(doc.units).toEqual({ mode: 'replace', value: 900, sourceObserved: 880 });
     expect(doc.status).toBe('final');
@@ -117,10 +117,10 @@ describe('planning', () => {
   });
 
   it('a note replaces the stored note; a month already holding the budget and note is left out', () => {
-    const stored = rowsOf(storedRow('2026-10', { adBudget: { mode: 'replace', value: 84450 } }), storedRow('2026-11'));
-    const same = planBudgetSet(SCOPE, stored, [{ month: '2026-10', amount: 84450 }]);
+    const stored = rowsOf(storedRow('2026-10', { adBudget: { mode: 'replace', value: 50000 } }), storedRow('2026-11'));
+    const same = planBudgetSet(SCOPE, stored, [{ month: '2026-10', amount: 50000 }]);
     expect(same).toEqual({ writes: [], unchanged: ['2026-10'] });
-    const noted = planBudgetSet(SCOPE, stored, [{ month: '2026-10', amount: 84450 }, { month: '2026-11', amount: 53700 }], '2026 budget sheet');
+    const noted = planBudgetSet(SCOPE, stored, [{ month: '2026-10', amount: 50000 }, { month: '2026-11', amount: 40000 }], '2026 budget sheet');
     expect(noted.writes.map((w) => [w.key.slice(-10), w.doc.note])).toEqual([
       ['2026-10-01', '2026 budget sheet'],
       ['2026-11-01', '2026 budget sheet'],
@@ -128,7 +128,7 @@ describe('planning', () => {
   });
 
   it('clear takes the budget back to inherit and keeps the rest; a month with no budget is reported, not written', () => {
-    const stored = rowsOf(storedRow('2026-10', { adBudget: { mode: 'replace', value: 84450 } }), storedRow('2026-11'));
+    const stored = rowsOf(storedRow('2026-10', { adBudget: { mode: 'replace', value: 50000 } }), storedRow('2026-11'));
     const { writes, notSet } = planBudgetClear(SCOPE, stored, ['2026-10', '2026-11', '2026-12']);
     expect(notSet).toEqual(['2026-11', '2026-12']);
     expect(writes).toHaveLength(1);
@@ -138,13 +138,13 @@ describe('planning', () => {
 
   it('budgetRows lists only months with a budget, in month order; a suppressed budget is not a budget', () => {
     const stored = rowsOf(
-      storedRow('2026-12', { adBudget: { mode: 'replace', value: 62800 } }),
-      storedRow('2026-10', { adBudget: { mode: 'replace', value: 84450 }, note: null }),
+      storedRow('2026-12', { adBudget: { mode: 'replace', value: 45000 } }),
+      storedRow('2026-10', { adBudget: { mode: 'replace', value: 50000 }, note: null }),
       storedRow('2026-11', { adBudget: { mode: 'suppress', value: null } }),
     );
     expect(budgetRows(stored).map((r) => [r.month, r.sponsored_budget, r.note])).toEqual([
-      ['2026-10', 84450, null],
-      ['2026-12', 62800, 'stockout week 2'],
+      ['2026-10', 50000, null],
+      ['2026-12', 45000, 'stockout week 2'],
     ]);
     expect(budgetOf({ adBudget: { mode: 'suppress', value: 5 } })).toBeNull();
   });
@@ -176,9 +176,9 @@ describe('transport', () => {
       wrote = body;
       return { status: 200, json: { ok: true, results: body.writes.map((w: { key: string }) => ({ key: w.key, version: 4, changed: true })) } };
     });
-    const r = await applyBudgetPlan(SCOPE, (rows) => planBudgetSet(SCOPE, rows, [{ month: '2026-10', amount: 84450 }, { month: '2026-12', amount: 62800 }]), opts);
+    const r = await applyBudgetPlan(SCOPE, (rows) => planBudgetSet(SCOPE, rows, [{ month: '2026-10', amount: 50000 }, { month: '2026-12', amount: 45000 }]), opts);
     expect(r).toMatchObject({ ok: true, written: 2 });
-    expect(calls[0]!.url.searchParams.get('prefix')).toBe('fb:override:src:fake_db:71:');
+    expect(calls[0]!.url.searchParams.get('prefix')).toBe('fb:override:src:fake_db:42:');
     expect(calls[1]!.url.searchParams.get('after')).toBe(monthKey(SCOPE, '2026-10'));
     expect(calls[2]!.url.pathname).toBe('/api/app-state/forecasting/batch');
     expect(wrote.reason).toBe(BUDGET_REASON);
