@@ -1020,6 +1020,12 @@ function extractEvidence(
 
   for (const [metric, groupsRaw] of Object.entries(statements)) {
     const groups = Array.isArray(groupsRaw) ? groupsRaw : [];
+    // Final ids of this metric's stamped findings, per kind, in order: a
+    // details tail takes the id of ITS finding (first unclaimed one of that
+    // kind; the producer appends tails in the order their findings were
+    // built), so two findings of one kind give `X.details` and
+    // `X.<j>.details`, each tied to its own parent.
+    const findingIdsByKind = new Map<string, string[]>();
     groups.forEach((groupRaw, i) => {
       const g = asRecord(groupRaw);
       if (!g) return;
@@ -1067,9 +1073,11 @@ function extractEvidence(
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '')
           .slice(0, 48) || `group_${i}`);
-      let id = `${prefix}.${metric}.${slug}`;
+      const parentId = parentKind !== null ? findingIdsByKind.get(parentKind)?.shift() : undefined;
+      let id = parentId !== undefined ? `${parentId}.details` : `${prefix}.${metric}.${slug}`;
       if (used.has(id)) id = `${id}.${i}`;
       used.add(id);
+      if (kind !== null) findingIdsByKind.set(kind, [...(findingIdsByKind.get(kind) ?? []), id]);
 
       const questions = Array.isArray(g.questions) ? g.questions : [];
       const lines = questions

@@ -372,4 +372,20 @@ describe('detail tails take their id from parentId (evidence >= 0.6.0)', () => {
     expect(new Set(ids).size).toBe(2);
     expect(ids[0]).toBe('mom.evidence.ad_spend.ads-campaign-actions.details');
   });
+
+  it('two findings of one kind: each tail carries ITS finding id (producer order: findings, then tails)', () => {
+    const doc = run([
+      finding('first'),
+      finding('second'),
+      tail('ads-campaign-actions', 'first'),
+      tail('ads-campaign-actions', 'second'),
+    ]);
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toEqual([
+      'mom.evidence.ad_spend.ads-campaign-actions',
+      'mom.evidence.ad_spend.ads-campaign-actions.1',
+      'mom.evidence.ad_spend.ads-campaign-actions.details',
+      'mom.evidence.ad_spend.ads-campaign-actions.1.details',
+    ]);
+  });
 });
