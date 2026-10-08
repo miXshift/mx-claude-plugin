@@ -25,6 +25,9 @@
 -- GROUP BY SearchQuery merges accent variants (the collation ignores accents).
 -- Seller Central only (Brand Analytics); vendors have no SQP. SQP clicks do
 -- not foot to sessions and must not be divided by ad clicks.
+-- LIMIT 500 returns only the top queries by volume: totals over the result
+-- are not account totals. Raise it or page for a full list.
+-- With :asin set, weeks_covered is that ASIN's weeks, not the query's.
 -- weeks_covered counts the weeks the query appeared in, so compare two periods
 -- only over queries present in both.
 

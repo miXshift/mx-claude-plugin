@@ -44,6 +44,7 @@ describe('LIB-SQP-01', () => {
     expect(code).not.toMatch(/SUM\(\s*SearchQueryVolume/);
     expect(code).not.toMatch(/Share\b/); // Asin*Share columns are never read
     expect(code).not.toMatch(/ReportDate/); // periods key on StartDate
+    expect(code).toContain(':asin IS NULL OR ASIN = :asin');
     expect(code).toMatch(/NULLIF\(/); // zero totals give NULL, not a divide error
   });
 });

@@ -266,9 +266,10 @@ tables:
     requires_seller_id: true
     date_column: ReportDate
     gotchas:
-      - "Do not SUM(SearchQueryVolume) or SUM(Total*Count) across ASIN rows: the value repeats on every ASIN row of the query, so the sum overstates search volume by roughly the number of ASINs that showed for it. Take MAX per (SearchQuery, StartDate), then sum over weeks."
+      - "Do not SUM(SearchQueryVolume) or SUM(Total*Count) across ASIN rows: the value repeats on every ASIN row of the query, so the sum overstates search volume by roughly the number of your ASINs that showed for it. Take MAX per (SearchQuery, StartDate), then sum over weeks."
       - "Shares: compute 100 * SUM(own Asin*Count) / SUM(per-week Total*Count), only over weeks with a positive total. Never AVG or SUM the rounded Asin*Share percent columns."
       - "Filter and group periods on StartDate, never ReportDate (the load date). The table only holds queries where at least one of the seller's ASINs showed, so a period-over-period change is valid only over queries present in both periods."
+      - "`mixshift data export --start/--end` and sample ordering use ReportDate (the load date). For period work use shared/sql-library/LIB-SQP-01.sql, which filters on StartDate."
       - "SQP clicks do not foot to sessions and must not be divided by ad clicks. GROUP BY SearchQuery merges a few accent variants (the collation ignores accents)."
 
   sqp_monthly:
