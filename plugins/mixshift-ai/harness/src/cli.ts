@@ -13,12 +13,19 @@
  *   To signal a non-zero exit, set `process.exitCode = N` and `return`.
  *   To signal success, just `return` (exitCode defaults to 0).
  *
- *   This file is the only place `process.exit()` is called. It wraps
- *   `parseAsync` in a try/catch/finally so that:
+ *   This file owns the exit. It wraps `parseAsync` in a try/catch/finally
+ *   so that:
  *     1. The `finally` block awaits `maybeFlush()` — draining any
  *        telemetry events queued during the command's execution.
- *     2. The final `process.exit(process.exitCode ?? 0)` happens AFTER
- *        the flush completes.
+ *     2. After the flush, the process ends by letting the event loop drain
+ *        with `process.exitCode` set, NOT by calling `process.exit()`
+ *        straight away. On Windows with Node 24, `process.exit()` right
+ *        after a `fetch` (the flush is one) aborts the process on a libuv
+ *        assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, src\winsync.c)
+ *        and the shell sees exit 127 / 0xC0000409 on a command that worked.
+ *        An unref'd backstop timer still calls `process.exit()` if something
+ *        left open would keep the process alive; by then the connection has
+ *        long closed. See EXIT_BACKSTOP_MS.
  *
  *   Why this matters: every `track()` call only appends to a local
  *   JSONL queue. The HTTP POST to Supabase happens in `maybeFlush()`.
@@ -283,7 +290,7 @@ function printFirstRunNotice(): void {
   );
 }
 
-// The one-and-only place `process.exit()` is allowed. See the
+// The one-and-only place the process is ended. See the
 // "Exit / telemetry-flush contract" block at the top of this file.
 try {
   await program.parseAsync(process.argv);
@@ -335,4 +342,10 @@ try {
     );
   }
 }
-process.exit(process.exitCode ?? 0);
+// Let the loop drain (a clean exit with the code), never process.exit() straight
+// after a fetch (the Node 24 Windows abort). The backstop is unref'd: it never
+// delays a clean exit, and only ends a run that something left open.
+const EXIT_BACKSTOP_MS = 1000;
+const exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
+process.exitCode = exitCode;
+setTimeout(() => process.exit(exitCode), EXIT_BACKSTOP_MS).unref();

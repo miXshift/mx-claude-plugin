@@ -869,4 +869,10 @@ async function runUpdateNoticeStage() {
 }
 
 await runUpdateNoticeStage();
-process.exit(0);
+// End by letting the loop drain, not process.exit(0) straight after the version
+// check's fetch: on Windows with Node 24 that aborts on a libuv assertion
+// (UV_HANDLE_CLOSING, src\winsync.c) and the hook reports a failed exit to
+// Claude Code on every session start. The backstop is unref'd: it never delays a
+// clean exit and only ends a run something left open.
+process.exitCode = 0;
+setTimeout(() => process.exit(0), 1000).unref();
