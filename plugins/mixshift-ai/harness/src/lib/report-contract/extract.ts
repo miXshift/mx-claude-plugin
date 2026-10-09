@@ -679,12 +679,15 @@ export interface EvidenceStatement {
   /** The other metric roots that served this SAME card word for word (same
    *  kind, parent, head, tone and statements), in served order. The card is
    *  listed once, under the first root that served it, instead of once per
-   *  root. Absent when the card appears on one root only. A card whose text
-   *  differs on another root by so much as one number is a separate entry. */
+   *  root. Absent when no other root's copy was folded into this entry. A card
+   *  whose text differs on another root by so much as one number is a separate
+   *  entry, and a second copy under the SAME root stays its own entry. */
   also_metrics?: string[];
   /** The ids the collapsed copies had, parallel to `also_metrics`
    *  (`also_ids[k]` is the copy served under `also_metrics[k]`). Every one of
-   *  them names THIS entry, so a citation of any of them still resolves. */
+   *  them names THIS entry, so a citation of any of them still resolves; `id`
+   *  stays the one to cite. The copies' own source paths are not kept: their
+   *  text is this entry's, and `source_path` points at the first root's copy. */
   also_ids?: string[];
   /** The group's one-line head, e.g. "promo pricing detected". */
   head: string;
@@ -1132,7 +1135,15 @@ function extractEvidence(
  * WHAT COUNTS AS THE SAME CARD: identical kind, parent_kind, head, tone and
  * statement lines. Anything else, including two roots whose text differs by one
  * number (promo pricing serves the OPS share on one root and the units share on
- * the next), stays a separate entry, so no root loses its own reading.
+ * the next), stays a separate entry, so no root loses its own reading. Identity
+ * is what the document carries: wire fields this extractor never reads
+ * (`measured`, `whereToLook`, `domain`, `rank`, ...) are not compared, so a
+ * difference there was already invisible before the collapse.
+ *
+ * WHICH ROOT KEEPS IT: the first in served order. The producer serves its roots
+ * as object keys and does not promise their order (ops first on most runs,
+ * units first on some), so the primary id's root segment is not meaningful in
+ * itself; the entry is the same card either way, and `also_ids` holds the rest.
  *
  * WHAT IS KEPT. Ids are computed first, exactly as before (served kind, detail
  * tail from its parent, head slug, collision suffix), and only then collapsed:
@@ -1140,7 +1151,9 @@ function extractEvidence(
  * one entry's `also_ids`, so a citation of any of them still resolves. Order is
  * the served order with the later copies removed. Two identical cards under the
  * SAME root are not collapsed into each other (that would read as one card
- * where the engine served two); `also_metrics` only ever names other roots.
+ * where the engine served two); `also_metrics` only ever names other roots. So
+ * `ops[W], units[W, W]` gives `ops.W` (also units) and a separate `units.W.<i>`,
+ * a suffixed id with no unsuffixed sibling left under units.
  */
 function collapseRepeatedCards(entries: EvidenceStatement[]): EvidenceStatement[] {
   const kept: EvidenceStatement[] = [];

@@ -298,9 +298,10 @@ the documents compose without collisions. When the run was made with `evidence: 
 extraction carries the engine's own `evidence[]` statements; causal claims in the brief
 quote those as their mechanism rather than inventing one. A card the engine served word
 for word on several metric roots is listed once, under the first root: `also_metrics`
-names the other roots it applies to and `also_ids` the ids it had there, so read it as
-evidence for every root it names, and cite it by any of those ids. A card whose text
-differs between roots, even by one number, stays a separate entry per root. Record
+names the other roots it applies to and `also_ids` the ids it had there. Read it as
+evidence for every root it names; cite it by its `id` (an `also_ids` reference still
+resolves to it). A card whose text differs between roots, even by one number, stays a
+separate entry per root. Record
 `source.engineVersion` from the `mom.ops` document for the run record.
 
 **Read the run context before writing a word.** `mom.run_context` on the bundle carries
@@ -1022,7 +1023,9 @@ Composition rules that survive every mode:
   from". The client lint flags sentences that open with "Ask", "Find out", "Investigate".
 - Causal claims quote served evidence as their mechanism where it exists; otherwise
   "consistent with", never "caused by". Decomposition legs are tracking, and tracking text
-  does not use causal verbs.
+  does not use causal verbs. The evidence for a metric root includes every card whose
+  `also_metrics` names it: a card listed under `ops` with `also_metrics` units, sessions
+  and conversion is evidence for those three too, and they no longer carry a copy of it.
 - Comparisons do not mix bases (settled vs unsettled, normalized vs raw, ordered vs
   shipped) without saying so at the claim.
 - Never invent a product nickname: `ItemNickname`, else `ItemName`, else the raw ASIN, else

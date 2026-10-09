@@ -565,6 +565,26 @@ describe('a card repeated word for word across metric roots is listed once', () 
     expect(ev[3]!.tone).toBe('negative');
   });
 
+  it('two different card kinds with the same head, tone and lines stay separate', () => {
+    // The served kind is part of the card's identity: same words under two
+    // kinds are two cards (none in served data today, so only this pins it).
+    const other = { ...windowCard(), id: 'ops-window-comparability-alt' };
+    const ev = run({ ops: [windowCard()], units: [other] });
+    expect(ev.map((e) => e.id)).toEqual(['mom.evidence.ops.ops-window-comparability', 'mom.evidence.units.ops-window-comparability-alt']);
+    for (const e of ev) expect('also_ids' in e).toBe(false);
+  });
+
+  it('a single (non-composite) response collapses the same way, under bare ids', () => {
+    const doc = extractFigures({
+      envelope: envelope(),
+      evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements: { ops: [windowCard()], units: [windowCard()] }, notes: [], companionAttached: true },
+    }) as { evidence?: Entry[] };
+    expect(doc.evidence).toHaveLength(1);
+    expect(doc.evidence![0]!.id).toBe('evidence.ops.ops-window-comparability');
+    expect(doc.evidence![0]!.also_ids).toEqual(['evidence.units.ops-window-comparability']);
+    expect(doc.evidence![0]!.source_path).toBe('evidence.statements.ops[0]');
+  });
+
   it('a one-character difference in a statement line is enough to keep two entries', () => {
     const a = windowCard();
     const b = windowCard();
