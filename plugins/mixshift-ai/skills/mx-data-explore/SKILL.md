@@ -340,10 +340,24 @@ you then resolve live via mx-amazon-retail `catalog.search_items`.
 
 **Search Query Performance (`sqp_weekly`, `sqp_monthly`, `sqp_quarterly`).** Do not write SQP
 SQL from scratch: `SearchQueryVolume` and the `Total*` columns repeat on every ASIN row, so
-summing them across ASINs overstates demand. Read the plugin's `shared/sql-library/LIB-SQP-01.sql`
+summing them across ASINs counts one query's volume once per ASIN. Read the plugin's `shared/sql-library/LIB-SQP-01.sql`
 (volume counted once per query per week, shares from counts), put the seller, the two week-start
 dates and the ASIN (or NULL for all) into it as literals, and run it as a custom query (Pattern 4).
 See also `mixshift data describe sqp_weekly`.
+
+**Traffic by ASIN from `business_reports_dpst_sku` (sessions, page views).** Amazon reports
+traffic per product (ASIN), and this SKU-level table repeats it on each SKU row of the product for
+the day, while sales and units are each SKU's own. So count traffic once per product per day: MAX
+the traffic columns per (SellerID, ChildAsin, day), SUM the sales columns, then add the days up.
+Read the plugin's `shared/sql-library/LIB-TRAFFIC-01.sql` (sessions, page views, units and sales per
+ASIN, top 500 ASINs by sessions), put the seller, the two dates and the ASIN (or NULL for all) into
+it as literals, and run it as a custom query (Pattern 4). The table only has rows on days a product
+sold, so its sessions are sessions on selling days, and its `unit_session_pct_selling_days` and
+`buy_box_pct_selling_days` leave out the days the product did not sell (they read high for slow
+sellers; compare `days_with_sales` with `days_in_range`). Do not quote them as the product's
+conversion or Buy Box rate: for all days, pull Amazon's Sales and Traffic report at CHILD grain
+(mx-amazon-report); for account sessions and conversion use `business_reports_dpst_date`. See also
+`mixshift data describe business_reports_dpst_sku`.
 
 ### Pattern 4 — Custom query
 ```

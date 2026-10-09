@@ -177,7 +177,7 @@ reports:
         note: DAY | WEEK | MONTH. Omit asinGranularity for date-only roll-up.
       - key: asinGranularity
         example: CHILD
-        note: PARENT | CHILD | SKU. Sets the ASIN grain of the byAsin section.
+        note: PARENT | CHILD | SKU. Sets the ASIN grain of the byAsin section. Traffic (sessions, page views, Buy Box) is per product, so at SKU grain each SKU row repeats its product's traffic for the period; total traffic from CHILD rows, or count each product once.
     parse_hints: JSON object with salesAndTrafficByDate[] and salesAndTrafficByAsin[] arrays. Nested salesByAsin / trafficByAsin objects per row.
     notes: MixShift warehouse already holds the date-grain version (business_reports_dpst_date). Pull on demand mainly for ASIN-grain or windows the warehouse hasn't loaded.
 
