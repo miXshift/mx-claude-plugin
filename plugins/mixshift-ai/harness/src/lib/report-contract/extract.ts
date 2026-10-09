@@ -668,6 +668,12 @@ export interface EvidenceStatement {
    *  statement text, which reword across evidence releases. Optional:
    *  unstamped cards are contract-valid, not an error. */
   kind?: string;
+  /** On a DETAIL TAIL (the item list the engine splits off a finding, headed
+   *  "<finding head> — details"): the `kind` of the finding it belongs to,
+   *  from the engine's `parentId`. The tail's `id` ends `<parent_kind>.details`,
+   *  so it survives rewording of the finding's head. Absent on every other
+   *  group, and on a tail whose finding is unstamped. */
+  parent_kind?: string;
   /** The metric root the group hangs off (ops, units, gv_conversion, ...). */
   metric: string;
   /** The group's one-line head, e.g. "promo pricing detected". */
@@ -977,6 +983,11 @@ function extractEntity(
  * duplicate every id across two documents the model merges. The ops leg is the
  * one that carries it.
  */
+/** The shape a served card id (`DriverQuestionGroup.id`) or a detail tail's
+ *  `parentId` must have to be used verbatim in an evidence id; anything else is
+ *  treated as unstamped. See the gate's comment in `extractEvidence`. */
+const SERVED_KIND_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
 function extractEvidence(
   whole: Rec,
   selection?: CompositeSelection,
@@ -1009,6 +1020,12 @@ function extractEvidence(
 
   for (const [metric, groupsRaw] of Object.entries(statements)) {
     const groups = Array.isArray(groupsRaw) ? groupsRaw : [];
+    // Final ids of this metric's stamped findings, per kind, in order: a
+    // details tail takes the id of ITS finding (first unclaimed one of that
+    // kind; the producer appends tails in the order their findings were
+    // built), so two findings of one kind give `X.details` and
+    // `X.<j>.details`, each tied to its own parent.
+    const findingIdsByKind = new Map<string, string[]>();
     groups.forEach((groupRaw, i) => {
       const g = asRecord(groupRaw);
       if (!g) return;
@@ -1032,17 +1049,35 @@ function extractEvidence(
       // unstamped, which degrades to the head slug rather than erroring —
       // the same posture the contract prescribes for absence.
       const rawKind = typeof g.id === 'string' ? g.id.trim() : '';
-      const kind = /^[a-z0-9][a-z0-9_-]{0,63}$/.test(rawKind) ? rawKind : null;
+      const kind = SERVED_KIND_RE.test(rawKind) ? rawKind : null;
+      // A DETAIL TAIL (evidence >= 0.6.0): the engine's `finalizeEvidenceGroups`
+      // splits a finding's long item list into its own group headed
+      // "<finding head> — details", with NO `id` of its own and `parentId` =
+      // the finding's id. Slugging that head made the tail's id move with the
+      // finding's WORDING, and the 0.15.x-0.16.0 narrative releases reworded
+      // most heads, so a citation to a tail broke on every copy release. The
+      // tail's identity is its parent's, so the id is derived from `parentId`
+      // (same shape gate as `id`, same reason) and stays put across rewording.
+      // A tail whose parent is unstamped keeps the head slug, exactly as before.
+      // Only a group the producer marks as a details tail: `parentId` is
+      // defined on tails today, and a future non-tail group carrying one must
+      // not be renamed `<parent>.details`.
+      const isTail = g.presentationKind === 'details';
+      const rawParent = kind === null && isTail && typeof g.parentId === 'string' ? g.parentId.trim() : '';
+      const parentKind = SERVED_KIND_RE.test(rawParent) ? rawParent : null;
       const slug =
         kind ??
+        (parentKind !== null ? `${parentKind}.details` : null) ??
         (head
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_+|_+$/g, '')
           .slice(0, 48) || `group_${i}`);
-      let id = `${prefix}.${metric}.${slug}`;
+      const parentId = parentKind !== null ? findingIdsByKind.get(parentKind)?.shift() : undefined;
+      let id = parentId !== undefined ? `${parentId}.details` : `${prefix}.${metric}.${slug}`;
       if (used.has(id)) id = `${id}.${i}`;
       used.add(id);
+      if (kind !== null) findingIdsByKind.set(kind, [...(findingIdsByKind.get(kind) ?? []), id]);
 
       const questions = Array.isArray(g.questions) ? g.questions : [];
       const lines = questions
@@ -1052,6 +1087,7 @@ function extractEvidence(
       out.push({
         id,
         ...(kind ? { kind } : {}),
+        ...(parentKind !== null ? { parent_kind: parentKind } : {}),
         metric,
         head,
         ...(typeof g.tone === 'string' ? { tone: g.tone } : {}),

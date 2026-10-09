@@ -267,3 +267,125 @@ describe('newly served statement groups flow through unmodified', () => {
     expect(doc.evidence!.find((e) => e.metric === 'sessions')!.kind).toBe('ads-paid-vs-traffic');
   });
 });
+
+describe('detail tails take their id from parentId (evidence >= 0.6.0)', () => {
+  /**
+   * PRODUCER SHAPE, copied from the evidence library's
+   * `finalizeEvidenceGroups` (evidence 0.17.0): a finding whose questions carry `details` is
+   * split in two. The finding keeps its `id`, becomes
+   * `presentationKind: 'finding'` and loses the `details`; the list becomes
+   * a TAIL group with NO `id`, `head: "<finding head> — details"`, the
+   * finding's `tone`/`domain`, `parentId: <finding id>`,
+   * `presentationKind: 'details'`, `rank: EVIDENCE_RANK.DETAILS` and one
+   * question per detail (`question`, `measured`, `whereToLook`).
+   *
+   * The bug this pins: the tail used to be slugged from its HEAD, which is
+   * the finding's wording plus a suffix, so its id moved on every copy
+   * release (0.15.x-0.16.0 reworded most heads). Its identity is its
+   * parent's.
+   */
+  const tail = (parentId: unknown, findingHead: string, over: Record<string, unknown> = {}) => ({
+    head: `${findingHead} — details`,
+    tone: 'neutral',
+    domain: 'advertising',
+    ...(parentId !== undefined ? { parentId } : {}),
+    presentationKind: 'details',
+    rank: 90,
+    questions: [
+      { question: 'Campaign A: paused on 2026-09-04.', measured: true, whereToLook: 'Ads Bridge run data' },
+      { question: 'Campaign B: daily budget raised on 2026-09-11.', measured: true, whereToLook: 'Ads Bridge run data' },
+    ],
+    ...over,
+  });
+  const finding = (head: string) => ({
+    id: 'ads-campaign-actions',
+    head,
+    tone: 'neutral',
+    domain: 'advertising',
+    presentationKind: 'finding',
+    rank: 20,
+    questions: [{ question: '2 campaigns were paused and 1 budget was raised in Sep 2026.', measured: true }],
+  });
+  const run = (groups: unknown[], metric = 'ad_spend') =>
+    extractFigures(
+      {
+        ok: true,
+        mom: {
+          ops: envelope(),
+          ads: null,
+          crossDomain: null,
+          evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements: { [metric]: groups }, notes: [], companionAttached: true },
+        },
+        yoy: null,
+        headline: {},
+        limitations: [],
+        meta: {},
+      },
+      'mom.ops',
+    ) as { evidence?: { id: string; kind?: string; parent_kind?: string; head: string; statements: string[] }[] };
+
+  it('the tail id is the parent kind plus .details, and parent_kind names the finding', () => {
+    const doc = run([finding('what changed on campaigns'), tail('ads-campaign-actions', 'what changed on campaigns')]);
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toEqual(['mom.evidence.ad_spend.ads-campaign-actions', 'mom.evidence.ad_spend.ads-campaign-actions.details']);
+    const t = doc.evidence![1]!;
+    expect(t.parent_kind).toBe('ads-campaign-actions');
+    expect(t.kind).toBeUndefined();
+    expect(t.statements).toHaveLength(2);
+  });
+
+  it('rewording the finding (and so the tail head) moves neither id', () => {
+    const before = run([finding('what changed on campaigns'), tail('ads-campaign-actions', 'what changed on campaigns')]);
+    const after = run([finding('campaign changes this period'), tail('ads-campaign-actions', 'campaign changes this period')]);
+    expect(after.evidence!.map((e) => e.id)).toEqual(before.evidence!.map((e) => e.id));
+  });
+
+  it('a tail whose parent is unstamped keeps the head slug, as before', () => {
+    const doc = run([tail(undefined, 'promo pricing detected')], 'ops');
+    expect(doc.evidence![0]!.id).toBe('mom.evidence.ops.promo_pricing_detected_details');
+    expect(doc.evidence![0]!.parent_kind).toBeUndefined();
+  });
+
+  it('a malformed parentId is treated as unstamped (same shape gate as id)', () => {
+    for (const bad of ['Ads.Campaign', 'x'.repeat(65), '', 42, 'a\u0000b']) {
+      const doc = run([tail(bad, 'what changed on campaigns')]);
+      expect(doc.evidence![0]!.id, String(bad)).toBe('mom.evidence.ad_spend.what_changed_on_campaigns_details');
+      expect(doc.evidence![0]!.parent_kind).toBeUndefined();
+    }
+  });
+
+  it('a parentId on a group that is not a details tail is ignored', () => {
+    const doc = run([tail('ads-campaign-actions', 'what changed on campaigns', { presentationKind: 'finding' })]);
+    expect(doc.evidence![0]!.id).toBe('mom.evidence.ad_spend.what_changed_on_campaigns_details');
+    expect(doc.evidence![0]!.parent_kind).toBeUndefined();
+  });
+
+  it('a group carrying its own id keeps it; parentId does not override', () => {
+    const doc = run([tail('ads-campaign-actions', 'x', { id: 'ads-budget-limited' })]);
+    expect(doc.evidence![0]!.id).toBe('mom.evidence.ad_spend.ads-budget-limited');
+    expect(doc.evidence![0]!.parent_kind).toBeUndefined();
+  });
+
+  it('two tails of one kind under one metric stay distinct', () => {
+    const doc = run([tail('ads-campaign-actions', 'a'), tail('ads-campaign-actions', 'b')]);
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids[0]).toBe('mom.evidence.ad_spend.ads-campaign-actions.details');
+  });
+
+  it('two findings of one kind: each tail carries ITS finding id (producer order: findings, then tails)', () => {
+    const doc = run([
+      finding('first'),
+      finding('second'),
+      tail('ads-campaign-actions', 'first'),
+      tail('ads-campaign-actions', 'second'),
+    ]);
+    const ids = doc.evidence!.map((e) => e.id);
+    expect(ids).toEqual([
+      'mom.evidence.ad_spend.ads-campaign-actions',
+      'mom.evidence.ad_spend.ads-campaign-actions.1',
+      'mom.evidence.ad_spend.ads-campaign-actions.details',
+      'mom.evidence.ad_spend.ads-campaign-actions.1.details',
+    ]);
+  });
+});
