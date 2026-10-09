@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report-max
-version: 2.5.3
+version: 2.5.4
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -296,8 +296,12 @@ mixshift report extract run.json --select yoy.ads --check --out figures.yoy.ads.
 `--check` must pass on every document. Every id is period-prefixed (`mom.*`, `yoy.*`), so
 the documents compose without collisions. When the run was made with `evidence: true`, the
 extraction carries the engine's own `evidence[]` statements; causal claims in the brief
-quote those as their mechanism rather than inventing one. Record `source.engineVersion`
-from the `mom.ops` document for the run record.
+quote those as their mechanism rather than inventing one. A card the engine served word
+for word on several metric roots is listed once, under the first root: `also_metrics`
+names the other roots it applies to and `also_ids` the ids it had there, so read it as
+evidence for every root it names, and cite it by any of those ids. A card whose text
+differs between roots, even by one number, stays a separate entry per root. Record
+`source.engineVersion` from the `mom.ops` document for the run record.
 
 **Read the run context before writing a word.** `mom.run_context` on the bundle carries
 what the figures alone do not: `session_footing` (which sessions basis the run footed on;

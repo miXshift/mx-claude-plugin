@@ -676,6 +676,16 @@ export interface EvidenceStatement {
   parent_kind?: string;
   /** The metric root the group hangs off (ops, units, gv_conversion, ...). */
   metric: string;
+  /** The other metric roots that served this SAME card word for word (same
+   *  kind, parent, head, tone and statements), in served order. The card is
+   *  listed once, under the first root that served it, instead of once per
+   *  root. Absent when the card appears on one root only. A card whose text
+   *  differs on another root by so much as one number is a separate entry. */
+  also_metrics?: string[];
+  /** The ids the collapsed copies had, parallel to `also_metrics`
+   *  (`also_ids[k]` is the copy served under `also_metrics[k]`). Every one of
+   *  them names THIS entry, so a citation of any of them still resolves. */
+  also_ids?: string[];
   /** The group's one-line head, e.g. "promo pricing detected". */
   head: string;
   /** positive | negative | neutral, when the engine assigned one. */
@@ -982,6 +992,12 @@ function extractEntity(
  * both resolve to the SAME `mom.evidence` block, so emitting on each would
  * duplicate every id across two documents the model merges. The ops leg is the
  * one that carries it.
+ *
+ * A CARD REPEATED WORD FOR WORD ACROSS METRIC ROOTS IS LISTED ONCE. The engine
+ * hangs some cards on every metric root they bear on (window comparability on
+ * ops, units, sessions and conversion; the spike/step summary likewise), with
+ * identical text each time, and the model read every copy. See
+ * `collapseRepeatedCards`.
  */
 /** The shape a served card id (`DriverQuestionGroup.id`) or a detail tail's
  *  `parentId` must have to be used verbatim in an evidence id; anything else is
@@ -1098,7 +1114,69 @@ function extractEvidence(
       });
     });
   }
-  return { statements: out, evidenceVersion };
+  return { statements: collapseRepeatedCards(out), evidenceVersion };
+}
+
+/**
+ * Lists a card that several metric roots served word for word ONCE, under the
+ * first root that served it, with `also_metrics` / `also_ids` naming the rest.
+ *
+ * WHY. Report Max reads every figures document whole, and the engine repeats
+ * some cards on each metric root they bear on with byte-identical text (window
+ * comparability on four roots, the spike/step summary on four, availability and
+ * its item list on two). On six monthly runs of engine 0.5.8 / evidence 0.17.0
+ * the copies were 6-34% of the extracted evidence (0.6-6.3 KB a run), and the
+ * spike/step switch adds another four-root card. The engine's evidence call has
+ * no cap or collapse option, so it happens here.
+ *
+ * WHAT COUNTS AS THE SAME CARD: identical kind, parent_kind, head, tone and
+ * statement lines. Anything else, including two roots whose text differs by one
+ * number (promo pricing serves the OPS share on one root and the units share on
+ * the next), stays a separate entry, so no root loses its own reading.
+ *
+ * WHAT IS KEPT. Ids are computed first, exactly as before (served kind, detail
+ * tail from its parent, head slug, collision suffix), and only then collapsed:
+ * every id the uncollapsed extraction emitted is either an entry's `id` or in
+ * one entry's `also_ids`, so a citation of any of them still resolves. Order is
+ * the served order with the later copies removed. Two identical cards under the
+ * SAME root are not collapsed into each other (that would read as one card
+ * where the engine served two); `also_metrics` only ever names other roots.
+ */
+function collapseRepeatedCards(entries: EvidenceStatement[]): EvidenceStatement[] {
+  const kept: EvidenceStatement[] = [];
+  const byText = new Map<string, EvidenceStatement[]>();
+  const aliases = new Map<EvidenceStatement, { metrics: string[]; ids: string[] }>();
+  for (const e of entries) {
+    const key = JSON.stringify([e.kind ?? null, e.parent_kind ?? null, e.head, e.tone ?? null, e.statements]);
+    const same = byText.get(key) ?? [];
+    const into = same.find((c) => c.metric !== e.metric && !(aliases.get(c)?.metrics ?? []).includes(e.metric));
+    if (into) {
+      const a = aliases.get(into) ?? { metrics: [], ids: [] };
+      a.metrics.push(e.metric);
+      a.ids.push(e.id);
+      aliases.set(into, a);
+      continue;
+    }
+    same.push(e);
+    byText.set(key, same);
+    kept.push(e);
+  }
+  // Rebuilt rather than mutated so the alias fields sit next to `metric`, where
+  // a reader of the document looks for which root a card belongs to.
+  return kept.map((e) => {
+    const a = aliases.get(e);
+    if (!a) return e;
+    const { id, kind, parent_kind, metric, ...rest } = e;
+    return {
+      id,
+      ...(kind !== undefined ? { kind } : {}),
+      ...(parent_kind !== undefined ? { parent_kind } : {}),
+      metric,
+      also_metrics: a.metrics,
+      also_ids: a.ids,
+      ...rest,
+    };
+  });
 }
 
 export const COMPOSITE_SELECTIONS = ['mom.ops', 'mom.ads', 'yoy.ops', 'yoy.ads'] as const;

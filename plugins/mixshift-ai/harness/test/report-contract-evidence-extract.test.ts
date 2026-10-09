@@ -389,3 +389,271 @@ describe('detail tails take their id from parentId (evidence >= 0.6.0)', () => {
     ]);
   });
 });
+
+describe('a card repeated word for word across metric roots is listed once', () => {
+  /**
+   * PRODUCER SHAPE, copied from served evidence 0.17.0 groups (engine 0.5.8),
+   * values invented. The engine hangs some cards on every metric root they
+   * bear on with byte-identical text:
+   *   - window comparability: `id`, `head`, `rank: 15`, NO tone, served on
+   *     ops, units, sessions and conversion;
+   *   - the spike/step summary (`ops-entity-surges-summary`): same keys, the
+   *     same four roots;
+   *   - availability: a `presentationKind: 'finding'` card plus its details
+   *     tail (`parentId`, `presentationKind: 'details'`, `rank: 50`), on ops
+   *     and units.
+   * Other cards of one kind carry each root's own number (promo pricing names
+   * the OPS share on ops, the units share on units, and flips tone on
+   * ops_per_unit). Those must stay separate entries.
+   *
+   * Every question carries `measured` and `whereToLook` on the wire; the
+   * extractor reads `question` only, so they are kept here to prove the
+   * collapse keys on what the document carries, not on wire extras.
+   */
+  const q = (question: string) => ({ question, measured: true, whereToLook: 'Ops Bridge run data' });
+  const windowCard = () => ({
+    id: 'ops-window-comparability',
+    head: 'Period data gap',
+    questions: [
+      q('Sep 2026 contains a 3-day zero-sales gap (Sep 4 – Sep 6).\nComparisons against Aug 2026 may understate growth.'),
+      q('A 2-day revenue surge on Aug 14 – Aug 15 supplied 9% of Aug 2026 revenue, a short burst rather than a sustained step up.'),
+    ],
+    rank: 15,
+  });
+  const surgeCard = () => ({
+    id: 'ops-entity-surges-summary',
+    head: 'short sales spikes',
+    questions: [q('There were short sales spikes in one item group, each measured on its own daily sales.\n• Item Group A: $4.2K on Sep 18 – Sep 19 (3.1× normal sales)')],
+    rank: 15,
+  });
+  const promoCard = (line2: string, tone = 'positive') => ({
+    head: 'promo pricing detected',
+    id: 'ops-promo-pricing',
+    tone,
+    answers: [],
+    answerEntityKeys: [],
+    demotesPricingAsks: true,
+    questions: [q(`2 Item Groups show discounting in Sep 2026.\n${line2}`)],
+    rank: 10,
+    presentationKind: 'finding',
+  });
+  const availabilityFinding = () => ({
+    head: 'availability — net headwind',
+    id: 'ops-availability-net',
+    tone: 'negative',
+    domain: 'ops',
+    questions: [q('Estimated lost sales rose across the 1 item with a lost-sales change from Aug 2026 to Sep 2026.')],
+    rank: 10,
+    presentationKind: 'finding',
+  });
+  const availabilityTail = (line = 'Estimated lost sales by item:\n\nDrove the rise:\n• Item Group B\n   +$1.1k · OOS 2 → 9 days') => ({
+    head: 'availability — net headwind — details',
+    tone: 'negative',
+    domain: 'ops',
+    parentId: 'ops-availability-net',
+    presentationKind: 'details',
+    rank: 50,
+    questions: [q(line)],
+  });
+  const adsCard = (id: string, question: string) => ({
+    head: id.replace(/-/g, ' '),
+    id,
+    domain: 'advertising',
+    tone: 'neutral',
+    questions: [q(question)],
+  });
+
+  type Entry = {
+    id: string;
+    kind?: string;
+    parent_kind?: string;
+    metric: string;
+    also_metrics?: string[];
+    also_ids?: string[];
+    head: string;
+    tone?: string;
+    statements: string[];
+    source_path: string;
+  };
+  const run = (statements: Record<string, unknown[]>, leg: 'mom' | 'yoy' = 'mom') =>
+    (
+      extractFigures(
+        {
+          ok: true,
+          mom: {
+            ops: envelope(),
+            ads: null,
+            crossDomain: null,
+            ...(leg === 'mom'
+              ? { evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements, notes: [], companionAttached: true } }
+              : {}),
+          },
+          yoy:
+            leg === 'yoy'
+              ? {
+                  ops: envelope(),
+                  ads: null,
+                  crossDomain: null,
+                  evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements, notes: [], companionAttached: true },
+                }
+              : null,
+          headline: {},
+          limitations: [],
+          meta: {},
+        },
+        `${leg}.ops`,
+      ) as { evidence?: Entry[] }
+    ).evidence!;
+  /** Every id a citation could name: each entry's id plus its aliases. */
+  const allIds = (ev: Entry[]) => ev.flatMap((e) => [e.id, ...(e.also_ids ?? [])]);
+
+  it('window comparability on four roots is one entry naming the other three roots and their ids', () => {
+    const ev = run({
+      ops: [windowCard(), adsCard('ads-paid-demand-vs-revenue', 'Paid demand moved with the total.')],
+      units: [windowCard(), adsCard('ads-paid-orders-vs-units', 'Paid orders rose 4%.')],
+      sessions: [windowCard()],
+      conversion: [windowCard()],
+    });
+    const w = ev.filter((e) => e.kind === 'ops-window-comparability');
+    expect(w).toHaveLength(1);
+    expect(w[0]!.id).toBe('mom.evidence.ops.ops-window-comparability');
+    expect(w[0]!.metric).toBe('ops');
+    expect(w[0]!.also_metrics).toEqual(['units', 'sessions', 'conversion']);
+    expect(w[0]!.also_ids).toEqual([
+      'mom.evidence.units.ops-window-comparability',
+      'mom.evidence.sessions.ops-window-comparability',
+      'mom.evidence.conversion.ops-window-comparability',
+    ]);
+    expect(w[0]!.statements).toHaveLength(2);
+    expect(w[0]!.source_path).toBe('mom.evidence.statements.ops[0]');
+  });
+
+  it('every id the uncollapsed extraction gave still resolves, each exactly once', () => {
+    const ev = run({
+      ops: [windowCard(), surgeCard(), adsCard('ads-paid-demand-vs-revenue', 'Paid demand moved with the total.')],
+      units: [windowCard(), surgeCard(), adsCard('ads-paid-orders-vs-units', 'Paid orders rose 4%.')],
+      sessions: [windowCard(), surgeCard()],
+      conversion: [windowCard(), surgeCard()],
+    });
+    const ids = allIds(ev);
+    const expected = ['ops', 'units', 'sessions', 'conversion'].flatMap((m) => [
+      `mom.evidence.${m}.ops-window-comparability`,
+      `mom.evidence.${m}.ops-entity-surges-summary`,
+    ]);
+    expected.push('mom.evidence.ops.ads-paid-demand-vs-revenue', 'mom.evidence.units.ads-paid-orders-vs-units');
+    expect([...ids].sort()).toEqual([...expected].sort());
+    expect(new Set(ids).size).toBe(ids.length);
+    // 10 served groups became 4 entries.
+    expect(ev).toHaveLength(4);
+  });
+
+  it('cards of one kind whose text differs by one number stay separate, each with its own root', () => {
+    const ev = run({
+      ops: [promoCard('They account for +$9.5k — 56% of the OPS change sits in them.')],
+      units: [promoCard('They account for +318 units — 66% of the Units change sits in them.')],
+      conversion: [promoCard('They account for +1.6 pts C2C.')],
+      ops_per_unit: [promoCard('They account for +1.6 pts C2C.', 'negative')],
+    });
+    expect(ev).toHaveLength(4);
+    expect(ev.map((e) => e.metric)).toEqual(['ops', 'units', 'conversion', 'ops_per_unit']);
+    for (const e of ev) {
+      expect('also_metrics' in e).toBe(false);
+      expect('also_ids' in e).toBe(false);
+    }
+    // Same lines, opposite tone: not the same card.
+    expect(ev[2]!.tone).toBe('positive');
+    expect(ev[3]!.tone).toBe('negative');
+  });
+
+  it('a one-character difference in a statement line is enough to keep two entries', () => {
+    const a = windowCard();
+    const b = windowCard();
+    b.questions[1] = q('A 2-day revenue surge on Aug 14 – Aug 15 supplied 8% of Aug 2026 revenue, a short burst rather than a sustained step up.');
+    const ev = run({ ops: [a], units: [b] });
+    expect(ev.map((e) => e.id)).toEqual(['mom.evidence.ops.ops-window-comparability', 'mom.evidence.units.ops-window-comparability']);
+  });
+
+  it('a finding and its details tail repeated on two roots collapse separately, tail ids still from the parent', () => {
+    const ev = run({
+      ops: [availabilityFinding(), adsCard('ads-paid-demand-vs-revenue', 'Paid demand moved with the total.'), availabilityTail()],
+      units: [availabilityFinding(), adsCard('ads-paid-orders-vs-units', 'Paid orders rose 4%.'), availabilityTail()],
+    });
+    expect(ev.map((e) => e.id)).toEqual([
+      'mom.evidence.ops.ops-availability-net',
+      'mom.evidence.ops.ads-paid-demand-vs-revenue',
+      'mom.evidence.ops.ops-availability-net.details',
+      'mom.evidence.units.ads-paid-orders-vs-units',
+    ]);
+    const tail = ev[2]!;
+    expect(tail.parent_kind).toBe('ops-availability-net');
+    expect(tail.also_metrics).toEqual(['units']);
+    expect(tail.also_ids).toEqual(['mom.evidence.units.ops-availability-net.details']);
+    expect(ev[0]!.also_ids).toEqual(['mom.evidence.units.ops-availability-net']);
+  });
+
+  it('a tail that differs keeps its own entry, and its parent id resolves through the collapsed finding', () => {
+    const ev = run({
+      ops: [availabilityFinding(), availabilityTail()],
+      units: [availabilityFinding(), availabilityTail('Estimated lost sales by item:\n\nDrove the rise:\n• Item Group B\n   +41 units · OOS 2 → 9 days')],
+    });
+    expect(ev.map((e) => e.id)).toEqual([
+      'mom.evidence.ops.ops-availability-net',
+      'mom.evidence.ops.ops-availability-net.details',
+      'mom.evidence.units.ops-availability-net.details',
+    ]);
+    // The units tail's parent is the units copy of the finding, now an alias.
+    const unitsTail = ev[2]!;
+    const parentId = unitsTail.id.replace(/\.details$/, '');
+    const parent = ev.find((e) => e.id === parentId || (e.also_ids ?? []).includes(parentId));
+    expect(parent?.kind).toBe(unitsTail.parent_kind);
+    expect(parent?.also_metrics).toContain('units');
+  });
+
+  it('two identical cards under the SAME root are not merged into each other', () => {
+    // The engine served two; listing one would read as one. A third root's
+    // identical copy joins the first, and also_metrics names other roots only.
+    const ev = run({ ops: [windowCard(), windowCard()], units: [windowCard()] });
+    expect(ev.map((e) => e.id)).toEqual(['mom.evidence.ops.ops-window-comparability', 'mom.evidence.ops.ops-window-comparability.1']);
+    expect(ev[0]!.also_metrics).toEqual(['units']);
+    expect(ev[0]!.also_ids).toEqual(['mom.evidence.units.ops-window-comparability']);
+    expect('also_metrics' in ev[1]!).toBe(false);
+    for (const e of ev) expect(e.also_metrics ?? []).not.toContain(e.metric);
+  });
+
+  it('an alias keeps a collision-suffixed id exactly as the uncollapsed extraction gave it', () => {
+    // Unstamped cards slug their head; the second "period data gap" on units
+    // takes the `.1` suffix because the first one there differs from ops.
+    const plain = (line: string) => ({ head: 'Period data gap', questions: [q(line)] });
+    const ev = run({ ops: [plain('Gap A.')], units: [plain('Gap B.'), plain('Gap A.')] });
+    expect(ev.map((e) => e.id)).toEqual(['mom.evidence.ops.period_data_gap', 'mom.evidence.units.period_data_gap']);
+    expect(ev[0]!.also_ids).toEqual(['mom.evidence.units.period_data_gap.1']);
+  });
+
+  it('keeps served order with the later copies removed, and puts the alias fields next to metric', () => {
+    const ev = run({
+      ops: [windowCard(), adsCard('ads-paid-demand-vs-revenue', 'Paid demand moved with the total.')],
+      sessions: [adsCard('ads-paid-vs-traffic', 'Paid clicks moved with the decline.'), windowCard()],
+      buy_box: [{ id: 'ops-buybox-flat-band', head: 'buy box held', questions: [q('Buy Box stayed between 97% and 99%.')] }],
+    });
+    expect(ev.map((e) => e.id)).toEqual([
+      'mom.evidence.ops.ops-window-comparability',
+      'mom.evidence.ops.ads-paid-demand-vs-revenue',
+      'mom.evidence.sessions.ads-paid-vs-traffic',
+      'mom.evidence.buy_box.ops-buybox-flat-band',
+    ]);
+    expect(Object.keys(ev[0]!)).toEqual(['id', 'kind', 'metric', 'also_metrics', 'also_ids', 'head', 'statements', 'source_path']);
+  });
+
+  it('a card served on one root carries no alias fields at all', () => {
+    const ev = run({ ops: [surgeCard()] });
+    expect(ev).toHaveLength(1);
+    expect(Object.keys(ev[0]!)).toEqual(['id', 'kind', 'metric', 'head', 'statements', 'source_path']);
+  });
+
+  it('collapses within the YoY document the same way, under yoy ids', () => {
+    const ev = run({ ops: [windowCard()], units: [windowCard()] }, 'yoy');
+    expect(ev).toHaveLength(1);
+    expect(ev[0]!.id).toBe('yoy.evidence.ops.ops-window-comparability');
+    expect(ev[0]!.also_ids).toEqual(['yoy.evidence.units.ops-window-comparability']);
+  });
+});
