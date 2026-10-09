@@ -142,7 +142,7 @@ Fallback to `data.json` only if the `data.md` file is absent or capped.
 This file contains pre-executed results for all queries, keyed by query ID:
 - `MPR-01` — VC account-level monthly metrics (sellermonthmetric): `ad_spend, ad_sales, orders, acos, ops` for curr_month, prior_month, and prior_year_month
 - `MPR-02` — SC account-level monthly metrics (campaignmetric with attribution CASE block): `ad_spend, ad_sales, orders` for the reporting period with 7d/14d attribution split by campaign type
-- `LIB-PT-01` — Price test query (conditional — present only when `structural_events` includes an active price_test): `asin, total_sales, units` for tested vs. untested sub-lines
+- `LIB-PT-01` — Price test query (conditional — present only when `structural_events` includes an active price_test): one row per ASIN, `Title, ChildAsin, sales_prior, sales_test, units_prior, units_test, sessions_prior, sessions_test` for tested vs. untested sub-lines (sessions are on selling days only)
 
 Only one of MPR-01 or MPR-02 will be populated per run. The pre-fetch script runs both; the model uses whichever applies to the account type.
 

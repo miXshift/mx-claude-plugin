@@ -179,7 +179,7 @@ Run when brand context documents an active price test.
 
 Parameters:
 - `:seller_id` from `context.yaml::accounts[0].seller_id`
-- `:title_pattern` from `context.yaml::structural_events[].metadata.title_pattern` (e.g., `'%Spartan%'`)
+- `:title_pattern` from `context.yaml::structural_events[].metadata.title_pattern` (e.g., `'%Lavender%'`)
 - `:prior_start`, `:prior_end` from price-test event metadata
 - `:test_start`, `:test_end` from price-test event metadata
 

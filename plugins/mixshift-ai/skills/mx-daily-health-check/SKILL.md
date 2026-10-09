@@ -182,7 +182,7 @@ This file contains pre-executed results for all queries, keyed by query ID:
 - `DHC-10` — Data lag check (campaign-level vs. keyword-level spend comparison): `campaign_spend_t1, keyword_spend_t1`
 - `DHC-11` — Keyword-level spend comparison supplemental data
 - `DHC-12` — Inventory snapshot (latest per ASIN, FBA-only): ASINs at risk by SellableQuantity / DaysOfSupply / Alert. Note: as of 2026-05-21, the SQL was patched to filter to the latest snapshot per ASIN — earlier behavior returned all historical OOS rows mixed with current state, producing false stockout alarms. If this query still surfaces every active SKU as zero-quantity, log a data-quality flag (do not draw inventory conclusions).
-- `LIB-PT-01` — Price test query (conditional — present only when `structural_events` includes an active price_test): `asin, total_sales, units` for tested vs. untested sub-lines
+- `LIB-PT-01` — Price test query (conditional — present only when `structural_events` includes an active price_test): one row per ASIN, `Title, ChildAsin, sales_prior, sales_test, units_prior, units_test` (plus `sessions_prior, sessions_test`, not used here) for tested vs. untested sub-lines
 
 All queries share the join key: `(SellerID, date)` at account level; dimensional queries use `(SellerID, CampaignName/Objective/ItemGroup, date)` as appropriate.
 
