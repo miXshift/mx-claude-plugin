@@ -22,7 +22,7 @@
  * where blocking for a few minutes is fine — it is NOT for chat surfaces.
  *
  * Exit / telemetry contract: action handlers set `process.exitCode` and
- * `return`; cli.ts owns the single `process.exit()` after flushing telemetry.
+ * `return`; cli.ts owns the exit, after flushing telemetry.
  * Failures branch the exit code on the typed failure `kind` (see
  * exitCodeForKind) so terminal scripts can react; chat reads `failure_kind`
  * from the --json envelope.

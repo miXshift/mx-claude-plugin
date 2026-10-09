@@ -134,5 +134,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+  // Not process.exit(1): straight after a fetch it aborts on Windows + Node 24
+  // (the shell would see 127). Let the loop drain with the code set.
+  process.exitCode = 1;
 });
