@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { redactArgs } from './redact.js';
 
 describe('redactArgs', () => {
+  it('forecast budget: keeps the month, drops the amount and the note, in both flag forms (red team 2026-10-08)', () => {
+    expect(
+      redactArgs(['--json', 'forecast', 'budget', 'set', '--scope', 'src:fake_db:42', '--set', '2026-10=50,000', '--set=2026-11=40000', '--note', 'from the sheet', '--note=link']),
+    ).toEqual(['--json', 'forecast', 'budget', 'set', '--scope', 'src:fake_db:42', '--set', '2026-10=<redacted>', '--set=2026-11=<redacted>', '--note', '<redacted>', '--note=<redacted>']);
+    // A value that is not a month pair is dropped whole; a following flag is never swallowed.
+    expect(redactArgs(['forecast', 'budget', 'set', '--set', 'oops', '--set', '--scope', 'x'])).toEqual(['forecast', 'budget', 'set', '--set', '<redacted>', '--set', '--scope', 'x']);
+    // Elsewhere --set and --note mean something else and are left alone.
+    expect(redactArgs(['ads', 'call', 'x', '--note', 'keep me'])).toEqual(['ads', 'call', 'x', '--note', 'keep me']);
+  });
+
   it('preserves ordinary business args (subcommand + SQL + flags)', () => {
     expect(
       redactArgs(['data', 'query', 'SELECT * FROM campaignmetric WHERE SellerID = 683']),

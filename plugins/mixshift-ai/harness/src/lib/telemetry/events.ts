@@ -236,6 +236,15 @@ export const EventName = {
   IntelligenceRunRetrieved: 'intelligence.run_retrieved',
   IntelligenceRunFailed: 'intelligence.run_failed',
 
+  // Forecast budgets (`mixshift forecast budget`, lib/forecast/budget.ts): a
+  // person's own monthly sponsored-ads budget written to the gateway's forecast
+  // state. Payload: scope_id, op, months / written / unchanged / not_set COUNTS,
+  // failure_kind. Never an amount and never the note (the brand's figures).
+  ForecastBudgetShown: 'forecast.budget_shown',
+  ForecastBudgetSet: 'forecast.budget_set',
+  ForecastBudgetCleared: 'forecast.budget_cleared',
+  ForecastBudgetFailed: 'forecast.budget_failed',
+
   // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
   // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
   // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,

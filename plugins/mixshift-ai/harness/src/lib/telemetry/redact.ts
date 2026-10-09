@@ -64,6 +64,25 @@ function flagName(arg: string): string {
 }
 
 /**
+ * Business figures, not secrets: inside `forecast budget ...` the VALUE of `--set`
+ * (`YYYY-MM=amount`) keeps its month and loses the amount, and `--note` loses its
+ * text. A budget is the brand's own figure and the privacy page says it is not
+ * collected (red team 2026-10-08, P1: cli.command_run carried both verbatim).
+ */
+function isForecastBudget(argv: readonly string[]): boolean {
+  const i = argv.indexOf('forecast');
+  return i >= 0 && argv[i + 1] === 'budget';
+}
+
+function redactBudgetValue(name: string, value: string): string {
+  if (name === 'note') return REDACTED;
+  const m = /^\s*(\d{4}-\d{2})\s*=/.exec(value);
+  return m ? `${m[1]}=${REDACTED}` : REDACTED;
+}
+
+const BUDGET_VALUE_FLAG = /^(set|note)$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -72,8 +91,31 @@ export function redactArgs(argv: readonly string[]): string[] {
   const out: string[] = [];
   // Set by a secret-named flag: the IMMEDIATE next token is that flag's value.
   let redactNextValue = false;
+  const budget = isForecastBudget(argv);
+  // Set by a budget figure flag (`--set` / `--note` under `forecast budget`).
+  let budgetFlag: string | null = null;
 
   for (const arg of argv) {
+    if (budgetFlag !== null) {
+      const name = budgetFlag;
+      budgetFlag = null;
+      if (!(arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg))) {
+        out.push(redactBudgetValue(name, arg));
+        continue;
+      }
+    }
+    if (budget && arg.startsWith('--')) {
+      const eq = arg.indexOf('=');
+      const name = flagName(eq >= 0 ? arg.slice(0, eq) : arg);
+      if (BUDGET_VALUE_FLAG.test(name)) {
+        if (eq >= 0) out.push(`${arg.slice(0, eq)}=${redactBudgetValue(name, arg.slice(eq + 1))}`);
+        else {
+          out.push(arg);
+          budgetFlag = name;
+        }
+        continue;
+      }
+    }
     if (redactNextValue) {
       redactNextValue = false;
       // Only consume this token as the secret flag's value if it is NOT itself
