@@ -21,11 +21,14 @@
  *        with `process.exitCode` set, NOT by calling `process.exit()`
  *        straight away. On Windows with Node 24, `process.exit()` right
  *        after a `fetch` (the flush is one) aborts the process on a libuv
- *        assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, src\winsync.c)
+ *        assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, src/win/async.c)
  *        and the shell sees exit 127 / 0xC0000409 on a command that worked.
  *        An unref'd backstop timer still calls `process.exit()` if something
- *        left open would keep the process alive; by then the connection has
- *        long closed. See EXIT_BACKSTOP_MS.
+ *        left open would keep the process alive. The abort only happens in the
+ *        ~50 ms after a fetch completes (measured 2026-10-09), so the backstop
+ *        is safe unless work abandoned on a deadline happens to finish a fetch
+ *        just before it fires: rare, and no fixed delay avoids it. See
+ *        EXIT_BACKSTOP_MS.
  *
  *   Why this matters: every `track()` call only appends to a local
  *   JSONL queue. The HTTP POST to Supabase happens in `maybeFlush()`.
@@ -165,7 +168,7 @@ applyExitOverride(program);
 //
 // We no longer drain the queue here — the `finally` block at the bottom
 // of this file flushes whatever's in the queue (including events emitted
-// during this very invocation) before `process.exit`. One round trip
+// during this very invocation) before the process exits. One round trip
 // instead of two, and it covers retries from prior failed flushes too.
 const isTelemetryCommand = process.argv[2] === 'telemetry';
 if (!isTelemetryCommand) {

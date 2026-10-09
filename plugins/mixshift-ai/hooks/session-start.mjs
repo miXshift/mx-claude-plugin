@@ -852,11 +852,10 @@ async function runUpdateNoticeStage() {
         systemMessage,
         hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext },
       }) + '\n';
-    // Await the write's callback rather than fire-and-forget: process.exit(0)
-    // at the top level runs as soon as this async function resolves, and on
-    // a pipe (as opposed to a TTY) a write can still be buffered when that
-    // happens, truncating the notice. This guarantees the OS has the full
-    // payload before we let the process move on to exit.
+    // Await the write's callback rather than fire-and-forget: on a pipe (as
+    // opposed to a TTY) a write can still be buffered when the process ends
+    // (the unref'd backstop below can end it), truncating the notice. This
+    // guarantees the OS has the full payload before we let the process exit.
     await new Promise((res, rej) => {
       process.stdout.write(payload, (err) => (err ? rej(err) : res()));
     });
@@ -871,8 +870,9 @@ async function runUpdateNoticeStage() {
 await runUpdateNoticeStage();
 // End by letting the loop drain, not process.exit(0) straight after the version
 // check's fetch: on Windows with Node 24 that aborts on a libuv assertion
-// (UV_HANDLE_CLOSING, src\winsync.c) and the hook reports a failed exit to
-// Claude Code on every session start. The backstop is unref'd: it never delays a
+// (UV_HANDLE_CLOSING, src/win/async.c), so the session start that ran the
+// daily version check reported a failed exit to Claude Code and its update
+// notice was lost. The backstop is unref'd: it never delays a
 // clean exit and only ends a run something left open.
 process.exitCode = 0;
 setTimeout(() => process.exit(0), 1000).unref();
