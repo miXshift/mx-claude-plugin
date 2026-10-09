@@ -27,7 +27,8 @@
 -- sessions, and unit_session_pct_selling_days and buy_box_pct_selling_days
 -- leave out every day the product did not sell, so they read high for slow
 -- sellers (a day the product lost the Buy Box and sold nothing has no row).
--- Compare days_with_sales with days_in_range before quoting either. Do not
+-- Compare days_with_sales with days_in_range (the requested days, which
+-- can run past the latest day loaded) before quoting either. Do not
 -- quote them as the product's conversion or Buy Box rate: for all days,
 -- pull Amazon's Sales and Traffic report at CHILD grain (mx-amazon-report).
 -- For account sessions and conversion use business_reports_dpst_date.

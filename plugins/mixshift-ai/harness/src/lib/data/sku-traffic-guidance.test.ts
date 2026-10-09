@@ -68,8 +68,19 @@ describe('wording: how Amazon delivers the report, never a fault in it', () => {
     const t = await describeTable('business_reports_dpst_sku');
     const catalog = await readFile(pluginPath('shared', 'sql-library', 'catalog.yaml'), 'utf8');
     const entry = (id: string) => catalog.slice(catalog.indexOf(`- id: ${id}\n`), catalog.indexOf('\n\n', catalog.indexOf(`- id: ${id}\n`)));
-    // The fragment is folded into CHANGELOG.md and deleted at the release cut.
-    const fragment = await readFile(pluginPath('..', '..', 'changelog.d', 'changed-traffic-once-per-product.md'), 'utf8').catch(() => null);
+    // The fragment is folded into CHANGELOG.md and deleted at the release cut;
+    // until then a moved or renamed fragment must not be skipped silently.
+    const fragmentDir = pluginPath('..', '..', 'changelog.d');
+    const fragments = await readdir(fragmentDir).catch(() => [] as string[]);
+    const pending = fragments.some((f) => f !== 'README.md' && f.endsWith('.md'));
+    const fragment = await readFile(`${fragmentDir}/changed-traffic-once-per-product.md`, 'utf8').catch(() => null);
+    if (pending && fragment === null) {
+      // Fragments are queued but this one is gone: fine only after a cut that folded it.
+      const changelog = await readFile(pluginPath('..', '..', 'CHANGELOG.md'), 'utf8');
+      expect(changelog).toMatch(/counted once per product per day/);
+    }
+    const skill = await readFile(pluginPath('skills', 'mx-data-explore', 'SKILL.md'), 'utf8');
+    const trafficParagraph = skill.slice(skill.indexOf('**Traffic by ASIN from'), skill.indexOf('### Pattern 4'));
     const texts: Record<string, string> = {
       'data-tables': [t!.description, ...(t!.gotchas ?? [])].join(' '),
       'LIB-TRAFFIC-01.sql': comments(await librarySql('LIB-TRAFFIC-01.sql')),
@@ -77,6 +88,7 @@ describe('wording: how Amazon delivers the report, never a fault in it', () => {
       'catalog LIB-TRAFFIC-01': entry('LIB-TRAFFIC-01'),
       'catalog LIB-PT-01': entry('LIB-PT-01'),
       ...(fragment === null ? {} : { fragment }),
+      'mx-data-explore traffic paragraph': trafficParagraph,
     };
     for (const [where, text] of Object.entries(texts)) {
       expect(text.length, where).toBeGreaterThan(50);
@@ -143,7 +155,7 @@ describe('every library query that totals SKU-level traffic', () => {
     const readers: string[] = [];
     for (const f of files) {
       const sql = code(await readFile(`${dir}/${f}`, 'utf8'));
-      if (!sql.includes('business_reports_dpst_sku') || !TRAFFIC.test(sql)) continue;
+      if (!/business_reports_dpst_sku/i.test(sql) || !new RegExp(TRAFFIC.source, 'i').test(sql)) continue;
       readers.push(f);
       const key = sql.match(ITEM_DAY_KEY);
       expect(key, f).not.toBeNull();
@@ -161,6 +173,9 @@ describe('every library query that totals SKU-level traffic', () => {
         .replace(new RegExp(`\\bAS\\s+(${COLS})\\b`, 'g'), '')
         .replace(new RegExp(`\\b${collapsed}\\.(${COLS})\\b`, 'g'), '');
       expect(rest, f).not.toMatch(new RegExp(`\\b(${COLS})\\b`));
+      // MySQL ignores the case of column names: no qualified read in any case either
+      // (bare lower-case words are the queries' own output aliases, e.g. `sessions`).
+      expect(rest, f).not.toMatch(new RegExp(`\\b\\w+\\.\`?(${COLS})\\b`, 'i'));
       expect(sql, f).not.toMatch(/UnitSessionPercentage/); // per SKU: never MAX, SUM or average
     }
     expect(readers.sort()).toEqual(['LIB-PT-01.sql', 'LIB-TRAFFIC-01.sql']);
