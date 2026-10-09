@@ -345,6 +345,16 @@ summing them across ASINs overstates demand. Read the plugin's `shared/sql-libra
 dates and the ASIN (or NULL for all) into it as literals, and run it as a custom query (Pattern 4).
 See also `mixshift data describe sqp_weekly`.
 
+**Traffic by ASIN from `business_reports_dpst_sku` (sessions, page views, Buy Box, conversion).**
+Amazon reports traffic per product (ASIN), and this SKU-level table repeats it on each SKU row of
+the product for the day, while sales and units are each SKU's own. So count traffic once per
+product per day: MAX the traffic columns per (SellerID, ChildAsin, day), SUM the sales columns,
+then add the days up. Read the plugin's `shared/sql-library/LIB-TRAFFIC-01.sql` (sessions, page
+views, units, sales, unit session % and page-view-weighted Buy Box % per ASIN), put the seller, the
+two dates and the ASIN (or NULL for all) into it as literals, and run it as a custom query
+(Pattern 4). Its sessions are sessions on days the product sold; for account sessions and
+conversion use `business_reports_dpst_date`. See also `mixshift data describe business_reports_dpst_sku`.
+
 ### Pattern 4 — Custom query
 ```
 User: "Total spend by campaign type last 30 days for Ridgepak"

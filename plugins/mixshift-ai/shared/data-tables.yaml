@@ -309,7 +309,7 @@ tables:
       - "Sales here is `SalesAmount`. Its SKU-level sibling business_reports_dpst_sku calls the same thing `Amount`. Check which table you are in before naming the money column."
 
   business_reports_dpst_sku:
-    description: "Daily SKU/ASIN-level sales for Seller Central. Amount, UnitsOrdered, Sessions, PageViews, BuyBoxPercentage. Join to mws_items for catalog metadata (Brand, ItemGroup, Tags)."
+    description: "Daily sales and traffic per SKU for Seller Central, one row per SKU per day (only on days the SKU sold). Amount, UnitsOrdered and TotalOrderItems are each SKU's own and add up. Sessions, PageViews and BuyBoxPercentage (and the Browser*, MobileApp* and *Percentage traffic columns) are reported by Amazon per product (ASIN) and repeated on each of the product's SKU rows for that day, so count them once per product per day: MAX them per (SellerID, ChildAsin, day), SUM the sales columns, then add the days up. Ready-made: shared/sql-library/LIB-TRAFFIC-01.sql (see gotchas). Join to mws_items for catalog metadata (Brand, ItemGroup, Tags)."
     category: ops_revenue
     account_types: [SC]
     time_series: true
@@ -323,6 +323,10 @@ tables:
       - "There is no `Date`, `ReportDate` or `SnapshotDate` column. Filter on `DateTime`."
       - "Sales here is `Amount`, NOT `SalesAmount` (that is the day-level sibling business_reports_dpst_date) and NOT `OrderedProductSales` (which does not exist in this warehouse)."
       - "The ASIN columns are `ChildAsin` and `ParentAsin` (MySQL ignores letter case, so `ChildASIN` also works). There is no column named just `ASIN` or `Asin`."
+      - "Traffic is per product, not per SKU: Amazon reports Sessions, PageViews, BuyBoxPercentage and the Browser*/MobileApp*/*Percentage traffic columns per ASIN and repeats them on each SKU row of that ASIN for the day. Before any total, collapse to one row per (SellerID, ChildAsin, DATE(DateTime)) with MAX of each traffic column and SUM of Amount, UnitsOrdered and TotalOrderItems; then sum the days. Do not SUM a traffic column straight across SKU rows, and do not take one MAX over a whole date range (that returns the best single day, not the total). Keep SellerID in the key: one account can hold several sellers of the same ASIN."
+      - "Buy Box %: weight by page views over those per-product daily rows, 100 * SUM(BuyBoxPercentage * PageViews) / SUM(PageViews). BuyBoxPercentage is stored as a fraction (0.9 = 90%)."
+      - "Conversion: recompute it as SUM(UnitsOrdered) / sessions counted once per product per day. UnitSessionPercentage is per SKU, so never average or sum it. Rows exist only on days a SKU sold, so these are sessions on selling days; for account sessions and conversion use business_reports_dpst_date."
+      - "Showing rows per SKU is fine: each SKU row carries its product's traffic, which is how Amazon delivers the report. Only totals and averages across SKU rows need the per-product collapse."
 
   business_reports_dpst_total:
     description: "DEPRECATED - no longer populated (no new rows since 2022). Do not use. For account-level daily totals, aggregate business_reports_dpst_date instead."

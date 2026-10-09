@@ -418,7 +418,7 @@ queries:
 
   - id: LIB-PT-01
     file: LIB-PT-01.sql
-    purpose: Price-test ASIN-level sales/units/sessions comparison between two windows.
+    purpose: Price-test ASIN-level sales/units/sessions comparison between two windows (one row per ASIN, each product's sessions counted once per day).
     consumers: [mx-daily-health-check, mx-runaway-spend-check]
     tier: 1
     notes: |
@@ -437,6 +437,21 @@ queries:
       columns repeat on every ASIN row, so they are MAX'd per (query, week)
       and only the Asin*Count columns are summed. Not for vendors. Not a
       skill sql_ids entry: it is read on demand, not prefetched.
+
+  - id: LIB-TRAFFIC-01
+    file: LIB-TRAFFIC-01.sql
+    purpose: Sessions, page views, units, sales, unit session % and page-view-weighted Buy Box % per ASIN for one Seller Central seller over a date range (optional single-ASIN filter), from business_reports_dpst_sku with each product's traffic counted once per day.
+    consumers: [mx-data-explore]
+    tier: 1
+    notes: |
+      Use for any traffic or conversion question by ASIN on the SKU-level
+      table instead of writing SQL from scratch. Params: seller_id,
+      start_date and end_date (inclusive days), asin (one ASIN or NULL).
+      Amazon reports traffic per product and the SKU-level table repeats it
+      on each SKU row of the product, so traffic is MAX'd per (seller, ASIN,
+      day) and only the sales columns are summed. Sessions are sessions on
+      selling days; account totals come from business_reports_dpst_date.
+      Not a skill sql_ids entry: it is read on demand, not prefetched.
 
   - id: RSC-01
     file: RSC-01.sql

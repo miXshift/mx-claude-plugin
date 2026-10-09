@@ -508,7 +508,10 @@ label any per-ASIN or per-group session figure as "sessions on selling days", an
 the ENGINE's traffic and conversion bridge legs as decomposition shape rather than
 quotable account rates until the engine foots them on the account table (routed).
 Confirm it per account with one read-only count of zero-unit rows on the per-item table, and
-record the query in the run record.
+record the query in the run record. Per-ASIN and per-group sessions from the battery and the
+engine count each product's traffic once per day (Amazon repeats a product's sessions, page views
+and Buy Box on each of its SKU rows); if you ever total that table by hand, collapse it to one row
+per ASIN per day first, as `shared/sql-library/LIB-TRAFFIC-01.sql` does.
 
 Flags worth knowing: `--brands "A,B"` names the sub-brand labels for both splits (without it the
 retail split still runs on the catalog labels and the paid split is skipped); the Seller Central
