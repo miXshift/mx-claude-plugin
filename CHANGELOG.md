@@ -3,6 +3,93 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.17
+
+
+### Added
+
+- **A forecast for any account, on request: `mx-max-forecast`.** Ask "what should I
+  expect from [brand] next quarter" and the plugin checks the account is forecastable, gets
+  the forecast from the MixShift Intelligence service, and explains it in plain language
+  with its measured accuracy and what it stands on. When the forecasting app has published
+  a forecast for the account, that is what you get, corrections included; when it has not,
+  you get a forecast the service computes from your warehouse history with the same engine,
+  clearly labelled as computed. Monthly Performance Report Max now asks whether you want a
+  forecast run when none is published for the account, instead of leaving the section out
+  without a word.
+
+- **Your budget, not a guess: tell the forecast what you plan to spend.** When a forecast
+  for an account was computed from its history and nobody has shaped it yet, Forecast Max
+  now asks whether you have a sponsored ads budget for the coming months, offers the one in
+  your brand context or budget sheet when it finds one, and with your yes saves it and runs
+  the forecast again on your numbers. The answer then says month by month whether the spend
+  is your budget or an estimate. You can also do it yourself with
+  `mixshift forecast budget set` (add `--dry-run` to preview), check what is saved with
+  `show`, and go back to the estimate with `clear`. Notes already on a month are kept.
+
+### Changed
+
+- **Sessions and Unit Session % by product are now counted once per product per day.** Amazon
+  reports sessions, page views and Buy Box for each product (ASIN), and its SKU-level report
+  repeats them on every SKU of that product. Report Max's per-brand and per-item traffic, the
+  price-test comparison and the warehouse table notes now count each product's traffic once per
+  day, so sessions and Unit Session % describe the product rather than each of its SKUs.
+  Products sold under one SKU read the same as before; products with several SKUs show fewer
+  sessions and a higher Unit Session % than a SKU-by-SKU total gave. Account-level sessions are
+  unchanged. A new ready-made query gives sessions and page views by ASIN. If you compare a new
+  report with one from before this release, ask Claude to re-run the older month the same way.
+
+- **Monthly Performance Report Max leads its forecast comparison with the number the MixShift
+  forecasting app shows.** When a brand has a current forecast, the month's actual is compared
+  first with the current model's projection, named as that and with a note that the model has
+  already seen the month, so the brief matches the app. The forecast made before the month
+  closed follows, with its measured error, and is still the only figure a beat or miss is
+  stated against.
+
+- **Report Max reads its evidence without the repeats.** In the monthly report
+  with intelligence, some of the engine's "What we know" statements apply word
+  for word to several measures at once (sales, units, traffic and conversion),
+  and Report Max used to read every copy. It now reads each one once, marked
+  with every measure it applies to, so a brief takes less reading to prepare and
+  new evidence from the engine adds less to it. Statements that differ between
+  measures, even by one number, are still read separately, and every reference
+  to a statement in a brief still resolves.
+
+### Fixed
+
+- **On Windows, commands no longer end with "Assertion failed" and a failure code
+  after they worked.** With Node 24 on Windows, most `mixshift` commands finished by
+  printing `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and exiting as if
+  they had failed, so scripts and Claude could read a successful command as a failed
+  one. The plugin's daily update check hit the same problem, so on Windows the "a newer
+  version is available" notice could go missing. This was a Node.js bug on Windows
+  triggered by how the plugin exited after a network request. Commands now exit
+  cleanly with the right code, and the update notice shows again.
+
+- **A report request or a bid change that loses its answer no longer tells you
+  to just try again.** When a call that creates a report or applies a change
+  times out or loses its answer, the plugin now says it may already have gone
+  through and to check before sending it again, instead of calling the service
+  unreachable. Resending a report request can create a duplicate report. The
+  plugin also waits longer for these calls (90 seconds), so a slow report
+  request is less likely to be cut off. With `--json`, these failures, and the
+  ones MixShift itself reports this way, carry `request_outcome: "unknown"`.
+
+- **Search Query Performance: each query's search volume is now counted once per week.** Amazon states a search query's volume once for the query, and the warehouse carries that figure on every one of your ASINs that showed for it. The table notes now say so, and a ready-made query counts each query's volume once per week and works your share out from the counts, so demand and share describe the query the way Amazon reports it. If you have figures from an earlier Search Query Performance question, ask Claude to re-run them on the new basis.
+
+- **Asking for a forecast or an insight now tells you how to ask.** `mixshift
+  intelligence run <id> --help` shows what that insight does and the exact params
+  it takes, `mixshift intelligence catalog` lists them for every insight, and a run
+  refused for its params answers with the shape it wanted, or says where to see it,
+  instead of leaving you to guess.
+
+- **Evidence item lists keep the same reference across wording updates.** In the
+  monthly report with intelligence, a finding's long item list (for example the
+  out-of-stock items behind a traffic decline) is served as its own block. Its
+  reference used to be built from the finding's wording, so a reworded finding
+  broke any citation to the list. The reference now follows the finding itself,
+  so a brief that cites it stays valid when the service updates its wording.
+
 ## 0.8.16
 
 

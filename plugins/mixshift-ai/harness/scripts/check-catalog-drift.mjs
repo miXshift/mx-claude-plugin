@@ -58,6 +58,7 @@ const NOT_OPERATIONS = new Map([
   ['reporting.forecast_audience', 'context.yaml config key read by mx-monthly-report-max (forecast audience)'],
   ['reporting.forecast_scope', 'context.yaml config key read by mx-monthly-report-max (forecast scope key)'],
   ['reporting.thresholds.forecast_actual_tolerance_pct', 'context.yaml config key read by mx-monthly-report-max (forecast vs warehouse actual tolerance)'],
+  ['sales.value', 'field of a published forecast document month row (figures.months[].sales.value) read by mx-max-forecast, not an operation'],
 ]);
 
 function resolveCatalogDir() {
