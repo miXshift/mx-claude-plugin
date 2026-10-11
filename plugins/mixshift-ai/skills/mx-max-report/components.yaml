@@ -6,7 +6,7 @@
 # Keep this file honest: a component whose "how to lift" no longer works is a defect.
 
 schema_version: 1
-skill_id: mx-monthly-report-max
+skill_id: mx-max-report
 
 components:
   - id: two-document-structure

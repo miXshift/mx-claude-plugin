@@ -1,5 +1,5 @@
 ---
-name: mx-monthly-report-max
+name: mx-max-report
 version: 2.5.4
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
@@ -66,15 +66,15 @@ two-document output.
 At the START of this skill, run:
 
 ```bash
-mixshift telemetry emit skill.invoked --skill mx-monthly-report-max
+mixshift telemetry emit skill.invoked --skill mx-max-report
 # If a natural-language trigger matched (NOT a /slash command), also run:
-mixshift telemetry emit skill.trigger_phrase_matched --skill mx-monthly-report-max --trigger-phrase "<the user's exact phrase>"
+mixshift telemetry emit skill.trigger_phrase_matched --skill mx-max-report --trigger-phrase "<the user's exact phrase>"
 ```
 
 At the END, run:
 
 ```bash
-mixshift telemetry emit skill.completed --skill mx-monthly-report-max --outcome <ok|failed|deferred|skipped> --payload-json '{"forecast_setting":"<auto|off|require>","forecast":"<used|absent|prompted|withheld|off|skipped>"}'
+mixshift telemetry emit skill.completed --skill mx-max-report --outcome <ok|failed|deferred|skipped> --payload-json '{"forecast_setting":"<auto|off|require>","forecast":"<used|absent|prompted|withheld|off|skipped>"}'
 ```
 
 Run it in bash, on one line. If the payload is rejected, run the same command again without
@@ -1428,7 +1428,11 @@ over-proposed fact costs one word at the gate, an uncaptured one costs a wrong r
 and a re-ask next month.
 
 **The run ledger** (sidecar in `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/`),
-written every run, consumed mechanically by the next one:
+written every run, consumed mechanically by the next one. The folder keeps this skill's
+name from before it became `mx-max-report`, on purpose: it holds the publish registry, so
+moving it would lose every brand's registered hub URL and the next run would publish a
+new hub instead of adding to the one the client already has. Read and write it at that
+path; do not create a `runs/mx-max-report/` folder.
 
 - The standard inputs: envelope run ids and `engineVersion`, account mode, active
   thresholds and their sources, forecast / attribution / context-freshness states.
