@@ -1,25 +1,20 @@
 ---
 name: mx-amazon-amc
 description: >
-  Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
-  demand, straight from Amazon through MixShift's service. AMC is a clean-room:
-  you submit a SQL workflow against a tenant's AMC instance and Amazon returns
-  aggregated results as downloadable CSVs. This skill owns the full AMC loop:
-  discover the AMC instances an advertising login can reach, inspect the
-  available data sources (tables), help author dialect-correct AMC SQL, submit
-  a workflow execution, poll it to completion across turns, and fetch the
-  results. Also the surface for the paid Amazon Retail Purchases dataset
-  (`amazon_retail_purchases`), which covers every Amazon store purchase whether
-  or not an ad was involved and across a far longer history than the
-  ad-attributed tables: use this skill for customer lifetime value, revenue and
-  repeat rate by ASIN, acquisition cohorts, and repeat-purchase analysis.
-  Also builds AMC audiences: rule-based audiences written as SQL over the
-  instance's audience tables and activated on a DSP advertiser or a
-  sponsored-ads account, with list, status, fix-and-resubmit and delete for
-  failed ones. Reporting is read-only; audience creation is a write, dry-run
-  first and `--commit` only after the user confirms. Routes through the
-  bundled harness CLI. Does not require brand setup, only that the user has
-  signed in (`mixshift auth login`).
+  Run ad-hoc Amazon Marketing Cloud (AMC) clean-room SQL analytics for a
+  merchant, straight from Amazon through MixShift's service. Owns the full
+  AMC loop: find the AMC instances a login can reach, inspect the data
+  sources, help write dialect-correct AMC SQL, submit a workflow, poll it
+  across turns, and fetch the results. Also the surface for the paid Amazon
+  Retail Purchases dataset (`amazon_retail_purchases`), which covers every
+  Amazon store purchase with or without an ad, over a far longer history:
+  use it for customer lifetime value, revenue and repeat rate by ASIN,
+  acquisition cohorts, and repeat-purchase analysis. Also builds AMC
+  audiences (rule-based SQL audiences activated on a DSP advertiser or a
+  sponsored-ads account), with list, status, fix-and-resubmit and delete for
+  failed ones. Reporting is read-only; creating an audience is a write,
+  dry-run first and `--commit` only after the user confirms. No brand setup
+  needed, only sign-in (`mixshift auth login`).
 metadata:
   version: "0.3.0"
   author: "MixShift"

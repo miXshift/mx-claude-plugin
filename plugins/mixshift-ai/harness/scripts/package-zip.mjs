@@ -295,12 +295,15 @@ const marketplaceBuf = blob('.claude-plugin/marketplace.json');
 //   "Plugin validation failed: Plugin description must be at most 500 characters."
 //   "Skill 'skills/mx-brand-context': SKILL.md description cannot contain XML tags"
 // Enforced on the PACKAGED bytes so a zip that would bounce off the console
-// can never ship. Same rules gate PRs in check-docs.mjs. Skill description
-// LENGTH is deliberately unchecked — the console only enforces length on the
-// plugin description, and shortening skill descriptions degrades triggering.
+// can never ship. Same rules gate PRs in check-docs.mjs. Skill descriptions
+// are also capped at 1024 chars: a customer's install rejected 0.8.16 on
+// 2026-10-08 with "field 'description' in SKILL.md must be at most 1024
+// characters" (mx-ops#132). This was unchecked until then because the console
+// did not enforce it, and four descriptions grew past it unnoticed.
 // ---------------------------------------------------------------------------
 
 const CONSOLE_DESC_MAX = 500;
+const SKILL_DESC_MAX = 1024;
 const XML_TAG = /<[^>]+>/;
 
 function assertConsoleDescription(label, desc) {
@@ -348,6 +351,13 @@ for (const rel of pluginRels) {
       `${rel} frontmatter description contains an XML-like tag (${tag[0]}); the Claude ` +
         'admin console rejects it ("SKILL.md description cannot contain XML tags"). ' +
         'Use [placeholder] instead of <placeholder>.',
+    );
+  }
+  if (desc.length > SKILL_DESC_MAX) {
+    fail(
+      `${rel} frontmatter description is ${desc.length} chars; plugin installs reject the ` +
+        `whole plugin over ${SKILL_DESC_MAX} ("field 'description' in SKILL.md must be at most ` +
+        '1024 characters").',
     );
   }
 }

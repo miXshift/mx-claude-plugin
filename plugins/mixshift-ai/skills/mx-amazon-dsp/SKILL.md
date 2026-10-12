@@ -1,26 +1,19 @@
 ---
 name: mx-amazon-dsp
 description: >
-  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
-  through MixShift's service. Two surfaces, addressed differently. REPORTING is
-  async: submit a report, poll it, download it. Reporting itself splits by DATE
-  RANGE: the DSP-native reports reach back only the last 90 days, while Amazon's
-  unified Reporting v1 reaches back years and is the only way to answer "how did
-  DSP do last year" or to pull a monthly history. Use it whenever someone asks
-  for older DSP performance, a year-over-year DSP comparison, or a DSP export
-  the console gives them one year at a time. CAMPAIGN AND CREATIVE
-  READS answer what is actually set up right now: which campaigns and line items
-  exist, which creatives the advertiser has, which creatives are attached to
-  which line items and whether they are live or paused, whether a placement was
-  approved or rejected and why, and which creatives Amazon considers eligible
-  for a given line item. Use it to audit a DSP account, explain why a creative
-  is not delivering, or find the id of a creative or line item. Also owns
-  discovering which DSP advertiser a login can reach, which is the step most
-  DSP work gets stuck on. Read-only throughout: nothing here changes an
-  advertiser, and no write scope is needed. Creating and attaching DSP
-  creatives is NOT available yet; say so plainly rather than improvising.
-  Routes through the bundled harness CLI. Does not require brand setup, only
-  that the user has signed in (`mixshift auth login`).
+  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon.
+  REPORTING: use it whenever someone asks how DSP did last year, for DSP
+  history older than 90 days, a year-over-year DSP comparison, monthly
+  history, or a DSP export the console gives one year at a time. CAMPAIGN AND
+  CREATIVE READS answer what is set up now: which campaigns, line items and
+  creatives exist, which creatives are attached to which line items and
+  whether they are live or paused, whether a placement was approved or
+  rejected and why, and which creatives are eligible for a line item. Use it
+  to audit a DSP account, explain why a creative is not delivering, or find a
+  creative or line item id. Also owns finding which DSP advertiser a login
+  can reach, the step most DSP work gets stuck on. Read-only, no write scope
+  needed: creating or attaching creatives is NOT available yet; say so
+  plainly rather than improvising. No brand setup needed, only sign-in.
 metadata:
   version: "0.3.0"
   author: "MixShift"
