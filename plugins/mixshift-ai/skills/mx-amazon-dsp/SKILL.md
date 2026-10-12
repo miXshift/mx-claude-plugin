@@ -1,20 +1,19 @@
 ---
 name: mx-amazon-dsp
 description: >
-  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
-  through MixShift's service. REPORTING covers DSP performance for any date
-  range, including history older than 90 days (Amazon's unified reporting
-  reaches back years), year-over-year DSP comparisons, and monthly history.
-  CAMPAIGN AND CREATIVE READS answer what is set up now: which campaigns,
-  line items and creatives exist,
-  which creatives are attached to which line items and whether they are live
-  or paused, whether a placement was approved or rejected and why, and which
-  creatives are eligible for a line item. Use it to audit a DSP account,
-  explain why a creative is not delivering, or find a creative or line item
-  id. Also owns finding which DSP advertiser a login can reach, the step most
-  DSP work gets stuck on. Read-only: creating or attaching DSP creatives is
-  NOT available yet; say so plainly rather than improvising. No brand setup
-  needed, only sign-in (`mixshift auth login`).
+  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon.
+  REPORTING: use it whenever someone asks how DSP did last year, for DSP
+  history older than 90 days, a year-over-year DSP comparison, monthly
+  history, or a DSP export the console gives one year at a time. CAMPAIGN AND
+  CREATIVE READS answer what is set up now: which campaigns, line items and
+  creatives exist, which creatives are attached to which line items and
+  whether they are live or paused, whether a placement was approved or
+  rejected and why, and which creatives are eligible for a line item. Use it
+  to audit a DSP account, explain why a creative is not delivering, or find a
+  creative or line item id. Also owns finding which DSP advertiser a login
+  can reach, the step most DSP work gets stuck on. Read-only, no write scope
+  needed: creating or attaching creatives is NOT available yet; say so
+  plainly rather than improvising. No brand setup needed, only sign-in.
 metadata:
   version: "0.3.0"
   author: "MixShift"
