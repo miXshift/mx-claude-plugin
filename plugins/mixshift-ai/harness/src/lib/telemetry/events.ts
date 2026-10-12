@@ -245,6 +245,15 @@ export const EventName = {
   ForecastBudgetCleared: 'forecast.budget_cleared',
   ForecastBudgetFailed: 'forecast.budget_failed',
 
+  // Forecast sub-brands (`mixshift forecast sub-brand`, lib/forecast/sub-brand.ts):
+  // a brand inside an account, defined by labels, that a forecast reads on its own
+  // (mx-ops#134). Payload: scope_id, seller, kind, item_values / campaign_values
+  // COUNTS, created / deleted counts, failure_kind. Never the name or the labels.
+  ForecastSubBrandListed: 'forecast.sub_brand_listed',
+  ForecastSubBrandDefined: 'forecast.sub_brand_defined',
+  ForecastSubBrandRemoved: 'forecast.sub_brand_removed',
+  ForecastSubBrandFailed: 'forecast.sub_brand_failed',
+
   // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
   // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
   // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,

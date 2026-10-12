@@ -53,8 +53,9 @@ const rowsOf = (...rows: StoredMonthRow[]) => new Map(rows.map((r) => [r.key, r]
 describe('inputs', () => {
   it('canonicalises the scope id the way the gateway stores it, and refuses anything else', () => {
     expect(canonicalScopeId('src:Fake_DB:042')).toBe('src:fake_db:42');
-    // A sub-brand is the app's: refused, with its own sentence (the computed forecast never serves one).
-    expect(canonicalScopeId(' src:fake_db:42:scope:outdoor ')).toBeNull();
+    // A sub-brand inside the account is a forecast scope of its own (mx-ops#134); its key is kept as given.
+    expect(canonicalScopeId(' src:Fake_DB:42:scope:outdoor ')).toBe('src:fake_db:42:scope:outdoor');
+    expect(canonicalScopeId('src:fake_db:42:scope:OUT')).toBeNull();
     expect(isSubBrandScope(' src:fake_db:42:scope:outdoor ')).toBe(true);
     expect(isSubBrandScope('src:fake_db:42')).toBe(false);
     for (const bad of ['fake_db:42', 'src:fake db:42', 'src:fake_db:', 'fb:override:src:x:1:2026-10-01']) {
