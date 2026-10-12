@@ -83,6 +83,18 @@ function redactBudgetValue(name: string, value: string): string {
 const BUDGET_VALUE_FLAG = /^(set|note)$/;
 
 /**
+ * The same for `forecast sub-brand ...`: the VALUES of `--name`, `--item-label` and
+ * `--campaign-label` are the brand's own names and labels, which the privacy page
+ * says are not collected (red team 2026-10-12 on #215, P1).
+ */
+function isForecastSubBrand(argv: readonly string[]): boolean {
+  const i = argv.indexOf('forecast');
+  return i >= 0 && argv[i + 1] === 'sub-brand';
+}
+
+const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -92,7 +104,12 @@ export function redactArgs(argv: readonly string[]): string[] {
   // Set by a secret-named flag: the IMMEDIATE next token is that flag's value.
   let redactNextValue = false;
   const budget = isForecastBudget(argv);
-  // Set by a budget figure flag (`--set` / `--note` under `forecast budget`).
+  const subBrand = isForecastSubBrand(argv);
+  // The business-value flags of this command, and how a value is redacted.
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
+  // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
+  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`).
   let budgetFlag: string | null = null;
 
   for (const arg of argv) {
@@ -100,15 +117,15 @@ export function redactArgs(argv: readonly string[]): string[] {
       const name = budgetFlag;
       budgetFlag = null;
       if (!(arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg))) {
-        out.push(redactBudgetValue(name, arg));
+        out.push(redactValue(name, arg));
         continue;
       }
     }
-    if (budget && arg.startsWith('--')) {
+    if (valueFlag !== null && arg.startsWith('--')) {
       const eq = arg.indexOf('=');
       const name = flagName(eq >= 0 ? arg.slice(0, eq) : arg);
-      if (BUDGET_VALUE_FLAG.test(name)) {
-        if (eq >= 0) out.push(`${arg.slice(0, eq)}=${redactBudgetValue(name, arg.slice(eq + 1))}`);
+      if (valueFlag.test(name)) {
+        if (eq >= 0) out.push(`${arg.slice(0, eq)}=${redactValue(name, arg.slice(eq + 1))}`);
         else {
           out.push(arg);
           budgetFlag = name;

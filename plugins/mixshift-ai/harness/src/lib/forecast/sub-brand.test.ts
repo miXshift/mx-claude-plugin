@@ -7,14 +7,14 @@ const RLO = String.fromCharCode(0x202e);
 
 describe('labels and names', () => {
   it('cleans labels as the app does: trimmed, blanks dropped, each once, case kept', () => {
-    expect(cleanLabels([' Summit ', 'Summit', '', '  ', 'Summit CA'], '--item-label')).toEqual(['Summit', 'Summit CA']);
+    expect(cleanLabels([' Northwind ', 'Northwind', '', '  ', 'Northwind CA'], '--item-label')).toEqual(['Northwind', 'Northwind CA']);
     expect(() => cleanLabels(['x'.repeat(201)], '--item-label')).toThrow(/at most 200 characters/);
-    expect(() => cleanLabels([`Sum${RLO}mit`], '--campaign-label')).toThrow(/plain text on one line/);
+    expect(() => cleanLabels([`North${RLO}wind`], '--campaign-label')).toThrow(/plain text on one line/);
     expect(() => cleanLabels(Array.from({ length: 101 }, (_, i) => `b${i}`), '--item-label')).toThrow(/at most 100 labels/);
   });
 
   it('a name is one line of plain text, 1 to 200 characters', () => {
-    expect(nameProblem('Summit Gear')).toBeNull();
+    expect(nameProblem('Northwind Outdoors')).toBeNull();
     expect(nameProblem('  ')).toMatch(/required/);
     expect(nameProblem('x'.repeat(201))).toMatch(/at most 200/);
     expect(nameProblem(`a${RLO}b`)).toMatch(/plain text/);
@@ -37,18 +37,18 @@ describe('findMatching', () => {
     scopeKey: 'k0000001',
     merchantId: 'src:fake_db:42',
     kind: 'sub_brand',
-    name: 'Summit Gear',
-    itemValues: ['Summit'],
-    campaignValues: ['summit'],
+    name: 'Northwind Outdoors',
+    itemValues: ['Northwind'],
+    campaignValues: ['northwind'],
     version: 1,
     ...over,
   });
 
   it('matches the same labels in any case and order, never another kind or another set', () => {
-    const list = [sb({}), sb({ scopeId: 'src:fake_db:42:scope:k0000002', scopeKey: 'k0000002', itemValues: ['Summit', 'Summit CA'] })];
-    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['SUMMIT'], campaignValues: [' Summit '] })?.scopeKey).toBe('k0000001');
-    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['Summit CA', 'summit'], campaignValues: ['summit'] })?.scopeKey).toBe('k0000002');
-    expect(findMatching(list, { kind: 'item_group', itemValues: ['Summit'], campaignValues: ['summit'] })).toBeNull();
-    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['Summit'], campaignValues: [] })).toBeNull();
+    const list = [sb({}), sb({ scopeId: 'src:fake_db:42:scope:k0000002', scopeKey: 'k0000002', itemValues: ['Northwind', 'Northwind CA'] })];
+    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['NORTHWIND'], campaignValues: [' Northwind '] })?.scopeKey).toBe('k0000001');
+    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['Northwind CA', 'northwind'], campaignValues: ['northwind'] })?.scopeKey).toBe('k0000002');
+    expect(findMatching(list, { kind: 'item_group', itemValues: ['Northwind'], campaignValues: ['northwind'] })).toBeNull();
+    expect(findMatching(list, { kind: 'sub_brand', itemValues: ['Northwind'], campaignValues: [] })).toBeNull();
   });
 });

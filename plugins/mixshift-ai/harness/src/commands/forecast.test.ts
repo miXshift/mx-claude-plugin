@@ -30,6 +30,7 @@ let rows: Map<string, Row>;
 /** Sub-brand definitions the fake gateway holds, keyed by scope id. */
 let defs: Map<string, Record<string, unknown>>;
 let refuseCreate: { status: number; kind: string } | null;
+let skippedDefs: number;
 let posts: Array<{ writes: Array<{ key: string; expected_version: number; doc: Record<string, unknown> }>; reason?: string }>;
 let stdout: string[];
 let stderr: string[];
@@ -42,7 +43,7 @@ function fakeGateway() {
     if (init.method === 'GET' && url.pathname === '/api/app-state/forecasting/scopes') {
       const seller = url.searchParams.get('legacy_seller_id');
       const list = [...defs.values()].filter((d) => seller === null || String(d.merchantId).endsWith(`:${seller}`));
-      return reply(200, { ok: true, ...(seller ? { merchant_id: `src:fake_db:${seller}` } : {}), definitions: list.map((d) => ({ ...d, scopeId: d.id, version: 1 })), skipped: 0 });
+      return reply(200, { ok: true, ...(seller ? { merchant_id: `src:fake_db:${seller}` } : {}), definitions: list.map((d) => ({ ...d, scopeId: d.id, version: 1 })), skipped: skippedDefs });
     }
     if (init.method === 'POST' && url.pathname === '/api/app-state/forecasting/scopes') {
       if (refuseCreate) return reply(refuseCreate.status, { ok: false, kind: refuseCreate.kind, friendly: 'Merchant 999 is not connected to this account.' });
@@ -101,6 +102,7 @@ beforeEach(() => {
   rows = new Map();
   defs = new Map();
   refuseCreate = null;
+  skippedDefs = 0;
   posts = [];
   stdout = [];
   stderr = [];
@@ -201,22 +203,22 @@ describe('forecast sub-brand (mx-ops#134)', () => {
   const lastJson = () => JSON.parse(stdout.join(''));
 
   it('add defines one from labels, list shows it, and adding the same labels again reuses it', async () => {
-    await runSub(true, 'add', '--seller', '42', '--name', 'Summit Gear', '--item-label', ' Summit ', '--item-label', 'Summit', '--campaign-label', 'summit');
-    expect(lastJson()).toMatchObject({ ok: true, created: true, sub_brand: { scope_id: 'src:fake_db:42:scope:k0000001', scope_key: 'k0000001', kind: 'sub_brand', item_values: ['Summit'], campaign_values: ['summit'] } });
+    await runSub(true, 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', ' Northwind ', '--item-label', 'Northwind', '--campaign-label', 'northwind');
+    expect(lastJson()).toMatchObject({ ok: true, created: true, sub_brand: { scope_id: 'src:fake_db:42:scope:k0000001', scope_key: 'k0000001', kind: 'sub_brand', item_values: ['Northwind'], campaign_values: ['northwind'] } });
     stdout = [];
-    await runSub(true, 'add', '--seller', '42', '--name', 'Summit again', '--item-label', 'SUMMIT', '--campaign-label', 'Summit');
+    await runSub(true, 'add', '--seller', '42', '--name', 'Northwind again', '--item-label', 'NORTHWIND', '--campaign-label', 'Northwind');
     expect(lastJson()).toMatchObject({ ok: true, created: false, sub_brand: { scope_id: 'src:fake_db:42:scope:k0000001' } });
     expect(defs.size).toBe(1);
     stdout = [];
     await runSub(true, 'list', '--seller', '42');
-    expect(lastJson()).toMatchObject({ ok: true, merchant_id: 'src:fake_db:42', sub_brands: [{ scope_key: 'k0000001', name: 'Summit Gear' }] });
+    expect(lastJson()).toMatchObject({ ok: true, merchant_id: 'src:fake_db:42', sub_brands: [{ scope_key: 'k0000001', name: 'Northwind Outdoors' }] });
     // Telemetry carries counts, never the name or the labels.
     const defined = vi.mocked(track).mock.calls.map(([e]) => e).filter((e) => e.event_name === EventName.ForecastSubBrandDefined);
     expect(defined.map((e) => e.payload)).toEqual([
       { scope_id: 'src:fake_db:42:scope:k0000001', seller: 42, kind: 'sub_brand', created: true, item_values: 1, campaign_values: 1 },
       { scope_id: 'src:fake_db:42:scope:k0000001', seller: 42, kind: 'sub_brand', created: false, item_values: 1, campaign_values: 1 },
     ]);
-    expect(JSON.stringify(vi.mocked(track).mock.calls)).not.toMatch(/Summit/);
+    expect(JSON.stringify(vi.mocked(track).mock.calls)).not.toMatch(/Northwind/);
   });
 
   it('refuses a bad seller, a blank name and no product label before any call; --dry-run defines nothing', async () => {
@@ -234,8 +236,25 @@ describe('forecast sub-brand (mx-ops#134)', () => {
     expect(defs.size).toBe(0);
   });
 
+  it('a budget on a sub-brand nobody defined is refused before anything is written', async () => {
+    await run(false, 'set', '--scope', `${SCOPE}:scope:k0000009`, '--set', '2026-11=5000');
+    expect(stderr.join('')).toMatch(/is not a defined sub-brand/);
+    expect(process.exitCode).toBe(4);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('list without --seller covers the database and says how many stored definitions it could not read', async () => {
+    await runSub(true, 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', 'Northwind', '--campaign-label', 'northwind');
+    skippedDefs = 2;
+    stdout = [];
+    await runSub(false, 'list');
+    expect(stdout.join('')).toMatch(/Sub-brands:/);
+    expect(stdout.join('')).toMatch(/2 stored definition\(s\) could not be read/);
+    expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/api/app-state/forecasting/scopes'))).toBe(true);
+  });
+
   it('the budget of a sub-brand is its own: set writes under its scope, never the account', async () => {
-    await runSub(true, 'add', '--seller', '42', '--name', 'Summit Gear', '--item-label', 'Summit', '--campaign-label', 'summit');
+    await runSub(true, 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', 'Northwind', '--campaign-label', 'northwind');
     const sub = 'src:fake_db:42:scope:k0000001';
     await run(true, 'set', '--scope', sub, '--set', '2026-11=5000');
     expect(posts.at(-1)!.writes.map((w) => w.key)).toEqual([monthKey(sub, '2026-11')]);
@@ -243,7 +262,7 @@ describe('forecast sub-brand (mx-ops#134)', () => {
   });
 
   it('remove shows what would go; --apply removes the definition, its months and settings in one batch', async () => {
-    await runSub(true, 'add', '--seller', '42', '--name', 'Summit Gear', '--item-label', 'Summit', '--campaign-label', 'summit');
+    await runSub(true, 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', 'Northwind', '--campaign-label', 'northwind');
     const sub = 'src:fake_db:42:scope:k0000001';
     await run(true, 'set', '--scope', sub, '--set', '2026-11=5000', '--set', '2026-12=6000');
     rows.set(`fb:account:${sub}`, { key: `fb:account:${sub}`, version: 2, doc: { treatMissingAdSpendAsZero: true } });

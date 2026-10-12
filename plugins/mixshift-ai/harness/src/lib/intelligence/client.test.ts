@@ -254,6 +254,14 @@ describe('run (sync)', () => {
     if (isIntelligenceFailure(r)) expect(r.kind).toBe('account_too_large_use_async');
   });
 
+  it("passes the server's sub-reason through (a sub-brand nobody defined)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, { ok: false, kind: 'bad_params', reason: 'scope_not_defined', scope_id: 'src:fake_db:42:scope:k0000001', friendly: 'No sub-brand is defined.' }),
+    );
+    const r = await run({ id: 'FCT-READINESS-01', params: {} }, injected(fetchImpl));
+    expect(isIntelligenceFailure(r) && r.reason).toBe('scope_not_defined');
+  });
+
   it('propagates bad_params with the echoed insightId', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(400, { ok: false, kind: 'bad_params', insightId: 'INS-DUO-01', friendly: 'Bad params.' }),

@@ -20,7 +20,7 @@ last_updated: 2026-10-12
 dependencies:
   - MixShift Intelligence service (FCT-READINESS-01 and FCT-BASELINE-01 via `mixshift intelligence`)
   - The forecast budget store (`mixshift forecast budget`; the computed forecast reads it, and the forecasting app will once it reads MixShift's forecast store)
-  - Sub-brands (`mixshift forecast sub-brand`; a brand inside an account, by its product and campaign labels, the same definitions the forecasting app keeps)
+  - Sub-brands (`mixshift forecast sub-brand`; a brand inside an account, by its product and campaign labels, kept in MixShift's forecast store in the forecasting app's own shape)
   - Label discovery (`mixshift brand discover --seller-id`), for a brand inside an account that is not yet a sub-brand
   - The token-based sign-in (`mixshift auth login`, or a service credential for unattended runs)
   - Brand context (optional; only the account list is needed)
@@ -158,15 +158,22 @@ apart from the account's.
 1. **Find the labels.** When the brand's `~/.mixshift/clients/<brand-slug>/context.yaml` has a
    `binding` block (a promoted sub-brand), use it: `retail_label.value` is the product label,
    `ads_label.value` the campaign label, and `seller_ids` the account rows (one forecast per
-   row). Otherwise run discovery on the account:
+   row). Otherwise run discovery on the account. It takes the account's Amazon seller id
+   (the merchant token, starting with A), which `brand list` does not give: take it from the
+   binding's `amazon_seller_id`, else from the account's `amazon_seller_id` in its
+   `context.yaml` `accounts[]`, else ask the user for it.
 
    ```bash
    mixshift brand discover --seller-id <the account's Amazon seller id> --json
    ```
 
-   and find the brand on each side (`report.retail.labels[].label` with `asin_count`,
-   `report.ads.labels[].label` with `campaign_count`). Labels are free text and can differ by
-   side ("Summit Gear" on products, "summit" on campaigns); match by meaning, not spelling.
+   Find the brand on each side: `report.retail.labels[]` and `report.ads.labels[]`, each
+   `{label, source, units}`, where `units` counts the label's products (product side) or
+   campaigns (ad side) across every row of `resolved_seller_ids` (all of that account's
+   marketplaces, not only the seller row being forecast). Never pick `(unclassified)`: it is
+   the products or campaigns with no label. Labels are free text and can differ by side
+   ("Northwind Outdoors" on products, "northwind" on campaigns); match by meaning, not
+   spelling.
 2. **Confirm with the user** in one message: the account, the product label(s) and the
    campaign label(s), with their counts. When the brand has no campaign label, say a forecast
    needs its ad spend and cannot train without one, and ask whether a campaign label covers it.
@@ -259,8 +266,10 @@ ad-spend effect is negative): say so plainly and give the level only.
 | `scope_not_defined` | No definition is stored for this sub-brand (or it cannot be read): define it (Step 1b) and run again. |
 | `unparseable_vintage` | The published copy cannot be read by this service build; MixShift is on it. |
 
-Readiness refuses an undefined sub-brand before reading anything (`bad_params`, `reason:
-scope_not_defined`): define it in Step 1b and run again.
+Readiness refuses an undefined sub-brand before reading anything: `kind: bad_params` with
+`reason: scope_not_defined` (define it in Step 1b and run again) or `reason:
+scope_definition_unreadable` (its stored definition cannot be read; say so and stop). These are
+not a params-shape problem: do not reshape the params.
 
 Never retry the same request, with one exception: `account_too_large_use_async` (readiness or
 the baseline on a large account) means re-run that one request ONCE with `--async`, then
@@ -385,7 +394,8 @@ explanation beyond "the MixShift forecasting app".
   the service's own backtests show no training depth beats last year's same month there.
 - **Metered.** Readiness and the forecast are each one metered request; cached answers are free
   for a day. Saving a budget is two small requests on the account's usage (a read and a save),
-  and the re-run after it is one more forecast request.
+  and the re-run after it is one more forecast request. Listing or defining a sub-brand is one or
+  two small requests on the account's usage.
 - **Sponsored only.** The budget is sponsored ad spend, the basis the computed forecast stands
   on; DSP is not part of it.
 

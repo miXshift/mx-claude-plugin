@@ -48,6 +48,7 @@ import {
   canonicalSubBrandId,
   cleanLabels,
   ensureSubBrand,
+  subBrandExists,
   listSubBrands,
   nameProblem,
   planSubBrandRemoval,
@@ -93,7 +94,7 @@ export function registerForecastCommands(program: Command): void {
       );
       if (root.json) return writeJson({ ok: true, scope_id: scopeId, budgets: rows });
       if (rows.length === 0) {
-        process.stdout.write(`\nNo budget entered for ${scopeId}: the forecast estimates spend from the account's history.\n`);
+        process.stdout.write(`\nNo budget entered for ${scopeId}: the forecast estimates spend from ${isSubBrandScope(scopeId) ? "the sub-brand's" : "the account's"} history.\n`);
         return;
       }
       process.stdout.write(`\nSponsored-ads budgets for ${scopeId}:\n\n`);
@@ -134,6 +135,14 @@ export function registerForecastCommands(program: Command): void {
       const note = opts.note?.trim() || undefined;
       const problem = note === undefined ? null : noteProblem(note);
       if (problem) return badInput(new Error(`--note: ${problem}.`), !!root.json);
+      // A budget on a sub-brand nobody defined would be rows no forecast ever reads.
+      if (isSubBrandScope(scopeId)) {
+        const defined = await subBrandExists(scopeId, { dataDirOverride: root.dataDir });
+        if (!defined.ok) return fail('set', scopeId, defined, startedAt, root, entries.length);
+        if (!defined.exists) {
+          return badInput(new Error(`${scopeId} is not a defined sub-brand. Define it with \`mixshift forecast sub-brand add\`, or use the scope_id from its forecast answer.`), !!root.json);
+        }
+      }
       const r = await applyBudgetPlan(scopeId, (rows) => planBudgetSet(scopeId, rows, entries, note), {
         dataDirOverride: root.dataDir,
         dryRun: opts.dryRun === true,
@@ -255,20 +264,12 @@ function registerSubBrandCommands(forecast: Command): void {
       );
       if (root.json) return writeJson({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
       if (r.subBrands.length === 0) {
-        process.stdout.write(`
-No sub-brands defined${seller === null ? '' : ` for seller ${seller}`}.
-`);
+        process.stdout.write(`\nNo sub-brands defined${seller === null ? '' : ` for seller ${seller}`}.\n`);
         return;
       }
-      process.stdout.write(`
-Sub-brands${seller === null ? '' : ` of seller ${seller}`}:
-
-`);
-      for (const s of r.subBrands) process.stdout.write(`  ${s.scopeId}  ${s.name}  ${describeLabels(s)}
-`);
-      if (r.skipped) process.stdout.write(`
-${r.skipped} stored definition(s) could not be read and are not listed.
-`);
+      process.stdout.write(`\nSub-brands${seller === null ? '' : ` of seller ${seller}`}:\n\n`);
+      for (const s of r.subBrands) process.stdout.write(`  ${s.scopeId}  ${s.name}  ${describeLabels(s)}\n`);
+      if (r.skipped) process.stdout.write(`\n${r.skipped} stored definition(s) could not be read and are not listed.\n`);
     });
 
   sub
@@ -305,12 +306,8 @@ ${r.skipped} stored definition(s) could not be read and are not listed.
       const noAds = campaignValues.length === 0 ? 'It names no campaign label, so it has no ad spend and a forecast cannot train on it.' : null;
       if (opts.dryRun && r.subBrand === null) {
         if (root.json) return writeJson({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
-        process.stdout.write(`
-Would define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}
-`);
-        if (noAds) process.stdout.write(`
-${noAds}
-`);
+        process.stdout.write(`\nWould define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}\n`);
+        if (noAds) process.stdout.write(`\n${noAds}\n`);
         return;
       }
       const s = r.subBrand!;
@@ -328,25 +325,19 @@ ${noAds}
       if (root.json) return writeJson({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...(noAds ? { warning: noAds } : {}) });
       process.stdout.write(
         r.created
-          ? `
-✓ Defined ${s.name}: ${s.scopeId}
-  ${describeLabels(s)}
-`
-          : `
-Already defined with these labels: ${s.scopeId} (${s.name}). Reusing it.
-`,
+          ? `\n✓ Defined ${s.name}: ${s.scopeId}\n  ${describeLabels(s)}\n`
+          : `\nAlready defined with these labels: ${s.scopeId} (${s.name}). Reusing it.\n`,
       );
-      if (noAds) process.stdout.write(`
-${noAds}
-`);
-      process.stdout.write(`
-Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-01 (merchant {legacySellerId: ${seller}}).
-`);
+      if (noAds) process.stdout.write(`\n${noAds}\n`);
+      process.stdout.write(`\nForecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-01 (merchant {legacySellerId: ${seller}}).\n`);
     });
 
   sub
     .command('remove')
-    .description('Remove a sub-brand with everything stored under it (its budgets and settings), as the forecasting app removes one. Shows what would go; --apply removes it.')
+    .description(
+      'Remove a sub-brand: its definition, its budgets and its settings. Shows what would go; --apply removes it. ' +
+        'A forecast the forecasting app published for it stays until it is withdrawn in the app.',
+    )
     .requiredOption('--scope <scope_id>', 'the sub-brand scope, src:<database>:<seller id>:scope:<key>')
     .option('--apply', 'remove it (without this, nothing is removed)')
     .action(async (opts: { scope: string; apply?: boolean }, cmd: Command) => {
@@ -361,14 +352,11 @@ Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-0
       if (!opts.apply) {
         if (root.json) return writeJson({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
         if (p.writes.length === 0) {
-          process.stdout.write(`
-Nothing is stored under ${scopeId}.
-`);
+          process.stdout.write(`\nNothing is stored under ${scopeId}.\n`);
           return;
         }
-        process.stdout.write(`
-Would remove ${scopeId} (nothing removed): ${p.definition ? 'its definition' : 'no definition'}, ${p.months} month row(s), ${p.settings ? 'its settings' : 'no settings'}. Re-run with --apply.
-`);
+        process.stdout.write(`\nWould remove ${scopeId} (nothing removed): ${p.definition ? 'its definition' : 'no definition'}, ${p.months} month row(s), ${p.settings ? 'its settings' : 'no settings'}. Re-run with --apply.\n`);
+        process.stdout.write('A forecast the forecasting app published for it is not removed; withdraw it in the app.\n');
         return;
       }
       const r = await applySubBrandRemoval(p, { dataDirOverride: root.dataDir });
@@ -377,12 +365,9 @@ Would remove ${scopeId} (nothing removed): ${p.definition ? 'its definition' : '
         { event_name: EventName.ForecastSubBrandRemoved, outcome: 'ok', duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, deleted: r.deleted, months: p.months } },
         root.dataDir,
       );
-      if (root.json) return writeJson({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted });
-      process.stdout.write(r.deleted === 0 ? `
-Nothing was stored under ${scopeId}.
-` : `
-✓ Removed ${scopeId} (${r.deleted} stored document(s)).
-`);
+      if (root.json) return writeJson({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: 'kept; withdraw it in the forecasting app' });
+      process.stdout.write(r.deleted === 0 ? `\nNothing was stored under ${scopeId}.\n` : `\n✓ Removed ${scopeId} (${r.deleted} stored document(s)).\n`);
+      process.stdout.write('A forecast the forecasting app published for it is not removed; withdraw it in the app.\n');
     });
 }
 
@@ -413,10 +398,8 @@ async function subBrandFail(op: string, scopeId: string | null, seller: number |
     },
     root.dataDir,
   );
-  if (root.json) writeJson({ ok: false, kind: f.kind, message: f.friendly });
-  else process.stderr.write(`
-✗ ${f.friendly}
-`);
+  if (root.json) writeJson({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
+  else process.stderr.write(`\n✗ (${f.kind}) ${f.friendly}\n`);
   process.exitCode = exitCodeFor(f);
 }
 

@@ -206,6 +206,9 @@ export interface IntelligenceFailure {
   unrecognizedKind?: string;
   /** Echoed by the server on some kinds (not_ready mid-run, run_not_found). */
   runId?: string;
+  /** The server's sub-reason on some refusals (e.g. a bad_params `scope_not_defined`
+   *  for a sub-brand nobody defined), so a skill can branch on it, not on prose. */
+  reason?: string;
   /** Echoed by the server on unknown_insight / bad_params. */
   insightId?: string;
 }
@@ -586,6 +589,7 @@ function toIntelligenceFailure(
     httpStatus,
     runId: strOrUndef(json.runId),
     insightId: strOrUndef(json.insightId),
+    reason: strOrUndef(json.reason),
   };
 }
 

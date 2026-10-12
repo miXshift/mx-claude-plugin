@@ -2,9 +2,9 @@
  * Sub-brands and item groups of an account, as MixShift keeps them for forecasting
  * (mx-ops#134): one brand inside a seller account, named by labels, that the
  * computed forecast reads on its own (`scopeKey` on FCT-READINESS-01 and
- * FCT-BASELINE-01). The definitions live in the gateway's forecasting state, the
- * same documents the forecasting app keeps (`fb:scope_def:<scope id>`), so a
- * sub-brand defined here is the app's too.
+ * FCT-BASELINE-01). The definitions live in the gateway's forecasting state, in the
+ * forecasting app's own document shape (`fb:scope_def:<scope id>`); the app lists
+ * them once it reads MixShift's forecast store (until then it keeps its own).
  *
  *   GET  /api/app-state/forecasting/scopes?legacy_seller_id=   the account's sub-brands
  *   POST /api/app-state/forecasting/scopes  { create: { legacySellerId, kind, name, itemValues, campaignValues } }
@@ -160,6 +160,12 @@ export async function ensureSubBrand(
   return { ok: true, created: true, subBrand };
 }
 
+/** Whether a sub-brand is defined (its definition is stored), for a budget write on its scope. */
+export async function subBrandExists(scopeId: string, opts: BudgetClientOptions = {}): Promise<{ ok: true; exists: boolean } | BudgetFailure> {
+  const r = await versionOf(`fb:scope_def:${scopeId}`, opts);
+  return r.ok ? { ok: true, exists: r.version !== null } : r;
+}
+
 /** What removing a sub-brand deletes: its definition, its month rows, its settings. */
 export interface RemovalPlan {
   scopeId: string;
@@ -176,9 +182,10 @@ async function versionOf(key: string, opts: BudgetClientOptions): Promise<{ ok: 
 }
 
 /**
- * Everything stored under a sub-brand, as the app's own delete removes it: the
- * definition, every month row, the settings. One batch, every key at the version
- * read, so a change made meanwhile refuses the whole removal.
+ * What a person's sign-in can remove of a sub-brand: the definition, every month row,
+ * the settings. One batch, every key at the version read, so a change made meanwhile
+ * refuses the whole removal. The app's own documents for it (snapshots, mappings) and
+ * any forecast the app published for it are the app's, and stay.
  */
 export async function planSubBrandRemoval(scopeId: string, opts: BudgetClientOptions = {}): Promise<{ ok: true; plan: RemovalPlan } | BudgetFailure> {
   const writes: RemovalPlan['writes'] = [];
