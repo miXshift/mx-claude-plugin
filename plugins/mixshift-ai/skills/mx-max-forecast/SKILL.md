@@ -4,17 +4,15 @@ version: 0.3.0
 description: >
   The max tier of forecasting: a revenue forecast for one Amazon account, or for one brand
   inside an account (a sub-brand), explained in plain language with its measured accuracy,
-  from the MixShift Intelligence service. Serves
-  the forecast the MixShift forecasting app published (corrections included) when one
-  exists, and otherwise a forecast the gateway computes from the warehouse with the same
-  engine, labelled as computed. Checks readiness first and says what would make an account
-  forecastable when it is not. On a first forecast nobody has shaped, asks whether the user
-  has a sponsored ads budget, and with their yes enters it so the forecast stands on the
-  budget instead of an estimate. Never fits a model of its own.
-  Triggers on: 'forecast [brand]', 'forecast [brand] inside [account]', 'what will [brand] do next quarter', 'run a forecast',
-  'how accurate is the forecast', 'is [brand] forecastable', 'revenue outlook for [brand]',
-  'what should I expect next month', 'forecast max', 'use my budget for the forecast',
-  'set the [month] budget'.
+  from the MixShift Intelligence service. Serves the forecast the MixShift forecasting app
+  published when one exists, otherwise one computed from the warehouse with the same engine,
+  labelled as computed. Checks readiness first and says what would make an account
+  forecastable. On a first forecast nobody has shaped, asks for the user's sponsored ads
+  budget and, with their yes, uses it instead of an estimate. Never fits a model of its own.
+  Triggers on: 'forecast [brand]', 'forecast [brand] inside [account]', 'what will [brand] do
+  next quarter', 'run a forecast', 'how accurate is the forecast', 'is [brand] forecastable',
+  'revenue outlook for [brand]', 'what should I expect next month', 'forecast max',
+  'use my budget for the forecast', 'set the [month] budget'.
 author: Claude
 last_updated: 2026-10-12
 dependencies:

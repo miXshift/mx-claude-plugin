@@ -23,9 +23,15 @@
  *      plugins[*].description must be <= 500 chars and contain no XML-like tags,
  *      and every skills/<id>/SKILL.md frontmatter `description` must contain no
  *      XML-like tags (angle-bracket placeholders like <brand> count — write
- *      [brand] instead). Skill description LENGTH is deliberately NOT checked:
- *      the console only enforces length on the plugin description, and
- *      shortening skill descriptions would degrade skill triggering.
+ *      [brand] instead). Every SKILL.md frontmatter `description` must also be
+ *      <= 1024 chars (source: a customer's plugin install rejected 0.8.16 on
+ *      2026-10-08 with "Plugin validation failed: Skill 'skills/mx-amazon-amc':
+ *      field 'description' in SKILL.md must be at most 1024 characters", mx-ops#132).
+ *      This used to be deliberately unchecked because the admin console did not
+ *      enforce it on 2026-07-13; four descriptions then grew past 1024 over eight
+ *      PRs with nothing in the way. One surface accepting a value does not mean
+ *      every install path will. When a description runs long, cut the mechanism,
+ *      not the phrases that tell Claude when to use the skill.
  *   5. Privacy invariants that must stay aligned with shipped behavior:
  *      brand-context sync is disclosed separately from telemetry, automatic
  *      updates after an explicit first share and the kill switch are named,
@@ -129,8 +135,10 @@ try {
 
 // 4. Claude admin-console upload rules (see header — live console rejections,
 //    2026-07-13). <= 500 chars and no XML-like tags on the plugin/marketplace
-//    descriptions; no XML-like tags in any SKILL.md frontmatter description.
+//    descriptions; no XML-like tags in any SKILL.md frontmatter description,
+//    and <= 1024 chars there (install validator, 2026-10-08, mx-ops#132).
 const CONSOLE_DESC_MAX = 500;
+const SKILL_DESC_MAX = 1024;
 const XML_TAG = /<[^>]+>/;
 
 try {
@@ -186,6 +194,13 @@ for (const id of skillIds) {
         `skills/${id}/SKILL.md frontmatter description contains an XML-like tag ` +
           `(${tag[0]}); the Claude admin console rejects it ("SKILL.md description cannot ` +
           `contain XML tags"). Use [placeholder] instead of <placeholder>.`,
+      );
+    }
+    if (desc.length > SKILL_DESC_MAX) {
+      errors.push(
+        `skills/${id}/SKILL.md frontmatter description is ${desc.length} chars; plugin installs ` +
+          `reject the whole plugin over ${SKILL_DESC_MAX} ("field 'description' in SKILL.md must ` +
+          `be at most 1024 characters"). Shorten it, keeping the when-to-use phrases.`,
       );
     }
   } catch (err) {
@@ -260,7 +275,7 @@ try {
 if (errors.length === 0) {
   console.log(
     `✓ Docs are current: README lists all ${skillIds.length} skills, version fields agree, ` +
-      'descriptions pass the admin-console rules.',
+      'descriptions pass the admin-console and install rules.',
   );
   process.exit(0);
 }

@@ -2,21 +2,18 @@
 name: mx-amazon-retail
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
-  you are authorized for. This is the retail-operations analogue of
-  mx-amazon-report: instead of asking Amazon to generate a report document, these
-  are single fast request/response operations that answer point-in-time
-  questions about your catalog, inventory, orders, finances, listings, and
-  fulfillment. The headline use is the title/brand/sales-rank source for ASINs
-  that are missing from the warehouse's mws_items (catalog.search_items). Covers
+  you are authorized for. Single fast request/response calls (not report
+  documents; that is mx-amazon-report) for point-in-time questions about
+  your catalog, inventory, orders, finances, listings, and fulfillment. The
+  headline use is the title/brand/sales-rank source for ASINs that are
+  missing from the warehouse's mws_items (catalog.search_items). Covers
   Catalog Items, Product Fees, FBA Inventory, FBA inbound shipments, Sales
   metrics, Sellers, Finances, Orders, Product Pricing offer depth, Listings
   Items, Product Type Definitions, Data Kiosk (GraphQL), Vendor Orders (1P),
   Subscribe & Save (Replenishment), customer review topics (Customer
   Feedback), Amazon Warehousing & Distribution (AWD), and Promotions (the
   seller's live deals, coupons, price discounts, and basket-building offers).
-  Read-only, routes through the bundled harness CLI.
-  Does not require brand setup, only that the user has signed in
-  (`mixshift auth login`).
+  Read-only. No brand setup needed, only sign-in (`mixshift auth login`).
 metadata:
   version: "0.4.0"
   author: "MixShift"
