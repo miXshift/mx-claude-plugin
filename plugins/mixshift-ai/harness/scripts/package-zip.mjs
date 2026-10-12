@@ -400,7 +400,8 @@ function assertLayout(entries, { mustContain, cliEntryName, label }) {
   // (4) no excluded path leaked. The directory patterns are anchored to the
   // HARNESS root on purpose: they guard the maintainer dirs (harness/src,
   // harness/test, harness/testdata, harness/scripts), which never ship. A
-  // skill may legitimately ship its own scripts/ (mx-monthly-report-max did
+  // skill may legitimately ship its own scripts/ (Report Max, then named
+  // mx-monthly-report-max and now mx-max-report, did
   // in 0.8.12, and its SKILL.md told the user to run it; the battery moved
   // server-side in 0.8.13 so no skill ships a scripts/ dir today, though
   // helpers/ dirs still do and are unaffected; the anchoring stays); an

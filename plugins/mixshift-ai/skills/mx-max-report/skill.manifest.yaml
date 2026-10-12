@@ -1,5 +1,5 @@
 schema_version: 1
-skill_id: mx-monthly-report-max   # smart-tier convention: <existing-skill-slug>-max, so both tiers sort and search together
+skill_id: mx-max-report   # max-tier convention: mx-max-<job> (mx-max-report, mx-max-forecast); was mx-monthly-report-max until 2026-10-11, and the run ledger folder keeps that name
 display_name: Monthly Performance Report Max
 version: "2.5.4"
 description: >

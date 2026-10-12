@@ -597,7 +597,7 @@ queries:
   - id: MPRX-FIGURES-01
     dispatch: named
     purpose: Monthly Performance Report Max figure battery for one Seller Central account, served as ONE JSON document row - resolved data-aligned windows, account ads + retail per period with derived ratios, dark-day normalization, settled-window efficiency check, daily series + run-rate arithmetic, sub-brand splits, ASIN movers + reconciliation, out-of-stock days, page-view-weighted Buy Box by item, 15-month history, and a sections_failed map.
-    consumers: [mx-monthly-report-max]
+    consumers: [mx-max-report]
     tier: 1
     notes: |
       Born dispatch:named; a pack BATTERY (several statements + arithmetic
@@ -619,7 +619,7 @@ queries:
   - id: MPRX-FIGURES-VC-01
     dispatch: named
     purpose: Monthly Performance Report Max figure battery for one Vendor Central account, served as ONE JSON document row - windows aligned across vendor sales, vendor traffic and ads, account ads (campaignmetric on the requested attribution basis, legacy_sales by default) + retail (ordered or shipped basis, glance views, glance-view conversion) with derived ratios, dark-day normalization, settled-window efficiency check, daily series, sub-brand splits (campaign name / CustomBrand), ASIN movers + reconciliation, procurable out-of-stock days and availability interruptions, inventory snapshot, 15-month history, and a sections_failed map.
-    consumers: [mx-monthly-report-max]
+    consumers: [mx-max-report]
     tier: 1
     notes: |
       The Vendor Central sibling of MPRX-FIGURES-01 (2026-09-06). Same
@@ -636,7 +636,7 @@ queries:
   - id: MPRX-FIGURES-BRAND-01
     dispatch: named
     purpose: Monthly Performance Report Max figure battery for one BRAND across its account rows (several vendor codes, a Seller Central row beside a Vendor Central row, marketplace twins) - each seller id routed to its channel battery from the seller row, every account aligned to one day count, the summable figures (ordered revenue, units, campaignmetric ad figures) rolled up within one marketplace currency with traffic and conversion per channel and movers merged by ASIN per channel; per-account documents ride along in full.
-    consumers: [mx-monthly-report-max]
+    consumers: [mx-max-report]
     tier: 1
     notes: |
       The id `mixshift report battery` calls from plugin 0.8.13.

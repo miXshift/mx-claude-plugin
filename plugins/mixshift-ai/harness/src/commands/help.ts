@@ -106,7 +106,8 @@ const CATALOG: HubGroup[] = [
     title: 'Reporting & analysis',
     skills: [
       { id: 'mx-monthly-report', say: 'write the monthly report for <brand>', what: 'MoM and YoY performance narrative' },
-      { id: 'mx-monthly-report-max', say: 'prep my call with <brand>', what: 'client brief plus private call notes, any cadence' },
+      { id: 'mx-max-report', say: 'prep my call with <brand>', what: 'client brief plus private call notes, any cadence' },
+      { id: 'mx-max-forecast', say: 'what should I expect from <brand> next quarter', what: 'a forecast explained, with its measured accuracy' },
       // Deliberately a SECOND row for mx-amazon-amc, which is also listed under
       // the Amazon surfaces above as "run an AMC query". That row only finds
       // someone who already knows what AMC is. The questions this answers get
@@ -204,13 +205,20 @@ export function registerHelpCommand(program: Command): void {
     });
 }
 
+/** Every skill id the editorial catalog names (a skill may appear in several groups). */
+export function catalogSkillIds(): string[] {
+  return [...new Set(CATALOG.flatMap((g) => g.skills.map((s) => s.id)))].sort();
+}
+
 /**
  * Skills present on disk that the editorial catalog doesn't mention. Drift
  * guard: a new skill that nobody added to CATALOG still shows up (under
  * "More") instead of being silently absent. Best-effort — if we can't locate
  * the skills dir (e.g. a unit test with no plugin layout), return [].
+ * help.test.ts holds the catalog to an empty list, so the runtime fallback
+ * stays a safety net rather than where a shipped skill lives.
  */
-async function collectUncatalogued(): Promise<string[]> {
+export async function collectUncatalogued(): Promise<string[]> {
   const known = new Set(CATALOG.flatMap((g) => g.skills.map((s) => s.id)));
   const skillsDir = await findSkillsDir();
   if (!skillsDir) return [];
@@ -233,7 +241,7 @@ async function collectUncatalogued(): Promise<string[]> {
  * module looking for a skills/ dir, which handles both the bundled layout
  * (harness/dist/cli.js) and the dev layout (harness/src/commands/help.ts).
  */
-async function findSkillsDir(): Promise<string | null> {
+export async function findSkillsDir(): Promise<string | null> {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
     return join(process.env.CLAUDE_PLUGIN_ROOT, 'skills');
   }
