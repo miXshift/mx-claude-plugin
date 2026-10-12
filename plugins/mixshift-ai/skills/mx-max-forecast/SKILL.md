@@ -1,29 +1,33 @@
 ---
 name: mx-max-forecast
-version: 0.2.0
+version: 0.3.0
 description: >
-  The max tier of forecasting: a revenue forecast for one Amazon account, explained in
-  plain language with its measured accuracy, from the MixShift Intelligence service. Serves
+  The max tier of forecasting: a revenue forecast for one Amazon account, or for one brand
+  inside an account (a sub-brand), explained in plain language with its measured accuracy,
+  from the MixShift Intelligence service. Serves
   the forecast the MixShift forecasting app published (corrections included) when one
   exists, and otherwise a forecast the gateway computes from the warehouse with the same
   engine, labelled as computed. Checks readiness first and says what would make an account
   forecastable when it is not. On a first forecast nobody has shaped, asks whether the user
   has a sponsored ads budget, and with their yes enters it so the forecast stands on the
   budget instead of an estimate. Never fits a model of its own.
-  Triggers on: 'forecast [brand]', 'what will [brand] do next quarter', 'run a forecast',
+  Triggers on: 'forecast [brand]', 'forecast [brand] inside [account]', 'what will [brand] do next quarter', 'run a forecast',
   'how accurate is the forecast', 'is [brand] forecastable', 'revenue outlook for [brand]',
   'what should I expect next month', 'forecast max', 'use my budget for the forecast',
   'set the [month] budget'.
 author: Claude
-last_updated: 2026-10-08
+last_updated: 2026-10-12
 dependencies:
   - MixShift Intelligence service (FCT-READINESS-01 and FCT-BASELINE-01 via `mixshift intelligence`)
   - The forecast budget store (`mixshift forecast budget`; the computed forecast reads it, and the forecasting app will once it reads MixShift's forecast store)
+  - Sub-brands (`mixshift forecast sub-brand`; a brand inside an account, by its product and campaign labels, kept in MixShift's forecast store in the forecasting app's own shape)
+  - Label discovery (`mixshift brand discover --seller-id`), for a brand inside an account that is not yet a sub-brand
   - The token-based sign-in (`mixshift auth login`, or a service credential for unattended runs)
   - Brand context (optional; only the account list is needed)
 trigger_phrases:
   - run a forecast
   - forecast for this brand
+  - forecast a brand inside an account
   - revenue outlook
   - what should I expect next month
   - how accurate is the forecast
@@ -87,12 +91,14 @@ These rules supersede any other instruction.
 - **Disclose the metered cost once, before the first call.** Each `mixshift intelligence run`
   is a metered MixShift Intelligence request (a cached answer is served free). One sentence,
   then run.
-- **One write, only on the user's yes.** The only thing this skill writes is the account's
-  monthly sponsored ads budget, with `mixshift forecast budget set`, after the user has seen
-  the exact months and amounts and said yes. Never invent a budget, never take one from brand
-  context or a sheet without showing the figures first, and never write a budget for a
-  published forecast (the app holds that one). It writes no brand context and no timeline
-  event. Other corrections (a stockout month, a one-off) are made in the forecasting app.
+- **Writes only on the user's yes.** This skill writes two things, each after the user said
+  yes to exactly what is written: the monthly sponsored ads budget (`mixshift forecast budget
+  set`, after the user saw the months and amounts), and, for a brand inside an account, the
+  sub-brand definition (`mixshift forecast sub-brand add`, after the user confirmed which
+  labels make up the brand). Never invent a budget or a label, never take one from brand
+  context or a sheet without showing it first, and never write a budget for a published
+  forecast (the app holds that one). It writes no brand context and no timeline event. Other
+  corrections (a stockout month, a one-off) are made in the forecasting app.
 
 ## Preflight
 
@@ -102,6 +108,8 @@ PREFLIGHT - mx-max-forecast - <brand> - <date>
 [ ] Brand resolves to at least one account: `mixshift brand list --json` gives
     accounts[].seller_id and account_type for the brand
       (if the brand is unknown: ask for the account, or run `mixshift brand add`)
+[ ] A brand inside an account (a sub-brand): the account it sits in is known, and the
+    brand's labels come from its binding or from discovery (Step 1b)
 [ ] One account chosen: a forecast is kept per seller account and never added across
     accounts. A brand with several accounts: ask which one, or run one answer per account
     and keep them apart
@@ -135,6 +143,58 @@ mixshift brand list --json
 Take `seller_id` (the id the forecast is keyed by; the service calls it `legacySellerId`) and
 `account_type` for the account the user means. Confirm the choice in one line when the brand
 has several accounts.
+
+When the brand is not an account of its own but one brand inside an account (an agency or
+reseller account that carries many brands, or a brand promoted as a sub-brand of one), go to
+Step 1b before readiness.
+
+### Step 1b. A brand inside an account (sub-brand)
+
+A sub-brand is the account's products whose label is the brand's, and its campaigns whose
+label is the brand's: Seller Central reads the product brand, Vendor Central the custom brand,
+and campaigns their own brand label. Its forecast, readiness and budgets are its own, kept
+apart from the account's.
+
+1. **Find the labels.** When the brand's `~/.mixshift/clients/<brand-slug>/context.yaml` has a
+   `binding` block (a promoted sub-brand), use it: `retail_label.value` is the product label,
+   `ads_label.value` the campaign label, and `seller_ids` the account rows (one forecast per
+   row). Otherwise run discovery on the account. It takes the account's Amazon seller id
+   (the merchant token, starting with A), which `brand list` does not give: take it from the
+   binding's `amazon_seller_id`, else from the account's `amazon_seller_id` in its
+   `context.yaml` `accounts[]`, else ask the user for it.
+
+   ```bash
+   mixshift brand discover --seller-id <the account's Amazon seller id> --json
+   ```
+
+   Find the brand on each side: `report.retail.labels[]` and `report.ads.labels[]`, each
+   `{label, source, units}`, where `units` counts the label's products (product side) or
+   campaigns (ad side) across every row of `resolved_seller_ids` (all of that account's
+   marketplaces, not only the seller row being forecast). Never pick `(unclassified)`: it is
+   the products or campaigns with no label. Labels are free text and can differ by side
+   ("Northwind Outdoors" on products, "northwind" on campaigns); match by meaning, not
+   spelling.
+2. **Confirm with the user** in one message: the account, the product label(s) and the
+   campaign label(s), with their counts. When the brand has no campaign label, say a forecast
+   needs its ad spend and cannot train without one, and ask whether a campaign label covers it.
+   Never guess a label.
+3. **Define it, or reuse the definition** (one call; a definition with the same labels is
+   reused, never duplicated):
+
+   ```bash
+   mixshift forecast sub-brand add --seller <seller_id> --name "<brand>" \
+     --item-label "<product label>" --campaign-label "<campaign label>" --json
+   ```
+
+   Read `sub_brand.scope_key` and `sub_brand.scope_id`. `mixshift forecast sub-brand list
+   --seller <seller_id> --json` shows the account's sub-brands at any time.
+4. **Run Steps 2 and 3 with the sub-brand:** add `"scopeKey":"<scope_key>"` to each call's
+   params, beside the merchant (`{"merchant":{"legacySellerId":<seller_id>},"scopeKey":"<scope_key>"}`).
+   The answers carry the definition (`scope` on readiness, `sub_brand` on the forecast), and
+   Step 3b saves the budget under the sub-brand's `scope_id`, never the account's.
+
+In the explanation, say once that the figures count only the products and campaigns that carry
+the brand's labels, and no DSP spend (DSP carries no label).
 
 ### Step 2. Readiness
 
@@ -203,8 +263,13 @@ ad-spend effect is negative): say so plainly and give the level only.
 | `withdrawn` | The forecasting app withdrew the forecast; it has to be republished there. |
 | `below_floor` | The app's published forecast is below the floor; the app shows what it needs. |
 | `units_not_computed` | Units are served only from a published forecast; revenue is available. |
-| `scope_not_computed` | A sub-brand forecast needs the app's definitions; the account as a whole is available. |
+| `scope_not_defined` | No definition is stored for this sub-brand (or it cannot be read): define it (Step 1b) and run again. |
 | `unparseable_vintage` | The published copy cannot be read by this service build; MixShift is on it. |
+
+Readiness refuses an undefined sub-brand before reading anything: `kind: bad_params` with
+`reason: scope_not_defined` (define it in Step 1b and run again) or `reason:
+scope_definition_unreadable` (its stored definition cannot be read; say so and stop). These are
+not a params-shape problem: do not reshape the params.
 
 Never retry the same request, with one exception: `account_too_large_use_async` (readiness or
 the baseline on a large account) means re-run that one request ONCE with `--async`, then
@@ -314,19 +379,23 @@ explanation beyond "the MixShift forecasting app".
 - [ ] Every caution surfaced; `servable: false` handled as a level, not a plan
 - [ ] Budget: asked only on a first, unshaped computed forecast; written only after the user
       saw the months and amounts and said yes; sponsored only; the answer re-run after a save
+- [ ] Sub-brand: labels confirmed by the user before `sub-brand add`; every call and the budget
+      on the sub-brand's own scope; the explanation says only labelled products and campaigns count
 - [ ] The forecast is never called the plan
 - [ ] No em dashes, no emojis, no internal tool names in the client-facing text
 - [ ] Telemetry: `skill.completed` emitted with `source` and `reason`
 
 ## Key Constraints
 
-- **One account per forecast.** Never add forecasts across accounts.
+- **One account, or one sub-brand of one account, per forecast.** Never add forecasts across
+  accounts, and never subtract a sub-brand from its account by hand.
 - **Revenue only on the computed path.** Units are served from a published forecast.
 - **Horizon 1 to 12.** Seven months out and beyond is a planning level on any account:
   the service's own backtests show no training depth beats last year's same month there.
 - **Metered.** Readiness and the forecast are each one metered request; cached answers are free
   for a day. Saving a budget is two small requests on the account's usage (a read and a save),
-  and the re-run after it is one more forecast request.
+  and the re-run after it is one more forecast request. Listing or defining a sub-brand is one or
+  two small requests on the account's usage.
 - **Sponsored only.** The budget is sponsored ad spend, the basis the computed forecast stands
   on; DSP is not part of it.
 

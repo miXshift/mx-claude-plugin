@@ -1,10 +1,11 @@
 schema_version: 1
 skill_id: mx-max-forecast
 display_name: Forecast Max
-version: "0.2.0"
+version: "0.3.0"
 description: >
-  The max tier of forecasting: a revenue forecast for one Amazon account, explained in
-  plain language with its measured accuracy, from the MixShift Intelligence service.
+  The max tier of forecasting: a revenue forecast for one Amazon account, or for one brand
+  inside an account (a sub-brand, by its product and campaign labels), explained in plain
+  language with its measured accuracy, from the MixShift Intelligence service.
   Serves the forecast the MixShift forecasting app published (corrections included) when
   one exists, else a forecast the gateway computes from the warehouse with the same
   engine, labelled as computed. Checks readiness first. On a first forecast nobody has
@@ -13,13 +14,14 @@ description: >
 run_kind: per_account
 cadence: on_demand
 risk_tier: 2
-allowed_tools: [insight_read, file_read, file_write, forecast_write]
-side_effect_policy: write_gated   # saves the user's monthly sponsored budget via `mixshift forecast budget set`, only after the user saw the months and said yes
-review_required: always           # the budget write requires explicit user confirmation of the exact months and amounts
+allowed_tools: [insight_read, db_read, file_read, file_write, forecast_write]   # db_read: label discovery (`mixshift brand discover --seller-id`) for a brand inside an account
+side_effect_policy: write_gated   # saves the user's monthly sponsored budget (`mixshift forecast budget set`) and, for a brand inside an account, its sub-brand definition (`mixshift forecast sub-brand add`), each only after the user said yes to exactly what is written
+review_required: always           # each write needs the user's yes: the budget (the exact months and amounts) and a sub-brand definition (the exact labels)
 pricing_tier: enterprise
 trigger_phrases:
   - run a forecast
   - forecast for this brand
+  - forecast a brand inside an account
   - revenue outlook
   - what should I expect next month
   - how accurate is the forecast

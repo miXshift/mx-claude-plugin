@@ -50,21 +50,21 @@ export interface BudgetEntry {
 export const MAX_BUDGET_MONTHS = 24;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 /**
- * Account scope `src:<schema>:<seller>` only. A sub-brand scope (`...:scope:<key>`) is
- * the forecasting app's: the computed forecast never serves one, so a budget there
- * could only ever be wrong (red team 2026-10-08).
+ * An account `src:<schema>:<seller>`, or a sub-brand of it `...:scope:<key>`: the
+ * computed forecast serves both (mx-ops#134), and a sub-brand's budgets are its own,
+ * never the account's (the gateway reads exact month keys).
  */
-const SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)$/;
+const SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)(?::scope:([a-z0-9]{4,32}))?$/;
 const SUB_BRAND_RE = /^src:[A-Za-z0-9_]+:\d+:scope:/;
 
-/** The scope id as the gateway stores it (schema lowercased), or null when it is not an account scope. */
+/** The scope id as the gateway stores it (schema lowercased), or null when it is not a forecast scope. */
 export function canonicalScopeId(raw: string): string | null {
   const m = SCOPE_RE.exec(raw.trim());
   if (!m) return null;
-  return `src:${m[1]!.toLowerCase()}:${Number(m[2])}`;
+  return `src:${m[1]!.toLowerCase()}:${Number(m[2])}${m[3] ? `:scope:${m[3]}` : ''}`;
 }
 
-/** A sub-brand scope, which this command refuses with its own sentence. */
+/** A sub-brand scope (`...:scope:<key>`). */
 export function isSubBrandScope(raw: string): boolean {
   return SUB_BRAND_RE.test(raw.trim());
 }
@@ -423,6 +423,16 @@ function friendlyFor(kind: BudgetFailureKind): string {
 
 function failure(kind: BudgetFailureKind, extra: Partial<BudgetFailure> = {}): BudgetFailure {
   return { ok: false, kind, friendly: friendlyFor(kind), ...extra };
+}
+
+/** One call to the gateway's forecasting app state, with the sign-in's token (refreshed once on a 401). */
+export async function appStateRequest(
+  method: 'GET' | 'POST',
+  path: string,
+  body: Record<string, unknown> | undefined,
+  opts: BudgetClientOptions,
+): Promise<{ ok: true; json: Record<string, unknown> } | BudgetFailure> {
+  return request(method, path, body, opts);
 }
 
 async function request(

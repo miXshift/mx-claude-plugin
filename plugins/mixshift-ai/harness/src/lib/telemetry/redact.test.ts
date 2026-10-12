@@ -151,3 +151,13 @@ describe('redactArgs', () => {
     expect(redactArgs([])).toEqual([]);
   });
 });
+
+describe('forecast sub-brand (red team 2026-10-12 on #215)', () => {
+  it('drops the name and the labels, in both flag forms, and keeps the seller and the flags', () => {
+    expect(
+      redactArgs(['forecast', 'sub-brand', 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', 'Northwind', '--campaign-label=northwind', '--item-group']),
+    ).toEqual(['forecast', 'sub-brand', 'add', '--seller', '42', '--name', '<redacted>', '--item-label', '<redacted>', '--campaign-label=<redacted>', '--item-group']);
+    // Outside `forecast sub-brand`, a --name value is not a brand's business value and is kept.
+    expect(redactArgs(['brand', 'add', '--name', 'Northwind'])).toEqual(['brand', 'add', '--name', 'Northwind']);
+  });
+});

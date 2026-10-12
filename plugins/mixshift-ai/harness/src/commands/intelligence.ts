@@ -182,7 +182,8 @@ function registerRunCommand(intelligence: Command): void {
           await trackFailure('run', id, result, startedAt, root.dataDir);
           // A refused shape answers with the shape it wanted, from the catalog,
           // so the next attempt is not another guess.
-          const hint = result.kind === 'bad_params' ? await paramsHint(id, root.dataDir) : undefined;
+          // A refusal with its own reason (a sub-brand nobody defined) is not a shape problem.
+          const hint = result.kind === 'bad_params' && !result.reason ? await paramsHint(id, root.dataDir) : undefined;
           return emitFailure(result, !!root.json, hint);
         }
 
@@ -664,6 +665,7 @@ function emitFailure(failure: IntelligenceFailure, json: boolean, hintOverride?:
     writeJson({
       ok: false,
       kind: failure.kind,
+      ...(failure.reason ? { reason: failure.reason } : {}),
       message: failure.friendly,
       detail: failure.message,
       http_status: failure.httpStatus,
@@ -671,7 +673,7 @@ function emitFailure(failure: IntelligenceFailure, json: boolean, hintOverride?:
       ...(hint ? { hint } : {}),
     });
   } else {
-    process.stderr.write(`\n✗ (${failure.kind}) ${failure.friendly}\n`);
+    process.stderr.write(`\n✗ (${failure.kind}${failure.reason ? `: ${failure.reason}` : ''}) ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`  detail: ${failure.message}\n`);
     if (hint) process.stderr.write(`  hint: ${hint}\n`);
   }
