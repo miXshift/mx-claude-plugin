@@ -193,12 +193,17 @@ The boundary is whether a skill needs a brand-context build. **Everything that n
 - `mx-data-explore` for ad-hoc warehouse query, sample, and export
 - `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, `mx-amazon-dsp` for live reads straight from Amazon
 - `mx-amazon-ads` for live Amazon Ads reads plus audited writes (preview, confirm, commit)
+- `mx-walmart-ads` for Walmart ads (Walmart Connect): campaigns, reports and previewed changes, for Walmart advertisers connected to your MixShift account (beta)
 
 The **analytical PPC tier** (`mx-daily-health-check`, `mx-runaway-spend-check`, `mx-keyword-bid-health`, `mx-monthly-report`, `mx-portfolio-quick-scan`, and the search-term suite) reads a one-time brand-context build per brand. These are being vetted end-to-end on real brand contexts and roll out in waves. Watch the changelog / release notes.
 
 ### Can I pause campaigns, edit bids, or create negatives from the plugin?
 
 Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keywords, targets, bids, budgets) and makes **audited changes** to it: pause and enable campaigns, edit bids and budgets, and create or delete keywords, ASIN targets, and negatives across Sponsored Products, Brands, and Display. It works right after sign-in, with no brand-context build required.
+
+### Does the plugin work with Walmart?
+
+For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To join, ask MixShift to connect your Walmart advertiser. Walmart Marketplace data (orders, items, inventory) is not in the plugin yet.
 
 ### How do Amazon Ads writes work?
 
