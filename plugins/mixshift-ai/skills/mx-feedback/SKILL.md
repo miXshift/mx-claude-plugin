@@ -2,19 +2,17 @@
 name: mx-feedback
 description: >
   Use this when the user wants to send feedback to MixShift, or when they express
-  a complaint, frustration, or dissatisfaction about the plugin even without
-  using the word "feedback". Examples: "this is broken", "this is way too slow",
-  "it feels broken", "this isn't working", "this is confusing", "I wish this
-  could do X". Covers bug reports, feature requests, and comments. Fire on the
-  complaint and route it here; the skill always confirms with the user before
-  sending anything. ALSO fire with no complaint at all when YOU hit a capability
-  gap: no MixShift operation could do a step of the user's task, so the work had
-  to finish elsewhere. The user rarely reports those, because from their side the
-  job got done. Routes through `mixshift feedback`, which posts to MixShift
-  ops in real time and records it for engineering triage. Works mid-session
-  alongside any other skill. For "how do I fix X" where the user wants to solve a
-  setup problem, that is mx-help; this skill is for reporting and venting, not
-  troubleshooting.
+  a complaint, frustration, or dissatisfaction about the plugin even without using
+  the word "feedback". Examples: "this is broken", "this is way too slow", "it
+  feels broken", "this isn't working", "this is confusing", "I wish this could do
+  X". Covers bug reports, feature requests, and comments. Fire on the complaint
+  and route it here; the skill always confirms with the user before sending
+  anything. ALSO fire with no complaint at all when YOU hit a capability gap: no
+  MixShift operation could do a step of the user's task, so the work had to finish
+  elsewhere. (Users rarely report these, since from their side the job got done.)
+  Works mid-session alongside any other skill. For "how do I fix X" where the user
+  wants to solve a setup problem, that is mx-help; this skill is for reporting and
+  venting, not troubleshooting.
 metadata:
   version: "0.2.0"
   author: "MixShift"
