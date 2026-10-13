@@ -220,6 +220,13 @@ export const EventName = {
   AdsOperationsListed: 'ads.operations_listed',
   AdsCalled: 'ads.called',
 
+  // Walmart Connect call surface (lib/walmart/ads-call.ts + `mixshift walmart
+  // ads`). Operation id + advertiser id + environment + outcome; never the
+  // payload (campaign data is the advertiser's business data).
+  WalmartAdsAdvertisersListed: 'walmart.ads.advertisers_listed',
+  WalmartAdsOperationsListed: 'walmart.ads.operations_listed',
+  WalmartAdsCalled: 'walmart.ads.called',
+
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
   // + outcome + cache hit/miss + limitation COUNT only — never the insight

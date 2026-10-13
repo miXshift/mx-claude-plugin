@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: mx-walmart-ads
+display_name: Walmart Ads (Walmart Connect live account state + previewed changes)
+version: "0.1.0"
+description: >
+  Read and manage Walmart ads (Walmart Connect Sponsored Search, plus Display
+  where the account has it) for the Walmart advertisers connected to the
+  signed-in MixShift account, through the bundled harness CLI. The Walmart
+  analogue of mx-amazon-ads: advertisers, campaigns and ad groups with status
+  and budgets, ad items, keywords and bids, placement bid multipliers, keyword
+  suggestions, and performance reports that MixShift creates, downloads and
+  totals (for example the last 30 days by campaign). Changes preview by
+  default and never reach Walmart without the user confirming the exact
+  change set.
+
+# Same write posture as mx-amazon-ads: risk tier 3, write_gated,
+# review_required always. Modeled per_account because every call targets one
+# Walmart advertiser (--advertiser-id). No brand context, no library SQL.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+# ads_write covers mutating ads calls: here `mixshift walmart ads call ...
+# --commit` (preview by default, every commit user-confirmed).
+allowed_tools: [file_read, file_write, ads_write]
+side_effect_policy: write_gated   # Walmart Connect writes via --commit; preview default, user-confirmed
+review_required: always           # writes require explicit user confirmation of the exact change set
+sql_ids: []   # Walmart data is not in the MixShift warehouse
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift walmart ads advertisers
+  - mixshift walmart ads operations [--family <name>]
+  - mixshift walmart ads call <operation> --advertiser-id <id> [--query k=v] [--body-file <f> | --body <json>] [--commit]
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: walmart-report-rows
+    type: json_artifact   # downloaded report rows the user may ask to save; closest schema type
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: pro
+trigger_phrases:
+  - walmart campaigns
+  - my walmart ads
+  - walmart connect
+  - walmart advertisers
+  - walmart sponsored search
+  - how did my walmart campaigns perform
+  - walmart ad performance
+  - walmart ad spend
+  - walmart keyword bids
+  - pause a walmart campaign
+notes: >
+  Walmart Connect is Walmart's advertising API. MixShift holds one partner
+  credential server-side and connects each Walmart advertiser to a MixShift
+  account; `mixshift walmart ads advertisers` lists the ones this sign-in can
+  use (label, advertiserId, api sponsored_search|display, environment
+  production|sandbox, access owner|read). Sandbox rows are Walmart's test
+  environment with dummy data.
+
+  Discovery-first: `mixshift walmart ads operations` and read the notes. Every
+  call names one --advertiser-id. The service checks that each campaign, ad
+  group and keyword id named belongs to that advertiser before sending.
+
+  Reports: ss.latest_report_date, then ss.create_report (Walmart metric names:
+  numAdsShown, numAdsClicks, adSpend), then ss.download_report with
+  groupBy=campaignId for campaign totals. ready=false means Walmart is still
+  building the file; call again after about a minute.
+
+  Writes: write ops preview by default (dryRun true, nothing sent). Show the
+  user current value to new value per item, get explicit confirmation in a
+  separate turn, then re-run with --commit. Walmart answers per item
+  (code success|failure); partial failure is normal. read access refuses
+  commits. At most 100 items per call.
+
+  Failures are typed: branch on failure_kind (not_authenticated=2,
+  tenant_not_allowed=6, walmart_not_configured=6, advertiser_not_allowed=7,
+  not_found=7, throttled=8, insufficient_scope=11, bad_request=12,
+  upstream_auth=14), never on HTTP status.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - a Walmart advertiser connected to the MixShift account by MixShift
+    - writes need owner access and the ads:write scope
