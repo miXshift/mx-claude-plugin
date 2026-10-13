@@ -1,19 +1,16 @@
 ---
 name: mx-auth-service-setup
 description: >
-  Set up an admin-issued service credential so MixShift skills can run
-  UNATTENDED: scheduled Cowork tasks, daily crons hitting the warehouse or
-  the SP-API report/pricing endpoints, CI jobs, cloud automations. The
-  default flow needs no secret handling at all: the admin mints a one-time
-  SETUP CODE at /admin, the user pastes the code in chat (safe by design:
-  single-use, 10-minute TTL), and Claude exchanges it so the credential
-  lands directly in this machine's credentials file. Claude also resolves
-  the correct workspace folder, anchors credentials in a persistent folder so
-  scheduled runs can rediscover them, verifies with a real token mint, and
-  wires the schedule to locate the right data dir. Invoke whenever a user is building something that must
-  run without a person present; interactive sign-in belongs to
-  mx-auth-login instead, and the full scheduled-task lifecycle (anchor
-  folder, generated task instructions, verified first run) belongs to
+  Set up an admin-issued service credential so MixShift skills can run UNATTENDED:
+  scheduled Cowork tasks, daily crons hitting the warehouse or the SP-API
+  report/pricing endpoints, CI jobs, cloud automations. The default flow needs no
+  secret handling at all: the admin mints a one-time SETUP CODE at /admin, the
+  user pastes the code in chat (safe by design: single-use, 10-minute TTL), and
+  Claude exchanges it so the credential lands directly in this machine's
+  credentials file, then verifies it with a real token mint. Invoke whenever a
+  user is building something that must run without a person present; interactive
+  sign-in belongs to mx-auth-login instead, and the full scheduled-task lifecycle
+  (anchor folder, generated task instructions, verified first run) belongs to
   mx-scheduled-task; this skill is the credential step inside it.
 metadata:
   version: "0.3.1"
