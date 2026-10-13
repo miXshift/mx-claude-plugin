@@ -26,8 +26,24 @@ optional:
   - upstream_skills           # skill IDs that must run first (produces UPSTREAM: sidecar)
   - escalation_conditions     # list of conditions that halt execution and surface to human
   - notes                     # short prose for cross-skill considerations
+  - demo                      # guided demo: say/summary/minutes/steps/changes/needs (skill-runtime-contract.md "Demos")
 
 shapes:
+  demo:
+    required: [say, summary, minutes, steps, changes]
+    optional: [needs]
+    note: |
+      say      - the phrase the user says; always starts "demo " (e.g. "demo Walmart ads")
+      summary  - one user-facing line: what the demo shows
+      minutes  - rough length, 1 to 15
+      steps    - 3 to 8 short user-facing step titles, in the order of the
+                 SKILL.md "## Demo" subsections
+      changes  - none (reads only) | preview (shows a change as a preview, never sends it)
+      needs    - what the account must have for real data (e.g. "a Walmart
+                 advertiser connected to your MixShift account")
+      `mixshift demo` lists demos and prints the opener from this block; the
+      guide's "See it in action" section is built from it too.
+
   run_kind:
     enum: [per_account, portfolio]
 

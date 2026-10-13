@@ -158,6 +158,15 @@ export const EventName = {
   // help.viewed carries only format + auth-ready + an uncatalogued-skill count.
   HelpViewed: 'help.viewed',
 
+  // Skill demos (`mixshift demo` + each skill's `## Demo` section). Skill ids
+  // and counts only, never account data. demo.requested fires for a skill
+  // WITHOUT a demo too (available: false): that is the build-next signal.
+  // payloads: listed {count}; requested {skill_id, available, steps_total};
+  // finished {skill_id, steps_shown, steps_total}.
+  DemoListed: 'demo.listed',
+  DemoRequested: 'demo.requested',
+  DemoFinished: 'demo.finished',
+
   // User-contributed skills (`mixshift share-skill` + mx-share-skill skill).
   // Privacy: skill.shared carries only the contributor-authored artifact's
   // METADATA (name, description, file count, byte size, sha). The full skill

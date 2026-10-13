@@ -11,8 +11,9 @@ description: >
   totals for you, for example the last 30 days by campaign. Changes to
   campaigns, ad groups, items, keywords, bids and multipliers preview first
   and never reach Walmart without the user confirming the exact change set.
-  Read-first; write only on request. Uses the MixShift plugin sign-in, so no
-  separate connector is needed. Does not require brand setup.
+  Read-first; write only on request. Also runs a guided demo of all this on
+  the user's own account (demo Walmart ads). Uses the MixShift plugin sign-in,
+  so no separate connector is needed. Does not require brand setup.
 metadata:
   version: "0.1.0"
   author: "MixShift"
@@ -27,6 +28,12 @@ trigger_phrases:
   - walmart ad spend
   - walmart keyword bids
   - pause a walmart campaign
+  - demo walmart ads
+  - walmart ads demo
+  - show me a demo of walmart ads
+  - walk me through walmart ads
+  - tour walmart ads
+  - what can you do with walmart
 ---
 
 # Walmart Ads (Walmart Connect: live account state + previewed changes)
@@ -77,6 +84,10 @@ Trigger when the user asks about **Walmart** advertising, for example:
 - "How did my Walmart campaigns perform over the last 30 days?"
 - "What are my keyword bids in this Walmart campaign?"
 - "Pause this Walmart campaign." / "Raise the bid on these keywords."
+- "Demo Walmart ads." / "Walk me through Walmart ads." Run the Demo section.
+- "What can you do with Walmart?" Answer in two lines (read campaigns and
+  reports, preview and apply changes) and offer the demo: *say "demo Walmart
+  ads" and I'll walk you through it on your own account.*
 
 Route elsewhere:
 
@@ -237,6 +248,120 @@ names: take them from the `docs` link on `ss.create_report`, never guess one.
 to five column names (e.g. `groupBy=campaignId` or `groupBy=campaignId,date`)
 and `limit` caps the rows returned (default 500, max 5000). Without `groupBy`
 you get the raw report rows.
+
+## Demo ("demo Walmart ads")
+
+A guided walkthrough of this skill on the user's own account, following the
+demo contract in `shared/skill-runtime-contract.md` ("Demos"): real data, read
+first, one screen per step, each step ending with the sentence that runs it
+again, and a change only ever shown as a preview. Run it when the user asks for
+a demo, tour or walkthrough of Walmart ads, or says yes to the demo you offered.
+
+**Open.** Run the opener and show its output verbatim, then go straight to
+step 1:
+
+```bash
+mixshift demo mx-walmart-ads
+```
+
+The user can say "skip" (next step), "stop" (go to the close), or ask anything
+mid-step: answer it, then carry on. If they start real work instead, that is
+the demo succeeding; leave it and help them.
+
+### Step 1: Your Walmart advertisers
+
+`mixshift walmart ads advertisers --json`. Say how many advertisers are
+connected and, for each, its label, whether it is the live account
+(`production`) or Walmart's test environment (`sandbox`), and whether MixShift
+can make changes there (`owner`) or only read (`read`).
+
+- Pick one: a `production` Sponsored Search advertiser. If there are several,
+  ask which. If there are only sandbox advertisers, use one and say that every
+  number in this demo is Walmart's test data.
+- A Display-only advertiser: run step 2 with `display.list_campaigns
+  --body '{}'`, say the rest of the demo covers Sponsored Search, and close.
+- `tenant_not_allowed` (exit 6): no Walmart advertiser is connected to this
+  MixShift account yet. Say so, and that MixShift connects them (the user
+  sends MixShift the advertiser ID from Walmart Ad Center). Then describe steps
+  2 to 5 in one sentence each, with no numbers, and close.
+
+Next time, just say: *"list my Walmart advertisers"*.
+
+### Step 2: Campaigns and their status
+
+`ss.list_campaigns`. Lead with the count by status (for example 9 live, 30
+paused, 2 proposals), then the five largest by daily budget: name, status,
+manual or auto, budget. Walmart returns statuses capitalized (`Live`,
+`Paused`, `Proposal`, `Completed`); compare without case. Keep the list:
+steps 3 and 4 need the names.
+
+Next time, just say: *"show my Walmart campaigns and their status"*.
+
+### Step 3: Last 30 days by campaign
+
+The three calls from the starter job above: `ss.latest_report_date`,
+`ss.create_report` (adGroup, the last 30 days ending on the latest date), then
+`ss.download_report` with `groupBy=campaignId`. Show the five campaigns with
+the most spend: spend, clicks, impressions, click-through rate and cost per
+click, with names from step 2. If the file is still building after about two
+minutes, say so, do step 4, and come back to it before step 5.
+
+Next time, just say: *"how did my Walmart campaigns perform over the last 30 days?"*
+
+### Step 4: Inside one campaign
+
+Take the campaign with the most spend in step 3 (or the first live one if the
+report had no rows). `ss.list_ad_groups --query campaignId=<id>`, then:
+
+- a manual campaign: `ss.list_keywords --query campaignId=<id>`, the five
+  highest bids with match type;
+- an auto campaign (no keywords): `ss.list_ad_items --query campaignId=<id>`,
+  the items with their bids.
+
+Next time, just say: *"what are my keyword bids in <campaign>?"*
+
+### Step 5: One change, shown as a preview
+
+Propose one small, concrete change from what the user just saw, for example
+that campaign's daily budget up 10% (`ss.update_campaigns`), or, for a
+campaign with a total budget and no daily one, one keyword's bid down 5 cents
+(`ss.update_keywords` with `--query campaignId=<id>`). Run it as a preview, with NO
+`--commit` (the write contract, step 2). Show the current value and the new
+one, and say nothing was sent to Walmart. Then say how applying works: with
+`owner` access they say "apply it" and confirm; with `read` access the change
+is made from the advertiser's own MixShift sign-in or in Ad Center.
+
+- **The demo never commits on a production advertiser.** If the user says to
+  apply it, the demo ends there and the write contract takes over: their yes
+  to this exact preview is the confirmation, and only that change is sent.
+- **A sandbox advertiser with `owner` access** (MixShift's own Walmart test
+  advertisers) may walk the full build instead. Preview and confirm each write
+  before its `--commit`, per the write contract:
+  1. a manual campaign (paused unless the user says otherwise);
+  2. an ad group in it;
+  3. two items from `ss.search_items`, at a bid;
+  4. three keywords from `ss.keyword_suggestions`, as exact match;
+  5. raise the campaign's budget;
+  6. set the Buy-Box placement multiplier.
+
+  Say that Walmart's sandbox data is dummy data.
+
+Next time, just say: *"raise the daily budget on <campaign> to $<amount>"*.
+
+### Close
+
+Recap the "next time" sentences from the steps the user saw. Add two or three
+more they can try:
+
+- "run the Walmart item health report";
+- "keyword performance for the last 30 days";
+- "export all my Walmart campaigns, ad groups, keywords and items".
+
+Ask what they want to do now. Then record how far the demo got:
+
+```bash
+mixshift demo mx-walmart-ads --finished --steps-shown <n>
+```
 
 ## The write contract (preview by default, confirm, then commit)
 

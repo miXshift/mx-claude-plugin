@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { loadCredentials } from '../lib/auth/credentials.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { NO_ACCOUNT_CHAT } from '../lib/onboarding.js';
+import { loadDemos, type DemoEntry } from '../lib/demos.js';
 
 interface RootOptions {
   json?: boolean;
@@ -171,6 +172,9 @@ export function registerHelpCommand(program: Command): void {
       }
 
       const uncatalogued = await collectUncatalogued();
+      // Demos come from the skills' own manifests, so a new demo shows up here
+      // with no edit to CATALOG.
+      const demos = await loadDemos(await findSkillsDir());
 
       if (root.json) {
         process.stdout.write(
@@ -183,6 +187,7 @@ export function registerHelpCommand(program: Command): void {
                 skills: g.skills.map((s) => s.id),
               })),
               uncatalogued,
+              demos: demos.map((d) => ({ skill_id: d.skillId, say: d.say })),
             },
             null,
             2,
@@ -193,8 +198,8 @@ export function registerHelpCommand(program: Command): void {
 
       const rendered =
         format === 'chat'
-          ? renderHelpChat({ authReady, who, uncatalogued })
-          : renderHelpTerminal({ authReady, who, uncatalogued });
+          ? renderHelpChat({ authReady, who, uncatalogued, demos })
+          : renderHelpTerminal({ authReady, who, uncatalogued, demos });
       process.stdout.write(rendered);
 
       await track(
@@ -204,6 +209,7 @@ export function registerHelpCommand(program: Command): void {
             format,
             auth_ready: authReady,
             uncatalogued_count: uncatalogued.length,
+            demo_count: demos.length,
           },
         },
         root.dataDir,
@@ -271,8 +277,9 @@ function renderHelpChat(args: {
   authReady: boolean;
   who: string | null;
   uncatalogued: string[];
+  demos: DemoEntry[];
 }): string {
-  const { authReady, who, uncatalogued } = args;
+  const { authReady, who, uncatalogued, demos } = args;
   const L: string[] = [];
 
   L.push('**MixShift plugin: what you can do here**');
@@ -294,6 +301,8 @@ function renderHelpChat(args: {
     L.push(NO_ACCOUNT_CHAT);
   }
   L.push('');
+
+  L.push(...renderDemoSectionChat(demos));
 
   for (const group of CATALOG) {
     L.push(`### ${group.title}`);
@@ -358,8 +367,9 @@ function renderHelpTerminal(args: {
   authReady: boolean;
   who: string | null;
   uncatalogued: string[];
+  demos: DemoEntry[];
 }): string {
-  const { authReady, who, uncatalogued } = args;
+  const { authReady, who, uncatalogued, demos } = args;
   const L: string[] = [];
   L.push('');
   L.push('MixShift plugin: what you can do here');
@@ -379,6 +389,11 @@ function renderHelpTerminal(args: {
     }
     L.push('');
   }
+  if (demos.length > 0) {
+    L.push('See it in action (a guided demo on your own account):');
+    for (const d of demos) L.push(`  say "${d.say}"   (about ${d.minutes} min)`);
+    L.push('');
+  }
   if (uncatalogued.length > 0) {
     L.push('More skills:');
     for (const id of uncatalogued) L.push(`  ${id}`);
@@ -393,4 +408,18 @@ function renderHelpTerminal(args: {
   );
   L.push('');
   return L.join('\n');
+}
+
+/**
+ * The guide's demo section: one line per skill demo, shown above the map so a
+ * new user sees "watch it work" before the full menu. Empty when no skill has
+ * a demo.
+ */
+export function renderDemoSectionChat(demos: DemoEntry[]): string[] {
+  if (demos.length === 0) return [];
+  const L: string[] = ['### See it in action'];
+  L.push('New to a skill? A demo walks you through it on your own account, read first, and any change is only previewed.');
+  for (const d of demos) L.push(`- **"${d.say}"** (about ${d.minutes} min): ${d.summary}`);
+  L.push('');
+  return L;
 }

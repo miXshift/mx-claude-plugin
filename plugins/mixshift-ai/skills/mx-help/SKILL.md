@@ -7,10 +7,12 @@ description: >
   browse or list the available skills, or wants to know how to fix a problem.
   Renders the capability map via `mixshift guide --format chat`, then routes the
   user to the right skill, the `mixshift doctor` diagnostic, feedback, or docs.
-  Do NOT use for first-run setup or sign-in (that is mx-welcome), or for actually
-  sending feedback (that is mx-feedback); this hub points to those.
+  Also use when the user asks for a demo, tour or walkthrough without naming a
+  skill: lists the skill demos via `mixshift demo`. Do NOT use for first-run
+  setup or sign-in (that is mx-welcome), or for actually sending feedback (that
+  is mx-feedback); this hub points to those.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   author: "MixShift"
 trigger_phrases:
   - help
@@ -33,6 +35,13 @@ trigger_phrases:
   - how do i fix
   - navigate
   - capabilities
+  - demo
+  - give me a demo
+  - show me a demo
+  - give me a tour
+  - show me around
+  - walk me through it
+  - what demos are there
 ---
 
 # Help: the MixShift navigation hub
@@ -50,6 +59,7 @@ Trigger when the user:
 - Asks "how do I <something>" or "where do I find <something>"
 - Wants to list or browse the available skills
 - Asks how to fix a problem, or says something is not working and wants to solve it
+- Asks for a demo, tour or walkthrough ("give me a demo", "show me around"), with or without naming a skill (Step 1b)
 
 Do NOT trigger for:
 - First-run setup, sign-in, or "what is MixShift" / "get started". That is **mx-welcome**.
@@ -85,6 +95,25 @@ paraphrase or condense it, and do NOT paste the bash command above it.
    - Help, feedback & contributing
    For each group, give one or two concrete example phrases the user can say.
    Keep it warm and short, and end by asking which area they want.
+
+## Step 1b — Demos ("give me a demo", "show me around", "demo <skill>")
+
+A demo walks the user through one skill on their own account (contract:
+`shared/skill-runtime-contract.md`, "Demos"). Demos are declared by the skills
+themselves, so list them; never assume which skills have one.
+
+- **No skill named:** run `mixshift demo` and surface its output verbatim
+  (chat-ready markdown), then ask which one. When the user picks, go into that
+  skill and run its `## Demo` section. Do not run the opener yourself: the
+  skill's Demo section runs `mixshift demo <skill>`.
+- **A skill named:** check the list with `mixshift demo --json`. If the skill
+  is in it, go straight into that skill's `## Demo` section.
+- **A skill named that has no demo yet:** run `mixshift demo <skill>` and
+  surface its output (this records the request, which tells MixShift which
+  demo to build next). Then offer that skill's starter prompts from its "When
+  to use" section instead.
+- **No shell (claude.ai web):** if the skill's SKILL.md has a `## Demo`
+  section, follow its steps and skip the `mixshift demo` lines.
 
 ## Step 2 — Route the user (the important part)
 

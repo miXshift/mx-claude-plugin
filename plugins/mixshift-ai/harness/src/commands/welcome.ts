@@ -453,6 +453,7 @@ function renderWelcomeChat(args: {
     }
 
     lines.push('Not sure where to look? Say **"help"** anytime to see everything this plugin can do in one place.');
+    lines.push('Rather see a skill work first? Say **"demo"** for a guided walkthrough on your own account.');
     lines.push('');
     lines.push("Where do you want to start?");
     lines.push('');
@@ -521,6 +522,7 @@ function renderWelcomeChat(args: {
   );
   lines.push('');
   lines.push('Once you are in, say **"help"** anytime to see everything this plugin can do.');
+  lines.push('Rather see a skill work first? Say **"demo"** for a guided walkthrough on your own account.');
   lines.push('');
 
   return lines.join('\n');
