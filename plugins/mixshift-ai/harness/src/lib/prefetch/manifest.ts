@@ -66,6 +66,33 @@ const preExecutionSchema = z.object({
   batch_plan: z.array(batchRoundSchema).default([]),
 });
 
+/**
+ * A skill's guided demo: the user says `say` ("demo Walmart ads") and the
+ * skill walks them through its main jobs on their own account, read first,
+ * any change shown as a preview. `mixshift demo` reads this block to list
+ * demos and print the opener; the step-by-step script lives in the skill's
+ * SKILL.md `## Demo` section. Contract: shared/skill-runtime-contract.md
+ * ("Demos").
+ */
+export const skillDemoSchema = z.object({
+  // The phrase the user says. Always starts "demo " so every demo is found
+  // the same way.
+  say: z.string().regex(/^demo \S/, 'demo.say must start with "demo "'),
+  // One user-facing line: what the demo shows.
+  summary: z.string().min(1),
+  // Rough length, so the user knows what they are agreeing to.
+  minutes: z.number().int().min(1).max(15),
+  // Short user-facing step titles, in order (the opener numbers them).
+  steps: z.array(z.string().min(1)).min(3).max(8),
+  // `none`: the demo only reads. `preview`: it shows a change as a preview
+  // and never sends it. A demo never commits a change on a live account.
+  changes: z.enum(['none', 'preview']),
+  // What the account needs before the demo can show real data, if anything.
+  needs: z.string().min(1).optional(),
+});
+
+export type SkillDemo = z.infer<typeof skillDemoSchema>;
+
 export const skillManifestSchema = z.object({
   schema_version: z.literal(1),
   skill_id: z.string().min(1),
@@ -105,6 +132,7 @@ export const skillManifestSchema = z.object({
   // without a calibration block skip the confirm flow entirely. See
   // lib/calibration/manifest-schema.ts for field types + authoring guide.
   calibration: calibrationManifestSchema.optional(),
+  demo: skillDemoSchema.optional(),
 });
 
 export type SkillManifest = z.infer<typeof skillManifestSchema>;

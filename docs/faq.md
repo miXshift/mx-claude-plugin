@@ -205,6 +205,10 @@ Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keyw
 
 For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To join, ask MixShift to connect your Walmart advertiser. Walmart Marketplace data (orders, items, inventory) is not in the plugin yet.
 
+### How do I see what a skill does before I use it?
+
+Ask for a demo. Say *"demo"* (or *"give me a demo"*, *"show me around"*) and Claude lists the skills that have one; name a skill (*"demo Walmart ads"*, *"walk me through Walmart ads"*) to start it directly. A demo takes a few minutes, runs on your own account, reads first, and shows any change only as a preview, so nothing on your account changes. Each step ends with the sentence that does it again, so you leave knowing what to ask. Say *"skip"* or *"stop"* any time. Not every skill has a demo yet; asking for one that doesn't tells us which to build next.
+
 ### How do Amazon Ads writes work?
 
 Every write is preview-gated. The harness sends the change to MixShift's service as a **dry run** first: the service validates it, snapshots the current state, logs an audit row, and returns a preview of the exact change set without touching Amazon. Claude shows you that preview and waits. Only when you explicitly confirm does it re-issue the call with `--commit`, the only thing that mutates your account. A declined preview sends nothing. Each committed change carries an audit id so it can be traced and reversed.

@@ -186,6 +186,83 @@ mechanism (email, Slack, UI) is out of scope for this contract; the rules are no
 
 ---
 
+## Demos (guided walkthroughs)
+
+A demo is a skill showing a user what it does, on the user's own account, by
+doing it: a fixed handful of steps, read first, each ending with the plain
+sentence that runs it again. It doubles as discovery for new users and as the
+script for a partner walkthrough. Every skill can have one; the pattern is the
+same for all of them so users learn it once.
+
+### What a skill declares
+
+1. **A `demo:` block in `skill.manifest.yaml`** (schema: `skill-manifest.schema.yaml`):
+   `say` (the phrase, always `demo <name>`, e.g. `demo Walmart ads`), `summary`
+   (one line), `minutes`, `steps` (3 to 8 short user-facing titles), `changes`
+   (`none` or `preview`), optional `needs` (what the account must have).
+   `mixshift demo` and the guide read this block; nothing else registers a demo.
+2. **A `## Demo` section in `SKILL.md`** with one subsection per manifest step,
+   in the same order, each naming the calls it makes and the "next time, just
+   say" sentence. The section starts by running `mixshift demo <skill-id>` and
+   ends by running `mixshift demo <skill-id> --finished --steps-shown <n>`.
+3. **Trigger phrases** in both the manifest and the SKILL.md frontmatter: the
+   `say` phrase plus the skill-specific forms below, and the word "demo" in
+   the frontmatter `description` so the router finds it.
+
+### Rules every demo follows
+
+- **Open with the harness opener.** Run `mixshift demo <skill-id>` and show its
+  output verbatim (title, length, numbered steps, what changes, what it needs),
+  then start step 1 without asking again: the user asked for the demo.
+- **Real data, read first.** Every step runs on the user's own account. Show
+  results short (top 5, counts, one screen per step). Empty is shown as empty;
+  never fill a gap with example data.
+- **End each step with the sentence that runs it again**: "Next time, just say:
+  ...". These sentences are what the user takes away.
+- **A demo never commits a change on a live account.** A change is shown as a
+  preview (the write contract's dry run), with current and new values, and the
+  user is told nothing was sent. If they ask to apply it, the demo ends there and
+  the skill's write contract takes over (their yes to that exact preview is the
+  confirmation). A test account (for example a Walmart sandbox advertiser) may
+  walk committed changes, each one still previewed and confirmed first.
+- **The user steers.** "skip" moves on, "stop" ends, and a question mid-step is
+  answered before moving on. A user who leaves the demo to do real work is the
+  demo succeeding.
+- **Missing setup stops the calls, not the demo.** If step 1 shows the account
+  is not set up (not signed in, nothing connected), say what is needed and who
+  does it, then describe the remaining steps in words, with no invented data.
+- **Budget:** about 10 API calls and the manifest's `minutes`. A report that is
+  still building after a minute or two is left running: move to the next step
+  and come back to it.
+- **Close with a recap:** the "next time" sentences from the steps shown, two or
+  three more things the skill can do, and a question about what they want to do
+  now. Then `mixshift demo <skill-id> --finished --steps-shown <n>`.
+
+### How users find a demo (entry points)
+
+- **Say it, named:** `demo <name>` (canonical), and natural forms: "show me a
+  demo of <name>", "<name> demo", "walk me through <name>", "tour <name>", "show
+  me how <name> works". These are the skill's own trigger phrases.
+- **Say it, unnamed:** "demo", "give me a demo", "give me a tour", "show me
+  around", "walk me through it". mx-help catches these and runs `mixshift demo`
+  to list the demos. ("I'm new" and "get started" stay with mx-welcome, whose
+  closing line points at demos.)
+- **Ask what it can do:** "what can you do with <name>?" The skill answers in
+  two lines and offers its demo.
+- **The guide** (`help`): a "See it in action" section lists every demo, built
+  from the manifests.
+- **Welcome:** first-run and returning-user welcome end with "say demo".
+- **Release notes:** a release that adds a demo names its phrase.
+- **Customer notes and playbooks** from MixShift lead with the demo phrase as
+  the first thing to try.
+
+Telemetry (`mixshift demo` emits these; skill ids and counts only):
+`demo.listed`, `demo.requested` (with `available: false` when a user asks for
+a skill that has no demo yet, which is the signal for which demo to build
+next), `demo.finished` (steps shown of steps total).
+
+---
+
 ## Implementation Status
 
 | Primitive | Implemented | Notes |
@@ -199,6 +276,7 @@ mechanism (email, Slack, UI) is out of scope for this contract; the rules are no
 | Run sidecar | ✅ | Schema defined; mx-brand-context emits; not all skills emit |
 | Audit trail | Partial | Sidecar schema solid; not universally emitted |
 | Human review rules | Partial | Informal in SKILL.md; not machine-readable |
+| Demos | ✅ | `demo:` manifest block + `mixshift demo` + guide section (2026-10-13); first demo: mx-walmart-ads |
 
 ---
 

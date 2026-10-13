@@ -51,6 +51,26 @@ trigger_phrases:
   - walmart ad spend
   - walmart keyword bids
   - pause a walmart campaign
+  - demo walmart ads
+  - walmart ads demo
+  - show me a demo of walmart ads
+  - walk me through walmart ads
+  - tour walmart ads
+  - what can you do with walmart
+# Guided demo (shared/skill-runtime-contract.md "Demos"). Steps mirror the
+# SKILL.md "## Demo" subsections, in order.
+demo:
+  say: demo Walmart ads
+  summary: Your Walmart advertisers, your campaigns and their last 30 days, then one change shown as a preview.
+  minutes: 5
+  steps:
+    - Your Walmart advertisers
+    - Campaigns and their status
+    - Last 30 days by campaign
+    - Inside one campaign
+    - One change, shown as a preview
+  changes: preview
+  needs: a Walmart advertiser connected to your MixShift account
 notes: >
   Walmart Connect is Walmart's advertising API. MixShift holds one partner
   credential server-side and connects each Walmart advertiser to a MixShift

@@ -1,14 +1,15 @@
 schema_version: 1
 skill_id: mx-help
 display_name: Help / Navigation Hub
-version: "0.1.2"
+version: "0.1.3"
 description: >
   Navigation and discovery hub for the plugin. Renders an outcome-grouped map
   of every skill via the `mixshift guide` CLI, routes the user to the right
   skill, runs `mixshift doctor` for troubleshooting, and points outward to
   feedback (mx-feedback) and skill sharing (mx-share-skill). The ongoing
   "I'm stuck / what can this do / how do I fix X" entry point, distinct from
-  the first-run mx-welcome.
+  the first-run mx-welcome. Also the entry for skill demos when the user asks
+  for a demo or tour without naming a skill (`mixshift demo`).
 
 # Tier 1 = informational only. No file writes, no DB calls. Modeled as
 # per_account for discovery, consistent with mx-welcome / mx-feedback; the
@@ -24,6 +25,7 @@ sql_ids: []
 harness_commands:
   - mixshift guide --format chat
   - mixshift doctor
+  - mixshift demo [skill]
 
 required_context_fields: []
 optional_context_fields: []
@@ -51,6 +53,13 @@ trigger_phrases:
   - how do i fix
   - navigate
   - capabilities
+  - demo
+  - give me a demo
+  - show me a demo
+  - give me a tour
+  - show me around
+  - walk me through it
+  - what demos are there
 notes: >
   Thin skill wrapping the `mixshift guide` CLI command (named `guide` because
   the CLI framework reserves `help`). The CLI owns the capability-map wording,
