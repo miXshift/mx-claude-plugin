@@ -15,7 +15,7 @@ description: >
   seller's live deals, coupons, price discounts, and basket-building offers).
   Read-only. No brand setup needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -165,6 +165,8 @@ Other live questions this surface answers:
   discount?" (promotions, sellers only)
 - "Where are our FBA inbound shipments: shipped, receiving, or closed?"
   (fulfillment_inbound)
+- "What is the tracking or PRO number on FBA inbound shipment FBA...?"
+  (fulfillment_inbound, 2024-03-20)
 - "What do customers praise and complain about on this ASIN?"
   (customer_feedback)
 - "How is our Subscribe & Save program doing?" (replenishment)
@@ -410,7 +412,9 @@ Gotchas:
 - `fulfillment_inbound.get_shipment_items` - line items and quantities across
   inbound shipments updated in a date range.
 - `fulfillment_inbound.get_shipment_items_by_shipment` - expected vs received
-  quantities per SKU for one shipment (`--path shipmentId=`).
+  quantities per SKU for one shipment (`--path shipmentId=<FBA... id>`; a
+  `shipmentId` passed as `--query`, or `ShipmentId` with a capital S, fails).
+  Amazon caps it at 200 items per shipment.
 
 Use this to answer "is the stock on its way, and where is it stuck?", for
 example when an ASIN went out of stock and you need to know whether a
@@ -437,9 +441,75 @@ Gotchas:
   about 100 ids. `get_shipment_items` takes `DATE_RANGE` or `NEXT_TOKEN` only.
 - **Paging:** pass the response's `NextToken` back with `QueryType=NEXT_TOKEN`
   and `NextToken=<token>`. A `NextToken` on
-  `get_shipment_items_by_shipment` means its item list is PARTIAL; continue
-  through `get_shipment_items` with `QueryType=NEXT_TOKEN`, since that
-  operation has no paging parameter of its own.
+  `get_shipment_items_by_shipment` means its item list may be PARTIAL;
+  continue through `get_shipment_items` with `QueryType=NEXT_TOKEN`, since
+  that operation has no paging parameter of its own, and follow it until it
+  is absent. The last page can be empty.
+
+### Fulfillment Inbound (2024-03-20) - plans, tracking, boxes, pallets, carrier
+
+The newer inbound API, in the same `fulfillment_inbound` family. It replaces
+the transport-details call Amazon removed in January 2025, so this is where
+carrier tracking lives now.
+
+- `fulfillment_inbound.list_inbound_plans` - the account's inbound plans
+  (`inboundPlanId`, status, marketplaces, created / last updated).
+- `fulfillment_inbound.get_inbound_plan` - one plan and its shipments
+  (`--path inboundPlanId=`).
+- `fulfillment_inbound.get_shipment` - one shipment: tracking, destination
+  warehouse, status, delivery windows, and `shipmentConfirmationId` (the
+  `FBA...` id) (`--path inboundPlanId= --path shipmentId=`).
+- `fulfillment_inbound.list_transportation_options` - the carrier and shipping
+  mode (`--path inboundPlanId= --query shipmentId=`).
+- `fulfillment_inbound.list_shipment_boxes` / `list_shipment_pallets` /
+  `list_shipment_items` - one shipment's boxes (with the case-pack template
+  name), pallets, and SKUs.
+- `fulfillment_inbound.list_inbound_plan_items` / `list_inbound_plan_boxes` /
+  `list_inbound_plan_pallets` - the same across a whole plan.
+- `fulfillment_inbound.list_placement_options` - how Amazon split the plan
+  into shipments, and the placement fees of each option.
+
+Gotchas:
+
+- **Pass `--query status=SHIPPED` to see shipped plans.** Without a status,
+  Amazon returns ACTIVE plans only (seen on every account tested). Use
+  `status=VOIDED` for voided ones; each status is its own paged list.
+- **Keyed by the plan id plus Amazon's newer shipment id (`sh...`), NOT the
+  `FBA...` id.** Amazon has no lookup by the `FBA...` id. To go from an
+  `FBA...` id to its tracking: `list_inbound_plans` with
+  `--query status=SHIPPED --query sortBy=LAST_UPDATED_TIME --query sortOrder=DESC`
+  (repeat with `status=ACTIVE` if not found), then `get_inbound_plan` per plan
+  for its `shipments[].shipmentId`, then `get_shipment` and match
+  `shipmentConfirmationId`. Stop at the first match.
+- **Skip AWD plans.** The plan list can include Amazon Warehousing and
+  Distribution plans, and `get_inbound_plan` fails on those with `bad_request`
+  ("not supported for Amazon Warehousing and Distribution inbound plans").
+  Move on to the next plan; it is not an error to report.
+- **Tracking:** small parcel is `trackingDetails.spdTrackingDetail.spdTrackingItems[]`
+  (one `trackingId` per `boxId`); freight is
+  `trackingDetails.ltlTrackingDetail` (`freightBillNumber` = the PRO, and
+  `billOfLadingNumber`). It is often absent: it carries only what was entered
+  for the shipment. In a live check, freight shipments with a PRO entered had
+  it, and Amazon-partnered small-parcel shipments had no tracking items. Say
+  "no tracking recorded on this shipment"; never infer a number.
+- **Carrier:** the transportation option whose `transportationOptionId`
+  equals the shipment's `selectedTransportationOptionId`. Own-carrier options
+  name the carrier `Other`, so the real carrier name is not available for
+  own-carrier freight; partnered options name it (e.g. UPS).
+- **No actual shipped / delivered / received dates and no received
+  quantities here.** For received units use the v0
+  `get_shipment_items_by_shipment` (`QuantityReceived`, by the `FBA...` id);
+  for receipt dates use the `GET_LEDGER_DETAIL_VIEW_DATA` report (Receipts
+  events) through mx-amazon-report.
+- **No marketplace param.** Plans are account-wide for the region, each with
+  its own `marketplaceIds`; `--legacy-seller-id` just picks the account.
+- **Paging:** `--query pageSize=` (1-30 on plans, 1-20 on transport and
+  placement options, 1-1000 on items, boxes, and pallets; default 10), then
+  pass `pagination.nextToken` back as `--query paginationToken=` until it is
+  absent.
+- **Case packs:** `templateName` on a box names the template it was packed
+  with. Amazon has no API to read or apply the templates themselves, and none
+  for FBA capacity limits.
 
 ### Sales (v1) - units, orders, sales aggregates
 
