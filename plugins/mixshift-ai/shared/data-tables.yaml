@@ -461,12 +461,17 @@ tables:
     date_column: DateTime
 
   mws_inventory_health:
-    description: "Inventory health snapshots: SellableQuantity, days of supply, alert flags. Roll-up view of mws_inventory_history."
+    description: "Current FBA inventory planning state per SKU, loaded from Amazon's GET_FBA_INVENTORY_PLANNING_DATA report: Available, DaysOfSupply, Alert, WeeksOfCoverT7, SalesShippedLast7Days, StorageVolume. Not a history: each daily pull deletes the previous snapshot for the marketplace it loads, so a seller row holds one snapshot. For trends and stockout history use mws_inventory_history."
     category: inventory
     account_types: [SC]
-    time_series: true
+    time_series: false
     requires_seller_id: true
     date_column: DateTime
+    gotchas:
+      - "Loaded for one marketplace per Amazon account (its main marketplace, US, AU or UK when the account has one). The account's other marketplaces have no rows, or rows with a blank `Available` and zero metrics, which mean 'not loaded', not 'no stock'. For those marketplaces pull the report on demand: `mixshift amazon report start --type GET_FBA_INVENTORY_PLANNING_DATA --marketplace <code>`. For a pan-EU account request DE: the EU marketplaces share one inventory pool, so one report covers it. Amazon does not serve this report in NL, PL, SE or BE."
+      - "`SellableQuantity` and `TotalQuantity` are deprecated and always 0. The FBA count is `Available`, a varchar that is '' when the row carries none, so filter `NULLIF(Available, '') IS NOT NULL`."
+      - "Check `DateTime` before treating a row as current. A seller row that stopped being loaded keeps its last snapshot, which can be months or years old."
+      - "`FulfillmentChannel = 'AFN'` matches no rows. The values are the SP-API region (`AMAZON_NA`, `AMAZON_EU`, ...), `DEFAULT`, or ''."
 
   mws_inventory_fba_estimated_fees:
     description: "Estimated FBA fees per ASIN."
