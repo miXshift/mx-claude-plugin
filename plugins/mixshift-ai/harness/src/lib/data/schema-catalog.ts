@@ -43,21 +43,41 @@ interface CuratedFile {
 
 let cached: Promise<SchemaCatalog> | null = null;
 let loaded: SchemaCatalog | null = null;
+let loadedDir: string | null = null;
+let hydrating: Promise<void> | null = null;
 
 /**
- * Load (once) and return the merged catalog. Never throws: a missing or
- * unreadable file yields an empty catalog, which makes every check a no-op.
- * `overrideDir` points at a directory holding both YAML files (tests).
+ * Load (once) and return the catalog with its column lists. Never throws: a
+ * missing or unreadable file yields an empty catalog, which makes every
+ * check a no-op. The curated hints (`keyColumns`, `gotchas`) start empty and
+ * are filled by `hydrateSchemaHints`, so the per-query cost is the column
+ * scan alone and the general YAML parse of the curated file is paid only
+ * when a hint is about to be shown. `overrideDir` points at a directory
+ * holding the YAML files (tests); an override is not cached.
  */
 export function loadSchemaCatalog(overrideDir?: string): Promise<SchemaCatalog> {
-  if (overrideDir) return readCatalog([overrideDir]);
+  if (overrideDir) return readCatalog([overrideDir]).then((r) => r.catalog);
   if (!cached) {
-    cached = readCatalog(candidateDirs()).then((c) => {
-      loaded = c;
-      return c;
+    cached = readCatalog(candidateDirs()).then((r) => {
+      loaded = r.catalog;
+      loadedDir = r.dir;
+      return r.catalog;
     });
   }
   return cached;
+}
+
+/**
+ * Fill `keyColumns` and `gotchas` on the cached catalog from the curated
+ * `data-tables.yaml` (once). Idempotent, never throws; a missing curated
+ * file leaves the hints empty. `overrideCatalog` + `overrideDir` serve tests.
+ */
+export function hydrateSchemaHints(overrideCatalog?: SchemaCatalog, overrideDir?: string): Promise<void> {
+  if (overrideCatalog && overrideDir) return fillHints(overrideCatalog, overrideDir);
+  if (!hydrating) {
+    hydrating = loadSchemaCatalog().then((cat) => (loadedDir ? fillHints(cat, loadedDir) : undefined));
+  }
+  return hydrating;
 }
 
 /** The catalog if `loadSchemaCatalog` has completed in this process, else null.
@@ -70,29 +90,38 @@ export function loadedSchemaCatalog(): SchemaCatalog | null {
 export function _resetSchemaCatalogCache(): void {
   cached = null;
   loaded = null;
+  loadedDir = null;
+  hydrating = null;
 }
 
-async function readCatalog(dirs: string[]): Promise<SchemaCatalog> {
+async function readCatalog(dirs: string[]): Promise<{ catalog: SchemaCatalog; dir: string | null }> {
   const out: SchemaCatalog = new Map();
   for (const dir of dirs) {
     const dumpText = await readText(join(dir, 'tables.yaml'));
     if (dumpText === null) continue;
     const tables = parseDumpColumns(dumpText);
     if (tables.size === 0) continue;
-    const curated = (await readYaml<CuratedFile>(join(dir, 'data-tables.yaml')))?.tables ?? {};
     for (const [name, columns] of tables) {
       if (columns.length === 0) continue;
-      const cur = curated[name];
-      const keyColumns: Record<string, string> = {};
-      for (const [role, col] of Object.entries(cur?.key_columns ?? {})) {
-        if (typeof col === 'string') keyColumns[role.toLowerCase()] = col;
-      }
-      const gotchas = (cur?.gotchas ?? []).filter((g): g is string => typeof g === 'string');
-      out.set(name.toLowerCase(), { name, columns, keyColumns, gotchas });
+      out.set(name.toLowerCase(), { name, columns, keyColumns: {}, gotchas: [] });
     }
-    return out;
+    return { catalog: out, dir };
   }
-  return out;
+  return { catalog: out, dir: null };
+}
+
+async function fillHints(catalog: SchemaCatalog, dir: string): Promise<void> {
+  const curated = (await readYaml<CuratedFile>(join(dir, 'data-tables.yaml')))?.tables ?? {};
+  for (const [name, cur] of Object.entries(curated)) {
+    const table = catalog.get(name.toLowerCase());
+    if (!table || !cur) continue;
+    const keyColumns: Record<string, string> = {};
+    for (const [role, col] of Object.entries(cur.key_columns ?? {})) {
+      if (typeof col === 'string') keyColumns[role.toLowerCase()] = col;
+    }
+    table.keyColumns = keyColumns;
+    table.gotchas = (cur.gotchas ?? []).filter((g): g is string => typeof g === 'string');
+  }
 }
 
 /**

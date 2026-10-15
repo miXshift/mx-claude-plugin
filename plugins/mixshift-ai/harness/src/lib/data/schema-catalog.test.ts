@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadSchemaCatalog, loadedSchemaCatalog, parseDumpColumns, _resetSchemaCatalogCache } from './schema-catalog.js';
+import { loadSchemaCatalog, hydrateSchemaHints, loadedSchemaCatalog, parseDumpColumns, _resetSchemaCatalogCache } from './schema-catalog.js';
 
 beforeEach(() => _resetSchemaCatalogCache());
 
@@ -73,12 +73,29 @@ describe('loadSchemaCatalog', () => {
     const seller = cat.get('seller')!;
     expect(seller.columns).toContain('Name');
     expect(seller.columns).not.toContain('SellerName');
-    expect(seller.gotchas.join(' ')).toMatch(/SellerName/);
     const cm = cat.get('campaignmetric')!;
     expect(cm.columns).toContain('Cost');
+    // Hints are empty until hydrated (the curated file is not on the hot path).
+    expect(seller.gotchas).toEqual([]);
+    expect(cm.keyColumns).toEqual({});
+    await hydrateSchemaHints();
+    expect(seller.gotchas.join(' ')).toMatch(/SellerName/);
     expect(cm.keyColumns.spend).toBe('Cost');
     // Curated-only tables have no column list and are not checkable.
     expect(cat.has('sponsoredbrandsmetric')).toBe(false);
+  });
+
+  it('hydration is idempotent and tolerates a missing curated file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mixshift-schema-hints-'));
+    await writeFile(join(dir, 'tables.yaml'), 'tables:\n  t:\n    columns:\n      - { name: A }\n', 'utf-8');
+    const cat = await loadSchemaCatalog(dir);
+    await hydrateSchemaHints(cat, dir);
+    expect(cat.get('t')).toEqual({ name: 't', columns: ['A'], keyColumns: {}, gotchas: [] });
+    await writeFile(join(dir, 'data-tables.yaml'), 'tables:\n  t:\n    key_columns: { spend: A }\n    gotchas: ["There is no `B`; use `A`."]\n', 'utf-8');
+    await hydrateSchemaHints(cat, dir);
+    await hydrateSchemaHints(cat, dir);
+    expect(cat.get('t')!.keyColumns).toEqual({ spend: 'A' });
+    expect(cat.get('t')!.gotchas).toHaveLength(1);
   });
 
   it('is cached per process', async () => {

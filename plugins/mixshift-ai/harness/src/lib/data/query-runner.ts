@@ -28,7 +28,7 @@ import { track, EventName } from '../telemetry/index.js';
 import { networkErrorMessage } from '../net/classify.js';
 import { resolveApiBaseHost } from '../net/api-base.js';
 import { checkColumns, suggestColumns, unknownColumnFriendly } from './column-check.js';
-import { loadSchemaCatalog, loadedSchemaCatalog } from './schema-catalog.js';
+import { loadSchemaCatalog, hydrateSchemaHints, loadedSchemaCatalog } from './schema-catalog.js';
 
 export type DataQueryFailureKind =
   | 'access_denied_table'
@@ -266,13 +266,24 @@ async function precheckColumns(
   try {
     const catalog = await loadSchemaCatalog();
     verdict = checkColumns(sql, catalog);
+    const ms = Date.now() - t0;
+    options.precheck_ms = ms;
+    if (verdict.verdict !== 'unknown_column') {
+      // Off the hot path: have the curated hints ready in case the gateway
+      // answers this query with an unknown-column error of its own.
+      void hydrateSchemaHints().catch(() => undefined);
+      return null;
+    }
+    // A block is about to show a hint: load the curated role hints and
+    // gotchas now, then rank the suggestions with them.
+    await hydrateSchemaHints();
+    const table = catalog.get(verdict.table.toLowerCase());
+    if (table) verdict = { ...verdict, suggestions: suggestColumns(verdict.column, table), gotchas: table.gotchas };
   } catch {
     // A broken catalog file must never cost a query.
     return null;
   }
   const ms = Date.now() - t0;
-  options.precheck_ms = ms;
-  if (verdict.verdict !== 'unknown_column') return null;
   const failure: DataQueryFailure = {
     ok: false,
     kind: 'unknown_column',
