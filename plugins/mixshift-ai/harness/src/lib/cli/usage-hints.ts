@@ -41,7 +41,12 @@ export const COMMAND_ALIASES: Record<string, { targets: string[]; note?: string;
   'amazon report catalog': { targets: ['amazon list-reports'] },
   'amazon report list': { targets: ['amazon list-reports'] },
   'ads list': { targets: ['ads profiles', 'ads operations'] },
-  report: { targets: ['amazon list-reports', 'amazon report'], note: 'Amazon reports are under `amazon`' },
+  // `report` itself is a real top-level group (validate, extract, render,
+  // battery), so the guesses are keyed under it.
+  'report catalog': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report types': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report list': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report start': { targets: ['amazon report start'], note: 'Amazon reports run under `amazon report`' },
   spapi: { targets: ['amazon operations', 'amazon call'], note: 'SP-API operations are under `amazon`' },
   'sp-api': { targets: ['amazon operations', 'amazon call'], note: 'SP-API operations are under `amazon`' },
   retail: {
@@ -89,7 +94,7 @@ export const OPTION_HINTS: Record<string, Record<string, UsageHint>> = {
       text:
         '`amazon call` takes `--query key=value` (repeatable) for query params, `--path key=value` ' +
         'for path placeholders, and `--body-file <file>` or `--body <json>` for a request body; ' +
-        'run `mixshift amazon operations` for which the operation needs.',
+        'run `mixshift amazon operations` for what the operation needs.',
     },
     '--params': {
       id: 'amazon_call_params',
@@ -105,7 +110,7 @@ export const OPTION_HINTS: Record<string, Record<string, UsageHint>> = {
       id: 'amazon_call_out',
       text:
         '`amazon call` prints the response to stdout (add `--json` before the command for one JSON document); ' +
-        'redirect it to a file. `--out` belongs to `amazon report get` and `data query`.',
+        'redirect it to a file. `--out` is for the commands that write one: `data query`, `data export`, `amazon report get`.',
     },
   },
   'amazon report get': {

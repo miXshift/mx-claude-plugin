@@ -12,6 +12,7 @@ import { registerDataCommands } from '../../commands/data.js';
 import { registerAmazonCommands } from '../../commands/amazon.js';
 import { registerAdsCommands } from '../../commands/ads.js';
 import { registerAuthCommands } from '../../commands/auth.js';
+import { registerReportCommands } from '../../commands/report.js';
 
 function tree(): Command {
   const program = new Command();
@@ -20,6 +21,9 @@ function tree(): Command {
   registerAmazonCommands(program);
   registerAdsCommands(program);
   registerAuthCommands(program);
+  // `report` is a real top-level group; without it the shadow test cannot
+  // see that a top-level `report` hint would never fire.
+  registerReportCommands(program);
   return program;
 }
 
@@ -121,6 +125,8 @@ describe('usageHint', () => {
     [['amazon', 'report', 'catalog'], 'mixshift amazon list-reports'],
     [['ads', 'list'], 'mixshift ads profiles'],
     [['report', 'catalog'], 'mixshift amazon list-reports'],
+    [['report', 'types'], 'mixshift amazon list-reports'],
+    [['report', 'start'], 'mixshift amazon report start'],
     [['spapi', 'operations'], 'mixshift amazon operations'],
     [['sp-api', 'operations'], 'mixshift amazon operations'],
     [['retail', 'list'], 'mixshift amazon merchants'],
