@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.5.4
+version: 2.5.5
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -119,7 +119,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Cadence | monthly; "bi-weekly" or "QBR"/"quarterly" in the ask switches it | `reporting.call_cadence` in context.yaml |
 | Documents | both; "just the client one" / "just my notes" narrows it | `reporting.brief_documents`: `both`, `client_only`, `internal_only` |
 | Publish | two persistent per-brand HUB artifacts (client + internal), each period stacking in place at one stable URL; without the Artifact tool, two hub HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
-| Targets | `management.acos_target_pct` and `goals.*` from brand context; absent means observational framing, no beat/miss language | one optional question, answer recorded |
+| Targets | from brand context: `acos_target_pct`, `tacos_goal_pct`, `monthly_total_sales_target` and `quarterly_total_sales_target` as `mixshift brand context resolve <slug>` returns them (they live under `management.*` and `goals.*` in context.yaml; the resolver flattens the names and returns no `goals` block of its own); absent means observational framing, no beat/miss language | one optional question, answer recorded with `mixshift brand config <slug>` so the next run reads it |
 | Forecast | `auto`: when the MixShift forecasting service holds a forecast for this brand that is current for the report month, it appears in the report (Step 3d); otherwise nothing forecast-related appears anywhere, the settings section says nothing about it, and nobody is asked | `reporting.forecast`: `auto`, `off` (no forecast request at all), or `require` (a missing, stale or failed forecast becomes one line in the internal companion's exceptions block) |
 | Forecast metrics | revenue; units are requested only when the revenue forecast came back current | `reporting.forecast_metrics: [revenue, units]` adds units; `[revenue]` is the default |
 | Forecast audience | both documents: in the client brief only figures marked client-safe, leading with the current model's projection and then the forecast made before the month closed; what the forecast stands on and the year-start forecast in the internal companion | `reporting.forecast_audience: internal_only` keeps it out of the client brief |
@@ -333,6 +333,16 @@ anchors the closed-month baseline, the decomposition shape, and the evidence, an
 in-progress deltas go on the internal companion's numbers-to-keep-off list, labeled with
 why.
 
+**On a closed month the two sources disagree by construction, and the calendar pair is
+the one to quote.** The envelope compares the full month to the full prior month (September
+1-30 against August 1-31); the battery clamps the prior month to the same day count
+(August 1-30). Lead with the envelope's calendar pair, since that is the month the client
+closed and the figure their finance sees, and when the two months differ in length put the
+per-day rate beside it ("$412k, down 4% on the month; per day, down 1%"). The battery's
+matched pair is the cross-check, not a second headline: a difference between the two that
+is larger than the day-count gap explains is a finding, and quoting both without saying
+which is which is a defect.
+
 On a service error: **degrade and label.** Name the degradation in the method notes, pull
 the account totals from the warehouse battery instead, and keep going. Never silently
 substitute locally computed numbers where the envelope was expected; the label is what
@@ -536,7 +546,8 @@ encodes on both channels, so you can spot them anywhere else:
    data; trim both to the earlier `MAX(DateTime)` or the TACOS compares 26 days of spend
    to 25 days of sales.
 2. **Compare like day counts.** Month-to-date goes against the same day count of the prior
-   month, labelled explicitly. Nobody reads a footnote.
+   month, labelled explicitly. Nobody reads a footnote. (A closed month is the exception:
+   the calendar pair leads, per the envelope section above.)
 3. **Check for dark ad days in either window.** Count days with non-zero spend; normalize
    short windows and show raw and normalized side by side. Scaling touches spend, ad sales
    and TACOS; ACOS is a ratio and is left alone.
@@ -567,9 +578,12 @@ mixshift amazon call pricing.get_item_offers_batch --legacy-seller-id <SellerID>
   --body '{"requests":[{"uri":"/products/pricing/v0/items/<ASIN>/offers","method":"GET","MarketplaceId":"<marketplace>","ItemCondition":"New"}]}'
 ```
 
-Up to 20 ASINs per batch, about one batch per 12s. Read `Offers[].IsFeaturedMerchant`, the
-seller id on the winning offer, `ListingPrice`, `Summary.NumberOfOffers` and
-`Summary.CompetitivePriceThreshold`.
+Up to 20 ASINs per batch, about one batch per 12s. The winning offer is the one with
+`Offers[].IsBuyBoxWinner` true; read its `SellerId` and `ListingPrice`, then
+`Summary.NumberOfOffers` and `Summary.CompetitivePriceThreshold`. `IsFeaturedMerchant` is
+eligibility, not the win: every offer that qualifies for the Buy Box carries it true, so
+it cannot tell the winner apart. No offer with `IsBuyBoxWinner` true means the Buy Box is
+suppressed for that ASIN (quote `Summary.BuyBoxPrices` being absent, not a competitor).
 
 ### 3d. Forecast figures (optional): the published forecast
 
@@ -678,6 +692,11 @@ maximum fulfillable quantity across every warehouse row is zero: "could not be b
 "not owned"). Attribute decline to stockout only where the current window is materially
 worse than the prior one; many ASINs sit at zero permanently and are not news. Total the
 decline across just those ASINs so you can say what share of the gap availability explains.
+On Seller Central the warehouse count reads FBA fulfillable stock only: an ASIN that sold units on a day the
+count calls out of stock was in stock somewhere (merchant-fulfilled, or an FBA SKU the
+inventory feed does not carry), so before you name a stockout, check the daily units for
+that ASIN and drop every day with sales. Say "FBA out-of-stock days" when the item also
+sells merchant-fulfilled, and never call a selling item stocked out.
 
 **Traffic quality.** When traffic rose and conversion fell, the question is whether the
 added visitors converted and whether they were bought, and the battery answers both:
