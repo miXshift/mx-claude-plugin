@@ -14,7 +14,7 @@ description: >
   [client]', 'get me ready for the [client] monthly', 'QBR prep', 'what moved this month
   for [brand]', 'anything I should flag before this call'.
 author: Claude
-last_updated: 2026-10-01
+last_updated: 2026-10-15
 dependencies:
   - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`; FCT-TRACK-01 for the optional forecast)
   - Warehouse read access via the gateway (`mixshift report battery` for the figure battery,
@@ -687,16 +687,22 @@ notes (i06) in plain words. When no forecast figure was used, `forecast_numbers_
 The brief's central job is answering "is this a demand problem or something we can fix".
 Do not reach for a cause. Test for each one and let the data pick.
 
-**Availability.** Count out-of-stock days per ASIN in both windows (a day counts when the
-maximum fulfillable quantity across every warehouse row is zero: "could not be bought", not
-"not owned"). Attribute decline to stockout only where the current window is materially
-worse than the prior one; many ASINs sit at zero permanently and are not news. Total the
-decline across just those ASINs so you can say what share of the gap availability explains.
-On Seller Central the warehouse count reads FBA fulfillable stock only: an ASIN that sold units on a day the
-count calls out of stock was in stock somewhere (merchant-fulfilled, or an FBA SKU the
-inventory feed does not carry), so before you name a stockout, check the daily units for
-that ASIN and drop every day with sales. Say "FBA out-of-stock days" when the item also
-sells merchant-fulfilled, and never call a selling item stocked out.
+**Availability.** Count out-of-stock days per ASIN in both windows (a day counts when FBA
+fulfillable stock was zero on every FBA SKU AND no units of the item were ordered: "could not
+be bought", not "not owned"). Attribute decline to stockout only where the current window is
+materially worse than the prior one; many ASINs sit at zero permanently and are not news. Total
+the decline across just those ASINs so you can say what share of the gap availability explains.
+On Seller Central the battery's `oos_days` rows already apply that rule (service contract 5,
+2026-10-15): a selling day is never in `cur_oos_days`, and a merchant-fulfilled listing is never
+read as stock or as a stockout. Quote `thresholds_applied.oos_days_note` as the rule the count
+ran under. Beside the count, `cur_fba_oos_selling_days` is the days the FBA offer was gone while
+the item still sold: name those "FBA out-of-stock days while selling", a conversion risk, and on
+an item whose `fulfillment` is `FBA+MFN` a possible sign it is stocking out by region; never a
+stockout, and never a selling item called stocked out. `cur_fba_days_read` against
+`windows.day_count` says how much of the window the inventory feed covered; say so when they
+differ, because a day the feed missed is counted as nothing. If `oos_days_note` is absent from
+`thresholds_applied`, the service predates this contract and the count is FBA stock only: then
+check the daily units for that ASIN and drop every day with sales before naming a stockout.
 
 **Traffic quality.** When traffic rose and conversion fell, the question is whether the
 added visitors converted and whether they were bought, and the battery answers both:
