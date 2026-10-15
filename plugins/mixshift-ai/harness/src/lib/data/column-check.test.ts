@@ -210,6 +210,26 @@ describe('checkColumns: sends valid single-table SQL through', () => {
     passes("SELECT CAST(DateTime AT TIME ZONE INTERVAL '+00:00' AS DATETIME) FROM campaignmetric");
   });
 
+  it('red team round 2: SQL_TSI units, JSON_VALUE ON ERROR, introducers before hex, INTERVAL CASE ... END', () => {
+    passes('SELECT TIMESTAMPDIFF(SQL_TSI_DAY, DateTime, NOW()), TIMESTAMPADD(SQL_TSI_HOUR, 1, DateTime) FROM campaignmetric');
+    passes("SELECT JSON_VALUE('{\"a\":1}', '$.a' ERROR ON ERROR) FROM seller");
+    passes("SELECT JSON_VALUE('{\"a\":1}', '$.a' RETURNING SIGNED DEFAULT 0 ON EMPTY DEFAULT 0 ON ERROR) FROM seller");
+    passes("SELECT _utf8mb4 X'616263', _binary 0x61, _utf8mb4 b'01' FROM seller");
+    passes('SELECT * FROM campaignmetric WHERE DateTime >= NOW() - INTERVAL CASE WHEN Cost > 1 THEN 1 ELSE 2 END DAY');
+    passes('SELECT FIRST_VALUE(Cost) RESPECT NULLS OVER (ORDER BY DateTime) FROM campaignmetric');
+    // ...and a guess next to a CASE is still a guess.
+    expect(blocked('SELECT CASE WHEN Cost > 1 THEN 1 ELSE 2 END, Day FROM campaignmetric').column).toBe('Day');
+    expect(blocked('SELECT CASE WHEN DateTime > NOW() - INTERVAL 1 DAY THEN Date END FROM campaignmetric').column).toBe('Date');
+  });
+
+  it('a pathological identifier is blocked fast and gets no suggestion', () => {
+    const huge = 'x'.repeat(200_000);
+    const t0 = performance.now();
+    const r = blocked(`SELECT ${huge} FROM campaignmetric`);
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(r.suggestions).toEqual([]);
+  });
+
   it('keywords and column names inside string literals are not column references', () => {
     passes("SELECT Name FROM seller WHERE Name = 'spend from nowhere' OR Name = \"SellerName\"");
     passes("SELECT Name FROM seller WHERE Name = 'it''s' OR Name = 'a\\'b'");

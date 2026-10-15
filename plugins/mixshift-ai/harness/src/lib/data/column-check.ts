@@ -97,6 +97,8 @@ sql_no_cache sql_cache sql_buffer_result straight
 ascii unicode character set charset collate
 coalesce ifnull nullif greatest least isnull
 share skip locked nowait dumpfile fields mode language query expansion against member returning at zone
+error respect sql_tsi_frac_second sql_tsi_second sql_tsi_minute sql_tsi_hour sql_tsi_day sql_tsi_week
+sql_tsi_month sql_tsi_quarter sql_tsi_year
 `
     .split(/\s+/)
     .filter(Boolean),
@@ -283,6 +285,8 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
     const prev = toks[k - 1];
     if (next?.t === 'p' && (next.v === '(' || next.v === '.')) continue; // function call / qualifier
     if (next?.t === 'str') continue; // typed literal or introducer: DATE '...', N'x', X'ff', _utf8mb4'x'
+    // A charset introducer before a hex or bit literal: `_utf8mb4 X'61'`, `_binary 0x61`.
+    if (tok.v.startsWith('_') && (next?.t === 'num' || (next?.t === 'id' && toks[k + 2]?.t === 'str'))) continue;
     if (windowNames.has(tok.l)) continue;
     if (prev?.t === 'p' && prev.v === '.') {
       const q = toks[k - 2];
@@ -321,6 +325,9 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
  * substring (`SellerName` -> `Name`, `DateKey` -> `DateTime`).
  */
 export function suggestColumns(unknown: string, table: Pick<SchemaTable, 'columns' | 'keyColumns'> & { gotchas?: string[] }): string[] {
+  // MySQL identifiers are at most 64 characters; anything longer is not a
+  // near miss of any column, and the distance scoring is quadratic.
+  if (unknown.length > 64) return [];
   const u = unknown.toLowerCase();
   const scored = new Map<string, number>();
   const bump = (col: string, score: number) => {
@@ -420,6 +427,17 @@ function afterIntervalInExpression(toks: Tok[], k: number): boolean {
     }
     if (depth > 0 || t.t !== 'id') continue;
     if (t.l === 'interval') return true;
+    if (t.l === 'end') {
+      // A whole CASE expression as the INTERVAL operand: step over it.
+      let nested = 1;
+      while (nested > 0 && --j >= 0) {
+        const c = toks[j]!;
+        if (c.t !== 'id') continue;
+        if (c.l === 'end') nested++;
+        else if (c.l === 'case') nested--;
+      }
+      continue;
+    }
     if (EXPR_BOUNDARY.has(t.l)) return false;
   }
   return false;

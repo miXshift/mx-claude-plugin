@@ -305,7 +305,7 @@ async function precheckColumns(
         stage: 'client_precheck',
         raw_code: failure.raw_code,
         table: verdict.table,
-        column: verdict.column,
+        column: verdict.column.slice(0, 128),
         suggestion: verdict.suggestions[0] ?? null,
         ...querySqlTelemetry(sql, options.query_id),
         table_name: failure.table_name,
@@ -555,6 +555,9 @@ export async function runQuery<Row = Record<string, unknown>>(
   }
   const first = await runOnce<Row>(sql, params, opts);
   if (!isServiceCapFailure(first)) return first;
+  // The check ran once for the user's statement; the pages must not each
+  // report its cost again.
+  delete opts.precheck_ms;
   return paginateOverCap<Row>(
     sql,
     (pageSql) => runOnce<Row>(pageSql, params, opts),
@@ -657,6 +660,7 @@ export async function streamQuery<Row = Record<string, unknown>>(
       failure: first,
     };
   }
+  delete opts.precheck_ms; // see runQuery
   const paged = await paginateOverCap<Row>(
     sql,
     (pageSql) => runOnce<Row>(pageSql, params, opts),
