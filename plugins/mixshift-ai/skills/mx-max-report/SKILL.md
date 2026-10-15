@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.5.5
+version: 2.5.6
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
