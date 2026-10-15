@@ -546,7 +546,8 @@ encodes on both channels, so you can spot them anywhere else:
    data; trim both to the earlier `MAX(DateTime)` or the TACOS compares 26 days of spend
    to 25 days of sales.
 2. **Compare like day counts.** Month-to-date goes against the same day count of the prior
-   month, labelled explicitly. Nobody reads a footnote.
+   month, labelled explicitly. Nobody reads a footnote. (A closed month is the exception:
+   the calendar pair leads, per the envelope section above.)
 3. **Check for dark ad days in either window.** Count days with non-zero spend; normalize
    short windows and show raw and normalized side by side. Scaling touches spend, ad sales
    and TACOS; ACOS is a ratio and is left alone.
@@ -691,7 +692,7 @@ maximum fulfillable quantity across every warehouse row is zero: "could not be b
 "not owned"). Attribute decline to stockout only where the current window is materially
 worse than the prior one; many ASINs sit at zero permanently and are not news. Total the
 decline across just those ASINs so you can say what share of the gap availability explains.
-The warehouse count reads FBA fulfillable stock only: an ASIN that sold units on a day the
+On Seller Central the warehouse count reads FBA fulfillable stock only: an ASIN that sold units on a day the
 count calls out of stock was in stock somewhere (merchant-fulfilled, or an FBA SKU the
 inventory feed does not carry), so before you name a stockout, check the daily units for
 that ASIN and drop every day with sales. Say "FBA out-of-stock days" when the item also
