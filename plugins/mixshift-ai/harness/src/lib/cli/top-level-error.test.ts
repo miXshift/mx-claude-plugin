@@ -155,10 +155,13 @@ describe('exitOverride routes commander usage errors through the same catch', ()
     expect(JSON.parse(r.stdout).hint).toBeUndefined();
   });
 
+  // `data tables` and `amazon ops` are real aliases since the 2026-10-15
+  // sweep (usage-hints.test.ts covers them), so the guesses here are the
+  // ones that still miss.
   it.each([
-    [['data', 'tables'], 'mixshift data list-tables'],
+    [['data', 'list'], 'mixshift data list-tables'],
     [['amazon', 'list'], 'mixshift amazon list-reports'],
-    [['amazon', 'ops'], 'mixshift amazon operations'],
+    [['amazon', 'catalog'], 'mixshift amazon list-reports'],
     [['retail', 'list'], 'mixshift amazon merchants'],
   ])('unknown command %j: hint names %s, class and exit code unchanged', async (argv, target) => {
     const r = await run('--json', ...argv);
