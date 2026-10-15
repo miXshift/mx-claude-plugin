@@ -39,6 +39,7 @@ required_context_fields:
 optional_context_fields:
   - management.primary_metric
   - management.acos_target_pct
+  - management.tacos_goal_pct
   - management.attribution_window_days
   - management.tacos_in_bottom_line
   - goals.monthly_total_sales_target
