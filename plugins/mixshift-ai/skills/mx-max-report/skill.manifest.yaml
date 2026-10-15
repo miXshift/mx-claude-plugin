@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-max-report   # max-tier convention: mx-max-<job> (mx-max-report, mx-max-forecast); was mx-monthly-report-max until 2026-10-11, and the run ledger folder keeps that name
 display_name: Monthly Performance Report Max
-version: "2.5.5"
+version: "2.5.6"
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
