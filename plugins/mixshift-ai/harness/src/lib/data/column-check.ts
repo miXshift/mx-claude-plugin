@@ -96,6 +96,7 @@ others group_concat separator escape soundex sounds like do begin
 sql_no_cache sql_cache sql_buffer_result straight
 ascii unicode character set charset collate
 coalesce ifnull nullif greatest least isnull
+share skip locked nowait dumpfile fields mode language query expansion against member returning at zone
 `
     .split(/\s+/)
     .filter(Boolean),
@@ -114,13 +115,20 @@ const CONTEXT_KEYWORDS = new Set([
   'microsecond', 'text', 'json', 'char', 'nchar', 'national', 'signed', 'unsigned', 'decimal', 'dec', 'numeric',
   'int', 'integer', 'bigint', 'smallint', 'tinyint', 'float', 'double', 'real', 'boolean', 'bool', 'varchar',
 ]);
-/** Functions whose argument list carries a type name or interval unit. */
+/** Functions whose argument list carries a type name, interval unit or
+ *  search modifier (`AGAINST ('x' IN BOOLEAN MODE)`). */
 const TYPE_ARG_FUNCS = new Set([
   'cast', 'convert', 'extract', 'timestampdiff', 'timestampadd', 'date_add', 'date_sub', 'adddate', 'subdate',
-  'get_format', 'json_value', 'json_table',
+  'get_format', 'json_value', 'json_table', 'against',
 ]);
-/** `<keyword> <name>` where the name is never a column (a collation, charset). */
-const NAME_AFTER = new Set(['collate', 'charset', 'character', 'using', 'set']);
+/** `<keyword> <name>` where the name is never a column (a collation, charset,
+ *  `AT TIME ZONE`). */
+const NAME_AFTER = new Set(['collate', 'charset', 'character', 'using', 'set', 'at']);
+/** Where an expression certainly ends when scanning back for an `INTERVAL`. */
+const EXPR_BOUNDARY = new Set([
+  'select', 'from', 'where', 'and', 'or', 'xor', 'not', 'group', 'order', 'having', 'limit', 'by', 'when', 'then',
+  'else', 'case', 'end', 'on', 'as', 'between', 'in', 'like', 'is', 'window', 'partition', 'over',
+]);
 
 /** Keywords that end a FROM clause's table reference (so the word after the
  *  table is a clause, not an alias). */
@@ -129,8 +137,16 @@ const CLAUSE_AFTER_TABLE = new Set([
 ]);
 /** Table-list continuations that mean more than one table is involved. */
 const MULTI_TABLE = new Set(['join', 'left', 'right', 'inner', 'outer', 'cross', 'natural', 'straight_join', 'on', 'using', 'full']);
-/** Literal-ish keywords an implicit alias may directly follow (`x IS NULL flag`). */
-const LITERAL_KEYWORDS = new Set(['null', 'true', 'false', 'end', 'unknown']);
+/** Keywords that end a value, so an implicit alias may directly follow them
+ *  (`x IS NULL flag`, `CASE ... END bucket`, `CURRENT_DATE today`,
+ *  `x + INTERVAL 1 DAY_HOUR later`). */
+const LITERAL_KEYWORDS = new Set([
+  'null', 'true', 'false', 'end', 'unknown',
+  'current_date', 'current_time', 'current_timestamp', 'current_user', 'localtime', 'localtimestamp',
+  'utc_date', 'utc_time', 'utc_timestamp',
+  'day_hour', 'day_microsecond', 'day_minute', 'day_second', 'hour_microsecond', 'hour_minute', 'hour_second',
+  'minute_microsecond', 'minute_second', 'second_microsecond', 'year_month',
+]);
 
 export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
   if (!sql || !sql.trim()) return { verdict: 'skipped', reason: 'empty' };
@@ -221,8 +237,10 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
 
   // Aliases the query itself defines: after AS anywhere, and implicit aliases
   // in the select list (`COUNT(*) n`, `Cost spend`, `DateTime d`, `x IS NULL flag`).
+  // Named windows (`WINDOW w AS (...)`, used as `OVER w`) resolve anywhere.
   const aliases = new Set<string>();
   const aliasPositions = new Set<number>();
+  const windowNames = new Set<string>();
   depth = 0;
   for (let k = 0; k < toks.length; k++) {
     const tok = toks[k]!;
@@ -233,6 +251,12 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
     }
     if (tok.t !== 'id') continue;
     const prev = toks[k - 1];
+    const next = toks[k + 1];
+    if (next?.t === 'id' && next.l === 'as' && toks[k + 2]?.t === 'p' && toks[k + 2]!.v === '(') {
+      windowNames.add(tok.l); // `w AS (PARTITION BY ...)`
+      aliasPositions.add(k);
+      continue;
+    }
     if (prev?.t === 'id' && prev.l === 'as') {
       aliases.add(tok.l);
       aliasPositions.add(k);
@@ -258,6 +282,8 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
     const next = toks[k + 1];
     const prev = toks[k - 1];
     if (next?.t === 'p' && (next.v === '(' || next.v === '.')) continue; // function call / qualifier
+    if (next?.t === 'str') continue; // typed literal or introducer: DATE '...', N'x', X'ff', _utf8mb4'x'
+    if (windowNames.has(tok.l)) continue;
     if (prev?.t === 'p' && prev.v === '.') {
       const q = toks[k - 2];
       if (!q || q.t !== 'id') return { verdict: 'skipped', reason: 'unparseable' };
@@ -272,8 +298,7 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
       if (tok.l === tableName || tok.l === alias) continue;
       if (CONTEXT_KEYWORDS.has(tok.l) && !columns.has(tok.l)) {
         const fn = enclosing[k];
-        const unit = toks[k - 2]?.l === 'interval' || toks[k - 3]?.l === 'interval';
-        if ((fn && TYPE_ARG_FUNCS.has(fn)) || unit) continue;
+        if ((fn && TYPE_ARG_FUNCS.has(fn)) || afterIntervalInExpression(toks, k)) continue;
       }
     }
     if (columns.has(tok.l)) continue;
@@ -295,15 +320,28 @@ export function checkColumns(sql: string, catalog: SchemaCatalog): ColumnCheck {
  * ignoring case and underscores, a small edit distance, and a shared prefix or
  * substring (`SellerName` -> `Name`, `DateKey` -> `DateTime`).
  */
-export function suggestColumns(unknown: string, table: Pick<SchemaTable, 'columns' | 'keyColumns'>): string[] {
+export function suggestColumns(unknown: string, table: Pick<SchemaTable, 'columns' | 'keyColumns'> & { gotchas?: string[] }): string[] {
   const u = unknown.toLowerCase();
   const scored = new Map<string, number>();
   const bump = (col: string, score: number) => {
     const prevScore = scored.get(col) ?? 0;
     if (score > prevScore) scored.set(col, score);
   };
+  const real = new Map(table.columns.map((c) => [c.toLowerCase(), c] as const));
   const role = table.keyColumns[u];
-  if (role && table.columns.some((c) => c.toLowerCase() === role.toLowerCase())) bump(role, 10);
+  if (role && real.has(role.toLowerCase())) bump(role, 10);
+  // A gotcha that names the guessed column ("There is no `Title`; the item
+  // name is `ItemName`") usually names the real one in the same line: the
+  // first backticked name there that is a column of this table.
+  for (const g of table.gotchas ?? []) {
+    const names = [...g.matchAll(/`([A-Za-z_][\w$]*)`/g)].map((m) => m[1]!);
+    if (!names.some((n) => n.toLowerCase() === u)) continue;
+    const hit = names.find((n) => n.toLowerCase() !== u && real.has(n.toLowerCase()));
+    if (hit) {
+      bump(real.get(hit.toLowerCase())!, 8);
+      break;
+    }
+  }
 
   const norm = (s: string) => s.toLowerCase().replace(/[_\s]/g, '');
   const nu = norm(unknown);
@@ -359,6 +397,32 @@ export function unknownColumnFriendly(r: Extract<ColumnCheck, { verdict: 'unknow
       're-run with --no-column-check.',
   );
   return lines.join('\n');
+}
+
+/**
+ * Is token `k` the unit of an `INTERVAL <expr> <unit>`? Scans back through
+ * the same expression (balanced parens, stopping at a comma or a clause
+ * keyword at this depth) for the `INTERVAL` word, so
+ * `INTERVAL (DAYOFMONTH(CURDATE()) - 1) DAY` and `INTERVAL 7 * 24 HOUR`
+ * read as units, while `x + INTERVAL 1 DAY, Year` still checks `Year`.
+ */
+function afterIntervalInExpression(toks: Tok[], k: number): boolean {
+  let depth = 0;
+  for (let j = k - 1; j >= 0; j--) {
+    const t = toks[j]!;
+    if (t.t === 'p') {
+      if (t.v === ')') depth++;
+      else if (t.v === '(') {
+        if (depth === 0) return false;
+        depth--;
+      } else if (t.v === ',' && depth === 0) return false;
+      continue;
+    }
+    if (depth > 0 || t.t !== 'id') continue;
+    if (t.l === 'interval') return true;
+    if (EXPR_BOUNDARY.has(t.l)) return false;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

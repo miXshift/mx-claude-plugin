@@ -22,6 +22,8 @@ describe('parseDumpColumns', () => {
       '  campaign_metric_3mo:',
       '    columns:',
       '      - { name: Cost, type: "decimal(10,2)" }',
+      '      - { name: "Y", type: "tinyint" }',
+      "      - { name: 'No', type: \"tinyint\" }",
       '',
     ].join('\r\n');
     const t0 = performance.now();
@@ -29,7 +31,7 @@ describe('parseDumpColumns', () => {
     expect(performance.now() - t0).toBeLessThan(20);
     expect([...out.keys()]).toEqual(['seller', 'campaign_metric_3mo']);
     expect(out.get('seller')).toEqual(['ID', 'Name']);
-    expect(out.get('campaign_metric_3mo')).toEqual(['Cost']);
+    expect(out.get('campaign_metric_3mo')).toEqual(['Cost', 'Y', 'No']);
   });
 
   it('falls back to the YAML parser for a dump in another shape, and to empty for garbage', () => {

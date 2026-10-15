@@ -116,8 +116,9 @@ export function parseDumpColumns(text: string): Map<string, string[]> {
       continue;
     }
     if (!current) continue;
-    const col = /^\s+-\s+\{\s*name:\s*([^,}\s]+)/.exec(line);
-    if (col) current.push(col[1]!);
+    // A YAML emitter quotes names it must (`"Y"`, `"No"`, a name with a space).
+    const col = /^\s+-\s+\{\s*name:\s*(?:"([^"]*)"|'([^']*)'|([^,}\s]+))/.exec(line);
+    if (col) current.push((col[1] ?? col[2] ?? col[3])!);
   }
   // The generated shape always lists columns under every table; a table with
   // none means the file is in another shape, so hand it to the general parser.

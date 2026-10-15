@@ -30,6 +30,16 @@ const catalog: SchemaCatalog = new Map([
     keyColumns: { sales: 'SalesAmount', units: 'UnitsOrdered' },
   }),
   table('mws_items', ['ID', 'SellerID', 'SKU', 'ASIN', 'ItemName', 'ItemPrice', 'ItemQuantityAvailable', 'Brand', 'IsActive']),
+  table('vendor_items', ['ID', 'SellerID', 'ASIN', 'ItemName', 'Brand', 'CustomBrand'], {
+    gotchas: ["There is no `Title`; the item name is `ItemName`. `Brand` is Amazon's label and `CustomBrand` is your override."],
+  }),
+  table('business_reports_dpst_sku', ['ID', 'SellerID', 'DateTime', 'ChildAsin', 'ParentAsin', 'Amount', 'UnitsOrdered'], {
+    keyColumns: { sales: 'Amount', asin: 'ChildAsin' },
+    gotchas: [
+      'There is no `Date`, `ReportDate` or `SnapshotDate` column. Filter on `DateTime`.',
+      'Sales here is `Amount`, NOT `SalesAmount` (that is the day-level sibling business_reports_dpst_date) and NOT `OrderedProductSales` (which does not exist in this warehouse).',
+    ],
+  }),
 ]);
 
 const check = (sql: string): ColumnCheck => checkColumns(sql, catalog);
@@ -159,6 +169,47 @@ describe('checkColumns: sends valid single-table SQL through', () => {
     passes("SELECT SUM(CASE WHEN DateTime >= '2026-10-01' THEN Cost ELSE 0 END) mtd, MAX(CASE WHEN Cost > 0 THEN DateTime END) last_spend FROM campaignmetric");
   });
 
+  it('red team round 1: INTERVAL with an expression, outside any date function', () => {
+    passes('SELECT * FROM campaignmetric WHERE DateTime >= CURDATE() - INTERVAL WEEKDAY(CURDATE()) DAY');
+    passes('SELECT * FROM campaignmetric WHERE DateTime >= CURDATE() - INTERVAL (DAYOFMONTH(CURDATE()) - 1) DAY');
+    passes('SELECT * FROM campaignmetric WHERE DateTime >= CURDATE() - INTERVAL 7 * 24 HOUR');
+    passes("SELECT DATE_FORMAT(DateTime - INTERVAL WEEKDAY(DateTime) DAY, '%Y-%m-%d') AS week_start FROM campaignmetric");
+    passes('SELECT * FROM campaignmetric WHERE DateTime >= NOW() - INTERVAL -1 DAY AND DateTime < NOW() + INTERVAL (1) MONTH');
+    // ...and the unit scan stops at the expression boundary, so a real guess after it is still caught.
+    expect(blocked('SELECT DateTime + INTERVAL 1 DAY, Year FROM campaignmetric').column).toBe('Year');
+    expect(blocked('SELECT * FROM campaignmetric WHERE DateTime > NOW() - INTERVAL 1 DAY AND Date > 1').column).toBe('Date');
+  });
+
+  it('red team round 1: typed literals and charset introducers', () => {
+    passes("SELECT * FROM campaignmetric WHERE DateTime >= DATE '2026-01-01'");
+    passes("SELECT * FROM campaignmetric WHERE DateTime >= DATE'2026-01-01' AND DateTime < TIMESTAMP '2026-02-01 00:00:00'");
+    passes("SELECT * FROM campaignmetric WHERE DateTime >= {d '2026-01-01'}");
+    passes("SELECT * FROM seller WHERE Name = _utf8mb4'x' OR Name = _utf8mb4 'y' OR Name = _binary 'z' OR Name = N'w'");
+    passes("SELECT X'ff', B'01', Name FROM seller");
+  });
+
+  it('red team round 1: named windows, implicit aliases after keyword functions', () => {
+    passes('SELECT SUM(Cost) OVER w FROM campaignmetric WINDOW w AS (PARTITION BY CampaignID ORDER BY DateTime)');
+    passes('SELECT SUM(Cost) OVER (w ORDER BY DateTime) FROM campaignmetric WINDOW w AS (PARTITION BY CampaignID)');
+    passes('SELECT CURRENT_DATE today, CURRENT_TIMESTAMP ts, LOCALTIME lt, UTC_DATE ud, CURRENT_USER cu FROM seller');
+    passes('SELECT DateTime + INTERVAL 1 DAY_HOUR dh, DateTime + INTERVAL 1 YEAR_MONTH ym FROM campaignmetric');
+  });
+
+  it('red team round 1: locking reads, INTO tails, full-text modifiers, rare keywords', () => {
+    passes('SELECT Cost FROM campaignmetric LOCK IN SHARE MODE');
+    passes('SELECT Cost FROM campaignmetric FOR SHARE');
+    passes('SELECT Cost FROM campaignmetric FOR UPDATE SKIP LOCKED');
+    passes('SELECT Cost FROM campaignmetric FOR UPDATE NOWAIT');
+    passes("SELECT Cost INTO DUMPFILE '/tmp/x' FROM campaignmetric");
+    passes("SELECT Cost FROM campaignmetric INTO OUTFILE '/tmp/x' FIELDS TERMINATED BY ',' LINES TERMINATED BY '\\n'");
+    passes("SELECT * FROM mws_items WHERE MATCH(ItemName) AGAINST ('foo' IN BOOLEAN MODE)");
+    passes("SELECT * FROM mws_items WHERE MATCH(ItemName) AGAINST ('foo' IN NATURAL LANGUAGE MODE)");
+    passes("SELECT * FROM mws_items WHERE MATCH(ItemName) AGAINST ('foo' WITH QUERY EXPANSION)");
+    passes("SELECT * FROM seller WHERE 1 MEMBER OF ('[1]')");
+    passes("SELECT JSON_VALUE('{\"a\":1}', '$.a' RETURNING SIGNED) FROM seller");
+    passes("SELECT CAST(DateTime AT TIME ZONE INTERVAL '+00:00' AS DATETIME) FROM campaignmetric");
+  });
+
   it('keywords and column names inside string literals are not column references', () => {
     passes("SELECT Name FROM seller WHERE Name = 'spend from nowhere' OR Name = \"SellerName\"");
     passes("SELECT Name FROM seller WHERE Name = 'it''s' OR Name = 'a\\'b'");
@@ -225,6 +276,14 @@ describe('suggestColumns', () => {
     expect(suggestColumns('spend', cm)[0]).toBe('Cost');
     expect(suggestColumns('SPEND', cm)[0]).toBe('Cost');
   });
+  it('then a gotcha that names the guess and the real column in the same line', () => {
+    expect(suggestColumns('Title', catalog.get('vendor_items')!)[0]).toBe('ItemName');
+    expect(suggestColumns('OrderedProductSales', catalog.get('business_reports_dpst_sku')!)[0]).toBe('Amount');
+    expect(suggestColumns('ReportDate', catalog.get('business_reports_dpst_sku')!)[0]).toBe('DateTime');
+    // The role hint still wins over the gotcha.
+    expect(suggestColumns('sales', catalog.get('business_reports_dpst_sku')!)[0]).toBe('Amount');
+  });
+
   it('then the same name with different case or underscores', () => {
     expect(suggestColumns('seller_id', cm)[0]).toBe('SellerID');
     expect(suggestColumns('campaign_name', cm)[0]).toBe('CampaignName');
