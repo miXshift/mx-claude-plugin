@@ -127,9 +127,11 @@ describe('cli.ts routes a commander usage error through the top-level catch', ()
   it(
     'unknown command in plain text: commander line, then the real command, exit 1',
     async () => {
-      const r = await runCli(['data', 'tables']);
+      // `data tables` became a real alias (2026-10-15 sweep); `data list` is
+      // still a guess that the hint maps to list-tables.
+      const r = await runCli(['data', 'list']);
       expect(r.status, r.stderr).toBe(1);
-      expect(r.stderr).toContain("error: unknown command 'tables'");
+      expect(r.stderr).toContain("error: unknown command 'list'");
       expect(r.stderr).toMatch(/hint: .*mixshift data list-tables/);
     },
     60_000,

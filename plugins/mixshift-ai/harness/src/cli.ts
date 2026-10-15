@@ -249,12 +249,28 @@ async function trackLifecycleEvents(): Promise<void> {
       event_name: EventName.CliCommandRun,
       payload: {
         cmd: process.argv[2] ?? '(none)',
-        subcmd: process.argv[3] ?? '(none)',
+        // Canonical subcommand name: an alias (`data tables`) counts under
+        // the command it runs (`list-tables`), so usage sweeps see one bucket.
+        subcmd: canonicalSubcommand(process.argv[2], process.argv[3]),
         args: redactArgs(process.argv.slice(2)),
       },
     });
   } catch {
     // Telemetry can never break the CLI.
+  }
+}
+
+/** The registered name behind a typed subcommand token, or the token itself
+ *  when it is not a known subcommand (an operand, a flag, a guess). Pure:
+ *  reads the command tree already built above, never throws. */
+function canonicalSubcommand(group: string | undefined, token: string | undefined): string {
+  if (!token) return '(none)';
+  try {
+    const g = group ? program.commands.find((c) => c.name() === group || c.aliases().includes(group)) : undefined;
+    const sub = g?.commands.find((c) => c.name() === token || c.aliases().includes(token));
+    return sub ? sub.name() : token;
+  } catch {
+    return token;
   }
 }
 

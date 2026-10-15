@@ -26,13 +26,98 @@ export interface UsageHint {
  * a hint pointing nowhere.
  */
 export const COMMAND_ALIASES: Record<string, { targets: string[]; note?: string; then?: string }> = {
-  'data tables': { targets: ['data list-tables'], then: '`mixshift data describe <table>` for one table' },
+  // `data tables`, `ads ops`, `ads catalog` and `amazon ops` are real aliases
+  // now (the most-guessed names of the 2026-10-15 sweep: 12, 5, 5 and 4
+  // humans in three weeks), so they are not hints.
   'data list': { targets: ['data list-tables'] },
+  'data catalog': { targets: ['data list-tables'] },
   'amazon list': { targets: ['amazon list-reports', 'amazon merchants'] },
-  'amazon ops': { targets: ['amazon operations'] },
+  'amazon catalog': {
+    targets: ['amazon list-reports', 'amazon operations'],
+    note: 'the warehouse table catalog is `mixshift data list-tables`',
+  },
+  'amazon reports': { targets: ['amazon list-reports', 'amazon report'], then: '`mixshift amazon report start` to run one' },
+  'amazon report types': { targets: ['amazon list-reports'] },
+  'amazon report catalog': { targets: ['amazon list-reports'] },
+  'amazon report list': { targets: ['amazon list-reports'] },
+  'ads list': { targets: ['ads profiles', 'ads operations'] },
+  // `report` itself is a real top-level group (validate, extract, render,
+  // battery), so the guesses are keyed under it.
+  'report catalog': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report types': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report list': { targets: ['amazon list-reports'], note: 'Amazon report types are under `amazon`' },
+  'report start': { targets: ['amazon report start'], note: 'Amazon reports run under `amazon report`' },
+  spapi: { targets: ['amazon operations', 'amazon call'], note: 'SP-API operations are under `amazon`' },
+  'sp-api': { targets: ['amazon operations', 'amazon call'], note: 'SP-API operations are under `amazon`' },
   retail: {
     targets: ['amazon merchants', 'amazon operations', 'amazon call'],
     note: 'there is no `retail` command; Amazon retail data is under `amazon`, and warehouse tables are under `data`',
+  },
+};
+
+/**
+ * Guessed option on a real command -> where that job lives. Keyed by the
+ * resolved command path, then the flag commander rejected. Each entry is a
+ * shape two or more humans at two or more tenants hit in the trailing three
+ * weeks of the sweep that added it; one-off guesses stay with commander's
+ * own message.
+ */
+export const OPTION_HINTS: Record<string, Record<string, UsageHint>> = {
+  'data query': {
+    '--seller-id': {
+      id: 'data_query_seller_id',
+      text:
+        '`data query` takes SQL and has no --seller-id. Filter in the SQL instead: ' +
+        'WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). ' +
+        '(`data sample` and `data export` do take --seller-id.)',
+    },
+    '--legacy-seller-id': {
+      id: 'data_query_seller_id',
+      text:
+        '`data query` takes SQL and has no --legacy-seller-id. Filter in the SQL instead: ' +
+        'WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`).',
+    },
+    '--format': {
+      id: 'data_query_format',
+      text:
+        '`data query` has no --format: it prints a table, `--json` (before the command) prints JSON, ' +
+        'and `--out <file.csv>` writes the full result as CSV (the only file format).',
+    },
+    '--csv': {
+      id: 'data_query_format',
+      text: '`data query` has no --csv: write CSV with `--out <file.csv>`.',
+    },
+  },
+  'amazon call': {
+    '--param': {
+      id: 'amazon_call_params',
+      text:
+        '`amazon call` takes `--query key=value` (repeatable) for query params, `--path key=value` ' +
+        'for path placeholders, and `--body-file <file>` or `--body <json>` for a request body; ' +
+        'run `mixshift amazon operations` for what the operation needs.',
+    },
+    '--params': {
+      id: 'amazon_call_params',
+      text:
+        '`amazon call` takes `--query key=value` (repeatable) for query params, `--path key=value` ' +
+        'for path placeholders, and `--body-file <file>` or `--body <json>` for a request body.',
+    },
+    '--path-params': {
+      id: 'amazon_call_params',
+      text: '`amazon call` names path placeholders with `--path key=value` (repeatable), e.g. --path asin=B0CV4JLCVZ.',
+    },
+    '--out': {
+      id: 'amazon_call_out',
+      text:
+        '`amazon call` prints the response to stdout (add `--json` before the command for one JSON document); ' +
+        'redirect it to a file. `--out` is for the commands that write one: `data query`, `data export`, `amazon report get`.',
+    },
+  },
+  'amazon report get': {
+    '--run-id': { id: 'amazon_report_run_id', text: 'The run id is the argument: `mixshift amazon report get <runId>`.' },
+  },
+  'amazon report poll': {
+    '--run-id': { id: 'amazon_report_run_id', text: 'The run id is the argument: `mixshift amazon report poll <runId>`.' },
   },
 };
 
@@ -75,7 +160,9 @@ function resolve(program: Command, argv: readonly string[]): Resolved {
 export function commandExists(program: Command, target: string): boolean {
   let cmd = program;
   for (const part of target.split(' ')) {
-    const next = cmd.commands.find((c) => c.name() === part);
+    // An alias is a real command too: a hint keyed on one would never fire,
+    // and the test that guards shadowing has to see it.
+    const next = cmd.commands.find((c) => c.name() === part || c.aliases().includes(part));
     if (!next) return false;
     cmd = next;
   }
@@ -104,16 +191,8 @@ export function usageHint(
 
   if (code === 'commander.unknownOption') {
     const flag = /unknown option '(--[^'=\s]+)/.exec(message)?.[1];
-    if (flag === '--seller-id' && r.path.join(' ') === 'data query') {
-      return {
-        id: 'data_query_seller_id',
-        text:
-          '`data query` takes SQL and has no --seller-id. Filter in the SQL instead: ' +
-          'WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). ' +
-          '(`data sample` and `data export` do take --seller-id.)',
-      };
-    }
-    return undefined;
+    if (!flag) return undefined;
+    return OPTION_HINTS[r.path.join(' ')]?.[flag];
   }
 
   if (code === 'commander.unknownCommand' && r.unknown !== undefined) {

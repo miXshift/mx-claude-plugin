@@ -30,6 +30,7 @@ export function registerDataCommands(program: Command): void {
   // ---------------------------------------------------------------------
   data
     .command('list-tables')
+    .alias('tables')
     .description('List queryable tables with descriptions')
     .option('--category <cat>', 'filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics')
     .action(async (opts: { category?: string }, cmd: Command) => {

@@ -7,11 +7,12 @@
 import { describe, it, expect } from 'vitest';
 import { Command } from 'commander';
 
-import { COMMAND_ALIASES, commandExists, usageHint } from './usage-hints.js';
+import { COMMAND_ALIASES, OPTION_HINTS, commandExists, usageHint } from './usage-hints.js';
 import { registerDataCommands } from '../../commands/data.js';
 import { registerAmazonCommands } from '../../commands/amazon.js';
 import { registerAdsCommands } from '../../commands/ads.js';
 import { registerAuthCommands } from '../../commands/auth.js';
+import { registerReportCommands } from '../../commands/report.js';
 
 function tree(): Command {
   const program = new Command();
@@ -20,6 +21,9 @@ function tree(): Command {
   registerAmazonCommands(program);
   registerAdsCommands(program);
   registerAuthCommands(program);
+  // `report` is a real top-level group; without it the shadow test cannot
+  // see that a top-level `report` hint would never fire.
+  registerReportCommands(program);
   return program;
 }
 
@@ -43,6 +47,31 @@ describe('COMMAND_ALIASES', () => {
   it('`auth status` is real now, so it is not an alias', () => {
     expect(commandExists(tree(), 'auth status')).toBe(true);
   });
+
+  it('the most-guessed names are real aliases now, so they resolve and are not hints', () => {
+    const program = tree();
+    for (const real of ['data tables', 'ads ops', 'ads catalog', 'amazon ops']) {
+      expect(commandExists(program, real), real).toBe(true);
+      expect(COMMAND_ALIASES[real], real).toBeUndefined();
+    }
+  });
+});
+
+describe('OPTION_HINTS', () => {
+  it('every command path is real', () => {
+    const program = tree();
+    for (const path of Object.keys(OPTION_HINTS)) expect(commandExists(program, path), path).toBe(true);
+  });
+
+  it('no hinted flag is a real option of that command (a hint must never shadow one)', () => {
+    const program = tree();
+    for (const [path, flags] of Object.entries(OPTION_HINTS)) {
+      let cmd = program;
+      for (const part of path.split(' ')) cmd = cmd.commands.find((c) => c.name() === part)!;
+      const real = new Set(cmd.options.map((o) => o.long));
+      for (const flag of Object.keys(flags)) expect(real.has(flag), `${path} ${flag}`).toBe(false);
+    }
+  });
 });
 
 describe('usageHint', () => {
@@ -62,15 +91,44 @@ describe('usageHint', () => {
     expect(h?.id).toBe('data_query_seller_id');
   });
 
+  it.each([
+    [['data', 'query', '--format', 'csv', '--sql', 'select 1'], "unknown option '--format'", 'data_query_format', '--out <file.csv>'],
+    [['--json', 'data', 'query', '--legacy-seller-id', '5', '--sql', 'select 1'], "unknown option '--legacy-seller-id'", 'data_query_seller_id', 'WHERE SellerID'],
+    [['amazon', 'call', 'catalog.search_items', '--param', 'a=b'], "unknown option '--param'", 'amazon_call_params', '--query key=value'],
+    [['--json', 'amazon', 'call', 'x.y', '--path-params', 'a=b'], "unknown option '--path-params'", 'amazon_call_params', '--path key=value'],
+    [['amazon', 'call', 'x.y', '--out', 'f.json'], "unknown option '--out'", 'amazon_call_out', 'amazon report get'],
+    [['amazon', 'report', 'get', '--run-id', 'abc'], "unknown option '--run-id'", 'amazon_report_run_id', 'amazon report get <runId>'],
+    [['amazon', 'report', 'poll', '--run-id', 'abc'], "unknown option '--run-id'", 'amazon_report_run_id', 'amazon report poll <runId>'],
+  ])('%j: %s -> hint', (argv, message, id, text) => {
+    const h = usageHint('commander.unknownOption', message, argv, program);
+    expect(h?.id).toBe(id);
+    expect(h?.text).toContain(text);
+  });
+
+  it('a real alias resolves for option hints too', () => {
+    const h = usageHint('commander.unknownOption', "unknown option '--format'", ['data', 'tables', '--format', 'csv'], program);
+    expect(h).toBeUndefined();
+  });
+
   it('--seller-id on other commands, and other unknown flags, get no hint', () => {
     expect(usageHint('commander.unknownOption', "unknown option '--seller-id'", ['amazon', 'merchants', '--seller-id', '5'], program)).toBeUndefined();
     expect(usageHint('commander.unknownOption', "unknown option '--bogus'", ['data', 'query', '--bogus'], program)).toBeUndefined();
   });
 
   it.each([
-    [['data', 'tables'], 'mixshift data list-tables'],
+    [['data', 'list'], 'mixshift data list-tables'],
+    [['data', 'catalog'], 'mixshift data list-tables'],
     [['amazon', 'list'], 'mixshift amazon list-reports'],
-    [['amazon', 'ops'], 'mixshift amazon operations'],
+    [['amazon', 'catalog'], 'mixshift amazon list-reports'],
+    [['amazon', 'reports', 'catalog'], 'mixshift amazon report'],
+    [['amazon', 'report', 'types'], 'mixshift amazon list-reports'],
+    [['amazon', 'report', 'catalog'], 'mixshift amazon list-reports'],
+    [['ads', 'list'], 'mixshift ads profiles'],
+    [['report', 'catalog'], 'mixshift amazon list-reports'],
+    [['report', 'types'], 'mixshift amazon list-reports'],
+    [['report', 'start'], 'mixshift amazon report start'],
+    [['spapi', 'operations'], 'mixshift amazon operations'],
+    [['sp-api', 'operations'], 'mixshift amazon operations'],
     [['retail', 'list'], 'mixshift amazon merchants'],
     [['--json', 'retail'], 'mixshift amazon operations'],
   ])('%j points at %s', (argv, target) => {

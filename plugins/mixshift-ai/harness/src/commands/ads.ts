@@ -150,6 +150,7 @@ function registerProfiles(ads: Command): void {
 function registerOperations(ads: Command): void {
   ads
     .command('operations')
+    .aliases(['ops', 'catalog'])
     .description(
       'Browse the callable Ads API operations. Read the notes before calling: ' +
         'they carry body vs query conventions and media types.',

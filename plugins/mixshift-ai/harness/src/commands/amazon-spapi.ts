@@ -55,6 +55,7 @@ export function registerAmazonSpApiCommands(amazon: Command): void {
 function registerOperations(amazon: Command): void {
   amazon
     .command('operations')
+    .alias('ops')
     .description(
       'Browse the directly callable SP-API operations (beyond reports and pricing). ' +
         'Read the notes before calling: they carry required params and gotchas.',
