@@ -27,12 +27,18 @@ import { intentHeader } from '../auth/intent.js';
 import { track, EventName } from '../telemetry/index.js';
 import { networkErrorMessage } from '../net/classify.js';
 import { resolveApiBaseHost } from '../net/api-base.js';
+import { checkColumns, suggestColumns, unknownColumnFriendly } from './column-check.js';
+import { loadSchemaCatalog, hydrateSchemaHints, loadedSchemaCatalog } from './schema-catalog.js';
 
 export type DataQueryFailureKind =
   | 'access_denied_table'
   | 'access_denied_db'
   | 'unknown_table'
   | 'syntax_error'
+  // Client-side, before the query is sent: a column the local table catalog
+  // says does not exist on the (single, catalogued) table the query reads.
+  // See lib/data/column-check.ts. Never produced by the service.
+  | 'unknown_column'
   | 'timeout'
   | 'host_unreachable'
   // Cap and contention kinds the service classifies for any query (see
@@ -129,6 +135,12 @@ export interface RunQueryOptions {
   queryTimeoutMs?: number;
   /** Connection timeout. Defaults to 10s. */
   connectTimeoutMs?: number;
+  /** Resolve the statement's column names against the shipped table catalog
+   *  before sending, and fail fast (kind 'unknown_column') when a column does
+   *  not exist on the single catalogued table it reads. Opt-in: set by the
+   *  ad-hoc `data query` command, where the SQL is agent-written; generated
+   *  SQL (sample/export/library) skips it. See lib/data/column-check.ts. */
+  precheckColumns?: boolean;
 }
 
 export interface RunQueryTelemetry {
@@ -142,6 +154,10 @@ export interface RunQueryTelemetry {
    *  reflects the user-level shape, not the pager's wrapped page SQL. Callers
    *  normally leave this unset and let runQuery/streamQuery derive it. */
   query_shape?: QueryShape;
+  /** Milliseconds the pre-send column check took (set internally when
+   *  `precheckColumns` ran), stamped on the QueryExecuted payload so the
+   *  check's cost on the hot path is measurable from telemetry. */
+  precheck_ms?: number;
 }
 
 /**
@@ -210,6 +226,96 @@ function querySqlTelemetry(
   return {
     sql_normalized: sql.length > 2000 ? `${sql.slice(0, 2000)}...` : sql,
   };
+}
+
+/**
+ * The server's own error text on a QueryFailed emit, under the same rule as
+ * the SQL: ad-hoc queries only. MySQL's message names the column or the
+ * clause (`Unknown column 'spend' in 'field list'`), which is what a sweep
+ * needs to see which names get guessed; a library query's message could quote
+ * a resolved parameter value, so it stays out exactly as its SQL does.
+ */
+function queryErrorTelemetry(
+  message: string | undefined,
+  queryId: string | undefined,
+): { message?: string } {
+  if (queryId || !message) return {};
+  return { message: message.length > 500 ? `${message.slice(0, 500)}...` : message };
+}
+
+/** `raw_code` on a QueryFailed emitted by the client-side column check, so the
+ *  `unknown_column` bucket is unmistakably ours and not a server code. */
+export const CLIENT_UNKNOWN_COLUMN_RAW_CODE = 'client_unknown_column';
+
+/**
+ * The pre-send column check (`precheckColumns`). Loads the shipped catalog
+ * (cached per process), resolves the statement against it, and when a column
+ * is certainly absent returns the failure envelope the caller surfaces in
+ * place of the gateway's "Unknown column", emitting QueryFailed with
+ * error_class 'unknown_column' plus the table, column and suggestion. Every
+ * other verdict (fine, or not checkable) returns null and the query is sent
+ * unchanged. The check's cost is stamped onto `options.precheck_ms` so the
+ * later QueryExecuted emit carries it.
+ */
+async function precheckColumns(
+  sql: string,
+  options: RunQueryOptions & RunQueryTelemetry,
+): Promise<DataQueryFailure | null> {
+  const t0 = Date.now();
+  let verdict: ReturnType<typeof checkColumns>;
+  try {
+    const catalog = await loadSchemaCatalog();
+    verdict = checkColumns(sql, catalog);
+    const ms = Date.now() - t0;
+    options.precheck_ms = ms;
+    if (verdict.verdict !== 'unknown_column') {
+      // Off the hot path: have the curated hints ready in case the gateway
+      // answers this query with an unknown-column error of its own.
+      void hydrateSchemaHints().catch(() => undefined);
+      return null;
+    }
+    // A block is about to show a hint: load the curated role hints and
+    // gotchas now, then rank the suggestions with them.
+    await hydrateSchemaHints();
+    const table = catalog.get(verdict.table.toLowerCase());
+    if (table) verdict = { ...verdict, suggestions: suggestColumns(verdict.column, table), gotchas: table.gotchas };
+  } catch {
+    // A broken catalog file must never cost a query.
+    return null;
+  }
+  const ms = Date.now() - t0;
+  const failure: DataQueryFailure = {
+    ok: false,
+    kind: 'unknown_column',
+    table_name: verdict.table,
+    raw_code: CLIENT_UNKNOWN_COLUMN_RAW_CODE,
+    message: `Unknown column '${verdict.column}' on '${verdict.table}' (local table catalog; the query was not sent)`,
+    friendly: unknownColumnFriendly(verdict),
+    durationMs: ms,
+  };
+  void track(
+    {
+      event_name: EventName.QueryFailed,
+      outcome: 'failed',
+      duration_ms: ms,
+      query_id: options.query_id,
+      query_table: options.query_table ?? verdict.table,
+      error_class: failure.kind,
+      payload: {
+        stage: 'client_precheck',
+        raw_code: failure.raw_code,
+        table: verdict.table,
+        column: verdict.column.slice(0, 128),
+        suggestion: verdict.suggestions[0] ?? null,
+        ...querySqlTelemetry(sql, options.query_id),
+        table_name: failure.table_name,
+        query_shape: options.query_shape,
+        precheck_ms: ms,
+      },
+    },
+    options.dataDirOverride,
+  );
+  return failure;
 }
 
 /**
@@ -315,6 +421,21 @@ export function syntaxErrorGuidance(
   const text = `${failure.message ?? ''} ${friendly}`;
   if (failure.raw_code === 'ER_BAD_FIELD_ERROR' || /unknown column/i.test(text)) {
     const target = unknownColumnTable(text, sql, table);
+    // When the shipped catalog is already loaded (the pre-send check ran but
+    // sent this query unchanged: a JOIN, a CTE, ...) and the server named the
+    // column, answer with the real columns here instead of one more round trip.
+    const offline = target.table ? loadedSchemaCatalog()?.get(target.table) : undefined;
+    const named = /unknown column '([^']+)'/i.exec(text)?.[1]?.split('.').pop();
+    if (offline && named) {
+      const suggestions = suggestColumns(named, offline);
+      return (
+        `${friendly}\nNo column \`${named}\` on \`${offline.name}\`.` +
+        (suggestions.length ? ` Did you mean \`${suggestions[0]}\`?` : '') +
+        `\nColumns on \`${offline.name}\` (${offline.columns.length}): ${offline.columns.join(', ')}` +
+        (offline.gotchas.length ? `\nBefore you name a column:\n${offline.gotchas.map((g) => `- ${g}`).join('\n')}` : '') +
+        `\nTell the user which column you use in place of \`${named}\`.`
+      );
+    }
     const describe = target.table
       ? `\`mixshift data describe ${target.table}\``
       : '`mixshift data describe <table>`' +
@@ -428,8 +549,15 @@ export async function runQuery<Row = Record<string, unknown>>(
   options: RunQueryOptions & RunQueryTelemetry = {},
 ): Promise<DataQueryResult<Row>> {
   const opts = withQueryShape(sql, options);
+  if (opts.precheckColumns) {
+    const blocked = await precheckColumns(sql, opts);
+    if (blocked) return blocked;
+  }
   const first = await runOnce<Row>(sql, params, opts);
   if (!isServiceCapFailure(first)) return first;
+  // The check ran once for the user's statement; the pages must not each
+  // report its cost again.
+  delete opts.precheck_ms;
   return paginateOverCap<Row>(
     sql,
     (pageSql) => runOnce<Row>(pageSql, params, opts),
@@ -506,6 +634,12 @@ export async function streamQuery<Row = Record<string, unknown>>(
 ): Promise<StreamedQueryResult> {
   const t0 = Date.now();
   const opts = withQueryShape(sql, options);
+  if (opts.precheckColumns) {
+    const blocked = await precheckColumns(sql, opts);
+    if (blocked) {
+      return { ok: false, rowCount: 0, durationMs: blocked.durationMs ?? 0, paginated: false, failure: blocked };
+    }
+  }
   const first = await runOnce<Row>(sql, params, opts);
   if (first.ok) {
     // Single shot: the server returned the whole result under both caps.
@@ -526,6 +660,7 @@ export async function streamQuery<Row = Record<string, unknown>>(
       failure: first,
     };
   }
+  delete opts.precheck_ms; // see runQuery
   const paged = await paginateOverCap<Row>(
     sql,
     (pageSql) => runOnce<Row>(pageSql, params, opts),
@@ -1311,6 +1446,7 @@ async function runMysqlQuery<Row>(
           auth_path: 'mysql',
           ...querySqlTelemetry(sql, options.query_id),
           query_shape: options.query_shape,
+          ...(options.precheck_ms !== undefined ? { precheck_ms: options.precheck_ms } : {}),
         },
       },
       options.dataDirOverride,
@@ -1339,6 +1475,7 @@ async function runMysqlQuery<Row>(
           auth_path: 'mysql',
           raw_code: failure.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
+          ...queryErrorTelemetry(failure.message, options.query_id),
           table_name: failure.table_name,
           query_shape: options.query_shape,
         },
@@ -1516,6 +1653,7 @@ async function runDatahubQuery<Row>(
             server_duration_ms: serverDuration,
             ...querySqlTelemetry(sql, options.query_id),
             query_shape: options.query_shape,
+            ...(options.precheck_ms !== undefined ? { precheck_ms: options.precheck_ms } : {}),
           },
         },
         options.dataDirOverride,
@@ -1558,6 +1696,7 @@ async function runDatahubQuery<Row>(
           auth_path: 'datahub',
           raw_code: failure.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
+          ...queryErrorTelemetry(failure.message, options.query_id),
           table_name: failure.table_name,
           query_shape: options.query_shape,
         },
