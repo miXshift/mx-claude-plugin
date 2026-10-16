@@ -108,6 +108,17 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    key_columns:
+      spend: Cost
+      sales: Sales
+      units: Units
+      orders: Orders
+      asin: ASIN
+      sku: SKU
+    gotchas:
+      - "There is no `Date` or `ReportDate` column. Filter on `DateTime` (datetime), or `DateKey` (int, YYYYMMDD)."
+      - "There is no `SearchTerm` here: rows are per advertised product (ASIN, SKU), not per query. Search terms are in keywordmetric (keywords) and targetexpressionsmetric (product targets)."
+      - "There is no `Title` or product name here. Take `ItemName` from mws_items, matched on SKU and SellerID (one mws_items row per SKU)."
 
   asinmetric:
     description: "Product-ad-level (ASIN/SKU) metrics including SD remarketing tactic. Counterpart to productadmetric — Amazon's 'Purchased Product' report. Includes attributed sales for purchased ASIN, not just advertised."
@@ -438,6 +449,20 @@ tables:
     account_types: [SC]
     time_series: false
     requires_seller_id: true
+    key_columns:
+      name: ItemName
+      sku: SKU
+      asin: ASIN
+      price: ItemPrice
+      cost: ItemCost
+      quantity: ItemQuantityAvailable
+    gotchas:
+      - "There is no `Title`; the item name is `ItemName`."
+      - "There is no `Status`; the listing flag is `IsActive` (1 or 0)."
+      - "There is no `SellerSKU`; the SKU column is `SKU`."
+      - "There is no `Price`; the listed price is `ItemPrice`. Your cost is `ItemCost`."
+      - "There is no `Quantity`; the stock count is `ItemQuantityAvailable`. For a daily history use mws_inventory_history."
+      - "There is no `dtCreatedOn`; the only timestamp is `dtUpdatedOn` (`OpenDate` is the date the listing opened)."
 
   vendor_items:
     description: "Vendor Central catalog: ASIN, ItemName, ItemGroup, Brand (Amazon's label), CustomBrand (your override), ItemNickname, ItemCost, ItemLabel1..2. Counterpart to mws_items for VC accounts."
@@ -459,6 +484,14 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    key_columns:
+      sku: SKU
+      asin: ASIN
+    gotchas:
+      - "There is no `Date` column. Filter on `DateTime` (a date, one snapshot per day)."
+      - "There is no `SellerSKU`; the SKU column is `SKU` (`FNSKU` is Amazon's fulfillment network SKU)."
+      - "There is no `sellable_qty` or `FBAInventory`; the sellable count is `FulfillableQuantity`."
+      - "There is no `UnfulfillableQuantity`; the total is `TotalUnfulfillableQuantity`, broken out as `CustomerDamagedQuantity`, `WarehouseDamagedQuantity`, `DistributorDamagedQuantity`, `CarrierDamagedQuantity`, `DefectiveQuantity` and `ExpiredQuantity`."
 
   mws_inventory_health:
     description: "Current FBA inventory planning state per SKU, loaded from Amazon's GET_FBA_INVENTORY_PLANNING_DATA report: Available, DaysOfSupply, Alert, WeeksOfCoverT7, SalesShippedLast7Days, StorageVolume. Not a history: each daily pull deletes the previous snapshot for the marketplace it loads, so a seller row holds one snapshot. For trends and stockout history use mws_inventory_history."

@@ -1,0 +1,1 @@
+- **The data catalog now names the columns people reach for on the item and inventory tables.** When a query asks for `Title`, `Price`, `Quantity`, `SellerSKU` or `Date` on the catalog, advertised-product or inventory-history tables, the table entry now says that name does not exist and which column holds that value. Eight more warehouse tables ship with their full column lists.
