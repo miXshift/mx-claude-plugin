@@ -38,6 +38,8 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - The primary table, when the client can derive it
 - Duration and row count
 - Error classification (`access_denied_table`, `timeout`, `syntax_error`, etc.), a friendly category, not raw stack traces
+- For ad-hoc queries that fail, the warehouse's own one-line error message (for example which column name it did not recognize), truncated to 500 characters. Library queries never include it, for the same reason their SQL text is not logged
+- When the plugin's own pre-send column check stops an ad-hoc query (error class `unknown_column`), the table, the column name it did not find, the replacement it suggested, and how long the check took
 
 **Amazon API events:**
 - Which Amazon operation or report type ran (report type, Ads operation, pricing batch, AMC / DSP run)

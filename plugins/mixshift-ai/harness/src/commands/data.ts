@@ -258,17 +258,29 @@ export function registerDataCommands(program: Command): void {
         `(default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
       integerOption('--rows'),
     )
+    .option(
+      '--no-column-check',
+      'send the query even when the shipped table catalog says a column does not exist ' +
+        '(the catalog can be behind the warehouse). By default a plain single-table SELECT ' +
+        'naming a column the catalog does not have is stopped before it is sent, with the real columns.',
+    )
     .action(
-      async (opts: { sql: string; out?: string; inline?: boolean; rows?: number }, cmd: Command) => {
+      async (
+        opts: { sql: string; out?: string; inline?: boolean; rows?: number; columnCheck: boolean },
+        cmd: Command,
+      ) => {
         const root = cmd.optsWithGlobals<RootOptions>();
         try {
           if (opts.out) {
-            await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir);
+            await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir, opts.columnCheck);
           } else {
-            await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir, {
-              inline: opts.inline,
-              rows: opts.rows,
-            });
+            await runQueryInlineOrTemp(
+              opts.sql,
+              !!root.json,
+              root.dataDir,
+              { inline: opts.inline, rows: opts.rows },
+              opts.columnCheck,
+            );
           }
         } catch (err) {
           emitError(err, !!root.json);
@@ -535,15 +547,21 @@ async function runQueryToFile(
   outPath: string,
   json: boolean,
   dataDir?: string,
+  columnCheck = true,
 ): Promise<void> {
   const sink = createCsvFileSink(outPath);
   const report = progressReporter(sink);
   let streamed;
   try {
-    streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
-      await sink.writePage(rows);
-      report();
-    });
+    streamed = await streamQuery(
+      sql,
+      [],
+      { dataDirOverride: dataDir, precheckColumns: columnCheck },
+      async (rows) => {
+        await sink.writePage(rows);
+        report();
+      },
+    );
   } catch (err) {
     // A sink write failure (e.g. ENOSPC) surfaced through onPage. Rename any
     // partial file so it is not mistaken for a complete export.
@@ -613,6 +631,7 @@ async function runQueryInlineOrTemp(
   json: boolean,
   dataDir?: string,
   ceiling: InlineCeilingOptions = {},
+  columnCheck = true,
 ): Promise<void> {
   const bufferFirst: Array<Record<string, unknown>> = [];
   // Holder object rather than a bare `let`: the sink is assigned inside the
@@ -633,7 +652,7 @@ async function runQueryInlineOrTemp(
     streamed = await streamQuery<Record<string, unknown>>(
       sql,
       [],
-      { dataDirOverride: dataDir },
+      { dataDirOverride: dataDir, precheckColumns: columnCheck },
       async (rows, idx) => {
         if (idx === 0) {
           for (const r of rows) bufferFirst.push(r);
