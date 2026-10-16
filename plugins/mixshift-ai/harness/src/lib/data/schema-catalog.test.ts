@@ -81,8 +81,8 @@ describe('loadSchemaCatalog', () => {
     await hydrateSchemaHints();
     expect(seller.gotchas.join(' ')).toMatch(/SellerName/);
     expect(cm.keyColumns.spend).toBe('Cost');
-    // Curated-only tables have no column list and are not checkable.
-    expect(cat.has('sponsoredbrandsmetric')).toBe(false);
+    // A curated-only table (no column list in the dump) is not checkable.
+    expect(cat.has('marketplace')).toBe(false);
   });
 
   it('hydration is idempotent and tolerates a missing curated file', async () => {
