@@ -3,6 +3,106 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.18
+
+
+### Added
+
+- **Walmart ads in the plugin: `mx-walmart-ads` (beta).** When MixShift has connected your
+  Walmart Connect advertiser to your account, ask Claude about your Walmart campaigns the way
+  you do for Amazon: list your advertisers, see campaigns and their status, and get the last
+  30 days of spend, clicks and impressions by campaign, built from Walmart's own report.
+  Changes to campaigns, keywords and bids show you a preview first and reach Walmart only
+  after you confirm. It uses your plugin sign-in, so no separate connector is needed.
+
+- **Demos: see a skill work on your own account.** Say *"demo Walmart ads"* (or just *"demo"*
+  to see which skills have one) and Claude walks you through the skill in a few minutes, on
+  your real data: your Walmart advertisers, campaigns and their status, the last 30 days by
+  campaign, one campaign up close, and one change shown as a preview that is never sent.
+  Each step ends with the sentence that does it again. The guide (*"help"*) and the welcome
+  now point to demos, and more skills will add them.
+
+- **Forecast a brand inside an account.** When one Amazon account carries several brands,
+  Forecast Max can now forecast just one of them: it finds the brand's product and campaign
+  labels, confirms them with you, and runs readiness, the forecast and your sponsored budget
+  for that brand alone, kept apart from the account's. `mixshift forecast sub-brand list`,
+  `add` and `remove` manage these brands.
+
+- **Your FBA inbound shipments now show their tracking, boxes, pallets and carrier.** Ask for
+  the tracking or PRO number on an `FBA...` shipment and Claude walks Amazon's newer inbound
+  plans to find it, along with each box's contents and case-pack template, the pallets, the
+  carrier, and the placement fees. Amazon removed the old transport-details call in January
+  2025; these are its replacement, on the authorization you already granted.
+
+### Changed
+
+- **Monthly Report Max is now the `mx-max-report` skill.** It shares one naming
+  pattern with Forecast Max (`mx-max-forecast`), so the max-tier skills sort and
+  search together. Asking for it in your own words ("prep my call with Acme
+  Goods") works as before, and the slash command is now
+  `/mixshift-ai:mx-max-report`.
+  Your report hubs, their links and last call's commitments carry over, so the
+  next report still lands on the page your client already has. If a scheduled
+  task or a saved prompt names `mx-monthly-report-max`, change it to
+  `mx-max-report`.
+
+### Fixed
+
+- **The plugin installs again on setups that rejected it with "Plugin validation failed".**
+  A few skill descriptions had grown past the 1,024-character limit that some Claude
+  installs enforce, and one long description was enough to stop the whole plugin from
+  installing there. They are shorter now, and every release is checked against the limit.
+
+- **A query that names a column the table does not have now stops before it is
+  sent, and comes back with the table's real columns and the closest match.**
+  Until now the warehouse answered with a bare "Unknown column" and the next
+  attempt was another guess; this was the most common query failure across
+  every current version. The check runs offline against the table list the
+  plugin ships, only on plain single-table SELECTs it can read with certainty,
+  and never rewrites your SQL: it names the column it could not find, and the
+  agent re-runs with a real one and tells you which column it used instead.
+  Queries with joins, subqueries or tables the catalog does not list are sent
+  unchanged; when one of those fails on a column name, the error now also
+  carries the real columns for the table it could identify.
+
+- **The data catalog now names the columns people reach for on the item and inventory tables.** When a query asks for `Title`, `Price`, `Quantity`, `SellerSKU` or `Date` on the catalog, advertised-product or inventory-history tables, the table entry now says that name does not exist and which column holds that value. Eight more warehouse tables ship with their full column lists.
+
+- **The command names agents guess most now work, and the next-most-guessed get pointed home.**
+  `mixshift data tables`, `ads ops`, `ads catalog` and `amazon ops` are real aliases of
+  `data list-tables`, `ads operations` and `amazon operations`. A guessed `data query --format csv`,
+  `amazon call --param`, `amazon report get --run-id` and a dozen more wrong names now
+  answer with the flag or command that does the job, instead of only "unknown option".
+
+- **Report Max no longer calls a selling item out of stock.** On Seller Central the
+  stockout count now arrives from the MixShift service with a day counted only when FBA
+  stock was zero and nothing was ordered, and a merchant-fulfilled listing is never read as
+  stock. Two companions sit beside it in the brief: the days the FBA offer was gone while
+  the item still sold (a conversion risk, not a stockout) and how many days of the window
+  the inventory feed covered. The Availability step quotes the rule the count ran under
+  instead of re-deriving it by hand, and keeps the hand check only for a service that
+  predates the change.
+
+- **Report Max names the winning offer, the month pair to quote, and where targets live.**
+  Three points a working analyst hit in one real run: the featured-offer step now reads
+  `IsBuyBoxWinner` (every eligible offer carries `IsFeaturedMerchant`, so it never named
+  the winner); a closed month leads with the calendar pair and states the per-day rate
+  beside it when the two months differ in length, instead of leaving the choice between the
+  envelope's calendar months and the battery's matched days to each run; and the Targets
+  setting names the exact fields `brand context resolve` returns (there is no `goals`
+  block in its output). The availability step also says the warehouse stockout count is
+  FBA stock only, so an item that keeps selling is never called stocked out.
+
+- **The inventory planning table is no longer described as a history.**
+  `mws_inventory_health` holds today's planning snapshot for each account's main
+  marketplace, and each daily load replaces the last one. The table guide used to call
+  it a time series, which led to trend questions it cannot answer. It now says so, names
+  `mws_inventory_history` for trends, and shows how to pull the planning report on demand
+  for any other marketplace (DE covers a pan-EU pool).
+
+- **The in-chat guide lists Forecast Max.** Asking for help now shows it under
+  Reporting & analysis, next to Report Max, instead of only at the bottom of the
+  list.
+
 ## 0.8.17
 
 

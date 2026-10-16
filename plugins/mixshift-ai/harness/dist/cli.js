@@ -15861,7 +15861,7 @@ var require_util6 = __commonJS({
       }
       validateCookieName(cookie.name);
       validateCookieValue(cookie.value);
-      const out = [`${cookie.name}=${cookie.value}`];
+      const out2 = [`${cookie.name}=${cookie.value}`];
       if (cookie.name.startsWith("__Secure-")) {
         cookie.secure = true;
       }
@@ -15871,37 +15871,37 @@ var require_util6 = __commonJS({
         cookie.path = "/";
       }
       if (cookie.secure) {
-        out.push("Secure");
+        out2.push("Secure");
       }
       if (cookie.httpOnly) {
-        out.push("HttpOnly");
+        out2.push("HttpOnly");
       }
       if (typeof cookie.maxAge === "number") {
         validateCookieMaxAge(cookie.maxAge);
-        out.push(`Max-Age=${cookie.maxAge}`);
+        out2.push(`Max-Age=${cookie.maxAge}`);
       }
       if (cookie.domain) {
         validateCookieDomain(cookie.domain);
-        out.push(`Domain=${cookie.domain}`);
+        out2.push(`Domain=${cookie.domain}`);
       }
       if (cookie.path) {
         validateCookiePath(cookie.path);
-        out.push(`Path=${cookie.path}`);
+        out2.push(`Path=${cookie.path}`);
       }
       if (cookie.expires && cookie.expires.toString() !== "Invalid Date") {
-        out.push(`Expires=${toIMFDate(cookie.expires)}`);
+        out2.push(`Expires=${toIMFDate(cookie.expires)}`);
       }
       if (cookie.sameSite) {
-        out.push(`SameSite=${cookie.sameSite}`);
+        out2.push(`SameSite=${cookie.sameSite}`);
       }
       for (const part of cookie.unparsed) {
         if (!part.includes("=")) {
           throw new Error("Invalid unparsed");
         }
         const [key, ...value] = part.split("=");
-        out.push(`${key.trim()}=${value.join("=")}`);
+        out2.push(`${key.trim()}=${value.join("=")}`);
       }
-      return out.join("; ");
+      return out2.join("; ");
     }
     module.exports = {
       isCTLExcludingHtab,
@@ -16062,15 +16062,15 @@ var require_cookies = __commonJS({
       webidl.argumentLengthCheck(arguments, 1, "getCookies");
       webidl.brandCheck(headers, Headers, { strict: false });
       const cookie = headers.get("cookie");
-      const out = {};
+      const out2 = {};
       if (!cookie) {
-        return out;
+        return out2;
       }
       for (const piece of cookie.split(";")) {
         const [name, ...value] = piece.split("=");
-        out[name.trim()] = value.join("=");
+        out2[name.trim()] = value.join("=");
       }
-      return out;
+      return out2;
     }
     function deleteCookie(headers, name, attributes) {
       webidl.brandCheck(headers, Headers, { strict: false });
@@ -19427,7 +19427,7 @@ var require_option = __commonJS({
 var require_suggestSimilar = __commonJS({
   "node_modules/commander/lib/suggestSimilar.js"(exports) {
     var maxDistance = 3;
-    function editDistance(a, b) {
+    function editDistance2(a, b) {
       if (Math.abs(a.length - b.length) > maxDistance)
         return Math.max(a.length, b.length);
       const d = [];
@@ -19473,7 +19473,7 @@ var require_suggestSimilar = __commonJS({
       const minSimilarity = 0.4;
       candidates.forEach((candidate) => {
         if (candidate.length <= 1) return;
-        const distance = editDistance(word, candidate);
+        const distance = editDistance2(word, candidate);
         const length = Math.max(word.length, candidate.length);
         const similarity = (length - distance) / length;
         if (similarity > minSimilarity) {
@@ -19509,7 +19509,7 @@ var require_command = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
     var path2 = __require("node:path");
-    var fs3 = __require("node:fs");
+    var fs5 = __require("node:fs");
     var process5 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
     var { CommanderError: CommanderError2 } = require_error();
@@ -20442,10 +20442,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
           const localBin = path2.resolve(baseDir, baseName);
-          if (fs3.existsSync(localBin)) return localBin;
+          if (fs5.existsSync(localBin)) return localBin;
           if (sourceExt.includes(path2.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
-            (ext) => fs3.existsSync(`${localBin}${ext}`)
+            (ext) => fs5.existsSync(`${localBin}${ext}`)
           );
           if (foundExt) return `${localBin}${foundExt}`;
           return void 0;
@@ -20457,7 +20457,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         if (this._scriptPath) {
           let resolvedScriptPath;
           try {
-            resolvedScriptPath = fs3.realpathSync(this._scriptPath);
+            resolvedScriptPath = fs5.realpathSync(this._scriptPath);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
@@ -28472,14 +28472,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs3 = this.flowScalar(this.type);
+              const fs5 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map2.items.push({ start, key: fs3, sep: [] });
+                map2.items.push({ start, key: fs5, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs3);
+                this.stack.push(fs5);
               } else {
-                Object.assign(it, { key: fs3, sep: [] });
+                Object.assign(it, { key: fs5, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -28607,13 +28607,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs3 = this.flowScalar(this.type);
+              const fs5 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs3, sep: [] });
+                fc.items.push({ start: [], key: fs5, sep: [] });
               else if (it.sep)
-                this.stack.push(fs3);
+                this.stack.push(fs5);
               else
-                Object.assign(it, { key: fs3, sep: [] });
+                Object.assign(it, { key: fs5, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -40164,11 +40164,11 @@ function _catch(Class2, innerType, catchValue) {
   });
 }
 // @__NO_SIDE_EFFECTS__
-function _pipe(Class2, in_, out) {
+function _pipe(Class2, in_, out2) {
   return new Class2({
     type: "pipe",
     in: in_,
-    out
+    out: out2
   });
 }
 // @__NO_SIDE_EFFECTS__
@@ -40202,13 +40202,13 @@ function _promise(Class2, innerType) {
 }
 // @__NO_SIDE_EFFECTS__
 function _custom(Class2, fn, _params) {
-  const norm = normalizeParams(_params);
-  norm.abort ?? (norm.abort = true);
+  const norm2 = normalizeParams(_params);
+  norm2.abort ?? (norm2.abort = true);
   const schema = new Class2({
     type: "custom",
     check: "custom",
     fn,
-    ...norm
+    ...norm2
   });
   return schema;
 }
@@ -42394,19 +42394,19 @@ function _catch2(innerType, catchValue) {
 function nan(params) {
   return _nan(ZodNaN, params);
 }
-function pipe(in_, out) {
+function pipe(in_, out2) {
   return new ZodPipe({
     type: "pipe",
     in: in_,
-    out
+    out: out2
     // ...util.normalizeParams(params),
   });
 }
-function codec(in_, out, params) {
+function codec(in_, out2, params) {
   return new ZodCodec({
     type: "pipe",
     in: in_,
-    out,
+    out: out2,
     transform: params.decode,
     reverseTransform: params.encode
   });
@@ -61479,7 +61479,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join30(tree) {
+      function join32(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61505,7 +61505,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join30(parse4(query));
+        tree = join32(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64256,10 +64256,10 @@ function serviceTokenCachePath(dataDirOverride) {
 }
 async function getServiceAccessToken(service, dataDirOverride, forceRefresh) {
   if (!forceRefresh) {
-    const cached4 = await readServiceTokenCache(dataDirOverride);
-    if (cached4 && cached4.client_id === service.client_id) {
-      const fresh = Date.parse(cached4.expires_at) - Date.now() > SERVICE_TOKEN_SAFETY_MARGIN_MS;
-      if (fresh) return cached4.access_token;
+    const cached5 = await readServiceTokenCache(dataDirOverride);
+    if (cached5 && cached5.client_id === service.client_id) {
+      const fresh = Date.parse(cached5.expires_at) - Date.now() > SERVICE_TOKEN_SAFETY_MARGIN_MS;
+      if (fresh) return cached5.access_token;
     }
   }
   if (_serviceMintState.inFlight) {
@@ -64900,18 +64900,18 @@ async function findOrphans(dir, mine) {
     return [];
   }
   const cutoff = Date.now() - ORPHAN_AGE_MS;
-  const out = [];
+  const out2 = [];
   for (const name of names) {
     if (!name.startsWith(INFLIGHT_PREFIX) || name.includes(".tmp.")) continue;
     const full = join7(dir, name);
     if (full === mine || full.startsWith(`${mine}.`)) continue;
     try {
       const age = Math.max((await stat2(full)).mtimeMs, claimTimeOf(name));
-      if (age < cutoff) out.push(full);
+      if (age < cutoff) out2.push(full);
     } catch {
     }
   }
-  return out.sort();
+  return out2.sort();
 }
 async function removeStaleTemps(dir) {
   let names;
@@ -65084,7 +65084,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
     ...setAside.length ? { dead_lettered: setAside.length, set_aside: setAside } : {},
     ...requeue.length ? { requeued: requeue.length } : {}
   });
-  const fail3 = async (unsent, err) => {
+  const fail4 = async (unsent, err) => {
     await claim.release([...unsent, ...requeue]);
     return { status: "failed", events_sent: sentCount, ...summary(), error: errText(err) };
   };
@@ -65112,7 +65112,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       };
     }
     if (allRefusedStreak >= 2) {
-      return fail3(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
+      return fail4(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
     }
     const refusedBefore = setAside.length + requeue.length;
     const batch = events.slice(i, i + batch_size);
@@ -65121,7 +65121,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       sentCount += batch.length;
       allRefusedStreak = 0;
     } catch (err) {
-      if (!isPermanentRejection(err)) return fail3(recs(i), err);
+      if (!isPermanentRejection(err)) return fail4(recs(i), err);
       for (let j = 0; j < batch.length; j++) {
         const one = batch[j];
         if (j > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
@@ -65139,7 +65139,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
           sentCount++;
         } catch (rowErr) {
           if (!isPermanentRejection(rowErr)) {
-            return fail3([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
+            return fail4([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
           }
           await putAside(one.rec, rowErr.status, rowErr.message);
         }
@@ -65247,9 +65247,9 @@ function storable(v) {
   if (v && typeof v === "object") {
     const toJSON = v.toJSON;
     if (typeof toJSON === "function") return storable(toJSON.call(v));
-    const out = {};
-    for (const [k, val] of Object.entries(v)) out[storableString(k)] = storable(val);
-    return out;
+    const out2 = {};
+    for (const [k, val] of Object.entries(v)) out2[storableString(k)] = storable(val);
+    return out2;
   }
   return v;
 }
@@ -65357,6 +65357,14 @@ var init_events = __esm({
       // Help hub (`mixshift guide` + mx-help skill). No payload privacy concerns —
       // help.viewed carries only format + auth-ready + an uncatalogued-skill count.
       HelpViewed: "help.viewed",
+      // Skill demos (`mixshift demo` + each skill's `## Demo` section). Skill ids
+      // and counts only, never account data. demo.requested fires for a skill
+      // WITHOUT a demo too (available: false): that is the build-next signal.
+      // payloads: listed {count}; requested {skill_id, available, steps_total};
+      // finished {skill_id, steps_shown, steps_total}.
+      DemoListed: "demo.listed",
+      DemoRequested: "demo.requested",
+      DemoFinished: "demo.finished",
       // User-contributed skills (`mixshift share-skill` + mx-share-skill skill).
       // Privacy: skill.shared carries only the contributor-authored artifact's
       // METADATA (name, description, file count, byte size, sha). The full skill
@@ -65412,6 +65420,12 @@ var init_events = __esm({
       AdsProfilesListed: "ads.profiles_listed",
       AdsOperationsListed: "ads.operations_listed",
       AdsCalled: "ads.called",
+      // Walmart Connect call surface (lib/walmart/ads-call.ts + `mixshift walmart
+      // ads`). Operation id + advertiser id + environment + outcome; never the
+      // payload (campaign data is the advertiser's business data).
+      WalmartAdsAdvertisersListed: "walmart.ads.advertisers_listed",
+      WalmartAdsOperationsListed: "walmart.ads.operations_listed",
+      WalmartAdsCalled: "walmart.ads.called",
       // MixShift Intelligence service consumption (lib/intelligence/ +
       // `mixshift intelligence`). Privacy: capture insight id + run id + duration
       // + outcome + cache hit/miss + limitation COUNT only — never the insight
@@ -65435,6 +65449,14 @@ var init_events = __esm({
       ForecastBudgetSet: "forecast.budget_set",
       ForecastBudgetCleared: "forecast.budget_cleared",
       ForecastBudgetFailed: "forecast.budget_failed",
+      // Forecast sub-brands (`mixshift forecast sub-brand`, lib/forecast/sub-brand.ts):
+      // a brand inside an account, defined by labels, that a forecast reads on its own
+      // (mx-ops#134). Payload: scope_id, seller, kind, item_values / campaign_values
+      // COUNTS, created / deleted counts, failure_kind. Never the name or the labels.
+      ForecastSubBrandListed: "forecast.sub_brand_listed",
+      ForecastSubBrandDefined: "forecast.sub_brand_defined",
+      ForecastSubBrandRemoved: "forecast.sub_brand_removed",
+      ForecastSubBrandFailed: "forecast.sub_brand_failed",
       // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
       // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
       // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,
@@ -65936,6 +65958,644 @@ var init_api_base = __esm({
   }
 });
 
+// src/lib/data/column-check.ts
+function checkColumns(sql, catalog2) {
+  if (!sql || !sql.trim()) return { verdict: "skipped", reason: "empty" };
+  if (sql.includes("`")) return { verdict: "skipped", reason: "backtick" };
+  const toks = tokenize(stripComments(sql));
+  if (toks.length === 0) return { verdict: "skipped", reason: "empty" };
+  if (toks[toks.length - 1].t === "p" && toks[toks.length - 1].v === ";") toks.pop();
+  if (toks.length === 0) return { verdict: "skipped", reason: "empty" };
+  if (toks[0].l === "with") return { verdict: "skipped", reason: "cte" };
+  if (toks[0].l !== "select") return { verdict: "skipped", reason: "not_select" };
+  let selects = 0;
+  for (let i2 = 0; i2 < toks.length; i2++) {
+    const k = toks[i2];
+    if (k.t !== "id") continue;
+    if (k.l === "select") selects++;
+    if (k.l === "union" || k.l === "except" || k.l === "intersect") return { verdict: "skipped", reason: "subquery_or_union" };
+    if ((k.l === "index" || k.l === "key") && i2 > 0 && ["use", "force", "ignore"].includes(toks[i2 - 1].l)) {
+      return { verdict: "skipped", reason: "index_hint" };
+    }
+  }
+  if (selects > 1) return { verdict: "skipped", reason: "subquery_or_union" };
+  let depth = 0;
+  let fromIdx = -1;
+  for (let i2 = 0; i2 < toks.length; i2++) {
+    const k = toks[i2];
+    if (k.t === "p") {
+      if (k.v === "(") depth++;
+      else if (k.v === ")") depth--;
+      continue;
+    }
+    if (depth === 0 && k.t === "id" && k.l === "from") {
+      fromIdx = i2;
+      break;
+    }
+  }
+  if (fromIdx < 0) return { verdict: "skipped", reason: "not_select" };
+  const tableTok = toks[fromIdx + 1];
+  if (!tableTok || tableTok.t !== "id") return { verdict: "skipped", reason: "unparseable" };
+  let i = fromIdx + 2;
+  if (toks[i]?.t === "p" && toks[i].v === ".") return { verdict: "skipped", reason: "qualified_table" };
+  const tableName = tableTok.l;
+  const table = catalog2.get(tableName);
+  if (!table) return { verdict: "skipped", reason: "unknown_table" };
+  let alias = null;
+  if (toks[i]?.t === "id" && toks[i].l === "as") {
+    const a = toks[i + 1];
+    if (!a || a.t !== "id") return { verdict: "skipped", reason: "unparseable" };
+    alias = a.l;
+    i += 2;
+  } else if (toks[i]?.t === "id" && !CLAUSE_AFTER_TABLE.has(toks[i].l) && !MULTI_TABLE.has(toks[i].l)) {
+    alias = toks[i].l;
+    i += 1;
+  }
+  const after = toks[i];
+  if (after) {
+    if (after.t !== "id") return { verdict: "skipped", reason: "multi_table" };
+    if (MULTI_TABLE.has(after.l)) return { verdict: "skipped", reason: "multi_table" };
+    if (!CLAUSE_AFTER_TABLE.has(after.l)) return { verdict: "skipped", reason: "unparseable" };
+  }
+  for (const k of toks) if (k.t === "id" && (k.l === "join" || k.l === "straight_join")) return { verdict: "skipped", reason: "multi_table" };
+  const columns = /* @__PURE__ */ new Map();
+  for (const c of table.columns) columns.set(c.toLowerCase(), c);
+  const isKeyword = (l) => KEYWORDS.has(l) && !columns.has(l);
+  const enclosing = new Array(toks.length).fill(null);
+  const callStack = [];
+  for (let k = 0; k < toks.length; k++) {
+    const tok = toks[k];
+    enclosing[k] = callStack[callStack.length - 1] ?? null;
+    if (tok.t !== "p") continue;
+    if (tok.v === "(") {
+      const name = toks[k - 1];
+      callStack.push(name?.t === "id" ? name.l : null);
+    } else if (tok.v === ")") callStack.pop();
+  }
+  const aliases = /* @__PURE__ */ new Set();
+  const aliasPositions = /* @__PURE__ */ new Set();
+  const windowNames = /* @__PURE__ */ new Set();
+  depth = 0;
+  for (let k = 0; k < toks.length; k++) {
+    const tok = toks[k];
+    if (tok.t === "p") {
+      if (tok.v === "(") depth++;
+      else if (tok.v === ")") depth--;
+      continue;
+    }
+    if (tok.t !== "id") continue;
+    const prev = toks[k - 1];
+    const next = toks[k + 1];
+    if (next?.t === "id" && next.l === "as" && toks[k + 2]?.t === "p" && toks[k + 2].v === "(") {
+      windowNames.add(tok.l);
+      aliasPositions.add(k);
+      continue;
+    }
+    if (prev?.t === "id" && prev.l === "as") {
+      aliases.add(tok.l);
+      aliasPositions.add(k);
+      continue;
+    }
+    if (k > 0 && k < fromIdx && depth === 0 && !isKeyword(tok.l) && prev) {
+      const implicit = prev.t === "num" || prev.t === "str" || prev.t === "var" || prev.t === "p" && prev.v === ")" || prev.t === "id" && (!isKeyword(prev.l) || LITERAL_KEYWORDS.has(prev.l));
+      if (implicit) {
+        aliases.add(tok.l);
+        aliasPositions.add(k);
+      }
+    }
+  }
+  for (let k = 0; k < toks.length; k++) {
+    const tok = toks[k];
+    if (tok.t !== "id" || aliasPositions.has(k)) continue;
+    const next = toks[k + 1];
+    const prev = toks[k - 1];
+    if (next?.t === "p" && (next.v === "(" || next.v === ".")) continue;
+    if (next?.t === "str") continue;
+    if (tok.v.startsWith("_") && (next?.t === "num" || next?.t === "id" && toks[k + 2]?.t === "str")) continue;
+    if (windowNames.has(tok.l)) continue;
+    if (prev?.t === "p" && prev.v === ".") {
+      const q = toks[k - 2];
+      if (!q || q.t !== "id") return { verdict: "skipped", reason: "unparseable" };
+      if (q.l !== tableName && q.l !== alias) return { verdict: "skipped", reason: "unknown_qualifier" };
+    } else {
+      if (isKeyword(tok.l)) continue;
+      if (prev?.t === "id" && NAME_AFTER.has(prev.l)) continue;
+      if (k > fromIdx && aliases.has(tok.l)) continue;
+      if (tok.l === tableName || tok.l === alias) continue;
+      if (CONTEXT_KEYWORDS.has(tok.l) && !columns.has(tok.l)) {
+        const fn = enclosing[k];
+        if (fn && TYPE_ARG_FUNCS.has(fn) || afterIntervalInExpression(toks, k)) continue;
+      }
+    }
+    if (columns.has(tok.l)) continue;
+    return {
+      verdict: "unknown_column",
+      table: table.name,
+      column: tok.v,
+      suggestions: suggestColumns(tok.v, table),
+      columns: table.columns,
+      gotchas: table.gotchas
+    };
+  }
+  return { verdict: "ok", table: table.name };
+}
+function suggestColumns(unknown2, table) {
+  if (unknown2.length > 64) return [];
+  const u = unknown2.toLowerCase();
+  const scored = /* @__PURE__ */ new Map();
+  const bump = (col, score) => {
+    const prevScore = scored.get(col) ?? 0;
+    if (score > prevScore) scored.set(col, score);
+  };
+  const real = new Map(table.columns.map((c) => [c.toLowerCase(), c]));
+  const role = table.keyColumns[u];
+  if (role && real.has(role.toLowerCase())) bump(role, 10);
+  for (const g of table.gotchas ?? []) {
+    const names = [...g.matchAll(/`([A-Za-z_][\w$]*)`/g)].map((m) => m[1]);
+    if (!names.some((n) => n.toLowerCase() === u)) continue;
+    const hit = names.find((n) => n.toLowerCase() !== u && real.has(n.toLowerCase()));
+    if (hit) {
+      bump(real.get(hit.toLowerCase()), 8);
+      break;
+    }
+  }
+  const norm2 = (s) => s.toLowerCase().replace(/[_\s]/g, "");
+  const nu = norm2(unknown2);
+  for (const col of table.columns) {
+    const c = col.toLowerCase();
+    if (norm2(col) === nu) {
+      bump(col, 9);
+      continue;
+    }
+    const d = editDistance(u, c);
+    const tol = Math.max(2, Math.floor(u.length / 4));
+    if (d <= tol) bump(col, 5 + (1 - d / Math.max(u.length, c.length)));
+    const longer = Math.max(u.length, c.length);
+    if (c.length >= 3 && u.length >= 3) {
+      if (u.includes(c) || c.includes(u)) bump(col, 3 + Math.min(u.length, c.length) / longer);
+    }
+    if (c.length >= 2 && (u.endsWith(c) || c.endsWith(u) || u.startsWith(c) || c.startsWith(u))) {
+      bump(col, 2 + Math.min(u.length, c.length) / longer);
+    }
+    const p = commonPrefix(u, c);
+    if (p >= 4) bump(col, 1 + p / longer);
+  }
+  return [...scored.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([col]) => col);
+}
+function unknownColumnFriendly(r) {
+  const lines = [];
+  const first = r.suggestions[0];
+  const rest = r.suggestions.slice(1);
+  lines.push(
+    `No column \`${r.column}\` on \`${r.table}\`.` + (first ? ` Did you mean \`${first}\`` + (rest.length ? ` (or ${rest.map((s) => `\`${s}\``).join(", ")})` : "") + "?" : "")
+  );
+  lines.push(`Columns on \`${r.table}\` (${r.columns.length}): ${r.columns.join(", ")}`);
+  if (r.gotchas.length) {
+    lines.push("Before you name a column:");
+    for (const g of r.gotchas) lines.push(`- ${g}`);
+  }
+  lines.push(
+    `The query was not sent. Re-run it with a column from this list, and tell the user which column you used in place of \`${r.column}\`. If you are certain the column exists (the shipped catalog can be behind the warehouse), re-run with --no-column-check.`
+  );
+  return lines.join("\n");
+}
+function afterIntervalInExpression(toks, k) {
+  let depth = 0;
+  for (let j = k - 1; j >= 0; j--) {
+    const t = toks[j];
+    if (t.t === "p") {
+      if (t.v === ")") depth++;
+      else if (t.v === "(") {
+        if (depth === 0) return false;
+        depth--;
+      } else if (t.v === "," && depth === 0) return false;
+      continue;
+    }
+    if (depth > 0 || t.t !== "id") continue;
+    if (t.l === "interval") return true;
+    if (t.l === "end") {
+      let nested = 1;
+      while (nested > 0 && --j >= 0) {
+        const c = toks[j];
+        if (c.t !== "id") continue;
+        if (c.l === "end") nested++;
+        else if (c.l === "case") nested--;
+      }
+      continue;
+    }
+    if (EXPR_BOUNDARY.has(t.l)) return false;
+  }
+  return false;
+}
+function stripComments(sql) {
+  let out2 = "";
+  let quote2 = null;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (quote2) {
+      out2 += ch;
+      if (ch === "\\" && i + 1 < sql.length) out2 += sql[++i];
+      else if (ch === quote2) quote2 = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote2 = ch;
+      out2 += ch;
+      continue;
+    }
+    if (ch === "-" && sql[i + 1] === "-" && (i + 2 >= sql.length || /\s/.test(sql[i + 2]))) {
+      while (i < sql.length && sql[i] !== "\n") i++;
+      out2 += " ";
+      continue;
+    }
+    if (ch === "#") {
+      while (i < sql.length && sql[i] !== "\n") i++;
+      out2 += " ";
+      continue;
+    }
+    if (ch === "/" && sql[i + 1] === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      i = end < 0 ? sql.length : end + 1;
+      out2 += " ";
+      continue;
+    }
+    out2 += ch;
+  }
+  return out2;
+}
+function tokenize(sql) {
+  const toks = [];
+  const n = sql.length;
+  let i = 0;
+  while (i < n) {
+    const ch = sql[i];
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      let j = i + 1;
+      while (j < n) {
+        if (sql[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (sql[j] === ch) {
+          if (sql[j + 1] === ch) {
+            j += 2;
+            continue;
+          }
+          break;
+        }
+        j++;
+      }
+      toks.push({ t: "str", v: sql.slice(i, j + 1), l: "" });
+      i = j + 1;
+      continue;
+    }
+    if (/[0-9]/.test(ch) || ch === "." && /[0-9]/.test(sql[i + 1] ?? "")) {
+      let j = i + 1;
+      while (j < n && /[0-9a-zA-Z_.]/.test(sql[j])) j++;
+      toks.push({ t: "num", v: sql.slice(i, j), l: "" });
+      i = j;
+      continue;
+    }
+    if (/[A-Za-z_$\u0080-￿]/.test(ch)) {
+      let j = i + 1;
+      while (j < n && /[A-Za-z0-9_$\u0080-￿]/.test(sql[j])) j++;
+      const v = sql.slice(i, j);
+      toks.push({ t: "id", v, l: v.toLowerCase() });
+      i = j;
+      continue;
+    }
+    if (ch === "?") {
+      toks.push({ t: "var", v: "?", l: "" });
+      i++;
+      continue;
+    }
+    if ((ch === "@" || ch === ":") && /[A-Za-z_@]/.test(sql[i + 1] ?? "")) {
+      let j = i + 1;
+      while (j < n && /[A-Za-z0-9_@.$]/.test(sql[j])) j++;
+      toks.push({ t: "var", v: sql.slice(i, j), l: "" });
+      i = j;
+      continue;
+    }
+    toks.push({ t: "p", v: ch, l: "" });
+    i++;
+  }
+  return toks;
+}
+function editDistance(a, b) {
+  if (a === b) return 0;
+  const m = a.length;
+  const k = b.length;
+  if (m === 0) return k;
+  if (k === 0) return m;
+  const rows = [Array.from({ length: k + 1 }, (_, j) => j)];
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(k + 1);
+    const prev = rows[i - 1];
+    cur[0] = i;
+    for (let j = 1; j <= k; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2][j - 2] + 1);
+      }
+      cur[j] = best;
+    }
+    rows.push(cur);
+  }
+  return rows[m][k];
+}
+function commonPrefix(a, b) {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+var KEYWORDS, CONTEXT_KEYWORDS, TYPE_ARG_FUNCS, NAME_AFTER, EXPR_BOUNDARY, CLAUSE_AFTER_TABLE, MULTI_TABLE, LITERAL_KEYWORDS;
+var init_column_check = __esm({
+  "src/lib/data/column-check.ts"() {
+    "use strict";
+    KEYWORDS = new Set(
+      `
+accessible add all alter analyze and as asc asensitive before between bigint binary blob both by call
+cascade case change char character check collate column condition constraint continue convert create cross
+cube cume_dist current_date current_time current_timestamp current_user cursor database databases day_hour
+day_microsecond day_minute day_second declare default delayed delete dense_rank desc describe
+deterministic distinct distinctrow div drop dual each else elseif empty enclosed end escaped except exists
+exit explain false fetch first_value float float4 float8 for force foreign from fulltext function generated
+get grant group grouping groups having high_priority hour_microsecond hour_minute hour_second if ignore in
+index infile inner inout insensitive insert int1 int2 int3 int4 int8 intersect interval into
+io_after_gtids io_before_gtids is iterate join json_table key keys kill lag last_value lateral lead leading
+leave left like limit linear lines load localtime localtimestamp lock long longblob longtext loop
+low_priority master_bind master_ssl_verify_server_cert match maxvalue mediumblob mediumint mediumtext
+middleint minute_microsecond minute_second mod modifies natural not no_write_to_binlog nth_value ntile null
+of on optimize optimizer_costs option optionally or order out outer outfile over partition percent_rank
+precision primary procedure purge range rank read reads read_write recursive references regexp release
+rename repeat replace require resignal restrict return revoke right rlike row rows row_number schema schemas
+second_microsecond select sensitive separator set show signal smallint spatial specific sql sqlexception
+sqlstate sqlwarning sql_big_result sql_calc_found_rows sql_small_result ssl starting stored straight_join
+system table terminated then tinyblob tinytext to trailing trigger true undo union unique unlock
+update usage use using utc_date utc_time utc_timestamp values varbinary varcharacter
+varying virtual when where while window with write xor year_month zerofill
+any some unknown rollup offset ties only nulls first last preceding following unbounded current exclude
+others group_concat separator escape soundex sounds like do begin
+sql_no_cache sql_cache sql_buffer_result straight
+ascii unicode character set charset collate
+coalesce ifnull nullif greatest least isnull
+share skip locked nowait dumpfile fields mode language query expansion against member returning at zone
+error respect sql_tsi_frac_second sql_tsi_second sql_tsi_minute sql_tsi_hour sql_tsi_day sql_tsi_week
+sql_tsi_month sql_tsi_quarter sql_tsi_year
+`.split(/\s+/).filter(Boolean)
+    );
+    CONTEXT_KEYWORDS = /* @__PURE__ */ new Set([
+      "date",
+      "datetime",
+      "time",
+      "timestamp",
+      "year",
+      "month",
+      "day",
+      "week",
+      "quarter",
+      "hour",
+      "minute",
+      "second",
+      "microsecond",
+      "text",
+      "json",
+      "char",
+      "nchar",
+      "national",
+      "signed",
+      "unsigned",
+      "decimal",
+      "dec",
+      "numeric",
+      "int",
+      "integer",
+      "bigint",
+      "smallint",
+      "tinyint",
+      "float",
+      "double",
+      "real",
+      "boolean",
+      "bool",
+      "varchar"
+    ]);
+    TYPE_ARG_FUNCS = /* @__PURE__ */ new Set([
+      "cast",
+      "convert",
+      "extract",
+      "timestampdiff",
+      "timestampadd",
+      "date_add",
+      "date_sub",
+      "adddate",
+      "subdate",
+      "get_format",
+      "json_value",
+      "json_table",
+      "against"
+    ]);
+    NAME_AFTER = /* @__PURE__ */ new Set(["collate", "charset", "character", "using", "set", "at"]);
+    EXPR_BOUNDARY = /* @__PURE__ */ new Set([
+      "select",
+      "from",
+      "where",
+      "and",
+      "or",
+      "xor",
+      "not",
+      "group",
+      "order",
+      "having",
+      "limit",
+      "by",
+      "when",
+      "then",
+      "else",
+      "case",
+      "end",
+      "on",
+      "as",
+      "between",
+      "in",
+      "like",
+      "is",
+      "window",
+      "partition",
+      "over"
+    ]);
+    CLAUSE_AFTER_TABLE = /* @__PURE__ */ new Set([
+      "where",
+      "group",
+      "order",
+      "limit",
+      "having",
+      "window",
+      "union",
+      "for",
+      "lock",
+      "into",
+      "procedure",
+      "except",
+      "intersect"
+    ]);
+    MULTI_TABLE = /* @__PURE__ */ new Set(["join", "left", "right", "inner", "outer", "cross", "natural", "straight_join", "on", "using", "full"]);
+    LITERAL_KEYWORDS = /* @__PURE__ */ new Set([
+      "null",
+      "true",
+      "false",
+      "end",
+      "unknown",
+      "current_date",
+      "current_time",
+      "current_timestamp",
+      "current_user",
+      "localtime",
+      "localtimestamp",
+      "utc_date",
+      "utc_time",
+      "utc_timestamp",
+      "day_hour",
+      "day_microsecond",
+      "day_minute",
+      "day_second",
+      "hour_microsecond",
+      "hour_minute",
+      "hour_second",
+      "minute_microsecond",
+      "minute_second",
+      "second_microsecond",
+      "year_month"
+    ]);
+  }
+});
+
+// src/lib/data/schema-catalog.ts
+import { readFile as readFile8 } from "node:fs/promises";
+import { dirname as dirname6, join as join8 } from "node:path";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
+function loadSchemaCatalog(overrideDir) {
+  if (overrideDir) return readCatalog([overrideDir]).then((r) => r.catalog);
+  if (!cached4) {
+    cached4 = readCatalog(candidateDirs()).then((r) => {
+      loaded = r.catalog;
+      loadedDir = r.dir;
+      return r.catalog;
+    });
+  }
+  return cached4;
+}
+function hydrateSchemaHints(overrideCatalog, overrideDir) {
+  if (overrideCatalog && overrideDir) return fillHints(overrideCatalog, overrideDir);
+  if (!hydrating) {
+    hydrating = loadSchemaCatalog().then((cat) => loadedDir ? fillHints(cat, loadedDir) : void 0);
+  }
+  return hydrating;
+}
+function loadedSchemaCatalog() {
+  return loaded;
+}
+async function readCatalog(dirs) {
+  const out2 = /* @__PURE__ */ new Map();
+  for (const dir of dirs) {
+    const dumpText = await readText(join8(dir, "tables.yaml"));
+    if (dumpText === null) continue;
+    const tables = parseDumpColumns(dumpText);
+    if (tables.size === 0) continue;
+    for (const [name, columns] of tables) {
+      if (columns.length === 0) continue;
+      out2.set(name.toLowerCase(), { name, columns, keyColumns: {}, gotchas: [] });
+    }
+    return { catalog: out2, dir };
+  }
+  return { catalog: out2, dir: null };
+}
+async function fillHints(catalog2, dir) {
+  const curated = (await readYaml(join8(dir, "data-tables.yaml")))?.tables ?? {};
+  for (const [name, cur] of Object.entries(curated)) {
+    const table = catalog2.get(name.toLowerCase());
+    if (!table || !cur) continue;
+    const keyColumns = {};
+    for (const [role, col] of Object.entries(cur.key_columns ?? {})) {
+      if (typeof col === "string") keyColumns[role.toLowerCase()] = col;
+    }
+    table.keyColumns = keyColumns;
+    table.gotchas = (cur.gotchas ?? []).filter((g) => typeof g === "string");
+  }
+}
+function parseDumpColumns(text) {
+  const out2 = /* @__PURE__ */ new Map();
+  let current = null;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.replace(/\r$/, "");
+    if (line.length === 0 || line.startsWith("#")) continue;
+    const table = /^  ([A-Za-z0-9_$]+):\s*$/.exec(line);
+    if (table) {
+      current = [];
+      out2.set(table[1], current);
+      continue;
+    }
+    if (!current) continue;
+    const col = /^\s+-\s+\{\s*name:\s*(?:"([^"]*)"|'([^']*)'|([^,}\s]+))/.exec(line);
+    if (col) current.push(col[1] ?? col[2] ?? col[3]);
+  }
+  if (out2.size > 0 && [...out2.values()].every((cols) => cols.length > 0)) return out2;
+  out2.clear();
+  try {
+    const parsed = (0, import_yaml6.parse)(text);
+    for (const [name, meta3] of Object.entries(parsed?.tables ?? {})) {
+      out2.set(
+        name,
+        (meta3.columns ?? []).map((c) => c.name).filter((n) => typeof n === "string" && n.length > 0)
+      );
+    }
+  } catch {
+  }
+  return out2;
+}
+async function readText(path2) {
+  try {
+    return await readFile8(path2, "utf-8");
+  } catch {
+    return null;
+  }
+}
+async function readYaml(path2) {
+  try {
+    return (0, import_yaml6.parse)(await readFile8(path2, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function candidateDirs() {
+  const here = dirname6(fileURLToPath4(import.meta.url));
+  const dirs = [];
+  let dir = here;
+  for (let i = 0; i < 8; i++) {
+    dirs.push(join8(dir, "shared"));
+    const parent = dirname6(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return dirs;
+}
+var import_yaml6, cached4, loaded, loadedDir, hydrating;
+var init_schema_catalog = __esm({
+  "src/lib/data/schema-catalog.ts"() {
+    "use strict";
+    import_yaml6 = __toESM(require_dist(), 1);
+    cached4 = null;
+    loaded = null;
+    loadedDir = null;
+    hydrating = null;
+  }
+});
+
 // src/lib/data/query-runner.ts
 function querySqlTelemetry(sql, queryId) {
   if (queryId) return {};
@@ -65943,41 +66603,97 @@ function querySqlTelemetry(sql, queryId) {
     sql_normalized: sql.length > 2e3 ? `${sql.slice(0, 2e3)}...` : sql
   };
 }
+function queryErrorTelemetry(message, queryId) {
+  if (queryId || !message) return {};
+  return { message: message.length > 500 ? `${message.slice(0, 500)}...` : message };
+}
+async function precheckColumns(sql, options) {
+  const t0 = Date.now();
+  let verdict;
+  try {
+    const catalog2 = await loadSchemaCatalog();
+    verdict = checkColumns(sql, catalog2);
+    const ms2 = Date.now() - t0;
+    options.precheck_ms = ms2;
+    if (verdict.verdict !== "unknown_column") {
+      void hydrateSchemaHints().catch(() => void 0);
+      return null;
+    }
+    await hydrateSchemaHints();
+    const table = catalog2.get(verdict.table.toLowerCase());
+    if (table) verdict = { ...verdict, suggestions: suggestColumns(verdict.column, table), gotchas: table.gotchas };
+  } catch {
+    return null;
+  }
+  const ms = Date.now() - t0;
+  const failure2 = {
+    ok: false,
+    kind: "unknown_column",
+    table_name: verdict.table,
+    raw_code: CLIENT_UNKNOWN_COLUMN_RAW_CODE,
+    message: `Unknown column '${verdict.column}' on '${verdict.table}' (local table catalog; the query was not sent)`,
+    friendly: unknownColumnFriendly(verdict),
+    durationMs: ms
+  };
+  void track(
+    {
+      event_name: EventName.QueryFailed,
+      outcome: "failed",
+      duration_ms: ms,
+      query_id: options.query_id,
+      query_table: options.query_table ?? verdict.table,
+      error_class: failure2.kind,
+      payload: {
+        stage: "client_precheck",
+        raw_code: failure2.raw_code,
+        table: verdict.table,
+        column: verdict.column.slice(0, 128),
+        suggestion: verdict.suggestions[0] ?? null,
+        ...querySqlTelemetry(sql, options.query_id),
+        table_name: failure2.table_name,
+        query_shape: options.query_shape,
+        precheck_ms: ms
+      }
+    },
+    options.dataDirOverride
+  );
+  return failure2;
+}
 function blankLiterals(sql) {
-  let out = "";
+  let out2 = "";
   let quote2 = null;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (quote2) {
       if (quote2 !== "`" && ch === "\\") {
-        out += "  ";
+        out2 += "  ";
         i++;
         continue;
       }
       if (ch === quote2) {
         quote2 = null;
-        out += ch;
+        out2 += ch;
       } else {
-        out += quote2 === "`" ? ch : " ";
+        out2 += quote2 === "`" ? ch : " ";
       }
       continue;
     }
     if (ch === "'" || ch === '"' || ch === "`") quote2 = ch;
-    out += ch;
+    out2 += ch;
   }
-  return out;
+  return out2;
 }
 function referencedTables(sql) {
   const clean = blankLiterals(stripSqlComments(sql));
-  const out = /* @__PURE__ */ new Map();
+  const out2 = /* @__PURE__ */ new Map();
   const re = /\b(?:from|join)\s+`?([\w$]+(?:\.[\w$]+)?)`?(?:\s+(?:as\s+)?`?([\w$]+)`?)?/gi;
   for (let m = re.exec(clean); m; m = re.exec(clean)) {
     const table = m[1].split(".").pop().toLowerCase();
-    out.set(table, table);
+    out2.set(table, table);
     const alias = m[2]?.toLowerCase();
-    if (alias && !NOT_AN_ALIAS.has(alias)) out.set(alias, table);
+    if (alias && !NOT_AN_ALIAS.has(alias)) out2.set(alias, table);
   }
-  return out;
+  return out2;
 }
 function unknownColumnTable(text, sql, shapeTable) {
   const refs = referencedTables(sql);
@@ -65997,6 +66713,17 @@ function syntaxErrorGuidance(friendly, failure2, sql, table) {
   const text = `${failure2.message ?? ""} ${friendly}`;
   if (failure2.raw_code === "ER_BAD_FIELD_ERROR" || /unknown column/i.test(text)) {
     const target = unknownColumnTable(text, sql, table);
+    const offline = target.table ? loadedSchemaCatalog()?.get(target.table) : void 0;
+    const named = /unknown column '([^']+)'/i.exec(text)?.[1]?.split(".").pop();
+    if (offline && named) {
+      const suggestions = suggestColumns(named, offline);
+      return `${friendly}
+No column \`${named}\` on \`${offline.name}\`.` + (suggestions.length ? ` Did you mean \`${suggestions[0]}\`?` : "") + `
+Columns on \`${offline.name}\` (${offline.columns.length}): ${offline.columns.join(", ")}` + (offline.gotchas.length ? `
+Before you name a column:
+${offline.gotchas.map((g) => `- ${g}`).join("\n")}` : "") + `
+Tell the user which column you use in place of \`${named}\`.`;
+    }
     const describe3 = target.table ? `\`mixshift data describe ${target.table}\`` : "`mixshift data describe <table>`" + (target.candidates.length ? ` (tables in this query: ${target.candidates.join(", ")})` : "");
     return `${friendly}
 Check the column name against the table. Run ${describe3} for the real column names and gotchas (\`mixshift data list-tables\` shows the tables it covers).`;
@@ -66044,8 +66771,13 @@ async function runOnce(sql, params, options) {
 }
 async function runQuery(sql, params = [], options = {}) {
   const opts = withQueryShape(sql, options);
+  if (opts.precheckColumns) {
+    const blocked = await precheckColumns(sql, opts);
+    if (blocked) return blocked;
+  }
   const first = await runOnce(sql, params, opts);
   if (!isServiceCapFailure(first)) return first;
+  delete opts.precheck_ms;
   return paginateOverCap(
     sql,
     (pageSql) => runOnce(pageSql, params, opts),
@@ -66065,6 +66797,12 @@ function withQueryShape(sql, options) {
 async function streamQuery(sql, params = [], options = {}, onPage) {
   const t0 = Date.now();
   const opts = withQueryShape(sql, options);
+  if (opts.precheckColumns) {
+    const blocked = await precheckColumns(sql, opts);
+    if (blocked) {
+      return { ok: false, rowCount: 0, durationMs: blocked.durationMs ?? 0, paginated: false, failure: blocked };
+    }
+  }
   const first = await runOnce(sql, params, opts);
   if (first.ok) {
     if (first.rows.length > 0) await onPage(first.rows, 0);
@@ -66084,6 +66822,7 @@ async function streamQuery(sql, params = [], options = {}, onPage) {
       failure: first
     };
   }
+  delete opts.precheck_ms;
   const paged = await paginateOverCap(
     sql,
     (pageSql) => runOnce(pageSql, params, opts),
@@ -66346,14 +67085,14 @@ function collectCteNames(clean) {
   return names;
 }
 function stripSqlComments(sql) {
-  let out = "";
+  let out2 = "";
   let quote2 = null;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (quote2) {
-      out += ch;
+      out2 += ch;
       if ((quote2 === "'" || quote2 === '"') && ch === "\\") {
-        if (i + 1 < sql.length) out += sql[++i];
+        if (i + 1 < sql.length) out2 += sql[++i];
         continue;
       }
       if (ch === quote2) quote2 = null;
@@ -66361,22 +67100,22 @@ function stripSqlComments(sql) {
     }
     if (ch === "-" && sql[i + 1] === "-") {
       const nl = sql.indexOf("\n", i + 2);
-      out += " ";
+      out2 += " ";
       if (nl === -1) break;
       i = nl - 1;
       continue;
     }
     if (ch === "/" && sql[i + 1] === "*") {
       const end = sql.indexOf("*/", i + 2);
-      out += " ";
+      out2 += " ";
       if (end === -1) break;
       i = end + 1;
       continue;
     }
     if (ch === "'" || ch === '"' || ch === "`") quote2 = ch;
-    out += ch;
+    out2 += ch;
   }
-  return out;
+  return out2;
 }
 function firstKeywordAtDepth0(sql, start, keyword) {
   let depth = 0;
@@ -66534,7 +67273,8 @@ async function runMysqlQuery(creds, sql, params, options) {
         payload: {
           auth_path: "mysql",
           ...querySqlTelemetry(sql, options.query_id),
-          query_shape: options.query_shape
+          query_shape: options.query_shape,
+          ...options.precheck_ms !== void 0 ? { precheck_ms: options.precheck_ms } : {}
         }
       },
       options.dataDirOverride
@@ -66563,6 +67303,7 @@ async function runMysqlQuery(creds, sql, params, options) {
           auth_path: "mysql",
           raw_code: failure2.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
+          ...queryErrorTelemetry(failure2.message, options.query_id),
           table_name: failure2.table_name,
           query_shape: options.query_shape
         }
@@ -66657,7 +67398,8 @@ async function runDatahubQuery(creds, sql, params, options) {
             auth_path: "datahub",
             server_duration_ms: serverDuration,
             ...querySqlTelemetry(sql, options.query_id),
-            query_shape: options.query_shape
+            query_shape: options.query_shape,
+            ...options.precheck_ms !== void 0 ? { precheck_ms: options.precheck_ms } : {}
           }
         },
         options.dataDirOverride
@@ -66695,6 +67437,7 @@ async function runDatahubQuery(creds, sql, params, options) {
           auth_path: "datahub",
           raw_code: failure2.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
+          ...queryErrorTelemetry(failure2.message, options.query_id),
           table_name: failure2.table_name,
           query_shape: options.query_shape
         }
@@ -67038,7 +67781,7 @@ async function resolveCreds(options) {
     "No credentials configured. Run `mixshift auth login` (recommended), `mixshift auth service-setup` for unattended runs, or `mixshift auth setup` for the legacy path."
   );
 }
-var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, RESERVED_ALIAS_WORDS, RESERVED_ALIAS_RE, NOT_AN_ALIAS, DatahubNetworkError, DatahubDownloadTimeoutError, CLIENT_BUDGET_RAW_CODE, CLIENT_BUDGET_DOWNLOAD_RAW_CODE;
+var import_promise, TRANSIENT_NETWORK_RETRIES, TRANSIENT_RETRY_BACKOFF_MS, SERVICE_ROW_CAP, PAGE_BYTE_BUDGET, PAGE_MAX_ROWS, FIRST_PAGE_PROBE_ROWS, MAX_PAGINATED_ROWS, CLIENT_UNKNOWN_COLUMN_RAW_CODE, RESERVED_ALIAS_WORDS, RESERVED_ALIAS_RE, NOT_AN_ALIAS, DatahubNetworkError, DatahubDownloadTimeoutError, CLIENT_BUDGET_RAW_CODE, CLIENT_BUDGET_DOWNLOAD_RAW_CODE;
 var init_query_runner = __esm({
   "src/lib/data/query-runner.ts"() {
     "use strict";
@@ -67049,6 +67792,8 @@ var init_query_runner = __esm({
     init_telemetry();
     init_classify();
     init_api_base();
+    init_column_check();
+    init_schema_catalog();
     TRANSIENT_NETWORK_RETRIES = 2;
     TRANSIENT_RETRY_BACKOFF_MS = [250, 1e3];
     SERVICE_ROW_CAP = 5e4;
@@ -67056,6 +67801,7 @@ var init_query_runner = __esm({
     PAGE_MAX_ROWS = SERVICE_ROW_CAP;
     FIRST_PAGE_PROBE_ROWS = 5e3;
     MAX_PAGINATED_ROWS = 2e6;
+    CLIENT_UNKNOWN_COLUMN_RAW_CODE = "client_unknown_column";
     RESERVED_ALIAS_WORDS = [
       "rows",
       "lines",
@@ -67581,8 +68327,8 @@ var init_client2 = __esm({
 
 // src/lib/context-sync/local.ts
 import { createHash } from "node:crypto";
-import { readdir as readdir2, readFile as readFile8 } from "node:fs/promises";
-import { basename as basename2, join as join8 } from "node:path";
+import { readdir as readdir2, readFile as readFile9 } from "node:fs/promises";
+import { basename as basename2, join as join9 } from "node:path";
 function hashContent(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
@@ -67613,8 +68359,8 @@ async function readLocalDocs(brandSlug, dataDirOverride) {
   }
   const corpusNames = entries.filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name).sort();
   for (const name of corpusNames) {
-    const path2 = join8(dir, name);
-    const content = await readFile8(path2, "utf8");
+    const path2 = join9(dir, name);
+    const content = await readFile9(path2, "utf8");
     docs.push({
       key: corpusKey(name),
       docType: "corpus",
@@ -67652,7 +68398,7 @@ function localPathForKey(brandSlug, key, dataDirOverride) {
           `unsafe corpus name ${JSON.stringify(corpusName)} \u2014 refusing to resolve a local path`
         );
       }
-      return join8(corporaDir(brandSlug, dataDirOverride), corpusName);
+      return join9(corporaDir(brandSlug, dataDirOverride), corpusName);
     }
   }
 }
@@ -67666,7 +68412,7 @@ async function brandDirExists(brandSlug, dataDirOverride) {
 }
 async function readFileIfPresent(path2) {
   try {
-    return await readFile8(path2, "utf8");
+    return await readFile9(path2, "utf8");
   } catch (err) {
     if (isFileNotFoundError7(err)) return null;
     throw err;
@@ -67691,8 +68437,8 @@ var init_local = __esm({
 
 // src/lib/context-sync/state.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir4, readFile as readFile9, rename as rename4, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname6 } from "node:path";
+import { mkdir as mkdir4, readFile as readFile10, rename as rename4, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname7 } from "node:path";
 function emptyState(identity) {
   return { schema: 2, ...identity ? { identity } : {}, docs: {} };
 }
@@ -67712,7 +68458,7 @@ async function resolveLedgerIdentity(dataDirOverride) {
 }
 async function loadState(brandSlug, dataDirOverride, currentIdentity) {
   try {
-    const raw = await readFile9(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
+    const raw = await readFile10(contextSyncStatePath(brandSlug, dataDirOverride), "utf8");
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || parsed.schema !== 1 && parsed.schema !== 2 || typeof parsed.docs !== "object" || parsed.docs === null) {
       return emptyState(currentIdentity);
@@ -67764,7 +68510,7 @@ async function loadState(brandSlug, dataDirOverride, currentIdentity) {
 async function saveState(brandSlug, state, dataDirOverride) {
   try {
     const path2 = contextSyncStatePath(brandSlug, dataDirOverride);
-    await mkdir4(dirname6(path2), { recursive: true });
+    await mkdir4(dirname7(path2), { recursive: true });
     const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
     try {
       await writeFile4(tmpPath, JSON.stringify(state, null, 2) + "\n", "utf8");
@@ -67781,7 +68527,7 @@ async function saveState(brandSlug, state, dataDirOverride) {
 }
 async function loadOrgManifestCache(dataDirOverride) {
   try {
-    const raw = await readFile9(orgManifestCachePath(dataDirOverride), "utf8");
+    const raw = await readFile10(orgManifestCachePath(dataDirOverride), "utf8");
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || typeof parsed.fetched_at !== "string" || !Array.isArray(parsed.brands)) {
       return null;
@@ -67802,7 +68548,7 @@ async function loadOrgManifestCache(dataDirOverride) {
 async function saveOrgManifestCache(cache, dataDirOverride) {
   try {
     const path2 = orgManifestCachePath(dataDirOverride);
-    await mkdir4(dirname6(path2), { recursive: true });
+    await mkdir4(dirname7(path2), { recursive: true });
     const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}.${randomUUID2()}`;
     try {
       await writeFile4(tmpPath, JSON.stringify(cache, null, 2) + "\n", "utf8");
@@ -67828,7 +68574,7 @@ var init_state = __esm({
 // src/lib/context-sync/engine.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir5, rename as rename5, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
-import { basename as basename3, dirname as dirname7, join as join9 } from "node:path";
+import { basename as basename3, dirname as dirname8, join as join10 } from "node:path";
 function verdictFor(local, manifestDoc, state) {
   if (!local && !manifestDoc) return null;
   if (local && !manifestDoc) return state ? "server-deleted" : "local-only";
@@ -67960,7 +68706,7 @@ function validateDocContent(docType, content) {
   if (docType === "narrative" || docType === "corpus") return { ok: true };
   let parsed;
   try {
-    parsed = (0, import_yaml6.parse)(content);
+    parsed = (0, import_yaml7.parse)(content);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, detail: `malformed YAML: ${message}` };
@@ -68010,9 +68756,9 @@ function reportFor(pair, action, detail) {
   };
 }
 async function writeFileAtomic(path2, content) {
-  const dir = dirname7(path2);
+  const dir = dirname8(path2);
   await mkdir5(dir, { recursive: true });
-  const tmpPath = join9(
+  const tmpPath = join10(
     dir,
     `.${basename3(path2)}.tmp.${process.pid}.${Date.now()}.${randomUUID3()}`
   );
@@ -68364,11 +69110,11 @@ async function migrate(options = {}) {
   }
   return { ok: true, brands: summaries };
 }
-var import_yaml6, KNOWN_DOC_TYPES, KEY_ORDER;
+var import_yaml7, KNOWN_DOC_TYPES, KEY_ORDER;
 var init_engine = __esm({
   "src/lib/context-sync/engine.ts"() {
     "use strict";
-    import_yaml6 = __toESM(require_dist(), 1);
+    import_yaml7 = __toESM(require_dist(), 1);
     init_schema2();
     init_client2();
     init_local();
@@ -68948,7 +69694,7 @@ function safeHomedir() {
   }
 }
 function scrubDetail(detail) {
-  let out = detail;
+  let out2 = detail;
   const home = safeHomedir();
   if (home) {
     const variants = new Set(
@@ -68956,14 +69702,14 @@ function scrubDetail(detail) {
     );
     const flags = process.platform === "win32" ? "gi" : "g";
     for (const variant of variants) {
-      out = out.replace(new RegExp(escapeRegExp(variant), flags), "~");
+      out2 = out2.replace(new RegExp(escapeRegExp(variant), flags), "~");
     }
   }
-  out = out.replace(PATH_TOKEN_RE, "<path>");
-  if (out.length > MAX_DETAIL_LENGTH) {
-    out = `${out.slice(0, MAX_DETAIL_LENGTH)}\u2026`;
+  out2 = out2.replace(PATH_TOKEN_RE, "<path>");
+  if (out2.length > MAX_DETAIL_LENGTH) {
+    out2 = `${out2.slice(0, MAX_DETAIL_LENGTH)}\u2026`;
   }
-  return out;
+  return out2;
 }
 var MAX_DETAIL_LENGTH, PATH_TOKEN_RE;
 var init_telemetry_detail = __esm({
@@ -69177,8 +69923,8 @@ __export(bootstrap_exports, {
   bootstrapBrand: () => bootstrapBrand,
   sortAccountsForPrimary: () => sortAccountsForPrimary
 });
-import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access, readFile as readFile10 } from "node:fs/promises";
-import { dirname as dirname8 } from "node:path";
+import { mkdir as mkdir6, rename as rename6, writeFile as writeFile6, access, readFile as readFile11 } from "node:fs/promises";
+import { dirname as dirname9 } from "node:path";
 async function bootstrapBrand(suggestion, options = {}) {
   const dir = brandDir(suggestion.slug, options.dataDirOverride);
   const ctxPath = contextPath(suggestion.slug, options.dataDirOverride);
@@ -69216,7 +69962,7 @@ Either pick a different slug, delete the existing directory, or pass --force to 
   }
   await mkdir6(dir, { recursive: true });
   await mkdir6(`${dir}/corpora`, { recursive: true });
-  const yaml = (0, import_yaml7.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
+  const yaml = (0, import_yaml8.stringify)(parsed.data, { lineWidth: 0, indent: 2 });
   await writeAtomic(ctxPath, yaml);
   await writeAtomic(narrPath, narrativeTemplate(suggestion));
   const readmePath = `${dir}/README.md`;
@@ -69369,13 +70115,13 @@ Generated by \`mixshift brand add ${suggestion.slug}\`.
 async function readExistingBinding(ctxPath) {
   let raw;
   try {
-    raw = await readFile10(ctxPath, "utf-8");
+    raw = await readFile11(ctxPath, "utf-8");
   } catch {
     return null;
   }
   let parsed;
   try {
-    parsed = (0, import_yaml7.parse)(raw);
+    parsed = (0, import_yaml8.parse)(raw);
   } catch {
     return null;
   }
@@ -69386,7 +70132,7 @@ async function readExistingBinding(ctxPath) {
   return result.success ? result.data : null;
 }
 async function writeAtomic(path2, content) {
-  await mkdir6(dirname8(path2), { recursive: true });
+  await mkdir6(dirname9(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile6(tmpPath, content, { encoding: "utf-8" });
   await rename6(tmpPath, path2);
@@ -69397,11 +70143,11 @@ function todayISO() {
 function isFileNotFoundError8(err) {
   return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
 }
-var import_yaml7;
+var import_yaml8;
 var init_bootstrap = __esm({
   "src/lib/clients/bootstrap.ts"() {
     "use strict";
-    import_yaml7 = __toESM(require_dist(), 1);
+    import_yaml8 = __toESM(require_dist(), 1);
     init_schema2();
     init_format_error();
     init_resolve();
@@ -69511,13 +70257,13 @@ __export(clients_exports, {
   runDiscoveryAndPersist: () => runDiscoveryAndPersist,
   saveIndex: () => saveIndex
 });
-import { mkdir as mkdir7, readFile as readFile11, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
-import { dirname as dirname9 } from "node:path";
+import { mkdir as mkdir7, readFile as readFile12, rename as rename7, writeFile as writeFile7, chmod as chmod2 } from "node:fs/promises";
+import { dirname as dirname10 } from "node:path";
 async function readIndex(dataDirOverride) {
   const path2 = indexPath(dataDirOverride);
   let raw;
   try {
-    raw = await readFile11(path2, "utf-8");
+    raw = await readFile12(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError9(err)) {
       return { index: emptyIndex(), source: "empty", path: path2 };
@@ -69526,7 +70272,7 @@ async function readIndex(dataDirOverride) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml8.parse)(raw);
+    parsed = (0, import_yaml9.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new RegistryInvalidError(
@@ -69546,8 +70292,8 @@ Hint: delete the file and run \`mixshift brand discover\` to recreate it.`
 async function saveIndex(index, dataDirOverride) {
   const validated = clientsIndexSchema.parse(index);
   const path2 = indexPath(dataDirOverride);
-  await mkdir7(dirname9(path2), { recursive: true, mode: 448 });
-  const yaml = (0, import_yaml8.stringify)(validated, { lineWidth: 0 });
+  await mkdir7(dirname10(path2), { recursive: true, mode: 448 });
+  const yaml = (0, import_yaml9.stringify)(validated, { lineWidth: 0 });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile7(tmpPath, yaml, { encoding: "utf-8", mode: 384 });
   await chmod2(tmpPath, 384);
@@ -69653,11 +70399,11 @@ function countByActivity(index) {
     cold_started: index.brands.filter((b) => b.cold_started).length
   };
 }
-var import_yaml8, DEFAULT_TTL_MS;
+var import_yaml9, DEFAULT_TTL_MS;
 var init_clients = __esm({
   "src/lib/clients/index.ts"() {
     "use strict";
-    import_yaml8 = __toESM(require_dist(), 1);
+    import_yaml9 = __toESM(require_dist(), 1);
     init_resolve();
     init_format_error();
     init_errors3();
@@ -69838,15 +70584,15 @@ __export(flush_log_exports, {
   flushLogPath: () => flushLogPath,
   tailFlushLog: () => tailFlushLog
 });
-import { appendFile as appendFile2, mkdir as mkdir26, readFile as readFile35 } from "node:fs/promises";
-import { join as join23, dirname as dirname30 } from "node:path";
+import { appendFile as appendFile2, mkdir as mkdir26, readFile as readFile36 } from "node:fs/promises";
+import { join as join24, dirname as dirname31 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join23(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join24(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir26(dirname30(path2), { recursive: true });
+    await mkdir26(dirname31(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -69857,7 +70603,7 @@ async function appendFlushLog(result, dataDirOverride) {
 async function tailFlushLog(lines = 5, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    const raw = await readFile35(path2, "utf-8");
+    const raw = await readFile36(path2, "utf-8");
     const allLines = raw.split("\n").filter((l) => l.trim().length > 0);
     return allLines.slice(-lines);
   } catch {
@@ -69913,7 +70659,7 @@ function candidatePaths() {
   return paths;
 }
 function parseDotenv(raw) {
-  const out = /* @__PURE__ */ new Map();
+  const out2 = /* @__PURE__ */ new Map();
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
@@ -69930,9 +70676,9 @@ function parseDotenv(raw) {
         value = value.slice(1, -1);
       }
     }
-    out.set(key, value);
+    out2.set(key, value);
   }
-  return out;
+  return out2;
 }
 function applyToEnv(parsed) {
   let applied = 0;
@@ -70554,24 +71300,24 @@ init_telemetry();
 // src/commands/brand-view.ts
 init_clients();
 import { readdir as readdir3, stat as stat3, writeFile as writeFile9, mkdir as mkdir9 } from "node:fs/promises";
-import { dirname as dirname12 } from "node:path";
+import { dirname as dirname13 } from "node:path";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 
 // src/lib/calibration/brand-config.ts
-var import_yaml9 = __toESM(require_dist(), 1);
+var import_yaml10 = __toESM(require_dist(), 1);
 init_zod();
 init_resolve();
 init_push_after_write();
-import { mkdir as mkdir8, readFile as readFile12, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
-import { dirname as dirname10 } from "node:path";
+import { mkdir as mkdir8, readFile as readFile13, rename as rename8, writeFile as writeFile8, chmod as chmod3, unlink as unlink5 } from "node:fs/promises";
+import { dirname as dirname11 } from "node:path";
 var skillBlockSchema = external_exports.record(external_exports.string(), external_exports.unknown());
 var brandConfigSchema = external_exports.record(external_exports.string(), skillBlockSchema);
 async function readBrandConfig(brandSlug, dataDirOverride) {
   const path2 = brandConfigPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile12(path2, "utf-8");
+    raw = await readFile13(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError10(err)) {
       return { config: {}, source: "empty", path: path2 };
@@ -70580,7 +71326,7 @@ async function readBrandConfig(brandSlug, dataDirOverride) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml9.parse)(raw);
+    parsed = (0, import_yaml10.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
@@ -70745,8 +71491,8 @@ function checkType(field, value) {
   }
 }
 async function writeBrandConfigFile(path2, config2) {
-  await mkdir8(dirname10(path2), { recursive: true });
-  const yamlText = (0, import_yaml9.stringify)(config2, {
+  await mkdir8(dirname11(path2), { recursive: true });
+  const yamlText = (0, import_yaml10.stringify)(config2, {
     indent: 2,
     lineWidth: 0
     // never wrap — keeps user-readable values intact
@@ -70768,23 +71514,23 @@ init_load2();
 init_resolve();
 
 // src/lib/render/design-system.ts
-import { readFile as readFile13 } from "node:fs/promises";
+import { readFile as readFile14 } from "node:fs/promises";
 import { existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname11, join as join10, parse as parse3 } from "node:path";
-import { fileURLToPath as fileURLToPath4 } from "node:url";
+import { dirname as dirname12, join as join11, parse as parse3 } from "node:path";
+import { fileURLToPath as fileURLToPath5 } from "node:url";
 function designSystemDir() {
   if (process.env.MIXSHIFT_DESIGN_SYSTEM_DIR) {
     return process.env.MIXSHIFT_DESIGN_SYSTEM_DIR;
   }
-  let dir = dirname11(fileURLToPath4(import.meta.url));
+  let dir = dirname12(fileURLToPath5(import.meta.url));
   const root = parse3(dir).root;
   for (let i = 0; i < 8; i++) {
-    const candidate = join10(dir, "assets", "design-system");
-    if (existsSync2(join10(candidate, "colors_and_type.css"))) {
+    const candidate = join11(dir, "assets", "design-system");
+    if (existsSync2(join11(candidate, "colors_and_type.css"))) {
       return candidate;
     }
     if (dir === root) break;
-    dir = dirname11(dir);
+    dir = dirname12(dir);
   }
   throw new Error(
     "Could not locate harness/assets/design-system/. The renderer walks up from the running CLI file looking for assets/design-system/colors_and_type.css. Set MIXSHIFT_DESIGN_SYSTEM_DIR if your install puts the assets elsewhere."
@@ -70792,7 +71538,7 @@ function designSystemDir() {
 }
 async function readDesignSystemCss() {
   const dsDir = designSystemDir();
-  const raw = await readFile13(join10(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = await readFile14(join11(dsDir, "colors_and_type.css"), "utf-8");
   const fontsAbsUrl = `file:///${dsDir.replace(/\\/g, "/")}/fonts`;
   return raw.replace(
     /url\((['"]?)fonts\//g,
@@ -70800,7 +71546,7 @@ async function readDesignSystemCss() {
   );
 }
 async function readLogoSvg(filename) {
-  const raw = await readFile13(join10(designSystemDir(), filename), "utf-8");
+  const raw = await readFile14(join11(designSystemDir(), filename), "utf-8");
   return raw.replace(/<\?xml[\s\S]*?\?>\s*/, "").replace(/<!--[\s\S]*?-->\s*/g, "").trim();
 }
 async function renderPage(options) {
@@ -71918,7 +72664,7 @@ ${candidates}`
     body: blocks.join("\n\n")
   });
   const outPath = `${brandDir(args.slug, args.dataDir)}/view.html`;
-  await mkdir9(dirname12(outPath), { recursive: true });
+  await mkdir9(dirname13(outPath), { recursive: true });
   await writeFile9(outPath, html, "utf-8");
   return { path: outPath };
 }
@@ -72192,23 +72938,23 @@ async function openInBrowser(path2) {
 }
 
 // src/commands/brand-brain.ts
-import { readFile as readFile19 } from "node:fs/promises";
+import { readFile as readFile20 } from "node:fs/promises";
 
 // src/lib/brain/fetch.ts
-var import_yaml12 = __toESM(require_dist(), 1);
-import { writeFile as writeFile11, readFile as readFile17, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
-import { dirname as dirname14 } from "node:path";
+var import_yaml13 = __toESM(require_dist(), 1);
+import { writeFile as writeFile11, readFile as readFile18, mkdir as mkdir11, rename as rename10 } from "node:fs/promises";
+import { dirname as dirname15 } from "node:path";
 
 // src/lib/data/dispatch.ts
-import { readFile as readFile15, access as access2 } from "node:fs/promises";
-import { join as join11 } from "node:path";
+import { readFile as readFile16, access as access2 } from "node:fs/promises";
+import { join as join12 } from "node:path";
 
 // src/lib/prefetch/sql-library.ts
 init_zod();
 init_plugin_root();
-var import_yaml10 = __toESM(require_dist(), 1);
+var import_yaml11 = __toESM(require_dist(), 1);
 init_format_error();
-import { readFile as readFile14 } from "node:fs/promises";
+import { readFile as readFile15 } from "node:fs/promises";
 var dispatchSchema = external_exports.enum(["sql", "named", "sproc"]).default("sql");
 var queryEntrySchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -72252,7 +72998,7 @@ async function loadCatalog() {
   const path2 = pluginPath("shared", "sql-library", "catalog.yaml");
   let raw;
   try {
-    raw = await readFile14(path2, "utf-8");
+    raw = await readFile15(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -72261,7 +73007,7 @@ async function loadCatalog() {
     }
     throw err;
   }
-  const parsed = (0, import_yaml10.parse)(raw);
+  const parsed = (0, import_yaml11.parse)(raw);
   const result = catalogSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -72291,7 +73037,7 @@ async function readQuerySql(id) {
   const path2 = pluginPath("shared", "sql-library", entry.file);
   let raw;
   try {
-    raw = await readFile14(path2, "utf-8");
+    raw = await readFile15(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError11(err)) {
       throw new Error(
@@ -72320,21 +73066,21 @@ function isFileNotFoundError11(err) {
 
 // src/lib/prefetch/substitute.ts
 function substituteParams(sql, allParams) {
-  let out = sql;
+  let out2 = sql;
   const scalarParams = {};
   for (const [key, value] of Object.entries(allParams)) {
     if (Array.isArray(value)) {
       const csv = formatList(key, value);
       const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`, "g");
-      out = out.replace(re, csv);
+      out2 = out2.replace(re, csv);
     } else {
       const re = new RegExp(`:${escapeRegex2(key)}(?![A-Za-z0-9_])`);
-      if (re.test(out)) {
+      if (re.test(out2)) {
         scalarParams[key] = value;
       }
     }
   }
-  return { sql: out, params: scalarParams };
+  return { sql: out2, params: scalarParams };
 }
 function formatList(paramName, values) {
   if (values.length === 0) {
@@ -72430,13 +73176,13 @@ async function resolveLocalNamedSql(catalogId, sprocName, env = process.env) {
 }
 async function readLocalSql(dir, fileName) {
   if (!dir) return void 0;
-  const path2 = join11(dir, fileName);
+  const path2 = join12(dir, fileName);
   try {
     await access2(path2);
   } catch {
     return void 0;
   }
-  return readFile15(path2, "utf-8");
+  return readFile16(path2, "utf-8");
 }
 function buildCallSql(sprocName) {
   return `CALL ${sprocName}(?, ?)`;
@@ -73155,7 +73901,7 @@ function detectBrandTermTypos(cs31Rows, brandTerms, options = {}) {
     if (!clusters.has(key)) clusters.set(key, []);
     clusters.get(key).push(r);
   }
-  const out = [];
+  const out2 = [];
   for (const members of clusters.values()) {
     const sorted = [...members].sort(
       (a, b) => b.orders - a.orders || b.sales - a.sales
@@ -73170,7 +73916,7 @@ function detectBrandTermTypos(cs31Rows, brandTerms, options = {}) {
       sales: round22(m.sales),
       spend: round22(m.spend)
     }));
-    out.push({
+    out2.push({
       canonical_match: first.canonical_match,
       root_token: first.root_token,
       distance: first.distance,
@@ -73183,10 +73929,10 @@ function detectBrandTermTypos(cs31Rows, brandTerms, options = {}) {
       all_variants: variantsToTopN(sorted)
     });
   }
-  out.sort(
+  out2.sort(
     (a, b) => b.total_orders - a.total_orders || b.total_sales - a.total_sales
   );
-  return out;
+  return out2;
 }
 function levenshtein(a, b) {
   if (a === b) return 0;
@@ -73634,9 +74380,9 @@ function toIso2(v) {
 }
 
 // src/lib/brain/read.ts
-var import_yaml11 = __toESM(require_dist(), 1);
-import { readFile as readFile16, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
-import { dirname as dirname13 } from "node:path";
+var import_yaml12 = __toESM(require_dist(), 1);
+import { readFile as readFile17, writeFile as writeFile10, mkdir as mkdir10, rename as rename9 } from "node:fs/promises";
+import { dirname as dirname14 } from "node:path";
 init_resolve();
 init_load2();
 init_format_error();
@@ -74049,11 +74795,11 @@ async function getCachedOrgManifest(options = {}) {
       return { ok: false };
     }
     const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
-    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
-    if (cached4 && cachedManifestIdentityMatches(cached4.identity, identity)) {
-      const fetchedAt = Date.parse(cached4.fetched_at);
+    const cached5 = await loadOrgManifestCache(options.dataDirOverride);
+    if (cached5 && cachedManifestIdentityMatches(cached5.identity, identity)) {
+      const fetchedAt = Date.parse(cached5.fetched_at);
       if (Number.isFinite(fetchedAt) && now.getTime() - fetchedAt < throttleMs) {
-        return { ok: true, brands: cached4.brands, fromCache: true };
+        return { ok: true, brands: cached5.brands, fromCache: true };
       }
     }
     const budgetMs = options.budgetMs ?? AUTOSYNC_BUDGET_MS;
@@ -74087,11 +74833,11 @@ async function maybeNoticeUnreachable(brandSlug, options, env) {
   try {
     if (noticedUnreachableBrands.has(brandSlug)) return;
     const identity = options.identity !== void 0 ? options.identity : await resolveLedgerIdentity(options.dataDirOverride);
-    const cached4 = await loadOrgManifestCache(options.dataDirOverride);
-    if (!cached4 || !cachedManifestIdentityMatches(cached4.identity, identity)) return;
-    if (!cached4.brands.some((b) => b.brand_slug === brandSlug)) return;
+    const cached5 = await loadOrgManifestCache(options.dataDirOverride);
+    if (!cached5 || !cachedManifestIdentityMatches(cached5.identity, identity)) return;
+    if (!cached5.brands.some((b) => b.brand_slug === brandSlug)) return;
     const now = options.now ? options.now() : /* @__PURE__ */ new Date();
-    const fetchedAt = Date.parse(cached4.fetched_at);
+    const fetchedAt = Date.parse(cached5.fetched_at);
     if (!Number.isFinite(fetchedAt) || fetchedAt > now.getTime() || now.getTime() - fetchedAt >= UNREACHABLE_NOTICE_CACHE_MAX_AGE_MS) {
       return;
     }
@@ -74238,7 +74984,7 @@ async function loadBrain(brandSlug, dataDirOverride) {
   const path2 = brainPath(brandSlug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile16(path2, "utf-8");
+    raw = await readFile17(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError12(err)) {
       return {
@@ -74254,7 +75000,7 @@ async function loadBrain(brandSlug, dataDirOverride) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml11.parse)(raw);
+    parsed = (0, import_yaml12.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, path: path2, kind: "malformed_yaml", errors: [message] };
@@ -74272,9 +75018,9 @@ async function loadBrain(brandSlug, dataDirOverride) {
 }
 async function saveBrain(brain, dataDirOverride) {
   const path2 = brainPath(brain.brand_slug, dataDirOverride);
-  await mkdir10(dirname13(path2), { recursive: true });
+  await mkdir10(dirname14(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile10(tmp, (0, import_yaml11.stringify)(brain), "utf-8");
+  await writeFile10(tmp, (0, import_yaml12.stringify)(brain), "utf-8");
   await rename9(tmp, path2);
   return { path: path2 };
 }
@@ -74392,11 +75138,11 @@ async function resolveBrandFields(brandSlug, dataDirOverride, options = {}) {
   });
   const ctx = await validateBrandContext(brandSlug, dataDirOverride);
   const brain = await loadBrain(brandSlug, dataDirOverride);
-  const out = {};
+  const out2 = {};
   for (const key of BRAND_FIELD_KEYS) {
-    out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
+    out2[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
   }
-  return out;
+  return out2;
 }
 var CONTEXT_PATH_TO_KEY = {};
 for (const k of BRAND_FIELD_KEYS) {
@@ -74673,17 +75419,17 @@ async function fetchBrandBrain(opts) {
   if (settlementOut && !settlementOut.ok) failedSources.push("capture_rate");
   if (stockoutOut && !stockoutOut.ok) failedSources.push("stockout");
   if (typoOut && !typoOut.ok) failedSources.push("brand_typos");
-  const toLensOutcome = (out) => out === null ? { status: "failed" } : out.ok ? { status: "ok", appliedParams: out.appliedParams } : { status: "failed" };
+  const toLensOutcome = (out2) => out2 === null ? { status: "failed" } : out2.ok ? { status: "ok", appliedParams: out2.appliedParams } : { status: "failed" };
   const lensOutcomeByQueryId = /* @__PURE__ */ new Map([
     [BRAIN_CATALOG_SC_QUERY_ID, toLensOutcome(scOut)],
     [BRAIN_CATALOG_VC_QUERY_ID, toLensOutcome(vcOut)],
     [BRAIN_CAMPAIGN_QUERY_ID, toLensOutcome(campaignOut)]
   ]);
   const reconciledLensDecisions = reconcileLensDecisions(lensDecisions, lensOutcomeByQueryId);
-  const sourceInput = async (queryId, out) => {
-    if (!out || !out.ok) return void 0;
+  const sourceInput = async (queryId, out2) => {
+    if (!out2 || !out2.ok) return void 0;
     const entry = await getQueryEntry(queryId);
-    return { rows: out.rows, sproc: entry.sproc ?? queryId };
+    return { rows: out2.rows, sproc: entry.sproc ?? queryId };
   };
   try {
     const sellerEntry = await getQueryEntry(BRAIN_SELLER_QUERY_ID);
@@ -74819,15 +75565,15 @@ async function failFetch(opts, startedAt, error51, kind) {
 }
 async function writeBrainStatus(status, dataDirOverride) {
   const path2 = brainStatusPath(status.slug, dataDirOverride);
-  await mkdir11(dirname14(path2), { recursive: true });
+  await mkdir11(dirname15(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile11(tmp, JSON.stringify(status, null, 2), "utf-8");
   await rename10(tmp, path2);
 }
 async function readBrandTermsInput(slug, dataDirOverride) {
   try {
-    const raw = await readFile17(contextPath(slug, dataDirOverride), "utf-8");
-    const parsed = (0, import_yaml12.parse)(raw);
+    const raw = await readFile18(contextPath(slug, dataDirOverride), "utf-8");
+    const parsed = (0, import_yaml13.parse)(raw);
     if (!parsed || typeof parsed !== "object" || !parsed.brand_terms) {
       return void 0;
     }
@@ -74852,8 +75598,8 @@ init_zod();
 // src/lib/brain/discoveries.ts
 init_zod();
 init_resolve();
-import { readFile as readFile18, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
-import { dirname as dirname15 } from "node:path";
+import { readFile as readFile19, writeFile as writeFile12, mkdir as mkdir12, rename as rename11, unlink as unlink6 } from "node:fs/promises";
+import { dirname as dirname16 } from "node:path";
 var contextFieldProposalSchema = external_exports.object({
   field: external_exports.string().min(1),
   proposed_value: external_exports.unknown(),
@@ -74877,7 +75623,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   let doc;
   try {
-    const raw = await readFile18(path2, "utf-8");
+    const raw = await readFile19(path2, "utf-8");
     doc = discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     doc = {
@@ -74904,7 +75650,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
   doc.discoveries.context_field_proposals = [...byField.values()];
   doc.generated_at = captures[captures.length - 1].observed_at;
   try {
-    await mkdir12(dirname15(path2), { recursive: true });
+    await mkdir12(dirname16(path2), { recursive: true });
     const tmp = `${path2}.tmp`;
     await writeFile12(tmp, JSON.stringify(doc, null, 2), "utf-8");
     await rename11(tmp, path2);
@@ -74920,7 +75666,7 @@ async function appendCaptureDiscoveries(brandSlug, captures, dataDirOverride) {
 async function readPendingDiscoveries(brandSlug, dataDirOverride) {
   const path2 = pendingDiscoveriesPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile18(path2, "utf-8");
+    const raw = await readFile19(path2, "utf-8");
     return discoveriesDocSchema.parse(JSON.parse(raw));
   } catch {
     return null;
@@ -74965,14 +75711,14 @@ async function recordObservations(brandSlug, observations, dataDirOverride) {
   if (observations.length === 0) {
     return { ok: false, reason: "no observations supplied" };
   }
-  const loaded = await loadBrain(brandSlug, dataDirOverride);
-  if (!loaded.ok) {
+  const loaded2 = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded2.ok) {
     return {
       ok: false,
-      reason: `brain not available for "${brandSlug}" (${loaded.kind}); run \`mixshift brand brain fetch ${brandSlug}\` first`
+      reason: `brain not available for "${brandSlug}" (${loaded2.kind}); run \`mixshift brand brain fetch ${brandSlug}\` first`
     };
   }
-  const next = applyObservations(loaded.brain, observations);
+  const next = applyObservations(loaded2.brain, observations);
   const { path: path2 } = await saveBrain(next, dataDirOverride);
   await pushAfterWrite(brandSlug, { dataDirOverride });
   return { ok: true, path: path2, applied: observations.length };
@@ -75112,7 +75858,7 @@ Brand brain status for ${slug}:`];
 }
 async function readStatusFile(slug, dataDirOverride) {
   try {
-    const raw = await readFile19(brainStatusPath(slug, dataDirOverride), "utf-8");
+    const raw = await readFile20(brainStatusPath(slug, dataDirOverride), "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -75309,10 +76055,10 @@ function spawnBrainFetchDetached(slug, dataDirOverride, env = process.env) {
 init_clients();
 
 // src/lib/context-editor/flow.ts
-var import_yaml13 = __toESM(require_dist(), 1);
+var import_yaml14 = __toESM(require_dist(), 1);
 init_resolve();
-import { mkdir as mkdir13, readFile as readFile20, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
-import { dirname as dirname16 } from "node:path";
+import { mkdir as mkdir13, readFile as readFile21, rename as rename12, writeFile as writeFile13, chmod as chmod4 } from "node:fs/promises";
+import { dirname as dirname17 } from "node:path";
 init_push_after_write();
 
 // src/lib/calibration/manifest-schema.ts
@@ -75874,7 +76620,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   const path2 = contextPath(payload.brand_slug, opts.dataDirOverride);
   let rawText;
   try {
-    rawText = await readFile20(path2, "utf-8");
+    rawText = await readFile21(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError13(err)) {
       return {
@@ -75888,7 +76634,7 @@ async function applyBrandConfigEdit(payload, decision, opts) {
     }
     throw err;
   }
-  const ctxObj = (0, import_yaml13.parse)(rawText) ?? {};
+  const ctxObj = (0, import_yaml14.parse)(rawText) ?? {};
   let changedCount = 0;
   for (const edit of parsedEdits) {
     const before = getByPath2(ctxObj, edit.path);
@@ -75972,8 +76718,8 @@ function deepEqual(a, b) {
 async function tryReadContextObject(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile20(path2, "utf-8");
-    const parsed = (0, import_yaml13.parse)(raw);
+    const raw = await readFile21(path2, "utf-8");
+    const parsed = (0, import_yaml14.parse)(raw);
     if (parsed === null || parsed === void 0) return {};
     if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed;
@@ -75982,8 +76728,8 @@ async function tryReadContextObject(brandSlug, dataDirOverride) {
   }
 }
 async function writeContextFile(path2, obj) {
-  await mkdir13(dirname16(path2), { recursive: true });
-  const yamlText = (0, import_yaml13.stringify)(obj, { indent: 2, lineWidth: 0 });
+  await mkdir13(dirname17(path2), { recursive: true });
+  const yamlText = (0, import_yaml14.stringify)(obj, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.tmp`;
   await writeFile13(tmpPath, yamlText, "utf-8");
   try {
@@ -76255,19 +77001,19 @@ import { promisify as promisify2 } from "node:util";
 // src/lib/render/brand-context-composer.ts
 init_resolve();
 import { mkdir as mkdir14, writeFile as writeFile14 } from "node:fs/promises";
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 
 // src/lib/render/brand-context-report.ts
-var import_yaml14 = __toESM(require_dist(), 1);
+var import_yaml15 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile21, readdir as readdir4, stat as stat4 } from "node:fs/promises";
-import { dirname as dirname17, join as join12 } from "node:path";
+import { readFile as readFile22, readdir as readdir4, stat as stat4 } from "node:fs/promises";
+import { dirname as dirname18, join as join13 } from "node:path";
 async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
   const narPath = narrativePath(brandSlug, dataDirOverride);
   const dir = brandDir(brandSlug, dataDirOverride);
-  const briPath = join12(dir, "brand-intelligence.yaml");
-  const corporaPath = join12(dir, "corpora");
+  const briPath = join13(dir, "brand-intelligence.yaml");
+  const corporaPath = join13(dir, "corpora");
   const [context, narrative, intel, corpora, brainResult] = await Promise.all([
     readYamlIfExists(ctxPath),
     readTextIfExists(narPath),
@@ -76297,14 +77043,14 @@ async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
 function parseNarrativeSections(md) {
   if (!md) return {};
   const lines = md.split(/\r?\n/);
-  const out = {};
+  const out2 = {};
   let currentKey = null;
   let currentBody = [];
   for (const line of lines) {
     const h2 = line.match(/^##\s+(.+?)\s*$/);
     if (h2) {
       if (currentKey !== null) {
-        out[currentKey] = currentBody.join("\n").trim();
+        out2[currentKey] = currentBody.join("\n").trim();
       }
       currentKey = h2[1].toLowerCase().replace(/[?.!:;,]$/, "").trim();
       currentBody = [];
@@ -76313,9 +77059,9 @@ function parseNarrativeSections(md) {
     }
   }
   if (currentKey !== null) {
-    out[currentKey] = currentBody.join("\n").trim();
+    out2[currentKey] = currentBody.join("\n").trim();
   }
-  return out;
+  return out2;
 }
 function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date()) {
   const rows = [];
@@ -76487,12 +77233,12 @@ function computeVerdict(args) {
 }
 async function loadAuditLabels() {
   const { existsSync: existsSync3 } = await import("node:fs");
-  const { fileURLToPath: fileURLToPath8 } = await import("node:url");
+  const { fileURLToPath: fileURLToPath9 } = await import("node:url");
   const { parse: parse4 } = await import("node:path");
-  let dir = dirname17(fileURLToPath8(import.meta.url));
+  let dir = dirname18(fileURLToPath9(import.meta.url));
   const root = parse4(dir).root;
   for (let i = 0; i < 10; i++) {
-    const candidate = join12(
+    const candidate = join13(
       dir,
       "shared",
       "clients",
@@ -76500,26 +77246,26 @@ async function loadAuditLabels() {
       "audit-labels.yaml"
     );
     if (existsSync3(candidate)) {
-      const raw = await readFile21(candidate, "utf-8");
-      const parsed = (0, import_yaml14.parse)(raw);
+      const raw = await readFile22(candidate, "utf-8");
+      const parsed = (0, import_yaml15.parse)(raw);
       return parsed.fields ?? [];
     }
     if (dir === root) break;
-    dir = dirname17(dir);
+    dir = dirname18(dir);
   }
   return [];
 }
 async function readYamlIfExists(path2) {
   try {
-    const raw = await readFile21(path2, "utf-8");
-    return (0, import_yaml14.parse)(raw);
+    const raw = await readFile22(path2, "utf-8");
+    return (0, import_yaml15.parse)(raw);
   } catch {
     return null;
   }
 }
 async function readTextIfExists(path2) {
   try {
-    return await readFile21(path2, "utf-8");
+    return await readFile22(path2, "utf-8");
   } catch {
     return null;
   }
@@ -76531,9 +77277,9 @@ async function summarizeCorpora(dirPath) {
     for (const f of entries) {
       if (!f.endsWith(".csv")) continue;
       try {
-        const s = await stat4(join12(dirPath, f));
+        const s = await stat4(join13(dirPath, f));
         if (!s.isFile()) continue;
-        const raw = await readFile21(join12(dirPath, f), "utf-8");
+        const raw = await readFile22(join13(dirPath, f), "utf-8");
         const lines = raw.split(/\r?\n/).filter((l) => l.length > 0);
         const row_count = Math.max(0, lines.length - 1);
         summaries.push({ filename: f, row_count });
@@ -77242,9 +77988,9 @@ async function composeBrandContextReport(args) {
   const review = composeReviewJson(state);
   const dir = brandDir(args.brandSlug, args.dataDirOverride);
   await mkdir14(dir, { recursive: true });
-  const htmlPath = join13(dir, "brand-context.html");
-  const headlinePath = join13(dir, "brand-context.headline.json");
-  const reviewPath = join13(dir, "brand-context.review.json");
+  const htmlPath = join14(dir, "brand-context.html");
+  const headlinePath = join14(dir, "brand-context.headline.json");
+  const reviewPath = join14(dir, "brand-context.review.json");
   await Promise.all([
     writeFile14(htmlPath, html, "utf-8"),
     writeFile14(headlinePath, JSON.stringify(headline, null, 2), "utf-8"),
@@ -77574,46 +78320,46 @@ function emitError3(json2, message) {
 init_clients();
 
 // src/lib/enrichment/delta-merge.ts
-var import_yaml15 = __toESM(require_dist(), 1);
+var import_yaml16 = __toESM(require_dist(), 1);
 init_resolve();
-import { readFile as readFile22, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
-import { dirname as dirname18 } from "node:path";
+import { readFile as readFile23, writeFile as writeFile15, rename as rename13, mkdir as mkdir15, chmod as chmod5 } from "node:fs/promises";
+import { dirname as dirname19 } from "node:path";
 init_push_after_write();
 async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
   const ctxPath = contextPath(brandSlug, dataDirOverride);
-  const loaded = await loadBrain(brandSlug, dataDirOverride);
-  if (!loaded.ok) {
+  const loaded2 = await loadBrain(brandSlug, dataDirOverride);
+  if (!loaded2.ok) {
     return {
       status: "no_brain",
       context_path: ctxPath,
       fields_updated: [],
-      brain_path: loaded.path
+      brain_path: loaded2.path
     };
   }
-  const curve = loaded.brain.capture_rate_calibration?.daily_settlement_curve;
+  const curve = loaded2.brain.capture_rate_calibration?.daily_settlement_curve;
   if (!curve) {
     return {
       status: "no_curve",
       context_path: ctxPath,
       fields_updated: [],
-      brain_path: loaded.path
+      brain_path: loaded2.path
     };
   }
   let ctxText;
   try {
-    ctxText = await readFile22(ctxPath, "utf-8");
+    ctxText = await readFile23(ctxPath, "utf-8");
   } catch (err) {
     if (isFileNotFoundError14(err)) {
       return {
         status: "context_missing",
         context_path: ctxPath,
         fields_updated: [],
-        brain_path: loaded.path
+        brain_path: loaded2.path
       };
     }
     throw err;
   }
-  const doc = (0, import_yaml15.parseDocument)(ctxText, { keepSourceTokens: true });
+  const doc = (0, import_yaml16.parseDocument)(ctxText, { keepSourceTokens: true });
   const fieldsUpdated = patchSettlementCurve(doc, curve);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   doc.set("last_updated", today);
@@ -77624,7 +78370,7 @@ async function mergeEnrichmentIntoContext(brandSlug, dataDirOverride) {
     status: "ok",
     context_path: ctxPath,
     fields_updated: fieldsUpdated,
-    brain_path: loaded.path
+    brain_path: loaded2.path
   };
 }
 function patchSettlementCurve(doc, curve) {
@@ -77655,7 +78401,7 @@ function patchSettlementCurve(doc, curve) {
   return updated;
 }
 async function writeYamlAtomic(path2, text) {
-  await mkdir15(dirname18(path2), { recursive: true });
+  await mkdir15(dirname19(path2), { recursive: true });
   const tmpPath = `${path2}.${process.pid}.tmp`;
   await writeFile15(tmpPath, text, "utf-8");
   try {
@@ -78041,10 +78787,10 @@ function assembleEconomics(input) {
     e.stamps.push(r.last_spend_at);
     e.adsSource = keepSource(e.adsSource, r.source);
   }
-  const out = /* @__PURE__ */ new Map();
+  const out2 = /* @__PURE__ */ new Map();
   for (const [label, e] of acc) {
     const { lifecycle, reason } = classifyLifecycle(e.revenue365, e.revenue90, e.spend365, e.spend90);
-    out.set(label, {
+    out2.set(label, {
       label,
       revenue_365d: e.revenue365,
       revenue_90d: e.revenue90,
@@ -78061,7 +78807,7 @@ function assembleEconomics(input) {
       ads_source: e.adsSource
     });
   }
-  return out;
+  return out2;
 }
 function unknownEconomics(label) {
   return {
@@ -78569,9 +79315,9 @@ function renderSide(label, side) {
 init_seller_query();
 
 // src/lib/binding/promote.ts
-var import_yaml16 = __toESM(require_dist(), 1);
-import { readFile as readFile23, writeFile as writeFile16, rename as rename14, mkdir as mkdir16 } from "node:fs/promises";
-import { dirname as dirname19 } from "node:path";
+var import_yaml17 = __toESM(require_dist(), 1);
+import { readFile as readFile24, writeFile as writeFile16, rename as rename14, mkdir as mkdir16 } from "node:fs/promises";
+import { dirname as dirname20 } from "node:path";
 
 // src/lib/binding/slug.ts
 init_brand_grouping();
@@ -79061,14 +79807,14 @@ async function writeBindingBlock(slug, binding, dataDirOverride) {
   const path2 = contextPath(slug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile23(path2, "utf-8");
+    raw = await readFile24(path2, "utf-8");
   } catch (err) {
     return {
       ok: false,
       detail: `Could not read context.yaml for "${slug}": ${err instanceof Error ? err.message : String(err)}`
     };
   }
-  const parsed = (0, import_yaml16.parse)(raw);
+  const parsed = (0, import_yaml17.parse)(raw);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { ok: false, detail: `context.yaml for "${slug}" did not parse to an object; refusing to write a binding into it.` };
   }
@@ -79082,8 +79828,8 @@ async function writeBindingBlock(slug, binding, dataDirOverride) {
   return { ok: true, detail: "binding written" };
 }
 async function writeYamlAtomic2(path2, obj) {
-  await mkdir16(dirname19(path2), { recursive: true });
-  const yamlText = (0, import_yaml16.stringify)(obj, { indent: 2, lineWidth: 0 });
+  await mkdir16(dirname20(path2), { recursive: true });
+  const yamlText = (0, import_yaml17.stringify)(obj, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.${Date.now()}.tmp`;
   await writeFile16(tmpPath, yamlText, "utf-8");
   await rename14(tmpPath, path2);
@@ -79140,9 +79886,9 @@ async function parkBrandDirectory(slug, dataDirOverride) {
 }
 
 // src/lib/binding/demote.ts
-var import_yaml17 = __toESM(require_dist(), 1);
-import { readFile as readFile24, writeFile as writeFile17, rename as rename15, mkdir as mkdir17 } from "node:fs/promises";
-import { dirname as dirname20 } from "node:path";
+var import_yaml18 = __toESM(require_dist(), 1);
+import { readFile as readFile25, writeFile as writeFile17, rename as rename15, mkdir as mkdir17 } from "node:fs/promises";
+import { dirname as dirname21 } from "node:path";
 init_schema2();
 init_resolve();
 init_push_after_write();
@@ -79189,14 +79935,14 @@ async function unsetBindingBlock(slug, dataDirOverride) {
   const path2 = contextPath(slug, dataDirOverride);
   let raw;
   try {
-    raw = await readFile24(path2, "utf-8");
+    raw = await readFile25(path2, "utf-8");
   } catch (err) {
     return {
       ok: false,
       detail: `Could not read context.yaml for "${slug}": ${err instanceof Error ? err.message : String(err)}`
     };
   }
-  const parsed = (0, import_yaml17.parse)(raw);
+  const parsed = (0, import_yaml18.parse)(raw);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { ok: false, detail: `context.yaml for "${slug}" did not parse to an object.` };
   }
@@ -79211,8 +79957,8 @@ async function unsetBindingBlock(slug, dataDirOverride) {
   return { ok: true, detail: "binding unset" };
 }
 async function writeYamlAtomic3(path2, obj) {
-  await mkdir17(dirname20(path2), { recursive: true });
-  const yamlText = (0, import_yaml17.stringify)(obj, { indent: 2, lineWidth: 0 });
+  await mkdir17(dirname21(path2), { recursive: true });
+  const yamlText = (0, import_yaml18.stringify)(obj, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.${Date.now()}.tmp`;
   await writeFile17(tmpPath, yamlText, "utf-8");
   await rename15(tmpPath, path2);
@@ -79846,12 +80592,12 @@ async function loadRetiredBrands(dataDirOverride) {
   try {
     const manifest = await getCachedOrgManifest({ dataDirOverride });
     if (!manifest.ok) return null;
-    const out = /* @__PURE__ */ new Map();
+    const out2 = /* @__PURE__ */ new Map();
     for (const b of manifest.brands) {
       const lc = retiredLifecycleOf(b);
-      if (lc) out.set(b.brand_slug, lc);
+      if (lc) out2.set(b.brand_slug, lc);
     }
-    return out;
+    return out2;
   } catch {
     return null;
   }
@@ -80616,8 +81362,8 @@ Next: run \`/mx-brand-context ${match.slug}\` in Claude.
 }
 
 // src/commands/auth.ts
-var import_yaml18 = __toESM(require_dist(), 1);
-import { readFile as readFile25 } from "node:fs/promises";
+var import_yaml19 = __toESM(require_dist(), 1);
+import { readFile as readFile26 } from "node:fs/promises";
 
 // node_modules/@inquirer/core/dist/lib/key.js
 var isBackspaceKey = (key) => key.name === "backspace";
@@ -83371,9 +84117,9 @@ function orgAwarenessLine(org) {
 }
 function renderLoginResult(result, json2, org) {
   if (json2) {
-    const out = { ...result };
-    if (org) out.org_brands = org;
-    process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+    const out2 = { ...result };
+    if (org) out2.org_brands = org;
+    process.stdout.write(JSON.stringify(out2, null, 2) + "\n");
     return;
   }
   process.stdout.write(
@@ -83424,7 +84170,7 @@ function registerServiceSetupSubcommand(auth) {
         secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
-          secret = (await readFile25(opts.clientSecretFile, "utf-8")).trim();
+          secret = (await readFile26(opts.clientSecretFile, "utf-8")).trim();
           via = "secret_file";
         }
         if (!secret) {
@@ -83542,30 +84288,30 @@ function buildAuthStatusReport(a) {
   };
 }
 function renderAuthStatus(r, a) {
-  const out = [];
+  const out2 = [];
   if (!r.signed_in) {
-    out.push(
+    out2.push(
       r.credential === "human" ? "Not signed in (saved sign-in expired)." : r.credential === "unreadable" ? "Not signed in (the saved sign-in file cannot be read)." : "Not signed in."
     );
   } else if (r.credential === "human") {
-    out.push(`Signed in (human sign-in) as ${r.actor ?? "?"}`);
-    if (r.tenant_login && r.tenant_login !== r.actor) out.push(`  tenant login: ${r.tenant_login}`);
-    out.push(`  service: ${r.service ?? "?"}`);
+    out2.push(`Signed in (human sign-in) as ${r.actor ?? "?"}`);
+    if (r.tenant_login && r.tenant_login !== r.actor) out2.push(`  tenant login: ${r.tenant_login}`);
+    out2.push(`  service: ${r.service ?? "?"}`);
     if (r.access_expired) {
-      out.push("  access token: expired (renews itself on the next call)");
+      out2.push("  access token: expired (renews itself on the next call)");
     } else if (r.access_expires_at) {
-      out.push(`  access token valid until ${r.access_expires_at}`);
+      out2.push(`  access token valid until ${r.access_expires_at}`);
     }
-    if (a.refreshExpiresAt) out.push(`  sign-in renewable until ${a.refreshExpiresAt}`);
+    if (a.refreshExpiresAt) out2.push(`  sign-in renewable until ${a.refreshExpiresAt}`);
   } else if (r.credential === "service") {
-    out.push(`Signed in (service credential) ${r.actor ?? ""}`.trimEnd());
-    out.push(`  service: ${r.service ?? "?"}`);
-    out.push("  tokens are minted on demand; there is no expiry to track");
+    out2.push(`Signed in (service credential) ${r.actor ?? ""}`.trimEnd());
+    out2.push(`  service: ${r.service ?? "?"}`);
+    out2.push("  tokens are minted on demand; there is no expiry to track");
   } else {
-    out.push("Signed in (older direct-database credential).");
+    out2.push("Signed in (older direct-database credential).");
   }
-  if (r.next_step) out.push(r.next_step);
-  return out.join("\n") + "\n";
+  if (r.next_step) out2.push(r.next_step);
+  return out2.join("\n") + "\n";
 }
 function registerStatusSubcommand(auth) {
   auth.command("status").description(
@@ -83649,12 +84395,12 @@ function registerDevicePollSubcommand(auth) {
           maxWaitMs,
           dataDirOverride: root.dataDir
         });
-        const out = { ...result };
+        const out2 = { ...result };
         if (result.state === "approved") {
           const org = await computeOrgAwareness(root.dataDir);
-          if (org) out.org_brands = org;
+          if (org) out2.org_brands = org;
         }
-        process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+        process.stdout.write(JSON.stringify(out2, null, 2) + "\n");
         return;
       } catch (err) {
         const message = networkErrorMessage(
@@ -83674,7 +84420,7 @@ async function gatherInputs(opts, defaults) {
   if (opts.fromFile) {
     const inputs = await loadInputsFromFile(opts.fromFile, opts);
     if (opts.passwordFile) {
-      let passwordRaw = await readFile25(opts.passwordFile, "utf-8");
+      let passwordRaw = await readFile26(opts.passwordFile, "utf-8");
       passwordRaw = passwordRaw.replace(/^﻿/, "");
       const password = passwordRaw.replace(/[\r\n]+$/, "");
       if (password.length === 0) {
@@ -83694,10 +84440,10 @@ async function gatherInputs(opts, defaults) {
   return promptInputs(opts, defaults);
 }
 async function loadInputsFromFile(path2, opts) {
-  const raw = await readFile25(path2, "utf-8");
+  const raw = await readFile26(path2, "utf-8");
   let parsed;
   try {
-    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml18.parse)(raw);
+    parsed = path2.endsWith(".json") ? JSON.parse(raw) : (0, import_yaml19.parse)(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to parse ${path2}: ${message}`);
@@ -83866,10 +84612,10 @@ function registerValidateCommand(program3) {
 
 // src/lib/prefetch/manifest.ts
 init_zod();
-var import_yaml19 = __toESM(require_dist(), 1);
+var import_yaml20 = __toESM(require_dist(), 1);
 init_plugin_root();
 init_format_error();
-import { readFile as readFile26 } from "node:fs/promises";
+import { readFile as readFile27 } from "node:fs/promises";
 var allowedToolEnum = external_exports.enum([
   "db_read",
   "file_read",
@@ -83911,6 +84657,22 @@ var preExecutionSchema = external_exports.object({
   artifact_path: external_exports.string().min(1).default("tmp/{brand_slug}-{skill_id}-{run_date}.data.json"),
   batch_plan: external_exports.array(batchRoundSchema).default([])
 });
+var skillDemoSchema = external_exports.object({
+  // The phrase the user says. Always starts "demo " so every demo is found
+  // the same way.
+  say: external_exports.string().regex(/^demo \S/, 'demo.say must start with "demo "'),
+  // One user-facing line: what the demo shows.
+  summary: external_exports.string().min(1),
+  // Rough length, so the user knows what they are agreeing to.
+  minutes: external_exports.number().int().min(1).max(15),
+  // Short user-facing step titles, in order (the opener numbers them).
+  steps: external_exports.array(external_exports.string().min(1)).min(3).max(8),
+  // `none`: the demo only reads. `preview`: it shows a change as a preview
+  // and never sends it. A demo never commits a change on a live account.
+  changes: external_exports.enum(["none", "preview"]),
+  // What the account needs before the demo can show real data, if anything.
+  needs: external_exports.string().min(1).optional()
+});
 var skillManifestSchema = external_exports.object({
   schema_version: external_exports.literal(1),
   skill_id: external_exports.string().min(1),
@@ -83947,13 +84709,14 @@ var skillManifestSchema = external_exports.object({
   // confirm-on-run flow with these fields before invoking the skill. Skills
   // without a calibration block skip the confirm flow entirely. See
   // lib/calibration/manifest-schema.ts for field types + authoring guide.
-  calibration: calibrationManifestSchema.optional()
+  calibration: calibrationManifestSchema.optional(),
+  demo: skillDemoSchema.optional()
 });
 async function loadSkillManifest(skillId) {
   const path2 = pluginPath("skills", skillId, "skill.manifest.yaml");
   let raw;
   try {
-    raw = await readFile26(path2, "utf-8");
+    raw = await readFile27(path2, "utf-8");
   } catch (err) {
     if (isFileNotFoundError15(err)) {
       throw new Error(
@@ -83962,7 +84725,7 @@ async function loadSkillManifest(skillId) {
     }
     throw err;
   }
-  const parsed = (0, import_yaml19.parse)(raw);
+  const parsed = (0, import_yaml20.parse)(raw);
   const result = skillManifestSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
@@ -84065,19 +84828,19 @@ function isoFromDate(d) {
   return d.toISOString().slice(0, 10);
 }
 function addDays(d, days) {
-  const out = new Date(d.getTime());
-  out.setUTCDate(out.getUTCDate() + days);
-  return out;
+  const out2 = new Date(d.getTime());
+  out2.setUTCDate(out2.getUTCDate() + days);
+  return out2;
 }
 function addMonths(d, months) {
-  const out = new Date(d.getTime());
-  out.setUTCMonth(out.getUTCMonth() + months);
-  return out;
+  const out2 = new Date(d.getTime());
+  out2.setUTCMonth(out2.getUTCMonth() + months);
+  return out2;
 }
 function firstOfMonth(d) {
-  const out = new Date(d.getTime());
-  out.setUTCDate(1);
-  return out;
+  const out2 = new Date(d.getTime());
+  out2.setUTCDate(1);
+  return out2;
 }
 function lastOfMonth(d) {
   const next = firstOfMonth(addMonths(d, 1));
@@ -84106,15 +84869,15 @@ var UnsafeLabelError = class extends Error {
   }
 };
 function assertCampaignIds(ids, label) {
-  const out = [];
+  const out2 = [];
   for (const raw of ids) {
     const n = typeof raw === "number" ? raw : Number(raw);
     if (!Number.isInteger(n) || n <= 0 || !Number.isSafeInteger(n)) {
       throw new UnsafeLabelError(`${label} -> campaign id ${String(raw)}`);
     }
-    out.push(n);
+    out2.push(n);
   }
-  return out;
+  return out2;
 }
 function buildGroupingExpression(map2, column, tableAlias = "c") {
   if (!map2) return null;
@@ -84173,13 +84936,13 @@ function assertIdentifier(...names) {
 // src/lib/prefetch/artifacts.ts
 init_resolve();
 import { mkdir as mkdir18, writeFile as writeFile18, rename as rename16 } from "node:fs/promises";
-import { dirname as dirname21, join as join14 } from "node:path";
+import { dirname as dirname22, join as join15 } from "node:path";
 var DATA_MD_BYTE_CAP = 48 * 1024;
 async function writePrefetchArtifacts(input) {
   const runDir = resolveRunDir(input);
   await mkdir18(runDir, { recursive: true });
-  const dataJsonPath = join14(runDir, "data.json");
-  const dataMdPath = join14(runDir, "data.md");
+  const dataJsonPath = join15(runDir, "data.json");
+  const dataMdPath = join15(runDir, "data.md");
   const jsonBody = JSON.stringify(
     {
       brand_slug: input.brand_slug,
@@ -84209,7 +84972,7 @@ async function writePrefetchArtifacts(input) {
   return { run_dir: runDir, data_json_path: dataJsonPath, data_md_path: dataMdPath };
 }
 function resolveRunDir(input) {
-  return join14(
+  return join15(
     resolveDataDir(input.dataDirOverride),
     "clients",
     input.brand_slug,
@@ -84290,17 +85053,17 @@ function renderRowsTable(rows) {
   );
   const ROW_LIMIT = 100;
   const shown = rows.slice(0, ROW_LIMIT);
-  const out = [];
-  out.push(`| ${cols.join(" | ")} |`);
-  out.push(`| ${cols.map(() => "---").join(" | ")} |`);
+  const out2 = [];
+  out2.push(`| ${cols.join(" | ")} |`);
+  out2.push(`| ${cols.map(() => "---").join(" | ")} |`);
   for (const r of shown) {
-    out.push(`| ${cols.map((c) => formatCell(r[c])).join(" | ")} |`);
+    out2.push(`| ${cols.map((c) => formatCell(r[c])).join(" | ")} |`);
   }
   if (rows.length > ROW_LIMIT) {
-    out.push("");
-    out.push(`_\u2026and ${rows.length - ROW_LIMIT} more rows (see data.json)._`);
+    out2.push("");
+    out2.push(`_\u2026and ${rows.length - ROW_LIMIT} more rows (see data.json)._`);
   }
-  return out.join("\n");
+  return out2.join("\n");
 }
 function formatCell(v) {
   if (v === null || v === void 0) return "";
@@ -84312,7 +85075,7 @@ function formatCell(v) {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 async function writeAtomic2(path2, content) {
-  await mkdir18(dirname21(path2), { recursive: true });
+  await mkdir18(dirname22(path2), { recursive: true });
   const tmpPath = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile18(tmpPath, content, { encoding: "utf-8" });
   await rename16(tmpPath, path2);
@@ -84588,7 +85351,7 @@ function collectParam(value, prev) {
   return prev.concat([value]);
 }
 function parseParamOverrides(pairs) {
-  const out = {};
+  const out2 = {};
   for (const pair of pairs) {
     const eq = pair.indexOf("=");
     if (eq <= 0) {
@@ -84599,12 +85362,12 @@ function parseParamOverrides(pairs) {
     const name = pair.slice(0, eq);
     const rawVal = pair.slice(eq + 1);
     try {
-      out[name] = JSON.parse(rawVal);
+      out2[name] = JSON.parse(rawVal);
     } catch {
-      out[name] = rawVal;
+      out2[name] = rawVal;
     }
   }
-  return out;
+  return out2;
 }
 function renderResult2(result, json2) {
   if (json2) {
@@ -84710,12 +85473,12 @@ function todayISO3() {
 }
 
 // src/commands/sidecar.ts
-import { readFile as readFile27 } from "node:fs/promises";
+import { readFile as readFile28 } from "node:fs/promises";
 
 // src/lib/sidecar/write.ts
 init_resolve();
 import { mkdir as mkdir19, writeFile as writeFile19, rename as rename17 } from "node:fs/promises";
-import { join as join15, dirname as dirname22 } from "node:path";
+import { join as join16, dirname as dirname23 } from "node:path";
 import { createHash as createHash5, randomBytes as randomBytes4 } from "node:crypto";
 
 // src/lib/sidecar/schema.ts
@@ -84836,7 +85599,7 @@ async function writeSidecar(input) {
     sql_call_count: sqlCalls.length
   };
   try {
-    await mkdir19(dirname22(path2), { recursive: true });
+    await mkdir19(dirname23(path2), { recursive: true });
     await writeAtomic3(path2, JSON.stringify(parsed.data, null, 2) + "\n");
   } catch (err) {
     try {
@@ -84875,7 +85638,7 @@ async function writeSidecar(input) {
   };
 }
 function sidecarPath(args) {
-  return join15(
+  return join16(
     resolveDataDir(args.dataDirOverride),
     "clients",
     args.brand_slug,
@@ -84923,7 +85686,7 @@ function registerSidecarCommands(program3) {
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const raw = await readFile27(opts.inputFile, "utf-8");
+      const raw = await readFile28(opts.inputFile, "utf-8");
       let parsed;
       try {
         parsed = JSON.parse(raw);
@@ -84992,16 +85755,16 @@ function registerUiCommand(program3) {
 import { resolve as resolvePath } from "node:path";
 
 // src/lib/data/tables-catalog.ts
-var import_yaml20 = __toESM(require_dist(), 1);
-import { readFile as readFile28 } from "node:fs/promises";
-import { dirname as dirname23, join as join16 } from "node:path";
-import { fileURLToPath as fileURLToPath5 } from "node:url";
+var import_yaml21 = __toESM(require_dist(), 1);
+import { readFile as readFile29 } from "node:fs/promises";
+import { dirname as dirname24, join as join17 } from "node:path";
+import { fileURLToPath as fileURLToPath6 } from "node:url";
 async function loadTablesCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths3();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile28(path2, "utf-8");
-      const parsed = (0, import_yaml20.parse)(raw);
+      const raw = await readFile29(path2, "utf-8");
+      const parsed = (0, import_yaml21.parse)(raw);
       if (!parsed?.tables) continue;
       return Object.entries(parsed.tables).map(
         ([name, meta3]) => normalize2(name, meta3)
@@ -85031,12 +85794,12 @@ function normalize2(name, raw) {
   };
 }
 function candidatePaths3() {
-  const here = dirname23(fileURLToPath5(import.meta.url));
+  const here = dirname24(fileURLToPath6(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join16(dir, "shared", "data-tables.yaml"));
-    const parent = dirname23(dir);
+    candidates.push(join17(dir, "shared", "data-tables.yaml"));
+    const parent = dirname24(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -85083,7 +85846,7 @@ async function sampleTable(opts) {
 // src/lib/output/csv-file-sink.ts
 import { createWriteStream } from "node:fs";
 import { mkdir as mkdir20, rename as rename18 } from "node:fs/promises";
-import { dirname as dirname24 } from "node:path";
+import { dirname as dirname25 } from "node:path";
 
 // src/lib/output/csv.ts
 function createCsvWriter(stream, columns) {
@@ -85168,7 +85931,7 @@ function createCsvFileSink(outPath) {
   }
   async function ensureOpen(columns) {
     if (stream) return;
-    await mkdir20(dirname24(outPath), { recursive: true });
+    await mkdir20(dirname25(outPath), { recursive: true });
     stream = newStream();
     writer = createCsvWriter(stream, columns);
     writer.writeHeader();
@@ -85218,7 +85981,7 @@ function createCsvFileSink(outPath) {
         await ensureOpen(columns);
         return;
       }
-      await mkdir20(dirname24(outPath), { recursive: true });
+      await mkdir20(dirname25(outPath), { recursive: true });
       stream = newStream();
     },
     rowsWritten() {
@@ -85369,15 +86132,15 @@ init_query_runner();
 var MAX_ASINS = 1e3;
 function normalizeAsins(asins) {
   const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  if (!Array.isArray(asins)) return out;
+  const out2 = [];
+  if (!Array.isArray(asins)) return out2;
   for (const raw of asins) {
     const a = String(raw ?? "").trim().toUpperCase();
     if (!a || seen.has(a)) continue;
     seen.add(a);
-    out.push(a);
+    out2.push(a);
   }
-  return out;
+  return out2;
 }
 async function resolveAsinTitles(opts) {
   const t0 = Date.now();
@@ -85603,7 +86366,7 @@ function csvValue(items) {
 // src/commands/data.ts
 function registerDataCommands(program3) {
   const data = program3.command("data").description("Query, sample, and export warehouse data (read-only)");
-  data.command("list-tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
+  data.command("list-tables").alias("tables").description("List queryable tables with descriptions").option("--category <cat>", "filter by category: ad_metrics | ops_revenue | dimensional | inventory | brand_analytics").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
       const all = await loadTablesCatalog();
@@ -85771,17 +86534,23 @@ function registerDataCommands(program3) {
     "--rows <n>",
     `inline up to N rows before spilling a large result to a file (default ${DEFAULT_INLINE_ROW_CEILING}); also disables the byte ceiling`,
     integerOption("--rows")
+  ).option(
+    "--no-column-check",
+    "send the query even when the shipped table catalog says a column does not exist (the catalog can be behind the warehouse). By default a plain single-table SELECT naming a column the catalog does not have is stopped before it is sent, with the real columns."
   ).action(
     async (opts, cmd) => {
       const root = cmd.optsWithGlobals();
       try {
         if (opts.out) {
-          await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir);
+          await runQueryToFile(opts.sql, resolvePath(opts.out), !!root.json, root.dataDir, opts.columnCheck);
         } else {
-          await runQueryInlineOrTemp(opts.sql, !!root.json, root.dataDir, {
-            inline: opts.inline,
-            rows: opts.rows
-          });
+          await runQueryInlineOrTemp(
+            opts.sql,
+            !!root.json,
+            root.dataDir,
+            { inline: opts.inline, rows: opts.rows },
+            opts.columnCheck
+          );
         }
       } catch (err) {
         emitError6(err, !!root.json);
@@ -85985,15 +86754,20 @@ function progressReporter(sink) {
     }
   };
 }
-async function runQueryToFile(sql, outPath, json2, dataDir) {
+async function runQueryToFile(sql, outPath, json2, dataDir, columnCheck = true) {
   const sink = createCsvFileSink(outPath);
   const report = progressReporter(sink);
   let streamed;
   try {
-    streamed = await streamQuery(sql, [], { dataDirOverride: dataDir }, async (rows) => {
-      await sink.writePage(rows);
-      report();
-    });
+    streamed = await streamQuery(
+      sql,
+      [],
+      { dataDirOverride: dataDir, precheckColumns: columnCheck },
+      async (rows) => {
+        await sink.writePage(rows);
+        report();
+      }
+    );
   } catch (err) {
     const partial2 = await sink.finalizePartial();
     const message = err instanceof Error ? err.message : String(err);
@@ -86039,7 +86813,7 @@ async function runQueryToFile(sql, outPath, json2, dataDir) {
     );
   }
 }
-async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}) {
+async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnCheck = true) {
   const bufferFirst = [];
   const state = { sink: null, tempPath: "" };
   let report = () => {
@@ -86055,7 +86829,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}) {
     streamed = await streamQuery(
       sql,
       [],
-      { dataDirOverride: dataDir },
+      { dataDirOverride: dataDir, precheckColumns: columnCheck },
       async (rows, idx) => {
         if (idx === 0) {
           for (const r of rows) bufferFirst.push(r);
@@ -86341,14 +87115,14 @@ init_telemetry();
 // src/lib/version-check.ts
 init_plugin_version();
 init_resolve();
-import { readFile as readFile30, writeFile as writeFile21, mkdir as mkdir22 } from "node:fs/promises";
-import { dirname as dirname26 } from "node:path";
-import { join as join18 } from "node:path";
+import { readFile as readFile31, writeFile as writeFile21, mkdir as mkdir22 } from "node:fs/promises";
+import { dirname as dirname27 } from "node:path";
+import { join as join19 } from "node:path";
 
 // src/lib/update-notice-state.ts
 init_resolve();
-import { readFile as readFile29, writeFile as writeFile20, mkdir as mkdir21, rename as rename19, unlink as unlink7 } from "node:fs/promises";
-import { dirname as dirname25, join as join17 } from "node:path";
+import { readFile as readFile30, writeFile as writeFile20, mkdir as mkdir21, rename as rename19, unlink as unlink7 } from "node:fs/promises";
+import { dirname as dirname26, join as join18 } from "node:path";
 var UPDATE_NOTICE_STATE_FILENAME = "update-notice-state.json";
 var VERSION_RE = /^\d{1,5}(\.\d{1,5}){1,3}(-[0-9A-Za-z][0-9A-Za-z.]{0,14})?(\+[0-9A-Za-z][0-9A-Za-z.]{0,14})?$/;
 function isValidVersion(v) {
@@ -86366,11 +87140,11 @@ function updateNoticeStateDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function updateNoticeStatePath(dataDirOverride) {
-  return join17(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
+  return join18(updateNoticeStateDir(dataDirOverride), UPDATE_NOTICE_STATE_FILENAME);
 }
 async function loadUpdateNoticeState(dataDirOverride) {
   try {
-    const raw = await readFile29(updateNoticeStatePath(dataDirOverride), "utf-8");
+    const raw = await readFile30(updateNoticeStatePath(dataDirOverride), "utf-8");
     return coerceState(JSON.parse(raw));
   } catch {
     return emptyUpdateNoticeState();
@@ -86394,7 +87168,7 @@ function coerceState(parsed) {
 }
 async function saveUpdateNoticeState(state, dataDirOverride) {
   const path2 = updateNoticeStatePath(dataDirOverride);
-  await mkdir21(dirname25(path2), { recursive: true });
+  await mkdir21(dirname26(path2), { recursive: true });
   const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
     await writeFile20(tmp, JSON.stringify(state, null, 2) + "\n", { encoding: "utf-8" });
@@ -86440,17 +87214,17 @@ var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/t
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
 function versionCheckCachePath(dataDirOverride) {
-  return join18(resolveDataDir(dataDirOverride), "version-check.json");
+  return join19(resolveDataDir(dataDirOverride), "version-check.json");
 }
 async function checkForUpdate(opts = {}) {
   const current = getPluginVersion();
   const cachePath2 = versionCheckCachePath(opts.dataDirOverride);
-  let cached4 = null;
+  let cached5 = null;
   try {
-    const raw = await readFile30(cachePath2, "utf-8");
+    const raw = await readFile31(cachePath2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.latest_version === "string") {
-      cached4 = {
+      cached5 = {
         checked_at: parsed.checked_at,
         latest_version: parsed.latest_version
       };
@@ -86458,9 +87232,9 @@ async function checkForUpdate(opts = {}) {
   } catch {
   }
   const now = Date.now();
-  const cacheAge = cached4 ? now - Date.parse(cached4.checked_at) : Infinity;
-  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS;
-  let latest = cached4?.latest_version ?? null;
+  const cacheAge = cached5 ? now - Date.parse(cached5.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached5 !== null && cacheAge < CACHE_TTL_MS;
+  let latest = cached5?.latest_version ?? null;
   let fetched = false;
   if (!cacheFresh) {
     const fresh = await fetchLatestVersion();
@@ -86468,7 +87242,7 @@ async function checkForUpdate(opts = {}) {
       latest = fresh;
       fetched = true;
       try {
-        await mkdir22(dirname26(cachePath2), { recursive: true });
+        await mkdir22(dirname27(cachePath2), { recursive: true });
         await writeFile21(
           cachePath2,
           JSON.stringify(
@@ -86491,7 +87265,7 @@ async function checkForUpdate(opts = {}) {
 }
 async function readCachedLatestVersion(dataDirOverride) {
   try {
-    const raw = await readFile30(versionCheckCachePath(dataDirOverride), "utf-8");
+    const raw = await readFile31(versionCheckCachePath(dataDirOverride), "utf-8");
     const parsed = JSON.parse(raw);
     return isValidVersion(parsed.latest_version) ? parsed.latest_version : null;
   } catch {
@@ -86894,6 +87668,7 @@ function renderWelcomeChat(args) {
       lines.push("");
     }
     lines.push('Not sure where to look? Say **"help"** anytime to see everything this plugin can do in one place.');
+    lines.push('Rather see a skill work first? Say **"demo"** for a guided walkthrough on your own account.');
     lines.push("");
     lines.push("Where do you want to start?");
     lines.push("");
@@ -86936,6 +87711,7 @@ function renderWelcomeChat(args) {
   );
   lines.push("");
   lines.push('Once you are in, say **"help"** anytime to see everything this plugin can do.');
+  lines.push('Rather see a skill work first? Say **"demo"** for a guided walkthrough on your own account.');
   lines.push("");
   return lines.join("\n");
 }
@@ -86944,14 +87720,14 @@ function renderWelcomeChat(args) {
 init_plugin_version();
 
 // src/lib/install-record.ts
-import { readFile as readFile31 } from "node:fs/promises";
+import { readFile as readFile32 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
-import { join as join19 } from "node:path";
+import { join as join20 } from "node:path";
 init_surface();
 var PLUGIN_KEY = "mixshift-ai@mixshift";
 var SURFACES_WITHOUT_INSTALL_RECORD = /* @__PURE__ */ new Set(["cowork"]);
 function installedPluginsPath(homeOverride) {
-  return join19(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
+  return join20(homeOverride ?? homedir4(), ".claude", "plugins", "installed_plugins.json");
 }
 function isPlausibleSha(v) {
   return typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);
@@ -86974,7 +87750,7 @@ async function probeInstallRecord(opts = {}) {
   const path2 = installedPluginsPath(opts.homeOverride);
   let raw;
   try {
-    raw = await readFile31(path2, "utf-8");
+    raw = await readFile32(path2, "utf-8");
   } catch (err) {
     const code = err?.code;
     if (code === "ENOENT") {
@@ -87130,11 +87906,11 @@ function displayVersion(report) {
 }
 var INSTALL_UNVERIFIED_LINE = "  (install state could not be verified on this surface)\n";
 function renderVersionOutput(report) {
-  const out = [];
-  out.push(`mixshift-ai v${report.current}
+  const out2 = [];
+  out2.push(`mixshift-ai v${report.current}
 `);
   if (report.session_behind_install) {
-    out.push(
+    out2.push(
       renderSessionBehindInstall({
         installed: report.installed,
         current: report.current,
@@ -87143,14 +87919,14 @@ function renderVersionOutput(report) {
     );
   }
   if (report.latest === null) {
-    out.push("  (could not check for updates; run with --force-fetch to retry)\n");
+    out2.push("  (could not check for updates; run with --force-fetch to retry)\n");
     if (report.installed === null) {
-      out.push(INSTALL_UNVERIFIED_LINE);
+      out2.push(INSTALL_UNVERIFIED_LINE);
     }
-    return out.join("");
+    return out2.join("");
   }
   if (report.isStale) {
-    out.push(
+    out2.push(
       renderUpdateBanner(
         {
           current: displayVersion(report),
@@ -87163,16 +87939,16 @@ function renderVersionOutput(report) {
       )
     );
   } else if (displayVersion(report) === report.latest) {
-    out.push(`  up to date (latest is v${report.latest})
+    out2.push(`  up to date (latest is v${report.latest})
 `);
   } else {
-    out.push(`  ahead of public release (latest published is v${report.latest})
+    out2.push(`  ahead of public release (latest published is v${report.latest})
 `);
   }
   if (report.installed === null) {
-    out.push(INSTALL_UNVERIFIED_LINE);
+    out2.push(INSTALL_UNVERIFIED_LINE);
   }
-  return out.join("");
+  return out2.join("");
 }
 function registerVersionCommand(program3) {
   program3.command("version").description(
@@ -87228,8 +88004,8 @@ init_telemetry();
 
 // src/lib/changelog.ts
 init_resolve();
-import { readFile as readFile32, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
-import { dirname as dirname27, join as join20 } from "node:path";
+import { readFile as readFile33, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
+import { dirname as dirname28, join as join21 } from "node:path";
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -87270,28 +88046,28 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join20(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join21(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
-  let cached4 = null;
+  let cached5 = null;
   try {
-    const raw = await readFile32(path2, "utf-8");
+    const raw = await readFile33(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.markdown === "string") {
-      cached4 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
+      cached5 = { checked_at: parsed.checked_at, markdown: parsed.markdown };
     }
   } catch {
   }
-  const cacheAge = cached4 ? Date.now() - Date.parse(cached4.checked_at) : Infinity;
-  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS2;
-  if (cacheFresh && cached4) {
-    return { entries: parseChangelog(cached4.markdown), source: "cache" };
+  const cacheAge = cached5 ? Date.now() - Date.parse(cached5.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached5 !== null && cacheAge < CACHE_TTL_MS2;
+  if (cacheFresh && cached5) {
+    return { entries: parseChangelog(cached5.markdown), source: "cache" };
   }
   const fetched = await fetchChangelogMarkdown();
   if (fetched.markdown !== null) {
     try {
-      await mkdir23(dirname27(path2), { recursive: true });
+      await mkdir23(dirname28(path2), { recursive: true });
       await writeFile22(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), markdown: fetched.markdown }, null, 2) + "\n",
@@ -87301,8 +88077,8 @@ async function loadChangelog(opts = {}) {
     }
     return { entries: parseChangelog(fetched.markdown), source: "network" };
   }
-  if (cached4) {
-    return { entries: parseChangelog(cached4.markdown), source: "cache", error: fetched.error };
+  if (cached5) {
+    return { entries: parseChangelog(cached5.markdown), source: "cache", error: fetched.error };
   }
   return { entries: [], source: "none", error: fetched.error };
 }
@@ -87416,13 +88192,13 @@ function render(entries, current, format) {
     return format === "chat" ? `You're on **${current}**. No newer release notes.` : `You're on ${current}. No newer release notes.`;
   }
   if (format === "chat") {
-    const out2 = [`**What's new in mixshift-ai** (you're on ${current}):`, ""];
-    for (const e of entries) out2.push(`## ${e.version}`, "", e.notes, "");
-    return out2.join("\n").trimEnd();
+    const out3 = [`**What's new in mixshift-ai** (you're on ${current}):`, ""];
+    for (const e of entries) out3.push(`## ${e.version}`, "", e.notes, "");
+    return out3.join("\n").trimEnd();
   }
-  const out = ["", `What's new in mixshift-ai (you're on ${current}):`];
-  for (const e of entries) out.push("", `-- ${e.version} --`, "", e.notes);
-  return out.join("\n");
+  const out2 = ["", `What's new in mixshift-ai (you're on ${current}):`];
+  for (const e of entries) out2.push("", `-- ${e.version} --`, "", e.notes);
+  return out2.join("\n");
 }
 
 // src/commands/update-actions.ts
@@ -87430,8 +88206,8 @@ init_plugin_version();
 
 // src/lib/update-actions-state.ts
 init_resolve();
-import { readFile as readFile33, writeFile as writeFile23, mkdir as mkdir24, rename as rename20, unlink as unlink8 } from "node:fs/promises";
-import { dirname as dirname28, join as join21 } from "node:path";
+import { readFile as readFile34, writeFile as writeFile23, mkdir as mkdir24, rename as rename20, unlink as unlink8 } from "node:fs/promises";
+import { dirname as dirname29, join as join22 } from "node:path";
 var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
 var ACTION_STATUSES = [
   "completed",
@@ -87449,11 +88225,11 @@ function actionsLedgerDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function actionsLedgerPath(dataDirOverride) {
-  return join21(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
+  return join22(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
 }
 async function loadActionsLedger(dataDirOverride) {
   try {
-    const raw = await readFile33(actionsLedgerPath(dataDirOverride), "utf-8");
+    const raw = await readFile34(actionsLedgerPath(dataDirOverride), "utf-8");
     return coerceLedger(JSON.parse(raw));
   } catch {
     return emptyActionsLedger();
@@ -87476,7 +88252,7 @@ function coerceLedger(parsed) {
 }
 async function saveActionsLedger(ledger, dataDirOverride) {
   const path2 = actionsLedgerPath(dataDirOverride);
-  await mkdir24(dirname28(path2), { recursive: true });
+  await mkdir24(dirname29(path2), { recursive: true });
   const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
     await writeFile23(tmp, JSON.stringify(ledger, null, 2) + "\n", { encoding: "utf-8" });
@@ -87504,12 +88280,12 @@ function setCaughtUpTo(ledger, version2) {
 
 // src/lib/update-actions.ts
 init_zod();
-var import_yaml21 = __toESM(require_dist(), 1);
+var import_yaml22 = __toESM(require_dist(), 1);
 init_resolve();
 init_plugin_root();
-import { readFile as readFile34, writeFile as writeFile24, mkdir as mkdir25 } from "node:fs/promises";
+import { readFile as readFile35, writeFile as writeFile24, mkdir as mkdir25 } from "node:fs/promises";
 import { readdir as readdir5 } from "node:fs/promises";
-import { dirname as dirname29, join as join22 } from "node:path";
+import { dirname as dirname30, join as join23 } from "node:path";
 init_credentials();
 init_clients();
 var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
@@ -87558,18 +88334,18 @@ var actionsFileSchema = external_exports.object({
   actions: external_exports.array(external_exports.unknown()).default([])
 });
 function stripControl(s, keepNewline) {
-  let out = "";
+  let out2 = "";
   for (const ch of s) {
     const c = ch.codePointAt(0) ?? 0;
     if (c >= 32 && c !== 127) {
-      out += ch;
+      out2 += ch;
     } else if (keepNewline && c === 10) {
-      out += ch;
+      out2 += ch;
     } else {
-      out += " ";
+      out2 += " ";
     }
   }
-  return out;
+  return out2;
 }
 function sanitizeTitle(s) {
   return stripControl(s, false).replace(/\s+/g, " ").trim();
@@ -87581,46 +88357,46 @@ function sanitizeTeach(s) {
 function parseActions(yamlText) {
   let parsed;
   try {
-    parsed = (0, import_yaml21.parse)(yamlText);
+    parsed = (0, import_yaml22.parse)(yamlText);
   } catch {
     return [];
   }
   const top = actionsFileSchema.safeParse(parsed);
   if (!top.success) return [];
-  const out = [];
+  const out2 = [];
   for (const raw of top.data.actions.slice(0, MAX_ACTIONS)) {
     const result = actionSchema.safeParse(raw);
     if (!result.success) continue;
     const title = sanitizeTitle(result.data.title);
     const teach = sanitizeTeach(result.data.teach);
     if (!title || !teach) continue;
-    out.push({ ...result.data, title, teach });
+    out2.push({ ...result.data, title, teach });
   }
-  return out;
+  return out2;
 }
 function actionsCachePath(dataDirOverride) {
-  return join22(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
+  return join23(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
 }
 async function loadActions(opts = {}) {
   const path2 = actionsCachePath(opts.dataDirOverride);
-  let cached4 = null;
+  let cached5 = null;
   try {
-    const raw = await readFile34(path2, "utf-8");
+    const raw = await readFile35(path2, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.checked_at === "string" && typeof parsed.yaml === "string") {
-      cached4 = { checked_at: parsed.checked_at, yaml: parsed.yaml };
+      cached5 = { checked_at: parsed.checked_at, yaml: parsed.yaml };
     }
   } catch {
   }
-  const cacheAge = cached4 ? Date.now() - Date.parse(cached4.checked_at) : Infinity;
-  const cacheFresh = !opts.forceFetch && cached4 !== null && cacheAge < CACHE_TTL_MS3;
-  if (cacheFresh && cached4) {
-    return { actions: parseActions(cached4.yaml), source: "cache" };
+  const cacheAge = cached5 ? Date.now() - Date.parse(cached5.checked_at) : Infinity;
+  const cacheFresh = !opts.forceFetch && cached5 !== null && cacheAge < CACHE_TTL_MS3;
+  if (cacheFresh && cached5) {
+    return { actions: parseActions(cached5.yaml), source: "cache" };
   }
   const fetched = await fetchActionsYaml();
   if (fetched.yaml !== null) {
     try {
-      await mkdir25(dirname29(path2), { recursive: true });
+      await mkdir25(dirname30(path2), { recursive: true });
       await writeFile24(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), yaml: fetched.yaml }, null, 2) + "\n",
@@ -87630,14 +88406,14 @@ async function loadActions(opts = {}) {
     }
     return { actions: parseActions(fetched.yaml), source: "network" };
   }
-  if (cached4) {
-    return { actions: parseActions(cached4.yaml), source: "cache", error: fetched.error };
+  if (cached5) {
+    return { actions: parseActions(cached5.yaml), source: "cache", error: fetched.error };
   }
   return { actions: [], source: "none", error: fetched.error };
 }
 function isActionsManifest(yamlText) {
   try {
-    return actionsFileSchema.safeParse((0, import_yaml21.parse)(yamlText)).success;
+    return actionsFileSchema.safeParse((0, import_yaml22.parse)(yamlText)).success;
   } catch {
     return false;
   }
@@ -87795,21 +88571,21 @@ ${msg2}
     return format === "chat" ? "No catch-up actions pending. You are current." : "\nNo catch-up actions pending. You are current.\n";
   }
   if (format === "chat") {
-    const out2 = ["**Catch-up actions for this update:**", ""];
+    const out3 = ["**Catch-up actions for this update:**", ""];
     for (const a of pending) {
-      out2.push(`### ${a.title}`, "");
-      out2.push(...a.teach.split("\n").map((line) => `> ${line}`));
-      out2.push("");
-      out2.push(`_Runs: ${a.run.skill}${a.run.args_hint ? ` (${a.run.args_hint})` : ""}_`, "");
+      out3.push(`### ${a.title}`, "");
+      out3.push(...a.teach.split("\n").map((line) => `> ${line}`));
+      out3.push("");
+      out3.push(`_Runs: ${a.run.skill}${a.run.args_hint ? ` (${a.run.args_hint})` : ""}_`, "");
     }
-    return out2.join("\n").trimEnd();
+    return out3.join("\n").trimEnd();
   }
-  const out = ["", "Catch-up actions for this update:"];
+  const out2 = ["", "Catch-up actions for this update:"];
   for (const a of pending) {
-    out.push("", `-- ${a.title} --`, "", a.teach, `(runs: ${a.run.skill}${a.run.args_hint ? ` ${a.run.args_hint}` : ""})`);
+    out2.push("", `-- ${a.title} --`, "", a.teach, `(runs: ${a.run.skill}${a.run.args_hint ? ` ${a.run.args_hint}` : ""})`);
   }
-  out.push("");
-  return out.join("\n");
+  out2.push("");
+  return out2.join("\n");
 }
 function registerRecord(parent) {
   parent.command("record <id>").description("Record the outcome of one catch-up action in the local ledger.").requiredOption("--status <status>", `outcome: ${ACTION_STATUSES.join(" | ")}`).action(async (id, opts, cmd) => {
@@ -88198,8 +88974,8 @@ Context:
 }
 
 // src/lib/calibration/confirm-flow.ts
-var import_yaml22 = __toESM(require_dist(), 1);
-import { readFile as readFile36 } from "node:fs/promises";
+var import_yaml23 = __toESM(require_dist(), 1);
+import { readFile as readFile37 } from "node:fs/promises";
 init_resolve();
 init_push_after_write();
 async function prepareConfirmation(opts) {
@@ -88491,30 +89267,30 @@ function normalizeSeedForField(field, value) {
 }
 function toConsumableConfig(fields, effective) {
   const typeById = new Map(fields.map((e) => [e.field.id, e.field.type]));
-  const out = {};
+  const out2 = {};
   for (const [k, v] of Object.entries(effective)) {
-    out[k] = typeById.get(k) === "percent" && typeof v === "number" ? Math.round(v * 1e4) / 100 : v;
+    out2[k] = typeById.get(k) === "percent" && typeof v === "number" ? Math.round(v * 1e4) / 100 : v;
   }
-  return out;
+  return out2;
 }
 function collectSharedCaptures(payload, decision, effective) {
   if (decision.action !== "edit" || !decision.save) return [];
   const consumable = toConsumableConfig(payload.fields, effective);
   const fieldsById = new Map(payload.fields.map((e) => [e.field.id, e.field]));
-  const out = [];
+  const out2 = [];
   for (const id of Object.keys(decision.edits)) {
     const field = fieldsById.get(id);
     if (!field?.seed_from) continue;
     const contextPath2 = stripContextPrefix(field.seed_from);
     if (!brandFieldKeyForContextPath(contextPath2)) continue;
-    out.push({
+    out2.push({
       contextPath: contextPath2,
       field,
       consumableValue: consumable[id],
       display: formatFieldValue(field, effective[id])
     });
   }
-  return out;
+  return out2;
 }
 function humanizeFieldId(id) {
   return id.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -88537,8 +89313,8 @@ function getByPath4(obj, path2) {
 async function tryReadContext(brandSlug, dataDirOverride) {
   const path2 = contextPath(brandSlug, dataDirOverride);
   try {
-    const raw = await readFile36(path2, "utf-8");
-    return (0, import_yaml22.parse)(raw);
+    const raw = await readFile37(path2, "utf-8");
+    return (0, import_yaml23.parse)(raw);
   } catch {
     return null;
   }
@@ -88610,12 +89386,12 @@ function renderCaptureCandidates(candidates, ctx) {
 }
 function renderCandidateBlock(c) {
   const tier = c.target === "context" ? "shared brand context" : "this skill";
-  const out = [`  - ${humanLabel2(c.field)}  (${tier})`];
+  const out2 = [`  - ${humanLabel2(c.field)}  (${tier})`];
   if (c.field.help) {
     const help = c.field.help.replace(/\s+/g, " ").trim();
-    out.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
+    out2.push(`      ${help.length > 140 ? `${help.slice(0, 137)}...` : help}`);
   }
-  return out;
+  return out2;
 }
 function renderCaptureNudge(candidates, brandName) {
   const lines = [
@@ -88707,8 +89483,8 @@ function indexConfirmationEntries(payload) {
 init_clients();
 init_telemetry();
 init_resolve();
-import { mkdir as mkdir27, readFile as readFile37, writeFile as writeFile25 } from "node:fs/promises";
-import { dirname as dirname31 } from "node:path";
+import { mkdir as mkdir27, readFile as readFile38, writeFile as writeFile25 } from "node:fs/promises";
+import { dirname as dirname32 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate (the apply-gate is not yet wired to any shipped skill). See `mixshift skill config --help`."
@@ -89116,7 +89892,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname31(path2);
+  const runDir = dirname32(path2);
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -89163,7 +89939,7 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir27(dirname31(path2), { recursive: true });
+  await mkdir27(dirname32(path2), { recursive: true });
   await writeFile25(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
@@ -89193,7 +89969,7 @@ ${candidates}`
 }
 async function readJsonIfExists(path2) {
   try {
-    const raw = await readFile37(path2, "utf-8");
+    const raw = await readFile38(path2, "utf-8");
     return JSON.parse(raw);
   } catch (err) {
     if (err !== null && typeof err === "object" && "code" in err && err.code === "ENOENT") {
@@ -89239,7 +90015,7 @@ function emitError8(json2, message) {
 }
 
 // src/commands/amazon.ts
-import { resolve as resolvePath2, dirname as dirname35 } from "node:path";
+import { resolve as resolvePath2, dirname as dirname36 } from "node:path";
 import { mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
 
 // src/lib/amazon/reports.ts
@@ -89247,7 +90023,7 @@ init_credentials();
 init_intent();
 import { createWriteStream as createWriteStream2 } from "node:fs";
 import { mkdir as mkdir28, rename as rename21 } from "node:fs/promises";
-import { dirname as dirname32 } from "node:path";
+import { dirname as dirname33 } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -89590,10 +90366,10 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
       failure: hostUnreachable("the report download returned an empty response body")
     };
   }
-  let out;
+  let out2;
   try {
-    await mkdir28(dirname32(outPath), { recursive: true });
-    out = createWriteStream2(outPath);
+    await mkdir28(dirname33(outPath), { recursive: true });
+    out2 = createWriteStream2(outPath);
     const source = Readable.fromWeb(res.body);
     const monitor = new Transform({
       transform(chunk, _enc, cb) {
@@ -89602,14 +90378,14 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
       }
     });
     if (document.compressionAlgorithm === "GZIP") {
-      await pipeline(source, monitor, createGunzip(), out);
+      await pipeline(source, monitor, createGunzip(), out2);
     } else {
-      await pipeline(source, monitor, out);
+      await pipeline(source, monitor, out2);
     }
   } catch (err) {
     clearTimers();
-    if (out) {
-      await closeWritable(out);
+    if (out2) {
+      await closeWritable(out2);
     } else {
       try {
         await res.body?.cancel();
@@ -89622,18 +90398,18 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
       expired: false,
       // `opened` only when we actually created the file (mkdir succeeded and
       // createWriteStream ran) — otherwise there is nothing to salvage.
-      opened: out !== void 0,
+      opened: out2 !== void 0,
       failure: transientDownloadFailure(err, abortedReason)
     };
   }
   clearTimers();
-  return { ok: true, bytes: out.bytesWritten };
+  return { ok: true, bytes: out2.bytesWritten };
 }
-function closeWritable(out) {
-  if (out.closed) return Promise.resolve();
+function closeWritable(out2) {
+  if (out2.closed) return Promise.resolve();
   return new Promise((resolve5) => {
-    out.once("close", () => resolve5());
-    if (!out.destroyed) out.destroy();
+    out2.once("close", () => resolve5());
+    if (!out2.destroyed) out2.destroy();
   });
 }
 function transientDownloadFailure(err, abortedReason) {
@@ -89997,12 +90773,12 @@ function toReportFailure(json2, httpStatus, surface) {
 }
 function parseCandidates(v) {
   if (!Array.isArray(v)) return void 0;
-  const out = [];
+  const out2 = [];
   for (const item of v) {
     if (typeof item !== "object" || item === null) continue;
     const o = item;
     const legacySellerId = typeof o.legacySellerId === "number" || typeof o.legacySellerId === "string" ? o.legacySellerId : void 0;
-    out.push({
+    out2.push({
       legacySellerId,
       amazonSellerId: strOrUndef(o.amazonSellerId),
       marketplaceId: strOrUndef(o.marketplaceId) ?? null,
@@ -90011,7 +90787,7 @@ function parseCandidates(v) {
       name: strOrUndef(o.name)
     });
   }
-  return out.length > 0 ? out : void 0;
+  return out2.length > 0 ? out2 : void 0;
 }
 function statusOnlyFailure(httpStatus, detail, surface) {
   const kind = statusToKind(httpStatus);
@@ -90137,16 +90913,16 @@ function safeJsonPreview(json2) {
 }
 
 // src/lib/reports/catalog.ts
-var import_yaml23 = __toESM(require_dist(), 1);
-import { readFile as readFile38 } from "node:fs/promises";
-import { dirname as dirname33, join as join24 } from "node:path";
-import { fileURLToPath as fileURLToPath6 } from "node:url";
+var import_yaml24 = __toESM(require_dist(), 1);
+import { readFile as readFile39 } from "node:fs/promises";
+import { dirname as dirname34, join as join25 } from "node:path";
+import { fileURLToPath as fileURLToPath7 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
   for (const path2 of candidates) {
     try {
-      const raw = await readFile38(path2, "utf-8");
-      const parsed = (0, import_yaml23.parse)(raw);
+      const raw = await readFile39(path2, "utf-8");
+      const parsed = (0, import_yaml24.parse)(raw);
       if (!parsed?.reports) continue;
       return parsed.reports.filter((r) => !!r && typeof r.report_type === "string").map(normalize3);
     } catch (err) {
@@ -90191,12 +90967,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname33(fileURLToPath6(import.meta.url));
+  const here = dirname34(fileURLToPath7(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join24(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname33(dir);
+    candidates.push(join25(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname34(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -90211,7 +90987,7 @@ init_resolve();
 init_telemetry();
 
 // src/commands/amazon-pricing.ts
-import { readFile as readFile40 } from "node:fs/promises";
+import { readFile as readFile41 } from "node:fs/promises";
 
 // src/lib/amazon/pricing.ts
 function buildMerchantBody(input) {
@@ -90306,12 +91082,12 @@ init_telemetry();
 
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
-import { mkdir as mkdir29, readFile as readFile39, rename as rename22, writeFile as writeFile26 } from "node:fs/promises";
-import { dirname as dirname34 } from "node:path";
+import { mkdir as mkdir29, readFile as readFile40, rename as rename22, writeFile as writeFile26 } from "node:fs/promises";
+import { dirname as dirname35 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
-    const raw = await readFile39(path2, "utf8");
+    const raw = await readFile40(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -90322,7 +91098,7 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir29(dirname34(path2), { recursive: true });
+  await mkdir29(dirname35(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile26(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename22(tmp, path2);
@@ -90765,7 +91541,7 @@ async function loadItemList(inline, file2) {
     return inline.split(",").map((s) => s.trim()).filter(Boolean);
   }
   if (file2) {
-    const text = await readFile40(file2, "utf8");
+    const text = await readFile41(file2, "utf8");
     return text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("#"));
   }
   return [];
@@ -90778,17 +91554,17 @@ function parseIncludedData(raw) {
     "lowestPricedOffers"
   ]);
   const items = raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
-  const out = [];
+  const out2 = [];
   for (const it of items) {
     if (allowed.has(it)) {
-      out.push(it);
+      out2.push(it);
     } else {
       throw new Error(
         `Unknown --included-data value: ${it}. Allowed: featuredBuyingOptions, referencePrices, lowestPricedOffers.`
       );
     }
   }
-  return out.length > 0 ? out : void 0;
+  return out2.length > 0 ? out2 : void 0;
 }
 async function trackFailure(operation, mode, itemsCount, result, startedAt, dataDir) {
   await track(
@@ -90840,7 +91616,7 @@ function writeJson(obj) {
 }
 
 // src/commands/amazon-spapi.ts
-import { readFile as readFile41 } from "node:fs/promises";
+import { readFile as readFile42 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
 async function listOperations(family, opts = {}) {
@@ -90917,7 +91693,7 @@ function registerAmazonSpApiCommands(amazon) {
   registerCall(amazon);
 }
 function registerOperations(amazon) {
-  amazon.command("operations").description(
+  amazon.command("operations").alias("ops").description(
     "Browse the directly callable SP-API operations (beyond reports and pricing). Read the notes before calling: they carry required params and gotchas."
   ).option("--family <name>", 'filter to one family (e.g. "Data Kiosk", "Catalog Items")').action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -90974,7 +91750,7 @@ function registerCall(amazon) {
         return emitError9(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile41(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile42(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -91434,7 +92210,7 @@ function registerReportGet(report) {
         const spillPath = resolvePath2(
           `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`
         );
-        await mkdir30(dirname35(spillPath), { recursive: true });
+        await mkdir30(dirname36(spillPath), { recursive: true });
         await writeFile27(spillPath, document, "utf-8");
         const { preview, truncated, totalLines } = previewLines(document);
         if (root.json) {
@@ -91718,7 +92494,7 @@ function registerReportRun(report) {
       try {
         const merged = mergeSqpDocuments(docs, fullAsinList);
         bytes = Buffer.byteLength(merged, "utf8");
-        await mkdir30(dirname35(outPath), { recursive: true });
+        await mkdir30(dirname36(outPath), { recursive: true });
         await writeFile27(outPath, merged, "utf8");
       } catch (mergeErr) {
         emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
@@ -92214,7 +92990,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile42 } from "node:fs/promises";
+import { readFile as readFile43 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -92407,10 +93183,10 @@ function extractEntityIds(body, cap2 = ENTITY_IDS_CAP) {
 function buildResultSummary(payload) {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return {};
   const p = payload;
-  const out = {};
-  if (Array.isArray(p.success)) out.success_count = p.success.length;
-  if (Array.isArray(p.error)) out.error_count = p.error.length;
-  return out;
+  const out2 = {};
+  if (Array.isArray(p.success)) out2.success_count = p.success.length;
+  if (Array.isArray(p.error)) out2.error_count = p.error.length;
+  return out2;
 }
 function truncatedJson(value, maxChars) {
   let json2;
@@ -92499,7 +93275,7 @@ ${result.note}
   });
 }
 function registerOperations2(ads) {
-  ads.command("operations").description(
+  ads.command("operations").aliases(["ops", "catalog"]).description(
     "Browse the callable Ads API operations. Read the notes before calling: they carry body vs query conventions and media types."
   ).option("--family <name>", 'filter to one family (e.g. "Reporting", "Sponsored Products")').action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -92570,7 +93346,7 @@ function registerCall2(ads) {
         return emitError11(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile42(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile43(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -92809,9 +93585,592 @@ function mdCell2(s) {
   return s.replaceAll("|", "\\|");
 }
 
+// src/commands/walmart.ts
+import { readFile as readFile44 } from "node:fs/promises";
+
+// src/lib/walmart/ads-call.ts
+init_credentials();
+init_intent();
+function isWalmartFailure(x) {
+  return x.ok === false;
+}
+function exitCodeForWalmartKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    // sign in again
+    case "walmart_not_configured":
+    case "tenant_not_allowed":
+      return 6;
+    // Walmart is not enabled (service-wide, or for this account)
+    case "advertiser_not_allowed":
+    case "not_found":
+      return 7;
+    // the selector matched nothing this account may use
+    case "throttled":
+      return 8;
+    case "insufficient_scope":
+      return 11;
+    case "bad_request":
+      return 12;
+    // terminal: fix the request, do not resend as-is
+    case "upstream_auth":
+      return 14;
+    // Walmart denies this advertiser to MixShift
+    case "upstream_unavailable":
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
+async function listWalmartAdvertisers(opts = {}) {
+  const r = await walmartRequest(
+    { method: "GET", path: "/api/walmart/ads/advertisers" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.advertisers;
+  return { ok: true, advertisers: Array.isArray(raw) ? raw : [] };
+}
+async function listWalmartOperations(family, opts = {}) {
+  const qs = family ? `?family=${encodeURIComponent(family)}` : "";
+  const r = await walmartRequest(
+    { method: "GET", path: `/api/walmart/ads/operations${qs}` },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const body = r.json;
+  return {
+    ok: true,
+    families: Array.isArray(body.families) ? body.families.map(String) : [],
+    operations: Array.isArray(body.operations) ? body.operations : []
+  };
+}
+async function walmartAdsCall(input, opts = {}) {
+  const body = {
+    operation: input.operation,
+    advertiserId: input.advertiserId
+  };
+  if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
+  if (input.body !== void 0) body.body = input.body;
+  if (input.dryRun !== void 0) body.dryRun = input.dryRun;
+  const mayChangeState = input.dryRun === false || /\.create_/.test(input.operation);
+  const r = await walmartRequest(
+    { method: "POST", path: "/api/walmart/ads/call", body, mayChangeState },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 9e4 }
+  );
+  if (!r.ok) return r;
+  const json2 = r.json;
+  if (typeof json2.operation !== "string") {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "MixShift accepted the Walmart call but returned an unrecognized shape. Try again, or contact MixShift if it persists.",
+      message: "walmart call response missing operation echo",
+      httpStatus: r.httpStatus
+    };
+  }
+  return {
+    ...json2,
+    ok: true,
+    operation: json2.operation,
+    environment: String(json2.environment ?? ""),
+    advertiserId: String(json2.advertiserId ?? input.advertiserId)
+  };
+}
+async function walmartRequest(spec, opts) {
+  const resolved = await resolveBaseAndToken2(opts);
+  if ("ok" in resolved) return resolved;
+  const { apiBase, tokenProvider } = resolved;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 3e4;
+  const doFetch = async (bearer) => {
+    try {
+      const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
+        method: spec.method,
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          ...spec.body ? { "Content-Type": "application/json" } : {},
+          ...intentHeader()
+        },
+        body: spec.body ? JSON.stringify(spec.body) : void 0,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return { res: res2 };
+    } catch (err) {
+      return {
+        networkError: err instanceof Error ? err.message : String(err),
+        mayHaveArrived: mayHaveArrived2(err)
+      };
+    }
+  };
+  const networkFailure = (a) => a.mayHaveArrived && spec.mayChangeState ? uncertainOutcome2(
+    "host_unreachable",
+    `No answer came back from MixShift (it can take up to ${Math.ceil(timeoutMs / 1e3)} seconds), so this call may still have gone through.`,
+    a.networkError
+  ) : {
+    ok: false,
+    kind: "host_unreachable",
+    friendly: "The MixShift service is unreachable. Check your network or try again in a minute.",
+    message: a.networkError
+  };
+  let token;
+  try {
+    token = await tokenProvider(false);
+  } catch (err) {
+    return sessionFailureFromError2(err);
+  }
+  let attempt = await doFetch(token);
+  if ("networkError" in attempt) return networkFailure(attempt);
+  let res = attempt.res;
+  if (res.status === 401) {
+    try {
+      token = await tokenProvider(true);
+    } catch (err) {
+      return sessionFailureFromError2(err);
+    }
+    attempt = await doFetch(token);
+    if ("networkError" in attempt) return networkFailure(attempt);
+    res = attempt.res;
+    if (res.status === 401) {
+      return {
+        ok: false,
+        kind: "session_expired",
+        friendly: "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate.",
+        httpStatus: 401
+      };
+    }
+  }
+  let json2;
+  try {
+    json2 = await res.json();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    if (spec.mayChangeState && (res.ok || res.status >= 500)) {
+      return uncertainOutcome2(
+        res.ok ? "unknown" : "host_unreachable",
+        `An answer came back (HTTP ${res.status}) but it was not MixShift's reply, so this call may still have gone through.`,
+        detail,
+        res.status
+      );
+    }
+    return statusOnlyFailure2(res.status);
+  }
+  if (isServerFailureEnvelope2(json2)) return toWalmartFailure(json2, res.status);
+  if (!res.ok) return statusOnlyFailure2(res.status, safeJsonPreview2(json2));
+  return { ok: true, json: json2, httpStatus: res.status };
+}
+async function resolveBaseAndToken2(opts) {
+  let apiBase = opts.apiBaseOverride;
+  if (!apiBase) {
+    const { credentials } = await loadCredentials(opts.dataDirOverride);
+    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base) {
+      return {
+        ok: false,
+        kind: "not_authenticated",
+        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) first.'
+      };
+    }
+    apiBase = base;
+  }
+  const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
+  return { apiBase, tokenProvider };
+}
+var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
+  // Keep in step with WalmartErrorKind in mx-legacy-auth connect-client.ts.
+  "walmart_not_configured",
+  "tenant_not_allowed",
+  "advertiser_not_allowed",
+  "insufficient_scope",
+  "bad_request",
+  "not_found",
+  "upstream_auth",
+  "throttled",
+  "upstream_unavailable",
+  "unknown"
+]);
+function isServerFailureEnvelope2(json2) {
+  return typeof json2 === "object" && json2 !== null && json2.ok === false;
+}
+function toWalmartFailure(json2, httpStatus) {
+  const rawKind = typeof json2.kind === "string" ? json2.kind : "";
+  const recognized = KNOWN_KINDS2.has(rawKind);
+  const kind = recognized ? rawKind : kindForStatus(httpStatus);
+  const friendly = typeof json2.friendly === "string" && json2.friendly ? json2.friendly : defaultFriendly2(kind);
+  const message = typeof json2.message === "string" ? json2.message : void 0;
+  const advertiserId = typeof json2.advertiserId === "string" || typeof json2.advertiserId === "number" ? String(json2.advertiserId) : void 0;
+  return {
+    ok: false,
+    kind,
+    friendly,
+    httpStatus,
+    ...message !== void 0 ? { message } : {},
+    ...advertiserId !== void 0 ? { advertiserId } : {},
+    ...typeof json2.required === "string" ? { requiredScope: json2.required } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" }
+  };
+}
+function kindForStatus(httpStatus) {
+  if (httpStatus === 429) return "throttled";
+  if (httpStatus === 400) return "bad_request";
+  return "unknown";
+}
+function statusOnlyFailure2(httpStatus, detail) {
+  const kind = kindForStatus(httpStatus);
+  return {
+    ok: false,
+    kind,
+    friendly: defaultFriendly2(kind),
+    message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
+    httpStatus
+  };
+}
+function defaultFriendly2(kind) {
+  switch (kind) {
+    case "walmart_not_configured":
+      return "Walmart Connect is not set up on the MixShift service yet. Contact MixShift.";
+    case "tenant_not_allowed":
+      return "Walmart Connect is not enabled for this MixShift account yet. Contact MixShift to join the beta.";
+    case "advertiser_not_allowed":
+      return "That Walmart advertiser is not connected to this MixShift account.";
+    case "insufficient_scope":
+      return "This Walmart operation changes campaigns and needs the ads:write scope.";
+    case "bad_request":
+      return "Walmart rejected the request. Check the operation notes for the required parameters.";
+    case "not_found":
+      return "Walmart has no record matching that request.";
+    case "upstream_auth":
+      return "Walmart refused MixShift's access for this advertiser. Contact MixShift.";
+    case "throttled":
+      return "Walmart is rate-limiting requests right now. Wait a minute, then try again.";
+    case "upstream_unavailable":
+      return "Walmart did not answer in time. Try again in a minute.";
+    default:
+      return "The Walmart Connect request failed unexpectedly. Try again shortly.";
+  }
+}
+function uncertainOutcome2(kind, lead, message, httpStatus) {
+  return {
+    ok: false,
+    kind,
+    friendly: `${lead} Check whether it did before sending it again: resending can create a duplicate report or apply a change twice.`,
+    message,
+    ...httpStatus !== void 0 ? { httpStatus } : {},
+    requestOutcome: "unknown"
+  };
+}
+function mayHaveArrived2(err) {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err;
+  return e.name === "TimeoutError" || e.cause?.code === "UND_ERR_SOCKET";
+}
+function sessionFailureFromError2(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const expired = /expired|refresh/i.test(message);
+  return {
+    ok: false,
+    kind: expired ? "session_expired" : "not_authenticated",
+    friendly: expired ? "Your MixShift session expired. Run `mixshift auth login` to re-authenticate." : "You're not signed in to MixShift. Run `mixshift auth login` first.",
+    message
+  };
+}
+function safeJsonPreview2(json2) {
+  try {
+    const s = JSON.stringify(json2);
+    return s.length > 300 ? s.slice(0, 300) + "..." : s;
+  } catch {
+    return String(json2);
+  }
+}
+
+// src/commands/walmart.ts
+init_telemetry();
+function registerWalmartCommands(program3) {
+  const walmart = program3.command("walmart").description("Call Walmart APIs for the Walmart accounts connected to your MixShift account.");
+  const ads = walmart.command("ads").description(
+    "Walmart Connect (Walmart ads): Sponsored Search and Display campaigns, ad groups, keywords, reports, and audited writes (preview by default, --commit to apply)."
+  );
+  registerAdvertisers(ads);
+  registerOperations3(ads);
+  registerCall3(ads);
+}
+function registerAdvertisers(ads) {
+  ads.command("advertisers").description("List the Walmart advertisers connected to your MixShift account.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listWalmartAdvertisers({ dataDirOverride: root.dataDir });
+      if (isWalmartFailure(result)) {
+        await trackWalmart(EventName.WalmartAdsAdvertisersListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        });
+        return emitFailure6(result, !!root.json);
+      }
+      await trackWalmart(EventName.WalmartAdsAdvertisersListed, "ok", startedAt, root.dataDir, {
+        count: result.advertisers.length,
+        // Which advertisers, not just how many: ids and link attributes only.
+        sample: result.advertisers.slice(0, 25).map((a) => ({
+          advertiser_id: a.advertiserId,
+          api: a.api,
+          environment: a.environment,
+          access: a.access
+        })),
+        truncated: result.advertisers.length > 25
+      });
+      if (root.json) {
+        writeJson5({ status: "ok", count: result.advertisers.length, advertisers: result.advertisers });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.advertisers.length} advertiser(s)
+
+`);
+        process.stdout.write(renderAdvertisers(result.advertisers) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError12(err, !!root.json);
+    }
+  });
+}
+function registerOperations3(ads) {
+  ads.command("operations").description(
+    "Browse the callable Walmart Connect operations. Read the notes before calling: they carry required params, body shapes, and Walmart quirks."
+  ).option("--family <name>", "filter to one family (see the families list)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listWalmartOperations(opts.family, { dataDirOverride: root.dataDir });
+      if (isWalmartFailure(result)) {
+        await trackWalmart(EventName.WalmartAdsOperationsListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind
+        });
+        return emitFailure6(result, !!root.json);
+      }
+      await trackWalmart(EventName.WalmartAdsOperationsListed, "ok", startedAt, root.dataDir, {
+        count: result.operations.length,
+        ...opts.family ? { family: opts.family } : {}
+      });
+      if (root.json) {
+        writeJson5({
+          status: "ok",
+          count: result.operations.length,
+          families: result.families,
+          operations: result.operations
+        });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.operations.length} operation(s)
+
+`);
+        process.stdout.write(renderOperations3(result.operations, result.families) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError12(err, !!root.json);
+    }
+  });
+}
+function registerCall3(ads) {
+  ads.command("call <operation>").description(
+    "Execute one cataloged Walmart Connect operation for one advertiser. Run `walmart ads operations` first for the id and its notes. Write operations preview by default; pass --commit to apply, ONLY after the user confirmed the preview."
+  ).option("--advertiser-id <id>", "advertiser id from `walmart ads advertisers` (required)").option(
+    "--query <k=v>",
+    "query param per the operation notes; on download operations also limit=N and groupBy=<column> (repeatable)",
+    keyValueOption("--query", { bodyFlag: "--body" }),
+    {}
+  ).option("--body-file <file>", "JSON request body from a file").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option(
+    "--commit",
+    "WRITE operations: actually apply the change (default is a preview that sends nothing to Walmart). Use only after explicit user confirmation."
+  ).action(async (operation, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const advertiserId = opts.advertiserId?.trim();
+      if (!advertiserId) {
+        return emitError12(
+          new Error("--advertiser-id is required. Run `mixshift walmart ads advertisers` for the ids you can use."),
+          !!root.json
+        );
+      }
+      if (opts.bodyFile && opts.body) {
+        return emitError12(new Error("Pass --body-file or --body, not both."), !!root.json);
+      }
+      let body;
+      if (opts.bodyFile) {
+        body = JSON.parse(await readFile44(opts.bodyFile, "utf8"));
+      } else if (opts.body) {
+        body = JSON.parse(opts.body);
+      }
+      const input = {
+        operation,
+        advertiserId,
+        query: opts.query,
+        ...body !== void 0 ? { body } : {},
+        // Only --commit sends dryRun:false; otherwise the service's own
+        // preview default is the contract (and reads ignore it).
+        ...opts.commit ? { dryRun: false } : {}
+      };
+      const result = await walmartAdsCall(input, { dataDirOverride: root.dataDir });
+      if (isWalmartFailure(result)) {
+        await trackWalmart(EventName.WalmartAdsCalled, "failed", startedAt, root.dataDir, {
+          operation,
+          advertiser_id: advertiserId,
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {},
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+          ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {},
+          ...opts.commit ? { committed: true } : {},
+          // Parameter NAMES only, never values (same rule as amazon call).
+          ...Object.keys(opts.query).length > 0 ? { query_keys: Object.keys(opts.query).sort() } : {}
+        });
+        return emitFailure6(result, !!root.json);
+      }
+      await trackWalmart(EventName.WalmartAdsCalled, "ok", startedAt, root.dataDir, {
+        operation,
+        advertiser_id: result.advertiserId,
+        environment: result.environment,
+        ...typeof result.dryRun === "boolean" ? { dry_run: result.dryRun } : {},
+        ...opts.commit ? { committed: true } : {},
+        ...typeof result.ready === "boolean" ? { ready: result.ready } : {},
+        ...typeof result.status === "number" ? { walmart_status: result.status } : {},
+        ...typeof result.rowCount === "number" ? { row_count: result.rowCount } : {}
+      });
+      const { ok: _ok, status: walmartStatus, ...rest } = result;
+      if (root.json) {
+        writeJson5({ status: "ok", ...rest, ...walmartStatus !== void 0 ? { walmart_status: walmartStatus } : {} });
+        return;
+      }
+      if (result.dryRun === true) {
+        process.stderr.write(
+          `
+\u2713 PREVIEW ONLY: ${result.operation} (advertiser ${result.advertiserId}, ${result.environment}). Nothing was sent to Walmart.
+  Re-run with --commit AFTER the user confirms this change.
+
+`
+        );
+        process.stdout.write(JSON.stringify(result.preview ?? rest, null, 2) + "\n");
+        return;
+      }
+      if (result.ready === false) {
+        process.stderr.write(
+          `
+\u2026 ${result.operation}: ${typeof result.message === "string" ? result.message : "not ready yet"}
+`
+        );
+        process.stdout.write(JSON.stringify(rest, null, 2) + "\n");
+        return;
+      }
+      process.stderr.write(
+        `
+\u2713 ${result.operation} (advertiser ${result.advertiserId}, ${result.environment})${opts.commit ? " COMMITTED" : ""}
+
+`
+      );
+      const shown = "payload" in result ? result.payload : rest;
+      process.stdout.write(JSON.stringify(shown, null, 2) + "\n");
+      return;
+    } catch (err) {
+      emitError12(err, !!root.json);
+    }
+  });
+}
+async function trackWalmart(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson5(obj) {
+  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+}
+function emitFailure6(failure2, json2) {
+  if (json2) {
+    writeJson5({
+      status: "error",
+      failure_kind: failure2.kind,
+      message: failure2.friendly,
+      detail: failure2.message,
+      http_status: failure2.httpStatus,
+      advertiser_id: failure2.advertiserId,
+      required_scope: failure2.requiredScope,
+      request_outcome: failure2.requestOutcome,
+      unrecognized_kind: failure2.unrecognizedKind
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure2.friendly}
+`);
+    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+`);
+  }
+  process.exitCode = exitCodeForWalmartKind(failure2.kind);
+}
+function emitError12(err, json2) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json2) {
+    writeJson5({ status: "error", message });
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function renderAdvertisers(advertisers) {
+  if (advertisers.length === 0) {
+    return "_(no Walmart advertisers are connected to this MixShift account)_";
+  }
+  const lines = ["| advertiser | id | ads | environment | access |", "|---|---|---|---|---|"];
+  for (const a of advertisers) {
+    const api = a.api === "sponsored_search" ? "Sponsored Search" : a.api === "display" ? "Display" : a.api;
+    const access3 = a.access === "read" ? "read only" : a.access;
+    lines.push(`| ${a.label} | ${a.advertiserId} | ${api} | ${a.environment} | ${access3} |`);
+  }
+  return lines.join("\n");
+}
+function renderOperations3(operations, families = []) {
+  if (operations.length === 0) {
+    return "_(no operations matched" + (families.length > 0 ? `; families: ${families.join(", ")}` : "") + ")_";
+  }
+  const byFamily = /* @__PURE__ */ new Map();
+  for (const op of operations) {
+    const list = byFamily.get(op.family) ?? [];
+    list.push(op);
+    byFamily.set(op.family, list);
+  }
+  const blocks = [];
+  for (const [family, ops] of byFamily) {
+    blocks.push(`## ${family}`);
+    for (const op of ops) {
+      const flags = [
+        op.method !== "GET" ? op.method : null,
+        op.write ? "WRITE (preview by default)" : null,
+        op.returns ? "downloads + parses the file" : null,
+        op.body ? `body: ${op.body}` : null
+      ].filter(Boolean).join("; ");
+      blocks.push(`- **${op.id}**${flags ? ` (${flags})` : ""}`);
+      if (op.requiredQuery && op.requiredQuery.length > 0) {
+        blocks.push(`  - required query: ${op.requiredQuery.join(", ")}`);
+      }
+      if (op.notes) blocks.push(`  - notes: ${op.notes}`);
+    }
+    blocks.push("");
+  }
+  return blocks.join("\n").trimEnd();
+}
+
 // src/commands/intelligence.ts
-import { readFile as readFile44, mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
-import { resolve as resolvePath3, dirname as dirname37 } from "node:path";
+import { readFile as readFile46, mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
+import { resolve as resolvePath3, dirname as dirname38 } from "node:path";
 
 // src/lib/intelligence/client.ts
 init_credentials();
@@ -92917,7 +94276,7 @@ async function getRunResult(runId, opts = {}) {
     return {
       ok: false,
       kind: "not_ready",
-      friendly: defaultFriendly2("not_ready"),
+      friendly: defaultFriendly3("not_ready"),
       runId
     };
   }
@@ -92932,7 +94291,7 @@ async function getRunResult(runId, opts = {}) {
   };
 }
 async function intelligenceRequest(spec, opts) {
-  const resolved = await resolveBaseAndToken2(opts);
+  const resolved = await resolveBaseAndToken3(opts);
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -92958,7 +94317,7 @@ async function intelligenceRequest(spec, opts) {
   try {
     token = await tokenProvider(false);
   } catch (err) {
-    return sessionFailureFromError2(err);
+    return sessionFailureFromError3(err);
   }
   let attempt = await doFetch(token);
   if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -92967,7 +94326,7 @@ async function intelligenceRequest(spec, opts) {
     try {
       token = await tokenProvider(true);
     } catch (err) {
-      return sessionFailureFromError2(err);
+      return sessionFailureFromError3(err);
     }
     attempt = await doFetch(token);
     if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -92985,17 +94344,17 @@ async function intelligenceRequest(spec, opts) {
   try {
     json2 = await res.json();
   } catch {
-    return statusOnlyFailure2(res.status);
+    return statusOnlyFailure3(res.status);
   }
-  if (isServerFailureEnvelope2(json2)) {
+  if (isServerFailureEnvelope3(json2)) {
     return toIntelligenceFailure(json2, res.status);
   }
   if (!res.ok) {
-    return statusOnlyFailure2(res.status, safeJsonPreview2(json2));
+    return statusOnlyFailure3(res.status, safeJsonPreview3(json2));
   }
   return { ok: true, json: json2, httpStatus: res.status };
 }
-async function resolveBaseAndToken2(opts) {
+async function resolveBaseAndToken3(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -93012,7 +94371,7 @@ async function resolveBaseAndToken2(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
-var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
+var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
   "not_enrolled",
   "unknown_insight",
   "bad_params",
@@ -93033,32 +94392,33 @@ var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
   "host_unreachable",
   "unknown"
 ]);
-function isServerFailureEnvelope2(json2) {
+function isServerFailureEnvelope3(json2) {
   return typeof json2 === "object" && json2 !== null && json2.ok === false;
 }
 function toIntelligenceFailure(json2, httpStatus) {
   const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const recognized = KNOWN_KINDS2.has(rawKind);
+  const recognized = KNOWN_KINDS3.has(rawKind);
   const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
   const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
   const message = typeof json2.message === "string" ? json2.message : void 0;
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly2(kind),
+    friendly: serverFriendly ?? defaultFriendly3(kind),
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
     runId: strOrUndef2(json2.runId),
-    insightId: strOrUndef2(json2.insightId)
+    insightId: strOrUndef2(json2.insightId),
+    reason: strOrUndef2(json2.reason)
   };
 }
-function statusOnlyFailure2(httpStatus, detail) {
+function statusOnlyFailure3(httpStatus, detail) {
   const kind = statusToKind2(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly2(kind),
+    friendly: defaultFriendly3(kind),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
@@ -93100,7 +94460,7 @@ function hostUnreachable2(message) {
     message
   };
 }
-function sessionFailureFromError2(err) {
+function sessionFailureFromError3(err) {
   const message = err instanceof Error ? err.message : String(err);
   const expired = /expired|refresh/i.test(message);
   return {
@@ -93110,7 +94470,7 @@ function sessionFailureFromError2(err) {
     message
   };
 }
-function defaultFriendly2(kind) {
+function defaultFriendly3(kind) {
   switch (kind) {
     case "not_enrolled":
       return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
@@ -93146,7 +94506,7 @@ function defaultFriendly2(kind) {
 function strOrUndef2(v) {
   return typeof v === "string" ? v : void 0;
 }
-function safeJsonPreview2(json2) {
+function safeJsonPreview3(json2) {
   try {
     const s = JSON.stringify(json2);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
@@ -93157,12 +94517,12 @@ function safeJsonPreview2(json2) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir31, open as open2, readFile as readFile43, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile28 } from "node:fs/promises";
-import { dirname as dirname36 } from "node:path";
+import { mkdir as mkdir31, open as open2, readFile as readFile45, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile28 } from "node:fs/promises";
+import { dirname as dirname37 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
   try {
-    const raw = await readFile43(path2, "utf8");
+    const raw = await readFile45(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -93173,7 +94533,7 @@ async function loadLedger2(path2) {
   }
 }
 async function saveLedger2(path2, handles) {
-  await mkdir31(dirname36(path2), { recursive: true });
+  await mkdir31(dirname37(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile28(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename23(tmp, path2);
@@ -93220,7 +94580,7 @@ async function acquireLock(lockPath) {
 }
 async function withLedgerLock(ledgerPath, fn) {
   const lockPath = `${ledgerPath}.lock`;
-  await mkdir31(dirname36(lockPath), { recursive: true }).catch(() => {
+  await mkdir31(dirname37(lockPath), { recursive: true }).catch(() => {
   });
   const acquired = await acquireLock(lockPath);
   try {
@@ -93327,9 +94687,9 @@ function summarizeForecastAnswer(result) {
 function forecastTelemetryFields(result) {
   const s = summarizeForecastAnswer(result);
   if (!s) return {};
-  const out = { service: "forecasting" };
+  const out2 = { service: "forecasting" };
   const put = (k, v) => {
-    if (v !== void 0) out[k] = v;
+    if (v !== void 0) out2[k] = v;
   };
   put("kind", s.kind);
   put("forecast_state", s.forecastState);
@@ -93343,8 +94703,8 @@ function forecastTelemetryFields(result) {
   put("vintage_age_days", s.vintageAgeDays);
   put("source", s.source);
   put("ytd_runs_past_report_month", s.ytdRunsPastReportMonth);
-  out.served = s.served;
-  return out;
+  out2.served = s.served;
+  return out2;
 }
 function vintagePhrase(s) {
   if (s.vintage === void 0) return "";
@@ -93510,7 +94870,7 @@ function registerCatalogCommand(intelligence) {
       const result = await catalog({ dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("catalog", void 0, result, startedAt, root.dataDir);
-        return emitFailure6(result, !!root.json);
+        return emitFailure7(result, !!root.json);
       }
       await track(
         {
@@ -93522,7 +94882,7 @@ function registerCatalogCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson5({ ok: true, entries: result.entries });
+        writeJson6({ ok: true, entries: result.entries });
       } else {
         process.stdout.write(`
 \u2713 ${result.entries.length} insight(s)
@@ -93531,7 +94891,7 @@ function registerCatalogCommand(intelligence) {
         process.stdout.write(renderCatalog(result.entries) + "\n");
       }
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -93558,8 +94918,8 @@ function registerRunCommand(intelligence) {
       const result = await run({ id, params }, { dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("run", id, result, startedAt, root.dataDir);
-        const hint = result.kind === "bad_params" ? await paramsHint(id, root.dataDir) : void 0;
-        return emitFailure6(result, !!root.json, hint);
+        const hint = result.kind === "bad_params" && !result.reason ? await paramsHint(id, root.dataDir) : void 0;
+        return emitFailure7(result, !!root.json, hint);
       }
       if (isAccepted(result)) {
         await recordIntelligenceRun(
@@ -93586,7 +94946,7 @@ function registerRunCommand(intelligence) {
           root.dataDir
         );
         if (root.json) {
-          writeJson5(result);
+          writeJson6(result);
         } else {
           process.stdout.write(
             `
@@ -93603,7 +94963,7 @@ Handle saved to intelligence-runs.json; any later call can list it: mixshift int
       }
       await emitInsightResult(id, result, opts.out, startedAt, root, brandSlugFromParams(params));
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -93618,7 +94978,7 @@ function registerPollCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("poll", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure6(result, !!root.json);
+        return emitFailure7(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, result.status, root.dataDir);
       await track(
@@ -93631,7 +94991,7 @@ function registerPollCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson5(result);
+        writeJson6(result);
       } else {
         process.stdout.write(
           `${result.ready ? "\u2713 done" : "\u2026 still running"}  status=${result.status}
@@ -93641,7 +95001,7 @@ function registerPollCommand(intelligence) {
         );
       }
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -93656,7 +95016,7 @@ function registerGetCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("get", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure6(result, !!root.json);
+        return emitFailure7(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, "DONE", root.dataDir);
       const handle = await ledgerHandleForRunId(runId, root.dataDir);
@@ -93672,7 +95032,7 @@ function registerGetCommand(intelligence) {
         runId
       );
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -93686,7 +95046,7 @@ function registerRunsCommand2(intelligence) {
       const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
       const shown = runs.slice(0, limit);
       if (root.json) {
-        writeJson5({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
+        writeJson6({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
         return;
       }
       if (shown.length === 0) {
@@ -93710,7 +95070,7 @@ Statuses are last-seen on THIS machine; poll refreshes from the server.
 `
       );
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -93720,7 +95080,7 @@ async function loadParams(file2, inline) {
   }
   let raw;
   if (file2) {
-    raw = await readFile44(file2, "utf8");
+    raw = await readFile46(file2, "utf8");
   } else if (inline) {
     raw = inline;
   } else {
@@ -93760,14 +95120,14 @@ async function paramsHint(id, dataDir) {
 }
 async function describeInsight(id, cmd, root) {
   if (!id) {
-    if (root.json) writeJson5({ ok: true, usage: cmd.helpInformation() });
+    if (root.json) writeJson6({ ok: true, usage: cmd.helpInformation() });
     else process.stdout.write(cmd.helpInformation());
     return;
   }
   const lookup = await catalogEntry(id, root.dataDir);
   if ("entry" in lookup) {
     if (root.json) {
-      writeJson5({ ok: true, id, entry: lookup.entry });
+      writeJson6({ ok: true, id, entry: lookup.entry });
       return;
     }
     process.stdout.write(cmd.helpInformation());
@@ -93782,7 +95142,7 @@ ${renderCatalog([lookup.entry])}
   const failure2 = "failure" in lookup ? lookup.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
   const hint = "failure" in lookup ? hintForKind(failure2.kind) : "Ids: mixshift intelligence catalog";
   if (root.json) {
-    writeJson5({ ok: false, id, kind: failure2.kind, message: failure2.friendly, detail: failure2.message, ...hint ? { hint } : {} });
+    writeJson6({ ok: false, id, kind: failure2.kind, message: failure2.friendly, detail: failure2.message, ...hint ? { hint } : {} });
   } else {
     process.stdout.write(cmd.helpInformation());
     process.stderr.write(`
@@ -93797,12 +95157,12 @@ function merchantEcho(params) {
   const merchant = params.merchant;
   if (typeof merchant !== "object" || merchant === null || Array.isArray(merchant)) return {};
   const m = merchant;
-  const out = {};
+  const out2 = {};
   if (typeof m.brand === "string" && m.brand.trim() && isSafeBrandSlug(m.brand.trim())) {
-    out.brand = m.brand.trim();
+    out2.brand = m.brand.trim();
   }
-  if (typeof m.sellerId === "string" && m.sellerId.trim()) out.seller_id = m.sellerId.trim();
-  return out;
+  if (typeof m.sellerId === "string" && m.sellerId.trim()) out2.seller_id = m.sellerId.trim();
+  return out2;
 }
 function brandSlugFromParams(params) {
   return merchantEcho(params).brand;
@@ -93830,7 +95190,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir,
     runIdForTracking
   );
-  await mkdir32(dirname37(artifactPath), { recursive: true });
+  await mkdir32(dirname38(artifactPath), { recursive: true });
   await writeFile29(artifactPath, JSON.stringify(result, null, 2), "utf8");
   await track(
     {
@@ -93849,7 +95209,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir
   );
   if (root.json) {
-    writeJson5({ ...result, artifact_path: artifactPath });
+    writeJson6({ ...result, artifact_path: artifactPath });
     return;
   }
   process.stdout.write("\n" + renderHeadline(headline) + "\n");
@@ -93903,12 +95263,13 @@ async function trackFailure3(op, insightId, failure2, startedAt, dataDir, runId)
     dataDir
   );
 }
-function emitFailure6(failure2, json2, hintOverride) {
+function emitFailure7(failure2, json2, hintOverride) {
   const hint = hintOverride ?? hintForKind(failure2.kind);
   if (json2) {
-    writeJson5({
+    writeJson6({
       ok: false,
       kind: failure2.kind,
+      ...failure2.reason ? { reason: failure2.reason } : {},
       message: failure2.friendly,
       detail: failure2.message,
       http_status: failure2.httpStatus,
@@ -93917,7 +95278,7 @@ function emitFailure6(failure2, json2, hintOverride) {
     });
   } else {
     process.stderr.write(`
-\u2717 (${failure2.kind}) ${failure2.friendly}
+\u2717 (${failure2.kind}${failure2.reason ? `: ${failure2.reason}` : ""}) ${failure2.friendly}
 `);
     if (failure2.message) process.stderr.write(`  detail: ${failure2.message}
 `);
@@ -93926,17 +95287,17 @@ function emitFailure6(failure2, json2, hintOverride) {
   }
   process.exitCode = exitCodeForKind2(failure2.kind);
 }
-function emitError12(err, json2) {
+function emitError13(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
   if (json2) {
-    writeJson5({ ok: false, kind: "unknown", message });
+    writeJson6({ ok: false, kind: "unknown", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
   }
   process.exitCode = 1;
 }
-function writeJson5(obj) {
+function writeJson6(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
 function wrapIndented(text, width, indent) {
@@ -93971,12 +95332,12 @@ init_classify();
 init_api_base();
 var MAX_BUDGET_MONTHS = 24;
 var MONTH_RE3 = /^(\d{4})-(0[1-9]|1[0-2])$/;
-var SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)$/;
+var SCOPE_RE = /^src:([A-Za-z0-9_]+):(\d+)(?::scope:([a-z0-9]{4,32}))?$/;
 var SUB_BRAND_RE = /^src:[A-Za-z0-9_]+:\d+:scope:/;
 function canonicalScopeId(raw) {
   const m = SCOPE_RE.exec(raw.trim());
   if (!m) return null;
-  return `src:${m[1].toLowerCase()}:${Number(m[2])}`;
+  return `src:${m[1].toLowerCase()}:${Number(m[2])}${m[3] ? `:scope:${m[3]}` : ""}`;
 }
 function isSubBrandScope(raw) {
   return SUB_BRAND_RE.test(raw.trim());
@@ -94012,14 +95373,14 @@ function parseBudgetEntries(values) {
 }
 function parseMonths(values) {
   if (values.length === 0) throw new Error("Give at least one month: --month YYYY-MM (repeat per month).");
-  const out = /* @__PURE__ */ new Set();
+  const out2 = /* @__PURE__ */ new Set();
   for (const raw of values) {
     const month = raw.trim();
     if (!MONTH_RE3.test(month)) throw new Error(`"${raw}" is not a month; write it as YYYY-MM (e.g. 2026-10).`);
-    out.add(month);
+    out2.add(month);
   }
-  if (out.size > MAX_BUDGET_MONTHS) throw new Error(`At most ${MAX_BUDGET_MONTHS} months per call; ${out.size} were given.`);
-  return [...out].sort();
+  if (out2.size > MAX_BUDGET_MONTHS) throw new Error(`At most ${MAX_BUDGET_MONTHS} months per call; ${out2.size} were given.`);
+  return [...out2].sort();
 }
 function utcMonth(d) {
   return d.toISOString().slice(0, 7);
@@ -94055,9 +95416,9 @@ function monthOfKey(scopeId, key) {
   return /^\d{4}-(0[1-9]|1[0-2])-01$/.test(rest) ? rest.slice(0, 7) : null;
 }
 function withoutStamps(doc) {
-  const out = {};
-  for (const [k, v] of Object.entries(doc)) if (!STAMPED.has(k)) out[k] = v;
-  return out;
+  const out2 = {};
+  for (const [k, v] of Object.entries(doc)) if (!STAMPED.has(k)) out2[k] = v;
+  return out2;
 }
 function planBudgetSet(scopeId, stored, entries, note) {
   const writes = [];
@@ -94129,12 +95490,12 @@ function planBudgetClear(scopeId, stored, months) {
   return { writes, notSet };
 }
 function budgetRows(stored) {
-  const out = [];
+  const out2 = [];
   for (const row of stored.values()) {
     const amount = budgetOf(row.doc);
     if (amount === null) continue;
     const month = typeof row.doc.month === "string" ? row.doc.month.slice(0, 7) : row.key.slice(-10, -3);
-    out.push({
+    out2.push({
       month,
       sponsored_budget: amount,
       note: typeof row.doc.note === "string" ? row.doc.note : null,
@@ -94142,7 +95503,7 @@ function budgetRows(stored) {
       updated_by: row.updated_by ?? null
     });
   }
-  return out.sort((a, b) => a.month < b.month ? -1 : a.month > b.month ? 1 : 0);
+  return out2.sort((a, b) => a.month < b.month ? -1 : a.month > b.month ? 1 : 0);
 }
 var KNOWN = /* @__PURE__ */ new Set([
   "conflict",
@@ -94192,6 +95553,9 @@ function friendlyFor(kind) {
 }
 function failure(kind, extra = {}) {
   return { ok: false, kind, friendly: friendlyFor(kind), ...extra };
+}
+async function appStateRequest(method, path2, body, opts) {
+  return request(method, path2, body, opts);
 }
 async function request(method, path2, body, opts) {
   let apiBase = opts.apiBaseOverride;
@@ -94314,13 +95678,150 @@ async function applyBudgetPlan(scopeId, plan, opts = {}) {
 
 // src/commands/forecast.ts
 init_telemetry();
+
+// src/lib/forecast/sub-brand.ts
+var MAX_LABELS = 100;
+var MAX_LABEL_LENGTH = 200;
+var UNSAFE_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
+var SUB_BRAND_ID_RE = /^src:([a-z0-9_]+):(\d+):scope:([a-z0-9]{4,32})$/;
+function cleanLabels(values, flag) {
+  const out2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const raw of values) {
+    const v = raw.trim();
+    if (v.length === 0) continue;
+    if (v.length > MAX_LABEL_LENGTH) throw new Error(`${flag}: a label is at most ${MAX_LABEL_LENGTH} characters.`);
+    if (UNSAFE_TEXT_RE.test(v)) throw new Error(`${flag}: a label is plain text on one line.`);
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out2.push(v);
+  }
+  if (out2.length > MAX_LABELS) throw new Error(`${flag}: at most ${MAX_LABELS} labels.`);
+  return out2;
+}
+function nameProblem(name) {
+  const n = name.trim();
+  if (n.length === 0) return "a name is required";
+  if (n.length > 200) return "a name is at most 200 characters";
+  if (UNSAFE_TEXT_RE.test(n)) return "a name is plain text on one line";
+  return null;
+}
+function canonicalSubBrandId(raw) {
+  const m = /^src:([A-Za-z0-9_]+):(\d+):scope:([a-z0-9]{4,32})$/.exec(raw.trim());
+  return m ? `src:${m[1].toLowerCase()}:${Number(m[2])}:scope:${m[3]}` : null;
+}
+function scopeKeyOf(scopeId) {
+  return SUB_BRAND_ID_RE.exec(scopeId)?.[3] ?? null;
+}
+var sameLabels = (a, b) => {
+  const norm2 = (xs) => [...new Set(xs.map((x) => x.trim().toLowerCase()))].sort().join("\0");
+  return norm2(a) === norm2(b);
+};
+function findMatching(subBrands, want) {
+  return subBrands.find((s) => s.kind === want.kind && sameLabels(s.itemValues, want.itemValues) && sameLabels(s.campaignValues, want.campaignValues)) ?? null;
+}
+function toSubBrand(d) {
+  const scopeId = typeof d.scopeId === "string" ? d.scopeId : typeof d.id === "string" ? canonicalSubBrandId(d.id) : null;
+  const key = scopeId ? scopeKeyOf(scopeId) : null;
+  if (!scopeId || !key) return null;
+  const strings = (x) => Array.isArray(x) ? x.filter((v) => typeof v === "string") : [];
+  return {
+    scopeId,
+    scopeKey: key,
+    merchantId: typeof d.merchantId === "string" ? d.merchantId : scopeId.slice(0, scopeId.indexOf(":scope:")),
+    kind: d.kind === "item_group" ? "item_group" : "sub_brand",
+    name: typeof d.name === "string" ? d.name : "",
+    itemValues: strings(d.itemValues),
+    campaignValues: strings(d.campaignValues),
+    version: typeof d.version === "number" ? d.version : null
+  };
+}
+async function listSubBrands(legacySellerId, opts = {}) {
+  const q = legacySellerId === null ? "" : `?legacy_seller_id=${legacySellerId}`;
+  const r = await appStateRequest("GET", `/api/app-state/forecasting/scopes${q}`, void 0, opts);
+  if (!r.ok) return r;
+  const defs = Array.isArray(r.json.definitions) ? r.json.definitions : [];
+  const subBrands = defs.map((d) => toSubBrand(d ?? {})).filter((s) => s !== null);
+  return {
+    ok: true,
+    merchantId: typeof r.json.merchant_id === "string" ? r.json.merchant_id : null,
+    subBrands,
+    skipped: typeof r.json.skipped === "number" ? r.json.skipped : 0
+  };
+}
+async function ensureSubBrand(input, opts = {}) {
+  const existing = await listSubBrands(input.legacySellerId, opts);
+  if (!existing.ok) return existing;
+  const match = findMatching(existing.subBrands, input);
+  if (match) return { ok: true, created: false, subBrand: match };
+  if (opts.dryRun) return { ok: true, created: false, subBrand: null };
+  const r = await appStateRequest(
+    "POST",
+    "/api/app-state/forecasting/scopes",
+    {
+      create: { legacySellerId: input.legacySellerId, kind: input.kind, name: input.name.trim(), itemValues: input.itemValues, campaignValues: input.campaignValues },
+      reason: "Sub-brand defined with the MixShift plugin"
+    },
+    opts
+  );
+  if (!r.ok) return r;
+  const d = r.json.definition ?? {};
+  const subBrand = toSubBrand({ ...d, version: r.json.version });
+  if (!subBrand) return { ok: false, kind: "unknown", friendly: "The MixShift service answered without the new sub-brand." };
+  return { ok: true, created: true, subBrand };
+}
+async function subBrandExists(scopeId, opts = {}) {
+  const r = await versionOf(`fb:scope_def:${scopeId}`, opts);
+  return r.ok ? { ok: true, exists: r.version !== null } : r;
+}
+async function versionOf(key, opts) {
+  const r = await appStateRequest("GET", `/api/app-state/forecasting/doc?key=${encodeURIComponent(key)}`, void 0, opts);
+  if (!r.ok) return r.kind === "not_found" ? { ok: true, version: null } : r;
+  return { ok: true, version: typeof r.json.version === "number" ? r.json.version : null };
+}
+async function planSubBrandRemoval(scopeId, opts = {}) {
+  const writes = [];
+  const def = await versionOf(`fb:scope_def:${scopeId}`, opts);
+  if (!def.ok) return def;
+  if (def.version !== null) writes.push({ key: `fb:scope_def:${scopeId}`, expected_version: def.version, doc: null });
+  let months = 0;
+  let after = null;
+  for (let page = 0; page < 100; page++) {
+    const q = new URLSearchParams({ prefix: monthPrefix(scopeId), limit: "500" });
+    if (after) q.set("after", after);
+    const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q.toString()}`, void 0, opts);
+    if (!r.ok) return r;
+    const docs = Array.isArray(r.json.docs) ? r.json.docs : [];
+    for (const d of docs) {
+      if (typeof d.key === "string" && typeof d.version === "number") {
+        writes.push({ key: d.key, expected_version: d.version, doc: null });
+        months += 1;
+      }
+    }
+    after = typeof r.json.next_after === "string" ? r.json.next_after : null;
+    if (!after) break;
+  }
+  const settings = await versionOf(`fb:account:${scopeId}`, opts);
+  if (!settings.ok) return settings;
+  if (settings.version !== null) writes.push({ key: `fb:account:${scopeId}`, expected_version: settings.version, doc: null });
+  return { ok: true, plan: { scopeId, writes, definition: def.version !== null, months, settings: settings.version !== null } };
+}
+async function applySubBrandRemoval(plan, opts = {}) {
+  if (plan.writes.length === 0) return { ok: true, deleted: 0 };
+  const r = await appStateRequest("POST", "/api/app-state/forecasting/batch", { writes: plan.writes, reason: "Sub-brand removed with the MixShift plugin" }, opts);
+  if (!r.ok) return r;
+  return { ok: true, deleted: plan.writes.length };
+}
+
+// src/commands/forecast.ts
 function collect(value, previous = []) {
   return [...previous, value];
 }
 function registerForecastCommands(program3) {
-  const forecast = program3.command("forecast").description("Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on.");
+  const forecast = program3.command("forecast").description("Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on, and the sub-brands a forecast can be run for.");
+  registerSubBrandCommands(forecast);
   const budget = forecast.command("budget").description(
-    "Show, set or clear an account's monthly sponsored-ads budget for its forecast. The scope is the scope_id of a forecast answer (FCT-BASELINE-01)."
+    "Show, set or clear the monthly sponsored-ads budget of an account's forecast, or of a sub-brand's. The scope is the scope_id of a forecast answer (FCT-BASELINE-01)."
   );
   budget.command("show").description("List the months that have a budget entered.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -94334,10 +95835,10 @@ function registerForecastCommands(program3) {
       { event_name: EventName.ForecastBudgetShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, months: rows.length } },
       root.dataDir
     );
-    if (root.json) return writeJson6({ ok: true, scope_id: scopeId, budgets: rows });
+    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, budgets: rows });
     if (rows.length === 0) {
       process.stdout.write(`
-No budget entered for ${scopeId}: the forecast estimates spend from the account's history.
+No budget entered for ${scopeId}: the forecast estimates spend from ${isSubBrandScope(scopeId) ? "the sub-brand's" : "the account's"} history.
 `);
       return;
     }
@@ -94374,6 +95875,13 @@ Sponsored-ads budgets for ${scopeId}:
     const note = opts.note?.trim() || void 0;
     const problem = note === void 0 ? null : noteProblem(note);
     if (problem) return badInput(new Error(`--note: ${problem}.`), !!root.json);
+    if (isSubBrandScope(scopeId)) {
+      const defined = await subBrandExists(scopeId, { dataDirOverride: root.dataDir });
+      if (!defined.ok) return fail2("set", scopeId, defined, startedAt, root, entries.length);
+      if (!defined.exists) {
+        return badInput(new Error(`${scopeId} is not a defined sub-brand. Define it with \`mixshift forecast sub-brand add\`, or use the scope_id from its forecast answer.`), !!root.json);
+      }
+    }
     const r = await applyBudgetPlan(scopeId, (rows) => planBudgetSet(scopeId, rows, entries, note), {
       dataDirOverride: root.dataDir,
       dryRun: opts.dryRun === true
@@ -94381,7 +95889,7 @@ Sponsored-ads budgets for ${scopeId}:
     if (!r.ok) return fail2("set", scopeId, r, startedAt, root, entries.length);
     if (opts.dryRun) {
       const changes = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null, to: w.doc?.adBudget?.value ?? null }));
-      if (root.json) return writeJson6({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
+      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -94405,7 +95913,7 @@ Already holding that budget: ${r.plan.unchanged.join(", ")}
       root.dataDir
     );
     if (root.json) {
-      return writeJson6({
+      return writeJson7({
         ok: true,
         scope_id: scopeId,
         written: r.written,
@@ -94440,7 +95948,7 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
     if (!r.ok) return fail2("clear", scopeId, r, startedAt, root, months.length);
     if (opts.dryRun) {
       const clearing = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null }));
-      if (root.json) return writeJson6({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
+      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
       process.stdout.write(`
 Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} (${formatAmount(c.from ?? 0)})`).join(", ") || "nothing"}
 `);
@@ -94455,7 +95963,7 @@ Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} 
       },
       root.dataDir
     );
-    if (root.json) return writeJson6({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
+    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
     process.stdout.write(
       `
 \u2713 ${r.written} month(s) cleared for ${scopeId}` + (r.plan.notSet.length ? `; no budget was entered for ${r.plan.notSet.join(", ")}` : "") + ".\n"
@@ -94467,18 +95975,179 @@ function scopeOrFail(raw, json2) {
   if (scopeId) return scopeId;
   badInput(
     new Error(
-      isSubBrandScope(raw) ? `"${raw}" is a sub-brand; a budget is entered for the account as a whole (src:<database>:<seller id>). Sub-brand forecasts are set in the forecasting app.` : `"${raw}" is not a forecast scope. Use the scope_id from the forecast answer, e.g. src:<database>:<seller id>.`
+      isSubBrandScope(raw) ? `"${raw}" is not a sub-brand scope this service keeps: the key after :scope: is 4 to 32 lowercase letters and digits. Use the scope_id from the forecast answer or from \`mixshift forecast sub-brand list\`.` : `"${raw}" is not a forecast scope. Use the scope_id from the forecast answer, e.g. src:<database>:<seller id> (or ...:scope:<key> for a sub-brand).`
     ),
     json2
   );
   return null;
+}
+function registerSubBrandCommands(forecast) {
+  const sub = forecast.command("sub-brand").description(
+    "The sub-brands and item groups of an account: one brand inside a seller account, named by its product and campaign labels, that a forecast can be run for on its own (FCT-READINESS-01 / FCT-BASELINE-01 with scopeKey)."
+  );
+  sub.command("list").description("List an account's sub-brands (or every one in your database, without --seller).").option("--seller <id>", "the seller id (legacy seller id) of the account").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const seller = opts.seller === void 0 ? null : sellerOrFail(opts.seller, !!root.json);
+    if (seller === void 0) return;
+    const r = await listSubBrands(seller, { dataDirOverride: root.dataDir });
+    if (!r.ok) return subBrandFail("list", null, seller, r, startedAt, root);
+    await track(
+      { event_name: EventName.ForecastSubBrandListed, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { seller, count: r.subBrands.length, skipped: r.skipped } },
+      root.dataDir
+    );
+    if (root.json) return writeJson7({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
+    if (r.subBrands.length === 0) {
+      process.stdout.write(`
+No sub-brands defined${seller === null ? "" : ` for seller ${seller}`}.
+`);
+      return;
+    }
+    process.stdout.write(`
+Sub-brands${seller === null ? "" : ` of seller ${seller}`}:
+
+`);
+    for (const s of r.subBrands) process.stdout.write(`  ${s.scopeId}  ${s.name}  ${describeLabels(s)}
+`);
+    if (r.skipped) process.stdout.write(`
+${r.skipped} stored definition(s) could not be read and are not listed.
+`);
+  });
+  sub.command("add").description(
+    "Define a sub-brand of an account by its labels. If one with exactly these labels exists, it is reused, not duplicated. Labels are compared as the warehouse compares them (case-insensitive)."
+  ).requiredOption("--seller <id>", "the seller id (legacy seller id) of the account the brand sits inside").requiredOption("--name <name>", "what to call it (shown in the forecasting app)").requiredOption("--item-label <label>", "a product label: the brand on Seller Central items, the custom brand on Vendor Central items (or the item group with --item-group); repeat per label", collect, []).option("--campaign-label <label>", "a campaign label (the brand or item group on campaigns); repeat per label. Without one the sub-brand has no ad spend and cannot be forecast", collect, []).option("--item-group", "an item group (ItemGroup labels) rather than a sub-brand (Brand labels)").option("--dry-run", "show what would be defined, without defining it").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const seller = sellerOrFail(opts.seller, !!root.json);
+    if (seller === void 0 || seller === null) return;
+    const problem = nameProblem(opts.name);
+    if (problem) return badInput(new Error(`--name: ${problem}.`), !!root.json);
+    let itemValues;
+    let campaignValues;
+    try {
+      itemValues = cleanLabels(opts.itemLabel, "--item-label");
+      campaignValues = cleanLabels(opts.campaignLabel, "--campaign-label");
+    } catch (err) {
+      return badInput(err, !!root.json);
+    }
+    if (itemValues.length === 0) return badInput(new Error("--item-label: at least one product label; a sub-brand with none holds no sales."), !!root.json);
+    const kind = opts.itemGroup ? "item_group" : "sub_brand";
+    const r = await ensureSubBrand({ legacySellerId: seller, kind, name: opts.name, itemValues, campaignValues }, { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
+    if (!r.ok) return subBrandFail("add", null, seller, r, startedAt, root);
+    const noAds = campaignValues.length === 0 ? "It names no campaign label, so it has no ad spend and a forecast cannot train on it." : null;
+    if (opts.dryRun && r.subBrand === null) {
+      if (root.json) return writeJson7({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
+      process.stdout.write(`
+Would define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}
+`);
+      if (noAds) process.stdout.write(`
+${noAds}
+`);
+      return;
+    }
+    const s = r.subBrand;
+    if (!opts.dryRun) {
+      await track(
+        {
+          event_name: EventName.ForecastSubBrandDefined,
+          outcome: "ok",
+          duration_ms: Date.now() - startedAt,
+          payload: { scope_id: s.scopeId, seller, kind, created: r.created, item_values: itemValues.length, campaign_values: campaignValues.length }
+        },
+        root.dataDir
+      );
+    }
+    if (root.json) return writeJson7({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
+    process.stdout.write(
+      r.created ? `
+\u2713 Defined ${s.name}: ${s.scopeId}
+  ${describeLabels(s)}
+` : `
+Already defined with these labels: ${s.scopeId} (${s.name}). Reusing it.
+`
+    );
+    if (noAds) process.stdout.write(`
+${noAds}
+`);
+    process.stdout.write(`
+Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-01 (merchant {legacySellerId: ${seller}}).
+`);
+  });
+  sub.command("remove").description(
+    "Remove a sub-brand: its definition, its budgets and its settings. Shows what would go; --apply removes it. A forecast the forecasting app published for it stays until it is withdrawn in the app."
+  ).requiredOption("--scope <scope_id>", "the sub-brand scope, src:<database>:<seller id>:scope:<key>").option("--apply", "remove it (without this, nothing is removed)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const scopeId = canonicalSubBrandId(opts.scope);
+    if (!scopeId) return badInput(new Error(`"${opts.scope}" is not a sub-brand scope (src:<database>:<seller id>:scope:<key>).`), !!root.json);
+    const planned = await planSubBrandRemoval(scopeId, { dataDirOverride: root.dataDir });
+    if (!planned.ok) return subBrandFail("remove", scopeId, null, planned, startedAt, root);
+    const p = planned.plan;
+    const what = { definition: p.definition, months: p.months, settings: p.settings };
+    if (!opts.apply) {
+      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
+      if (p.writes.length === 0) {
+        process.stdout.write(`
+Nothing is stored under ${scopeId}.
+`);
+        return;
+      }
+      process.stdout.write(`
+Would remove ${scopeId} (nothing removed): ${p.definition ? "its definition" : "no definition"}, ${p.months} month row(s), ${p.settings ? "its settings" : "no settings"}. Re-run with --apply.
+`);
+      process.stdout.write("A forecast the forecasting app published for it is not removed; withdraw it in the app.\n");
+      return;
+    }
+    const r = await applySubBrandRemoval(p, { dataDirOverride: root.dataDir });
+    if (!r.ok) return subBrandFail("remove", scopeId, null, r, startedAt, root);
+    await track(
+      { event_name: EventName.ForecastSubBrandRemoved, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, deleted: r.deleted, months: p.months } },
+      root.dataDir
+    );
+    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
+    process.stdout.write(r.deleted === 0 ? `
+Nothing was stored under ${scopeId}.
+` : `
+\u2713 Removed ${scopeId} (${r.deleted} stored document(s)).
+`);
+    process.stdout.write("A forecast the forecasting app published for it is not removed; withdraw it in the app.\n");
+  });
+}
+function subBrandJson(s) {
+  return { scope_id: s.scopeId, scope_key: s.scopeKey, merchant_id: s.merchantId, kind: s.kind, name: s.name, item_values: s.itemValues, campaign_values: s.campaignValues, version: s.version };
+}
+function describeLabels(s) {
+  const what = s.kind === "item_group" ? "item group" : "brand";
+  return `products with ${what} label ${s.itemValues.map((v) => `"${v}"`).join(" or ") || "(none)"}; campaigns with ${what} label ${s.campaignValues.map((v) => `"${v}"`).join(" or ") || "(none)"}`;
+}
+function sellerOrFail(raw, json2) {
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0 && /^\d+$/.test(raw.trim())) return n;
+  badInput(new Error(`--seller: "${raw}" is not a seller id (the account's legacy seller id, a whole number).`), json2);
+  return void 0;
+}
+async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
+  await track(
+    {
+      event_name: EventName.ForecastSubBrandFailed,
+      outcome: "failed",
+      duration_ms: Date.now() - startedAt,
+      payload: { op, scope_id: scopeId, seller, failure_kind: f.kind, http_status: f.httpStatus ?? null, ...f.unrecognizedKind ? { unrecognized_kind: f.unrecognizedKind } : {} }
+    },
+    root.dataDir
+  );
+  if (root.json) writeJson7({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
+  else process.stderr.write(`
+\u2717 (${f.kind}) ${f.friendly}
+`);
+  process.exitCode = exitCodeFor4(f);
 }
 function formatAmount(n) {
   return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 function badInput(err, json2) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) writeJson6({ ok: false, kind: "bad_input", message });
+  if (json2) writeJson7({ ok: false, kind: "bad_input", message });
   else process.stderr.write(`
 \u2717 ${message}
 `);
@@ -94525,19 +96194,19 @@ async function fail2(op, scopeId, f, startedAt, root, months) {
     },
     root.dataDir
   );
-  if (root.json) writeJson6({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson7({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
   process.exitCode = exitCodeFor4(f);
 }
-function writeJson6(obj) {
+function writeJson7(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
 }
 
 // src/commands/report.ts
-import { readFile as readFile45, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir6 } from "node:fs/promises";
-import { dirname as dirname38, join as join26, resolve as resolve2 } from "node:path";
+import { readFile as readFile47, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir6 } from "node:fs/promises";
+import { dirname as dirname39, join as join27, resolve as resolve2 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -95123,12 +96792,12 @@ function readServedFormat(v) {
   const r = asRecord(v);
   if (!r) return void 0;
   if (typeof r.display !== "string" || r.display === "") return void 0;
-  const out = { display: r.display };
+  const out2 = { display: r.display };
   if (typeof r.decimals === "number" && Number.isInteger(r.decimals)) {
-    if (r.decimals >= 0 && r.decimals <= MAX_SERVED_DECIMALS) out.decimals = r.decimals;
+    if (r.decimals >= 0 && r.decimals <= MAX_SERVED_DECIMALS) out2.decimals = r.decimals;
   }
-  if (typeof r.deltaUnit === "string") out.deltaUnit = r.deltaUnit;
-  return out;
+  if (typeof r.deltaUnit === "string") out2.deltaUnit = r.deltaUnit;
+  return out2;
 }
 var MAX_SERVED_DECIMALS = 20;
 function formatOf(...candidates) {
@@ -95352,7 +97021,7 @@ function extractEvidence(whole, selection) {
   if (!statements) return none;
   const evidenceVersion = typeof block?.evidenceVersion === "string" && block.evidenceVersion.trim().length > 0 ? block.evidenceVersion : null;
   const prefix = selection ? `${selection.split(".")[0]}.evidence` : "evidence";
-  const out = [];
+  const out2 = [];
   const used = /* @__PURE__ */ new Set();
   for (const [metric, groupsRaw] of Object.entries(statements)) {
     const groups = Array.isArray(groupsRaw) ? groupsRaw : [];
@@ -95374,7 +97043,7 @@ function extractEvidence(whole, selection) {
       if (kind !== null) findingIdsByKind.set(kind, [...findingIdsByKind.get(kind) ?? [], id]);
       const questions = Array.isArray(g.questions) ? g.questions : [];
       const lines = questions.map((q) => asRecord(q)?.question).filter((q) => typeof q === "string" && q.trim().length > 0);
-      out.push({
+      out2.push({
         id,
         ...kind ? { kind } : {},
         ...parentKind !== null ? { parent_kind: parentKind } : {},
@@ -95386,7 +97055,7 @@ function extractEvidence(whole, selection) {
       });
     });
   }
-  return { statements: collapseRepeatedCards(out), evidenceVersion };
+  return { statements: collapseRepeatedCards(out2), evidenceVersion };
 }
 function collapseRepeatedCards(entries) {
   const kept = [];
@@ -95449,10 +97118,10 @@ function selectFromComposite(doc, selection) {
       `This composite's '${periodKey}' block has no '${domainKey}' envelope.`
     );
   }
-  const out = { envelope };
+  const out2 = { envelope };
   const crossDomain = domainKey === "ops" ? asRecord(period.crossDomain) : void 0;
-  if (crossDomain) out.crossDomain = crossDomain;
-  return out;
+  if (crossDomain) out2.crossDomain = crossDomain;
+  return out2;
 }
 function extractFiguresUnprefixed(response, selection) {
   let rawDoc = asRecord(response) ?? {};
@@ -95748,11 +97417,11 @@ function extractFigures(response, selection) {
   const doc = extractFiguresUnprefixed(response, selection);
   return prefixSelectionIds(doc, selection);
 }
-function checkFigures(out) {
+function checkFigures(out2) {
   const findings = [];
-  const figs = new Map(out.figures.map((f) => [f.id, f]));
+  const figs = new Map(out2.figures.map((f) => [f.id, f]));
   const REQUIRED_FIELDS = ["id", "label", "value", "unit", "basis", "source_path"];
-  for (const f of out.figures) {
+  for (const f of out2.figures) {
     for (const req of REQUIRED_FIELDS) {
       const v = f[req];
       if (v === void 0 || v === null || v === "") {
@@ -95764,7 +97433,7 @@ function checkFigures(out) {
     }
   }
   const invalidIds = /* @__PURE__ */ new Set();
-  for (const f of out.figures) {
+  for (const f of out2.figures) {
     const v = f.value;
     if (v === void 0 || v === null || v === "") continue;
     if (typeof v !== "number" || !Number.isFinite(v)) {
@@ -95776,7 +97445,7 @@ function checkFigures(out) {
       });
     }
   }
-  for (const f of out.figures) {
+  for (const f of out2.figures) {
     if (f.id.endsWith(".delta") && !f.id.includes(".bridge.")) {
       if (invalidIds.has(f.id)) continue;
       const cmpComparison = f.comparable_comparison_value;
@@ -95816,8 +97485,8 @@ function checkFigures(out) {
       }
     }
   }
-  if (out.source.bridgeDomain === "ads") {
-    const prefix = periodPrefixOf(out.source.selection);
+  if (out2.source.bridgeDomain === "ads") {
+    const prefix = periodPrefixOf(out2.source.selection);
     for (const side of ["p1", "p2"]) {
       const parts = [
         `${prefix}ads.ad_sales_same_sku.`,
@@ -95840,7 +97509,7 @@ function checkFigures(out) {
     }
   }
   const legs = /* @__PURE__ */ new Map();
-  for (const f of out.figures) {
+  for (const f of out2.figures) {
     if (f.id.includes(".bridge.") && f.footing_ok) {
       const stem = f.id.slice(0, f.id.lastIndexOf("."));
       const arr = legs.get(stem) ?? [];
@@ -95848,7 +97517,7 @@ function checkFigures(out) {
       legs.set(stem, arr);
     }
   }
-  const figById = new Map(out.figures.map((fig2) => [fig2.id, fig2]));
+  const figById = new Map(out2.figures.map((fig2) => [fig2.id, fig2]));
   const SOURCE_LEG = /\.ads_source_(same|other|view_through)$/;
   const SOURCE_COMPONENT = {
     same: "same_sku",
@@ -96180,9 +97849,9 @@ var RULE_RE = /^[A-Z0-9][A-Z0-9:-]{0,63}$/;
 var ID_RE = /^[A-Za-z0-9_.:-]{1,120}$/;
 var isRec3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 function compact(o) {
-  const out = {};
-  for (const [k, v] of Object.entries(o)) if (v !== void 0) out[k] = v;
-  return out;
+  const out2 = {};
+  for (const [k, v] of Object.entries(o)) if (v !== void 0) out2[k] = v;
+  return out2;
 }
 function vintageOf(v) {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1e6 ? v : void 0;
@@ -96321,7 +97990,7 @@ init_telemetry();
 
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join25 } from "node:path";
+import { join as join26 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -96547,7 +98216,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join25(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync2(join26(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -96731,9 +98400,9 @@ function renderMonthlyReport(doc, opts = {}) {
     let html;
     if (section.shared_block_ref) {
       const ref = section.shared_block_ref;
-      const cached4 = sharedRendered.get(ref);
-      if (cached4 !== void 0) {
-        html = cached4;
+      const cached5 = sharedRendered.get(ref);
+      if (cached5 !== void 0) {
+        html = cached5;
       } else {
         html = renderSectionBody(block, figureIdx, claimIdx, registry2, currencyCode);
         sharedRendered.set(ref, html);
@@ -96774,7 +98443,7 @@ async function trackForecast(build, dataDir) {
 }
 async function readJson(file2) {
   try {
-    return JSON.parse(await readFile45(file2, "utf8"));
+    return JSON.parse(await readFile47(file2, "utf8"));
   } catch (err) {
     throw new UserFacingError(
       `Could not read ${file2} as JSON: ${err instanceof Error ? err.message : String(err)}`,
@@ -96790,7 +98459,7 @@ async function assertFiguresReadable(explicit) {
   for (const path2 of [...new Set(explicit.map((p) => resolve2(p)))]) {
     let raw;
     try {
-      raw = await readFile45(path2, "utf8");
+      raw = await readFile47(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `--figures ${path2} could not be read: ${err instanceof Error ? err.message : String(err)}`,
@@ -96821,10 +98490,10 @@ async function loadServedContract(docPath, explicit, noFigures) {
   if (explicit && explicit.length > 0) {
     candidates = [...new Set(explicit.map((p) => resolve2(p)))];
   } else {
-    const dir = dirname38(resolve2(docPath));
+    const dir = dirname39(resolve2(docPath));
     try {
       const entries = await readdir6(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join26(dir, e));
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join27(dir, e));
     } catch {
       return none;
     }
@@ -96835,7 +98504,7 @@ async function loadServedContract(docPath, explicit, noFigures) {
   for (const path2 of candidates) {
     let raw;
     try {
-      raw = await readFile45(path2, "utf8");
+      raw = await readFile47(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `${path2} could not be read: ${err instanceof Error ? err.message : String(err)}. Fix its permissions, delete the file, or pass --no-figures.`,
@@ -96873,13 +98542,13 @@ async function loadServedContract(docPath, explicit, noFigures) {
   const index = Object.keys(units).length > 0 || conflicts.size > 0 ? { units, origin, suppressed: [...conflicts] } : void 0;
   return { index, sources: contributing, conflicts: [...conflicts] };
 }
-async function writeReportOutput(out, body) {
+async function writeReportOutput(out2, body) {
   try {
-    await mkdir33(dirname38(out), { recursive: true });
-    await writeFile30(out, body, "utf8");
+    await mkdir33(dirname39(out2), { recursive: true });
+    await writeFile30(out2, body, "utf8");
   } catch (err) {
     throw new UserFacingError(
-      `Could not write ${out}: ${err instanceof Error ? err.message : String(err)}`,
+      `Could not write ${out2}: ${err instanceof Error ? err.message : String(err)}`,
       "report_out_unwritable"
     );
   }
@@ -97288,8 +98957,8 @@ var ATTRIBUTIONS = ["legacy_sales", "all_14", "sc_default"];
 function collectIds(value, prev) {
   return [...prev, ...value.split(",").map((s) => s.trim()).filter((s) => s.length > 0)];
 }
-function resolveBatteryOut(out) {
-  return out === "-" ? void 0 : out;
+function resolveBatteryOut(out2) {
+  return out2 === "-" ? void 0 : out2;
 }
 function batteryInt(raw, flag, min, max) {
   const n = Number(raw);
@@ -97493,13 +99162,13 @@ function missingAccounts(requested, doc) {
   const returned = new Set(batteryAccounts(doc).map((a) => a.seller_id));
   return requested.filter((id) => !returned.has(id));
 }
-function batterySummary(out, doc, requested = []) {
+function batterySummary(out2, doc, requested = []) {
   const money = (v) => {
     if (v === null || v === void 0 || v === "") return "n/a";
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "n/a";
   };
-  const lines = [`wrote ${out}`];
+  const lines = [`wrote ${out2}`];
   const accounts = batteryAccounts(doc);
   const alignment = doc.alignment ?? {};
   const dayCountOf = (a) => a.document?.windows?.day_count ?? null;
@@ -97890,35 +99559,35 @@ async function assembleFullReport(opts) {
   };
 }
 function renderBuildSection(build) {
-  const out = [];
-  out.push("Build:");
-  out.push(`  version:   ${build.version}  (this session's running payload)`);
+  const out2 = [];
+  out2.push("Build:");
+  out2.push(`  version:   ${build.version}  (this session's running payload)`);
   const installedCmp = build.installed === null ? null : compareVersions(build.installed, build.version);
   if (build.installed === null) {
-    out.push("  installed: (could not be verified on this surface)");
+    out2.push("  installed: (could not be verified on this surface)");
   } else if (installedCmp !== null && installedCmp > 0) {
-    out.push(`  installed: ${build.installed}  (NEWER than this session)`);
+    out2.push(`  installed: ${build.installed}  (NEWER than this session)`);
   } else if (installedCmp !== null && installedCmp < 0) {
-    out.push(
+    out2.push(
       `  installed: ${build.installed}  (OLDER than this session; the install record on disk hasn't caught up to what this session is running)`
     );
   } else {
-    out.push(`  installed: ${build.installed}  (matches this session)`);
+    out2.push(`  installed: ${build.installed}  (matches this session)`);
   }
   if (build.latest === null) {
-    out.push("  latest:    (could not check, offline or version check unavailable)");
+    out2.push("  latest:    (could not check, offline or version check unavailable)");
   } else if (build.stale) {
-    out.push(`  latest:    ${build.latest}  (UPDATE AVAILABLE, see below)`);
+    out2.push(`  latest:    ${build.latest}  (UPDATE AVAILABLE, see below)`);
   } else {
-    out.push(`  latest:    ${build.latest}  (up to date)`);
+    out2.push(`  latest:    ${build.latest}  (up to date)`);
   }
   if (installedCmp !== null && installedCmp < 0 && build.latest !== null) {
-    out.push(
+    out2.push(
       `  note:      the line above is judged against the OLDER install record (${build.installed}), not the ${build.version} this session is running.`
     );
   }
   if (build.sessionBehindInstall) {
-    out.push(
+    out2.push(
       renderSessionBehindInstall({
         installed: build.installed,
         current: build.version,
@@ -97926,7 +99595,7 @@ function renderBuildSection(build) {
       })
     );
   }
-  return out;
+  return out2;
 }
 function renderBuildStaleBanner(build) {
   if (!build.stale || !build.latest) return "";
@@ -97943,138 +99612,222 @@ function renderBuildStaleBanner(build) {
   );
 }
 function renderFull(r) {
-  const out = [];
-  out.push("mixshift doctor");
-  out.push("");
-  out.push(...renderBuildSection(r.build));
-  out.push("");
-  out.push(`Channel: ${r.channel}`);
+  const out2 = [];
+  out2.push("mixshift doctor");
+  out2.push("");
+  out2.push(...renderBuildSection(r.build));
+  out2.push("");
+  out2.push(`Channel: ${r.channel}`);
   if (r.channel === "plugin_host_unknown") {
-    out.push(
+    out2.push(
       "  (couldn't identify the host; telemetry tags this as plugin_host_unknown)"
     );
   }
-  out.push("");
-  out.push("Auth:");
+  out2.push("");
+  out2.push("Auth:");
   if (!r.auth.signedIn) {
-    out.push("  not signed in. Run `mixshift auth login`.");
-    out.push(
+    out2.push("  not signed in. Run `mixshift auth login`.");
+    out2.push(
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`
     );
   } else if (r.auth.kind === "interactive") {
-    out.push(
+    out2.push(
       `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? "?"}`
     );
     if (r.auth.email && r.auth.email !== r.auth.personLabel) {
-      out.push(`    tenant login: ${r.auth.email}`);
+      out2.push(`    tenant login: ${r.auth.email}`);
     }
-    out.push(`    service: ${r.auth.apiBase ?? "?"}`);
+    out2.push(`    service: ${r.auth.apiBase ?? "?"}`);
     if (r.auth.accessExpired) {
-      out.push(
+      out2.push(
         "    access token: EXPIRED (auto-refreshes on next call; if that fails, run `mixshift auth login`)"
       );
     } else if (r.auth.accessExpiresAt) {
-      out.push(`    access token valid until ${r.auth.accessExpiresAt}`);
+      out2.push(`    access token valid until ${r.auth.accessExpiresAt}`);
     }
   } else if (r.auth.kind === "service") {
-    out.push(
+    out2.push(
       `  signed in (service credential) ${r.auth.label ?? r.auth.clientId ?? ""}`.trimEnd()
     );
-    out.push(`    service: ${r.auth.apiBase ?? "?"}`);
+    out2.push(`    service: ${r.auth.apiBase ?? "?"}`);
   } else if (r.auth.kind === "legacy_mysql") {
-    out.push("  signed in (legacy raw-MySQL credential)");
+    out2.push("  signed in (legacy raw-MySQL credential)");
   }
-  out.push("");
-  out.push("Query pack (service compatibility):");
+  out2.push("");
+  out2.push("Query pack (service compatibility):");
   if (r.namedPack.checked) {
     if (r.namedPack.ok) {
-      out.push(
+      out2.push(
         `  OK \u2014 all ${r.namedPack.total} named queries resolve against the deployed pack.`
       );
     } else {
-      out.push(
+      out2.push(
         `  MISMATCH \u2014 ${r.namedPack.missing.length}/${r.namedPack.total} named queries are NOT deployed: ${r.namedPack.missing.join(", ")}.`
       );
-      out.push(
+      out2.push(
         "    This build is ahead of the service (or the service is mid-deploy);"
       );
-      out.push("    affected skills will hit `unknown_query` until it catches up.");
+      out2.push("    affected skills will hit `unknown_query` until it catches up.");
     }
   } else {
-    out.push(`  not checked (${r.namedPack.reason ?? "unavailable"}).`);
+    out2.push(`  not checked (${r.namedPack.reason ?? "unavailable"}).`);
   }
-  out.push("");
-  out.push("Telemetry:");
-  out.push(`  ${r.telemetry.enabled ? "on" : "off"} (${r.telemetry.reason})`);
+  out2.push("");
+  out2.push("Telemetry:");
+  out2.push(`  ${r.telemetry.enabled ? "on" : "off"} (${r.telemetry.reason})`);
   if (r.telemetry.queuedBytes > 0) {
-    out.push(
+    out2.push(
       `    ${r.telemetry.queuedBytes} bytes queued; flushes on the next command.`
     );
   }
-  out.push("");
-  out.push(renderNetwork(r.network));
+  out2.push("");
+  out2.push(renderNetwork(r.network));
   const staleBanner = renderBuildStaleBanner(r.build);
   if (staleBanner) {
-    out.push(staleBanner);
+    out2.push(staleBanner);
   }
-  return out.join("\n").replace(/\n+$/, "\n");
+  return out2.join("\n").replace(/\n+$/, "\n");
 }
 function renderNetwork(r) {
-  const out = [];
-  out.push("Network:");
-  out.push("");
-  out.push("  Egress proxy:");
+  const out2 = [];
+  out2.push("Network:");
+  out2.push("");
+  out2.push("  Egress proxy:");
   if (r.proxy.honored) {
-    out.push(`    https_proxy: ${r.proxy.https_proxy ?? "(unset)"}`);
-    out.push(`    http_proxy:  ${r.proxy.http_proxy ?? "(unset)"}`);
+    out2.push(`    https_proxy: ${r.proxy.https_proxy ?? "(unset)"}`);
+    out2.push(`    http_proxy:  ${r.proxy.http_proxy ?? "(unset)"}`);
     if (r.proxy.all_proxy) {
-      out.push(
+      out2.push(
         `    all_proxy:   ${r.proxy.all_proxy} (SOCKS; not used, undici routes via the HTTP proxy)`
       );
     }
-    out.push("    status: detected. Global fetch is routed through it.");
+    out2.push("    status: detected. Global fetch is routed through it.");
   } else {
-    out.push(
+    out2.push(
       "    none detected. Direct connections (normal terminal / unrestricted environment)."
     );
   }
-  out.push("");
-  out.push(`  Service: ${r.api_base}`);
+  out2.push("");
+  out2.push(`  Service: ${r.api_base}`);
   if (r.health.reachable) {
-    out.push(
+    out2.push(
       `    reachable (HTTP ${r.health.status}, ${r.health.duration_ms}ms). You are good to go.`
     );
   } else {
-    out.push(`    NOT reachable (${r.health.duration_ms}ms).`);
-    if (r.health.error) out.push(`    ${r.health.error}`);
+    out2.push(`    NOT reachable (${r.health.duration_ms}ms).`);
+    if (r.health.error) out2.push(`    ${r.health.error}`);
   }
-  out.push("");
+  out2.push("");
   if (!r.ok && r.remediation) {
-    out.push("  How to fix:");
-    for (const line of r.remediation.split("\n")) out.push(`    ${line}`);
-    out.push("");
-    out.push("  Required domains:");
+    out2.push("  How to fix:");
+    for (const line of r.remediation.split("\n")) out2.push(`    ${line}`);
+    out2.push("");
+    out2.push("  Required domains:");
     for (const e of r.allowlist.required) {
-      out.push(`    ${e.domain}`);
-      out.push(`      ${e.why}`);
+      out2.push(`    ${e.domain}`);
+      out2.push(`      ${e.why}`);
     }
-    out.push("");
-    out.push("  Optional (safe to omit):");
+    out2.push("");
+    out2.push("  Optional (safe to omit):");
     for (const e of r.allowlist.optional) {
-      out.push(`    ${e.domain}`);
-      out.push(`      ${e.why}`);
+      out2.push(`    ${e.domain}`);
+      out2.push(`      ${e.why}`);
     }
-    out.push("");
+    out2.push("");
   }
-  return out.join("\n");
+  return out2.join("\n");
 }
 
 // src/commands/help.ts
 init_credentials();
 init_telemetry();
+import { promises as fs2 } from "node:fs";
+import { fileURLToPath as fileURLToPath8 } from "node:url";
+import { dirname as dirname40, join as join29 } from "node:path";
+
+// src/lib/demos.ts
+var import_yaml25 = __toESM(require_dist(), 1);
 import { promises as fs } from "node:fs";
-import { fileURLToPath as fileURLToPath7 } from "node:url";
-import { dirname as dirname39, join as join27 } from "node:path";
+import { join as join28 } from "node:path";
+async function loadDemos(skillsDir) {
+  if (!skillsDir) return [];
+  let entries;
+  try {
+    entries = (await fs.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name).sort();
+  } catch {
+    return [];
+  }
+  const demos = [];
+  for (const skillId of entries) {
+    let raw;
+    try {
+      raw = await fs.readFile(join28(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+    } catch {
+      continue;
+    }
+    const parsed = skillManifestSchema.safeParse((0, import_yaml25.parse)(raw));
+    if (!parsed.success || !parsed.data.demo) continue;
+    const demo = parsed.data.demo;
+    demos.push({ ...demo, skillId, title: demo.say.replace(/^demo\s+/, "") });
+  }
+  return demos;
+}
+var norm = (s) => s.trim().toLowerCase().replace(/[\s_]+/g, "-");
+function resolveDemoSkill(input, demos, skillIds) {
+  const q = norm(input).replace(/^demo-/, "");
+  if (!q) return null;
+  for (const d of demos) {
+    if (q === d.skillId || `mx-${q}` === d.skillId || q === norm(d.title)) return d.skillId;
+  }
+  for (const id of skillIds) {
+    if (q === id || `mx-${q}` === id) return id;
+  }
+  return null;
+}
+function renderDemoOpenerChat(d) {
+  const L = [];
+  L.push(`**Demo: ${d.title}** (about ${d.minutes} minutes, on your own account)`);
+  L.push("");
+  L.push(d.summary);
+  L.push("");
+  L.push("What you'll see:");
+  d.steps.forEach((s, i) => L.push(`${i + 1}. ${s}`));
+  L.push("");
+  L.push(
+    d.changes === "preview" ? "Nothing on your account changes: any change is shown as a preview and is not sent." : "This demo only reads: nothing on your account changes."
+  );
+  if (d.needs) L.push(`Needs: ${d.needs}.`);
+  L.push('Say "skip" to move on, "stop" to end, or ask about anything along the way.');
+  L.push("");
+  return L.join("\n");
+}
+function renderDemoListChat(demos) {
+  const L = [];
+  L.push("**Demos: see a skill in action on your own account**");
+  L.push("");
+  if (demos.length === 0) {
+    L.push('No skill has a demo yet. Say **"help"** to see everything the plugin can do.');
+  } else {
+    for (const d of demos) L.push(`- **"${d.say}"** (about ${d.minutes} min): ${d.summary}`);
+    L.push("");
+    L.push('Say one to start. More skills get demos over time; say **"help"** for everything the plugin can do.');
+  }
+  L.push("");
+  return L.join("\n");
+}
+function renderNoDemoChat(skillId, demos) {
+  const L = [];
+  L.push(`**${skillId}** does not have a demo yet.`);
+  if (demos.length > 0) {
+    L.push("");
+    L.push("Demos you can run now:");
+    for (const d of demos) L.push(`- **"${d.say}"**: ${d.summary}`);
+  }
+  L.push("");
+  return L.join("\n");
+}
+
+// src/commands/help.ts
 var CATALOG = [
   {
     title: "Get set up & signed in",
@@ -98127,10 +99880,17 @@ var CATALOG = [
     ]
   },
   {
+    title: "Live Walmart surfaces",
+    skills: [
+      { id: "mx-walmart-ads", say: "show my Walmart campaigns", what: "Walmart Connect ads: campaigns, reports, previewed changes" }
+    ]
+  },
+  {
     title: "Reporting & analysis",
     skills: [
       { id: "mx-monthly-report", say: "write the monthly report for <brand>", what: "MoM and YoY performance narrative" },
-      { id: "mx-monthly-report-max", say: "prep my call with <brand>", what: "client brief plus private call notes, any cadence" },
+      { id: "mx-max-report", say: "prep my call with <brand>", what: "client brief plus private call notes, any cadence" },
+      { id: "mx-max-forecast", say: "what should I expect from <brand> next quarter", what: "a forecast explained, with its measured accuracy" },
       // Deliberately a SECOND row for mx-amazon-amc, which is also listed under
       // the Amazon surfaces above as "run an AMC query". That row only finds
       // someone who already knows what AMC is. The questions this answers get
@@ -98172,6 +99932,7 @@ function registerHelpCommand(program3) {
     } catch {
     }
     const uncatalogued = await collectUncatalogued();
+    const demos = await loadDemos(await findSkillsDir());
     if (root.json) {
       process.stdout.write(
         JSON.stringify(
@@ -98182,7 +99943,8 @@ function registerHelpCommand(program3) {
               title: g.title,
               skills: g.skills.map((s) => s.id)
             })),
-            uncatalogued
+            uncatalogued,
+            demos: demos.map((d) => ({ skill_id: d.skillId, say: d.say }))
           },
           null,
           2
@@ -98190,7 +99952,7 @@ function registerHelpCommand(program3) {
       );
       return;
     }
-    const rendered = format === "chat" ? renderHelpChat({ authReady, who, uncatalogued }) : renderHelpTerminal({ authReady, who, uncatalogued });
+    const rendered = format === "chat" ? renderHelpChat({ authReady, who, uncatalogued, demos }) : renderHelpTerminal({ authReady, who, uncatalogued, demos });
     process.stdout.write(rendered);
     await track(
       {
@@ -98198,7 +99960,8 @@ function registerHelpCommand(program3) {
         payload: {
           format,
           auth_ready: authReady,
-          uncatalogued_count: uncatalogued.length
+          uncatalogued_count: uncatalogued.length,
+          demo_count: demos.length
         }
       },
       root.dataDir
@@ -98210,7 +99973,7 @@ async function collectUncatalogued() {
   const skillsDir = await findSkillsDir();
   if (!skillsDir) return [];
   try {
-    const entries = await fs.readdir(skillsDir, { withFileTypes: true });
+    const entries = await fs2.readdir(skillsDir, { withFileTypes: true });
     return entries.filter(
       (e) => e.isDirectory() && e.name.startsWith("mx-") && !known.has(e.name)
     ).map((e) => e.name).sort();
@@ -98220,24 +99983,24 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join27(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join29(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname39(fileURLToPath7(import.meta.url));
+  let dir = dirname40(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join27(dir, "skills");
-      const stat7 = await fs.stat(candidate);
+      const candidate = join29(dir, "skills");
+      const stat7 = await fs2.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname39(dir);
+    const parent = dirname40(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return null;
 }
 function renderHelpChat(args) {
-  const { authReady, who, uncatalogued } = args;
+  const { authReady, who, uncatalogued, demos } = args;
   const L = [];
   L.push("**MixShift plugin: what you can do here**");
   L.push("");
@@ -98257,6 +100020,7 @@ function renderHelpChat(args) {
     L.push(NO_ACCOUNT_CHAT);
   }
   L.push("");
+  L.push(...renderDemoSectionChat(demos));
   for (const group of CATALOG) {
     L.push(`### ${group.title}`);
     for (const s of group.skills) {
@@ -98309,7 +100073,7 @@ function renderHelpChat(args) {
   return L.join("\n");
 }
 function renderHelpTerminal(args) {
-  const { authReady, who, uncatalogued } = args;
+  const { authReady, who, uncatalogued, demos } = args;
   const L = [];
   L.push("");
   L.push("MixShift plugin: what you can do here");
@@ -98327,6 +100091,11 @@ function renderHelpTerminal(args) {
     }
     L.push("");
   }
+  if (demos.length > 0) {
+    L.push("See it in action (a guided demo on your own account):");
+    for (const d of demos) L.push(`  say "${d.say}"   (about ${d.minutes} min)`);
+    L.push("");
+  }
   if (uncatalogued.length > 0) {
     L.push("More skills:");
     for (const id of uncatalogued) L.push(`  ${id}`);
@@ -98342,16 +100111,105 @@ function renderHelpTerminal(args) {
   L.push("");
   return L.join("\n");
 }
+function renderDemoSectionChat(demos) {
+  if (demos.length === 0) return [];
+  const L = ["### See it in action"];
+  L.push("New to a skill? A demo walks you through it on your own account, read first, and any change is only previewed.");
+  for (const d of demos) L.push(`- **"${d.say}"** (about ${d.minutes} min): ${d.summary}`);
+  L.push("");
+  return L;
+}
+
+// src/commands/demo.ts
+init_telemetry();
+import { promises as fs3 } from "node:fs";
+function registerDemoCommand(program3) {
+  program3.command("demo").argument("[skill]", 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart ads")').description(
+    `Guided skill demos. With no skill: list every skill that has a demo. With a skill: print the opener the agent shows before walking the steps in that skill's SKILL.md "## Demo" section. Output is chat markdown; --json for the structured form.`
+  ).option("--finished", "record that the demo ended (telemetry only)").option("--steps-shown <n>", "with --finished: how many steps the user saw").action(async (skill, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const skillsDir = await findSkillsDir();
+    const demos = await loadDemos(skillsDir);
+    if (!skill) {
+      await listDemos(demos, root);
+      return;
+    }
+    const skillIds = await listSkillIds(skillsDir);
+    const skillId = resolveDemoSkill(skill, demos, skillIds);
+    if (!skillId) {
+      fail3(root, `No skill matches "${skill}".`, demos);
+      return;
+    }
+    const demo = demos.find((d) => d.skillId === skillId);
+    if (opts.finished) {
+      await finishDemo(skillId, demo, opts.stepsShown, root);
+      return;
+    }
+    if (root.json) {
+      out({ status: "ok", skill_id: skillId, available: !!demo, demo: demo ?? null, demos: demo ? void 0 : demos.map(brief) });
+    } else {
+      process.stdout.write(demo ? renderDemoOpenerChat(demo) : renderNoDemoChat(skillId, demos));
+    }
+    await track(
+      {
+        event_name: EventName.DemoRequested,
+        payload: { skill_id: skillId, available: !!demo, steps_total: demo?.steps.length ?? 0 }
+      },
+      root.dataDir
+    );
+  });
+}
+async function listDemos(demos, root) {
+  if (root.json) out({ status: "ok", count: demos.length, demos: demos.map(brief) });
+  else process.stdout.write(renderDemoListChat(demos));
+  await track({ event_name: EventName.DemoListed, payload: { count: demos.length } }, root.dataDir);
+}
+async function finishDemo(skillId, demo, stepsShownRaw, root) {
+  const total = demo?.steps.length ?? 0;
+  const n = stepsShownRaw === void 0 ? NaN : Number(stepsShownRaw);
+  const stepsShown = Number.isInteger(n) && n >= 0 ? Math.min(n, total) : null;
+  await track(
+    {
+      event_name: EventName.DemoFinished,
+      payload: { skill_id: skillId, steps_shown: stepsShown, steps_total: total }
+    },
+    root.dataDir
+  );
+  if (root.json) out({ status: "ok", skill_id: skillId, steps_shown: stepsShown, steps_total: total });
+  else process.stdout.write(`Recorded: ${skillId} demo finished.
+`);
+}
+function brief(d) {
+  return { skill_id: d.skillId, say: d.say, summary: d.summary, minutes: d.minutes };
+}
+async function listSkillIds(skillsDir) {
+  if (!skillsDir) return [];
+  try {
+    return (await fs3.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+function fail3(root, message, demos) {
+  if (root.json) out({ status: "error", failure_kind: "not_found", message, demos: demos.map(brief) });
+  else process.stdout.write(`${message}
+
+${renderDemoListChat(demos)}`);
+  process.exitCode = 1;
+}
+function out(value) {
+  process.stdout.write(JSON.stringify(value, null, 2) + "\n");
+}
 
 // src/commands/share-skill.ts
-var import_yaml24 = __toESM(require_dist(), 1);
+var import_yaml26 = __toESM(require_dist(), 1);
 init_load();
 init_credentials();
 init_surface();
 init_plugin_version();
 init_telemetry();
-import { promises as fs2 } from "node:fs";
-import { resolve as resolve3, join as join28, relative, basename as basename4 } from "node:path";
+import { promises as fs4 } from "node:fs";
+import { resolve as resolve3, join as join30, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -98635,7 +100493,7 @@ function registerShareSkillCommand(program3) {
   );
 }
 async function collectBundle(path2) {
-  const stat7 = await fs2.stat(path2).catch(() => null);
+  const stat7 = await fs4.stat(path2).catch(() => null);
   if (!stat7) throw new Error(`Path not found: ${path2}`);
   const files = [];
   const skipped = [];
@@ -98647,7 +100505,7 @@ async function collectBundle(path2) {
       skipped.push(relPath);
       return;
     }
-    const st = await fs2.stat(absFile).catch(() => null);
+    const st = await fs4.stat(absFile).catch(() => null);
     if (!st || !st.isFile()) return;
     if (st.size > MAX_FILE_BYTES) {
       skipped.push(`${relPath} (too large)`);
@@ -98660,7 +100518,7 @@ async function collectBundle(path2) {
       skipped.push(`${relPath} (not text)`);
       return;
     }
-    const content = await fs2.readFile(absFile, "utf8").catch(() => null);
+    const content = await fs4.readFile(absFile, "utf8").catch(() => null);
     if (content === null) {
       skipped.push(`${relPath} (unreadable)`);
       return;
@@ -98678,13 +100536,13 @@ async function collectBundle(path2) {
     await addFile(path2, basename4(path2));
   } else {
     const walk = async (dir) => {
-      const entries = await fs2.readdir(dir, { withFileTypes: true }).catch(() => []);
+      const entries = await fs4.readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const e of entries) {
         if (files.length >= MAX_FILES || totalBytes >= MAX_TOTAL_BYTES) {
           truncated = true;
           return;
         }
-        const abs = join28(dir, e.name);
+        const abs = join30(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -98708,7 +100566,7 @@ function findFrontmatter(files) {
   const m = skillMd.content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return null;
   try {
-    const parsed = (0, import_yaml24.parse)(m[1]);
+    const parsed = (0, import_yaml26.parse)(m[1]);
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
@@ -98737,7 +100595,7 @@ function registerContextCommands(program3) {
       for (const brand of brands) {
         const r = await computeStatus(brand, engineOptions);
         if (!r.ok) {
-          emitError13(r.message, root);
+          emitError14(r.message, root);
           return;
         }
         results.push(r);
@@ -98816,7 +100674,7 @@ function registerContextCommands(program3) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError13(err instanceof Error ? err.message : String(err), root);
+      emitError14(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -98852,7 +100710,7 @@ function registerContextCommands(program3) {
     const t0 = Date.now();
     try {
       if (opts.brand && !await brandDirExists(opts.brand, root.dataDir)) {
-        emitError13(
+        emitError14(
           `brand '${opts.brand}' has no local directory under ~/.mixshift/clients/ \u2014 migrate seeds the org store from local brand dirs`,
           root
         );
@@ -98869,7 +100727,7 @@ function registerContextCommands(program3) {
         client: createContextSyncClient({ dataDirOverride: root.dataDir })
       });
       if (!result.ok) {
-        emitError13(result.message, root);
+        emitError14(result.message, root);
         return;
       }
       const stakeRuns = [];
@@ -98928,7 +100786,7 @@ function registerContextCommands(program3) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError13(err instanceof Error ? err.message : String(err), root);
+      emitError14(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -98957,7 +100815,7 @@ function registerActionSubcommand(context, spec) {
     const t0 = Date.now();
     try {
       if (spec.hasForce && opts.force && !opts.brand) {
-        emitError13(
+        emitError14(
           `--force requires --brand <slug>: forced ${spec.name} resolution is scoped to one brand at a time.`,
           root
         );
@@ -98973,7 +100831,7 @@ function registerActionSubcommand(context, spec) {
           ...spec.hasForce ? { force: opts.force ?? false } : {}
         });
         if (!r.ok) {
-          emitError13(r.message, root);
+          emitError14(r.message, root);
           return;
         }
         results.push({ brand: r.brand, reports: r.reports });
@@ -99045,7 +100903,7 @@ function registerActionSubcommand(context, spec) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError13(err instanceof Error ? err.message : String(err), root);
+      emitError14(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99137,7 +100995,7 @@ function registerAutosyncSubcommand(context) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError13(err instanceof Error ? err.message : String(err), root);
+      emitError14(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99151,7 +101009,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
   const manifest = await client.fetchManifest({ lifecycle: "all" });
   if (!manifest.ok) {
-    emitError13(manifest.friendly, root);
+    emitError14(manifest.friendly, root);
     return null;
   }
   let brands = localOrExplicit;
@@ -99168,7 +101026,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
     const knownLocally = await brandDirExists(brandOpt, root.dataDir);
     const knownOnServer = manifest.brands.some((b) => b.brand_slug === brandOpt);
     if (!knownLocally && !knownOnServer) {
-      emitError13(
+      emitError14(
         `brand '${brandOpt}' not found locally or in the org store \u2014 check the slug (run \`mixshift context status\` for the known brands)`,
         root
       );
@@ -99248,7 +101106,7 @@ function emitNoBrands(root) {
     );
   }
 }
-function emitError13(message, root) {
+function emitError14(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -99344,7 +101202,7 @@ function registerList(timeline) {
       if (opts.since) {
         const since = parseSince(opts.since);
         if (!since.ok) {
-          emitError14(since.message, root);
+          emitError15(since.message, root);
           return;
         }
         query.since = since.iso;
@@ -99352,7 +101210,7 @@ function registerList(timeline) {
       if (opts.until) {
         const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
         if (!until.ok) {
-          emitError14(until.message, root);
+          emitError15(until.message, root);
           return;
         }
         query.until = until.iso;
@@ -99360,7 +101218,7 @@ function registerList(timeline) {
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
         if (!Number.isInteger(n) || n <= 0) {
-          emitError14(`--limit must be a positive integer, got '${opts.limit}'`, root);
+          emitError15(`--limit must be a positive integer, got '${opts.limit}'`, root);
           return;
         }
         query.limit = n;
@@ -99386,7 +101244,7 @@ function registerList(timeline) {
           },
           root.dataDir
         );
-        emitError14(result.friendly, root);
+        emitError15(result.friendly, root);
         return;
       }
       await track(
@@ -99430,7 +101288,7 @@ function registerList(timeline) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError15(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99450,14 +101308,14 @@ function registerAdd(timeline) {
     try {
       const family = familyForKind(opts.kind);
       if (family === null) {
-        emitError14(
+        emitError15(
           `--kind must be 'comment' or 'structural.<what>' (got '${opts.kind}'). knowledge.* events are emitted by the context service and action.* events by instrumented write paths; neither can be added by hand.`,
           root
         );
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_NOTE_CHARS) {
-        emitError14(
+        emitError15(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_NOTE_CHARS}). Trim it, or store the full text as a corpus doc and reference it with --target.`,
           root
         );
@@ -99466,42 +101324,42 @@ function registerAdd(timeline) {
       const isStake = opts.category !== void 0;
       if (isStake) {
         if (!STAKE_CATEGORIES.includes(opts.category)) {
-          emitError14(
+          emitError15(
             `--category must be one of: ${STAKE_CATEGORIES.join(", ")} (got '${opts.category}').`,
             root
           );
           return;
         }
         if (family !== "structural") {
-          emitError14(
+          emitError15(
             `a --category stake requires a 'structural.<what>' --kind (got '${opts.kind}').`,
             root
           );
           return;
         }
         if (opts.interpretation === void 0 || opts.interpretation.length === 0) {
-          emitError14(
+          emitError15(
             "--interpretation is required when --category is given (a stake records what the org read into the event).",
             root
           );
           return;
         }
         if (opts.interpretation.length > MAX_INTERPRETATION_CHARS3) {
-          emitError14(
+          emitError15(
             `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS3}).`,
             root
           );
           return;
         }
         if (opts.source !== void 0 && !STAKE_SOURCES.includes(opts.source)) {
-          emitError14(
+          emitError15(
             `--source must be one of: ${STAKE_SOURCES.join(", ")} (got '${opts.source}').`,
             root
           );
           return;
         }
       } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || (opts.tag?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
-        emitError14(
+        emitError15(
           "--end / --affects / --tag / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
         );
@@ -99511,7 +101369,7 @@ function registerAdd(timeline) {
       if (opts.intensity !== void 0) {
         intensity = Number(opts.intensity);
         if (!Number.isFinite(intensity)) {
-          emitError14(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
+          emitError15(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
           return;
         }
       }
@@ -99520,7 +101378,7 @@ function registerAdd(timeline) {
         ["--end", opts.end]
       ]) {
         if (value !== void 0 && Number.isNaN(Date.parse(value))) {
-          emitError14(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
+          emitError15(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
           return;
         }
       }
@@ -99528,7 +101386,7 @@ function registerAdd(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError14(parsed.message, root);
+          emitError15(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -99579,7 +101437,7 @@ function registerAdd(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError14(result.friendly, root);
+        emitError15(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -99604,7 +101462,7 @@ function registerAdd(timeline) {
       }
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError15(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99621,25 +101479,25 @@ function registerCorroborate(timeline) {
     const t0 = Date.now();
     try {
       if (opts.status === void 0 && opts.end === void 0 && opts.evidence === void 0) {
-        emitError14(
+        emitError15(
           "a corroboration needs at least one of --status, --end, or --evidence (a --note alone is not a corroboration).",
           root
         );
         return;
       }
       if (opts.status !== void 0 && !STAKE_STATUSES.includes(opts.status)) {
-        emitError14(
+        emitError15(
           `--status must be one of: ${STAKE_STATUSES.join(", ")} (got '${opts.status}').`,
           root
         );
         return;
       }
       if (opts.end !== void 0 && Number.isNaN(Date.parse(opts.end))) {
-        emitError14(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
+        emitError15(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_CORROBORATE_NOTE_CHARS) {
-        emitError14(
+        emitError15(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_CORROBORATE_NOTE_CHARS}).`,
           root
         );
@@ -99649,7 +101507,7 @@ function registerCorroborate(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError14(parsed.message, root);
+          emitError15(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -99679,7 +101537,7 @@ function registerCorroborate(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError14(result.friendly, root);
+        emitError15(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -99704,7 +101562,7 @@ function registerCorroborate(timeline) {
       }
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError15(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99757,7 +101615,7 @@ function registerSync(timeline) {
         root.dataDir
       );
       if (opts.brand !== void 0 && results[0].error !== void 0) {
-        emitError14(results[0].error, root);
+        emitError15(results[0].error, root);
         return;
       }
       if (root.json) {
@@ -99800,7 +101658,7 @@ function registerSync(timeline) {
       process.stdout.write((lines.length > 0 ? lines.join("\n") + "\n" : "") + summary + "\n");
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError15(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -99917,7 +101775,7 @@ function filtersPayload(query, all) {
     all
   };
 }
-function emitError14(message, root) {
+function emitError15(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -99935,7 +101793,7 @@ init_resolve();
 init_service_attribution_cache();
 init_telemetry();
 import { readdir as readdir7, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname40, join as join29 } from "node:path";
+import { basename as basename5, dirname as dirname41, join as join31 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -99991,14 +101849,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join29(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join31(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename5(dir) !== "auth" || basename5(dirname40(dir)) !== ".mixshift") continue;
-    found.push(join29(dir, entry.name));
+    if (basename5(dir) !== "auth" || basename5(dirname41(dir)) !== ".mixshift") continue;
+    found.push(join31(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -100013,7 +101871,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname40(dirname40(hitPath));
+  return dirname41(dirname41(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -100066,8 +101924,8 @@ async function runPreflight(brandSlugs, root) {
     let malformedResolvedWarning = null;
     const loadFrom = async (dir) => {
       try {
-        const loaded = await loadCredentials(dir);
-        return { envelope: loaded.credentials, failure: null };
+        const loaded2 = await loadCredentials(dir);
+        return { envelope: loaded2.credentials, failure: null };
       } catch {
         return { envelope: null, failure: { dir, message: describeCredentialLoadFailure(dir) } };
       }
@@ -100081,7 +101939,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join29(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join31(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -100169,19 +102027,19 @@ async function runPreflight(brandSlugs, root) {
       };
       const materializeAlternates = async (triedDirs2) => {
         if (!scanState) return [];
-        const out = [];
+        const out2 = [];
         for (const hit of await sortCandidatesByMtime(scanState.scanHits)) {
           const dir = dataDirFromCredentialPath(hit);
           if (triedDirs2.has(dir)) continue;
           const attempt = await loadFrom(dir);
           if (!isUsable(attempt.envelope)) continue;
-          out.push({
+          out2.push({
             dir,
             envelope: attempt.envelope,
             via: scanState.sessionsHits.includes(hit) ? "sessions_scan" : "cwd_scan"
           });
         }
-        return out;
+        return out2;
       };
       const MAX_MINT_ATTEMPTS = 3;
       const triedDirs = /* @__PURE__ */ new Set([dataDir]);
@@ -100466,27 +102324,35 @@ function redactBudgetValue(name, value) {
   return m ? `${m[1]}=${REDACTED}` : REDACTED;
 }
 var BUDGET_VALUE_FLAG = /^(set|note)$/;
+function isForecastSubBrand(argv) {
+  const i = argv.indexOf("forecast");
+  return i >= 0 && argv[i + 1] === "sub-brand";
+}
+var SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
 function redactArgs(argv) {
-  const out = [];
+  const out2 = [];
   let redactNextValue = false;
   const budget = isForecastBudget(argv);
+  const subBrand = isForecastSubBrand(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const redactValue = (name, value) => budget ? redactBudgetValue(name, value) : REDACTED;
   let budgetFlag = null;
   for (const arg of argv) {
     if (budgetFlag !== null) {
       const name = budgetFlag;
       budgetFlag = null;
       if (!(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
-        out.push(redactBudgetValue(name, arg));
+        out2.push(redactValue(name, arg));
         continue;
       }
     }
-    if (budget && arg.startsWith("--")) {
+    if (valueFlag !== null && arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const name = flagName(eq >= 0 ? arg.slice(0, eq) : arg);
-      if (BUDGET_VALUE_FLAG.test(name)) {
-        if (eq >= 0) out.push(`${arg.slice(0, eq)}=${redactBudgetValue(name, arg.slice(eq + 1))}`);
+      if (valueFlag.test(name)) {
+        if (eq >= 0) out2.push(`${arg.slice(0, eq)}=${redactValue(name, arg.slice(eq + 1))}`);
         else {
-          out.push(arg);
+          out2.push(arg);
           budgetFlag = name;
         }
         continue;
@@ -100495,24 +102361,24 @@ function redactArgs(argv) {
     if (redactNextValue) {
       redactNextValue = false;
       if (!(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
-        out.push(REDACTED);
+        out2.push(REDACTED);
         continue;
       }
     }
     if (arg.startsWith("--") && arg.includes("=")) {
       const eq = arg.indexOf("=");
       const name = flagName(arg.slice(0, eq));
-      out.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
+      out2.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
       continue;
     }
     if (arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg)) {
-      out.push(arg);
+      out2.push(arg);
       if (SECRET_FLAG.test(flagName(arg))) redactNextValue = true;
       continue;
     }
-    out.push(looksLikeSecretToken(arg) ? REDACTED : arg);
+    out2.push(looksLikeSecretToken(arg) ? REDACTED : arg);
   }
-  return out;
+  return out2;
 }
 function isNumericLike(arg) {
   return /^-\d/.test(arg);
@@ -100520,13 +102386,76 @@ function isNumericLike(arg) {
 
 // src/lib/cli/usage-hints.ts
 var COMMAND_ALIASES = {
-  "data tables": { targets: ["data list-tables"], then: "`mixshift data describe <table>` for one table" },
+  // `data tables`, `ads ops`, `ads catalog` and `amazon ops` are real aliases
+  // now (the most-guessed names of the 2026-10-15 sweep: 12, 5, 5 and 4
+  // humans in three weeks), so they are not hints.
   "data list": { targets: ["data list-tables"] },
+  "data catalog": { targets: ["data list-tables"] },
   "amazon list": { targets: ["amazon list-reports", "amazon merchants"] },
-  "amazon ops": { targets: ["amazon operations"] },
+  "amazon catalog": {
+    targets: ["amazon list-reports", "amazon operations"],
+    note: "the warehouse table catalog is `mixshift data list-tables`"
+  },
+  "amazon reports": { targets: ["amazon list-reports", "amazon report"], then: "`mixshift amazon report start` to run one" },
+  "amazon report types": { targets: ["amazon list-reports"] },
+  "amazon report catalog": { targets: ["amazon list-reports"] },
+  "amazon report list": { targets: ["amazon list-reports"] },
+  "ads list": { targets: ["ads profiles", "ads operations"] },
+  // `report` itself is a real top-level group (validate, extract, render,
+  // battery), so the guesses are keyed under it.
+  "report catalog": { targets: ["amazon list-reports"], note: "Amazon report types are under `amazon`" },
+  "report types": { targets: ["amazon list-reports"], note: "Amazon report types are under `amazon`" },
+  "report list": { targets: ["amazon list-reports"], note: "Amazon report types are under `amazon`" },
+  "report start": { targets: ["amazon report start"], note: "Amazon reports run under `amazon report`" },
+  spapi: { targets: ["amazon operations", "amazon call"], note: "SP-API operations are under `amazon`" },
+  "sp-api": { targets: ["amazon operations", "amazon call"], note: "SP-API operations are under `amazon`" },
   retail: {
     targets: ["amazon merchants", "amazon operations", "amazon call"],
     note: "there is no `retail` command; Amazon retail data is under `amazon`, and warehouse tables are under `data`"
+  }
+};
+var OPTION_HINTS = {
+  "data query": {
+    "--seller-id": {
+      id: "data_query_seller_id",
+      text: "`data query` takes SQL and has no --seller-id. Filter in the SQL instead: WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). (`data sample` and `data export` do take --seller-id.)"
+    },
+    "--legacy-seller-id": {
+      id: "data_query_seller_id",
+      text: "`data query` takes SQL and has no --legacy-seller-id. Filter in the SQL instead: WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`)."
+    },
+    "--format": {
+      id: "data_query_format",
+      text: "`data query` has no --format: it prints a table, `--json` (before the command) prints JSON, and `--out <file.csv>` writes the full result as CSV (the only file format)."
+    },
+    "--csv": {
+      id: "data_query_format",
+      text: "`data query` has no --csv: write CSV with `--out <file.csv>`."
+    }
+  },
+  "amazon call": {
+    "--param": {
+      id: "amazon_call_params",
+      text: "`amazon call` takes `--query key=value` (repeatable) for query params, `--path key=value` for path placeholders, and `--body-file <file>` or `--body <json>` for a request body; run `mixshift amazon operations` for what the operation needs."
+    },
+    "--params": {
+      id: "amazon_call_params",
+      text: "`amazon call` takes `--query key=value` (repeatable) for query params, `--path key=value` for path placeholders, and `--body-file <file>` or `--body <json>` for a request body."
+    },
+    "--path-params": {
+      id: "amazon_call_params",
+      text: "`amazon call` names path placeholders with `--path key=value` (repeatable), e.g. --path asin=B0CV4JLCVZ."
+    },
+    "--out": {
+      id: "amazon_call_out",
+      text: "`amazon call` prints the response to stdout (add `--json` before the command for one JSON document); redirect it to a file. `--out` is for the commands that write one: `data query`, `data export`, `amazon report get`."
+    }
+  },
+  "amazon report get": {
+    "--run-id": { id: "amazon_report_run_id", text: "The run id is the argument: `mixshift amazon report get <runId>`." }
+  },
+  "amazon report poll": {
+    "--run-id": { id: "amazon_report_run_id", text: "The run id is the argument: `mixshift amazon report poll <runId>`." }
   }
 };
 var ROOT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["--data-dir", "--surface"]);
@@ -100554,7 +102483,7 @@ function resolve4(program3, argv) {
 function commandExists(program3, target) {
   let cmd = program3;
   for (const part of target.split(" ")) {
-    const next = cmd.commands.find((c) => c.name() === part);
+    const next = cmd.commands.find((c) => c.name() === part || c.aliases().includes(part));
     if (!next) return false;
     cmd = next;
   }
@@ -100567,13 +102496,8 @@ function usageHint(code, message, argv, program3) {
   const r = resolve4(program3, argv);
   if (code === "commander.unknownOption") {
     const flag = /unknown option '(--[^'=\s]+)/.exec(message)?.[1];
-    if (flag === "--seller-id" && r.path.join(" ") === "data query") {
-      return {
-        id: "data_query_seller_id",
-        text: "`data query` takes SQL and has no --seller-id. Filter in the SQL instead: WHERE SellerID = <numeric warehouse SellerID> (on the `seller` table itself the key is `ID`). (`data sample` and `data export` do take --seller-id.)"
-      };
-    }
-    return void 0;
+    if (!flag) return void 0;
+    return OPTION_HINTS[r.path.join(" ")]?.[flag];
   }
   if (code === "commander.unknownCommand" && r.unknown !== void 0) {
     const key = r.path.length ? `${r.path.join(" ")} ${r.unknown}` : r.unknown;
@@ -100714,11 +102638,13 @@ registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 registerAmazonCommands(program2);
 registerAdsCommands(program2);
+registerWalmartCommands(program2);
 registerIntelligenceCommands(program2);
 registerForecastCommands(program2);
 registerReportCommands(program2);
 registerDoctorCommand(program2);
 registerHelpCommand(program2);
+registerDemoCommand(program2);
 registerShareSkillCommand(program2);
 registerContextCommands(program2);
 registerTimelineCommands(program2);
@@ -100756,11 +102682,23 @@ async function trackLifecycleEvents() {
       event_name: EventName.CliCommandRun,
       payload: {
         cmd: process.argv[2] ?? "(none)",
-        subcmd: process.argv[3] ?? "(none)",
+        // Canonical subcommand name: an alias (`data tables`) counts under
+        // the command it runs (`list-tables`), so usage sweeps see one bucket.
+        subcmd: canonicalSubcommand(process.argv[2], process.argv[3]),
         args: redactArgs(process.argv.slice(2))
       }
     });
   } catch {
+  }
+}
+function canonicalSubcommand(group, token) {
+  if (!token) return "(none)";
+  try {
+    const g = group ? program2.commands.find((c) => c.name() === group || c.aliases().includes(group)) : void 0;
+    const sub = g?.commands.find((c) => c.name() === token || c.aliases().includes(token));
+    return sub ? sub.name() : token;
+  } catch {
+    return token;
   }
 }
 async function showFirstRunNoticeIfNeeded() {

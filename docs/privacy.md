@@ -30,6 +30,7 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Skills invoked (which skill, when, duration, outcome)
 - CLI commands run, captured as the full command line: the command, subcommand, and arguments (flags, table names, brand slugs, and any ad-hoc SQL you type). Credential material is stripped first (see "Secret redaction" below)
 - Trigger phrases that activated a skill (the natural-language phrase you used to invoke a skill). These are bounded to phrases declared in our skill manifests, i.e. what's already public surface, not arbitrary chat content.
+- Demos: which skill's demo you asked for, whether it has one, how many steps it has, and how many were shown when it finished
 
 **Warehouse query events:**
 - Which library SQL query ID or ad-hoc query ran
@@ -41,9 +42,10 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - For ad-hoc queries that fail, the warehouse's own one-line error message (for example which column name it did not recognize), truncated to 500 characters. Library queries never include it, for the same reason their SQL text is not logged
 - When the plugin's own pre-send column check stops an ad-hoc query (error class `unknown_column`), the table, the column name it did not find, the replacement it suggested, and how long the check took
 
-**Amazon API events:**
-- Which Amazon operation or report type ran (report type, Ads operation, pricing batch, AMC / DSP run)
-- The account identifiers the call was for (seller id, advertiser / profile id, marketplace), so usage can be attributed to an account, plus item / row counts, duration, and outcome
+**Amazon and Walmart API events:**
+- Which Amazon operation or report type ran (report type, Ads operation, pricing batch, AMC / DSP run), or which Walmart Connect advertising operation ran
+- The account identifiers the call was for (seller id, advertiser / profile id, marketplace, Walmart advertiser id), so usage can be attributed to an account, plus item / row counts, duration, and outcome
+- For a Walmart call, whether a change was a preview or was sent to Walmart, and, when a call fails, the names of the parameters it used, never their values
 - We do **not** collect the returned documents, response bodies, or row data
 
 **MixShift Intelligence and forecast events:**
