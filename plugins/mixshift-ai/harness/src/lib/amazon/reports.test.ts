@@ -1221,6 +1221,11 @@ describe('exitCodeForKind', () => {
       // gets its own code rather than the generic 1 -- a script can branch on
       // "stop and fix the request" without parsing text.
       bad_request: 12,
+      // mx-ops#144 P5: MixShift refused it before sending; nothing reached
+      // Amazon. Its own code, not bad_request's 12 (that says AMAZON said no)
+      // and not the generic 1 it returned while unlisted (it read as "try
+      // again"). Terminal: change the request.
+      invalid_request: 15,
       host_unreachable: 1,
       download_failed: 1,
       // Gateway kinds recognized as of mx-ops#43. They keep exit code 1,

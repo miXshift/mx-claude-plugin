@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-walmart-ads
 display_name: Walmart Ads (Walmart Connect live account state + previewed changes)
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Read and manage Walmart ads (Walmart Connect Sponsored Search, plus Display
   where the account has it) for the Walmart advertisers connected to the
@@ -97,7 +97,7 @@ notes: >
   Failures are typed: branch on failure_kind (not_authenticated=2,
   tenant_not_allowed=6, walmart_not_configured=6, advertiser_not_allowed=7,
   not_found=7, throttled=8, insufficient_scope=11, bad_request=12,
-  upstream_auth=14), never on HTTP status.
+  invalid_request=15, upstream_auth=14), never on HTTP status.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)

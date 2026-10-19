@@ -33,6 +33,9 @@ import {
 import {
   isReportFailure,
   exitCodeForKind,
+  failureContractJson,
+  failureContractLines,
+  failureContractTelemetry,
   type ReportFailure,
 } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
@@ -197,6 +200,9 @@ function registerCall(amazon: Command): void {
             ...(input.pathParams && Object.keys(input.pathParams).length > 0
               ? { path_keys: Object.keys(input.pathParams).sort() }
               : {}),
+            // The gateway contract (mx-ops#144): who acts, and whether the same
+            // call can succeed later. Enums and a flag; never the fix text.
+            ...failureContractTelemetry(result),
           });
           return emitFailure(result, !!root.json);
         }
@@ -277,10 +283,13 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       unrecognized_kind: failure.unrecognizedKind,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure),
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`  ${failure.message}\n`);
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }

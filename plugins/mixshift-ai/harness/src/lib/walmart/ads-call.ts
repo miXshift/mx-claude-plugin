@@ -31,6 +31,7 @@
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { intentHeader } from '../auth/intent.js';
+import { cleanServerText, parseRouteIssues } from '../amazon/reports.js';
 
 // ---------------------------------------------------------------------------
 // Types (mirror the service's VisibleAdvertiser / describe(op) / call results)
@@ -121,7 +122,8 @@ export type WalmartFailureKind =
   | 'tenant_not_allowed' // 403: Walmart not enabled for this MixShift account
   | 'advertiser_not_allowed' // 403: advertiser not linked, read-only, or op refused
   | 'insufficient_scope' // 403: the credential lacks ads:write
-  | 'bad_request' // 400: the request or Walmart rejected it. Terminal
+  | 'bad_request' // 400: WALMART rejected the request. Terminal
+  | 'invalid_request' // 400: MIXSHIFT refused it before sending (unknown operation, bad shape); nothing reached Walmart. Terminal
   | 'not_found' // 404: Walmart has no such record
   | 'upstream_auth' // 502: Walmart refused MixShift's access
   | 'throttled' // 429: Walmart rate limit
@@ -152,6 +154,19 @@ export interface WalmartFailure {
   auditId?: string;
   /** The service sent a kind this build does not know (contract drift). */
   unrecognizedKind?: string;
+  /** Gateway contract (D-117): who acts (`request`, `account`,
+   *  `amazon_rejected` = Walmart said no, `amazon_unavailable`, `mixshift`). */
+  source?: string;
+  /** Whether the SAME call can succeed later; `false` = change something first. */
+  retryable?: boolean;
+  /** The concrete change to make, when the gateway names one. */
+  fix?: string;
+  /** Parameter names a route-level schema miss is about. */
+  invalidParams?: string[];
+  /** Walmart's own response body on a Walmart rejection (the envelope's
+   *  `walmart`), passed through for `--json`; the caller's own data, so never
+   *  sent to telemetry. */
+  walmartResponse?: unknown;
 }
 
 export interface WalmartClientOptions {
@@ -190,6 +205,8 @@ export function exitCodeForWalmartKind(kind: WalmartFailureKind): number {
       return 11;
     case 'bad_request':
       return 12; // terminal: fix the request, do not resend as-is
+    case 'invalid_request':
+      return 15; // MixShift refused it before sending: change the request (same code as the Amazon surfaces)
     case 'upstream_auth':
       return 14; // Walmart denies this advertiser to MixShift
     case 'upstream_unavailable':
@@ -436,6 +453,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<WalmartFailureKind>([
   'advertiser_not_allowed',
   'insufficient_scope',
   'bad_request',
+  'invalid_request',
   'not_found',
   'upstream_auth',
   'throttled',
@@ -450,13 +468,16 @@ function isServerFailureEnvelope(json: unknown): json is Record<string, unknown>
 function toWalmartFailure(json: Record<string, unknown>, httpStatus: number): WalmartFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const recognized = KNOWN_KINDS.has(rawKind);
-  const kind: WalmartFailureKind = recognized ? (rawKind as WalmartFailureKind) : kindForStatus(httpStatus);
+  const source = cleanServerText(json.source);
+  const kind: WalmartFailureKind = recognized ? (rawKind as WalmartFailureKind) : kindForStatus(httpStatus, source);
   const friendly = typeof json.friendly === 'string' && json.friendly ? json.friendly : defaultFriendly(kind);
-  const message = typeof json.message === 'string' ? json.message : undefined;
+  const issues = parseRouteIssues(json.issues);
+  const message = typeof json.message === 'string' ? json.message : issues?.detail;
   const advertiserId =
     typeof json.advertiserId === 'string' || typeof json.advertiserId === 'number'
       ? String(json.advertiserId)
       : undefined;
+  const fix = cleanServerText(json.fix);
   return {
     ok: false,
     kind,
@@ -472,14 +493,22 @@ function toWalmartFailure(json: Record<string, unknown>, httpStatus: number): Wa
     ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
     ...(typeof json.auditId === 'string' && json.auditId ? { auditId: json.auditId } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
+    ...(source !== undefined ? { source } : {}),
+    ...(typeof json.retryable === 'boolean' ? { retryable: json.retryable } : {}),
+    ...(fix !== undefined ? { fix } : {}),
+    ...(issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {}),
+    ...(json.walmart !== undefined ? { walmartResponse: json.walmart } : {}),
   };
 }
 
 /** Reverse-map a status only where the service's kind→status map is
- *  unambiguous for this surface; anything else stays `unknown`. */
-function kindForStatus(httpStatus: number): WalmartFailureKind {
+ *  unambiguous for this surface; anything else stays `unknown`. A 400 is two
+ *  kinds since P2 (`bad_request` = Walmart said no, `invalid_request` = we
+ *  refused first), so the contract's `source` decides between them; without
+ *  it the old reading (bad_request) stands. */
+function kindForStatus(httpStatus: number, source?: string): WalmartFailureKind {
   if (httpStatus === 429) return 'throttled';
-  if (httpStatus === 400) return 'bad_request';
+  if (httpStatus === 400) return source === 'request' ? 'invalid_request' : 'bad_request';
   return 'unknown';
 }
 
@@ -506,6 +535,11 @@ function defaultFriendly(kind: WalmartFailureKind): string {
       return 'This Walmart operation changes campaigns and needs the ads:write scope.';
     case 'bad_request':
       return 'Walmart rejected the request. Check the operation notes for the required parameters.';
+    case 'invalid_request':
+      return (
+        'MixShift refused this request before sending anything to Walmart: something in the ' +
+        'request has to change. Run `mixshift walmart ads operations` for the operation list and its parameters.'
+      );
     case 'not_found':
       return 'Walmart has no record matching that request.';
     case 'upstream_auth':

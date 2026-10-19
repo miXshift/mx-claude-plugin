@@ -15,7 +15,7 @@ description: >
   seller's live deals, coupons, price discounts, and basket-building offers).
   Read-only. No brand setup needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -1077,6 +1077,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry (a `retry_after_ms` may be present). |
 | `report_fatal` | 9 | Amazon returned a fatal result for the operation (often: the operation does not apply to this merchant, e.g. a vendor operation on a 3P seller, or a bad parameter). Re-check the operation `notes` and the merchant type. |
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
+| `invalid_request` | 15 | **MixShift refused the request before sending it**, so nothing reached Amazon: an unknown operation, a parameter it does not take, or a missing or conflicting one (`fulfillment_inbound.get_shipments` with `QueryType=DATE_RANGE` and no status or id list, for example). The message (and `detail`) says what is wrong; `fix`, when present, says what to change (often quoting Amazon's own rule); `missing_params` / `conflicting_params` / `invalid_params` name the parameters. **Terminal: never resend it unchanged; it is refused the same way every time.** Change the request, then call again. If this skill's catalog notes led you to that shape, tell the user and encourage `mixshift feedback`. |
 | `insufficient_scope` | 11 | The credential lacks a scope this operation needs. Not retryable as-is: the credential has to be re-issued with that scope. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service for this account. Contact MixShift ops. |
 | `report_retired` | 1 | Amazon has retired this report type. Nothing was sent to Amazon. **Terminal**: pick a current type; never retry unchanged. |
@@ -1091,10 +1092,19 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `approval_mismatch` | 1 | The approval does not match the change set it was given for. Run the dry run again and approve the new set. |
 | `stale_approval` | 1 | The approval was superseded by a newer change set. Approve the current one. |
 | `schema_drift` | 1 | Amazon's listing schema changed underneath the change set. Run the dry run again against the current schema. |
-| `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
+| `unknown` | 1 | An unexpected failure on MixShift's side. Relay the message and retry at most once; if it fails again, stop and suggest `mixshift feedback` with the operation and the time. Never loop on it. |
 
 The write-flow kinds (`patch_not_allowed` through `schema_drift`) and the service availability
 kinds share exit code 1 for now; branch on `failure_kind`, not the exit code, to tell them apart.
+
+Every failure in `--json` also says who has to act and whether a retry can help. `source` is
+`request` (the call itself), `account` (a MixShift setting or an Amazon authorization),
+`amazon_rejected` (Amazon answered no), `amazon_unavailable` (Amazon is down or rate-limiting)
+or `mixshift` (our fault). `retryable: false` means the identical call fails the same way until
+something changes, so never resend it as is. The one exception is `unknown` (`source: mixshift`):
+our fault can be transient, so one retry is fine, then stop and report it. When Amazon answered,
+`amazon` groups its own `status`, `code` and `message`.
+
 If the service sends a `failure_kind` this plugin version does not recognise, `--json` also carries
 `unrecognized_kind` with the raw value; relay it in any bug report, since it names a gap on our side.
 

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-report
 display_name: Amazon Report Pull
-version: "0.5.0"
+version: "0.5.1"
 description: >
   Pull Amazon SP-API reports on demand, directly from Amazon, for any
   merchant and window. The report analogue of mx-data-explore: a
@@ -92,7 +92,8 @@ notes: >
 
   Failures are typed: branch on `failure_kind` (not_authenticated,
   restricted_report, reauth_required, spapi_not_configured,
-  merchant_not_found, throttled, report_fatal, ...), never on HTTP
+  merchant_not_found, throttled, report_fatal, invalid_request = MixShift
+  refused it before Amazon so read `fix`, ...), never on HTTP
   status. The report catalog (shared/reports/catalog.yaml) is a
   convenience cache, not a gate: uncatalogued report types still pull
   via `report start --type`, resolved from Amazon's public SP-API docs.

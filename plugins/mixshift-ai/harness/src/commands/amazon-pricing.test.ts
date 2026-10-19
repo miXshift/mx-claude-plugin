@@ -192,3 +192,41 @@ describe('cs-batch item-list flags', () => {
     expect(stderrText()).toContain('No ASINs supplied');
   });
 });
+
+// ---------------------------------------------------------------------------
+// mx-ops#144 P5: pricing failures in --json. camelCase like the rest of this
+// surface, Amazon's answer grouped as `amazon`, and `status: "failed"` kept
+// (the failure's own `status` key used to overwrite it).
+// ---------------------------------------------------------------------------
+
+describe('pricing failure --json (mx-ops#144 P5)', () => {
+  it('keeps status "failed", carries the contract fields in camelCase, and groups amazon', async () => {
+    vi.mocked(getFeaturedOfferExpectedPriceBatch).mockResolvedValue({
+      ok: false,
+      kind: 'bad_request',
+      friendly: 'Amazon rejected this pricing request.',
+      httpStatus: 400,
+      status: undefined,
+      source: 'amazon_rejected',
+      retryable: false,
+      amazonStatus: 400,
+      amazonErrorCode: 'InvalidInput',
+      amazonMessage: 'Invalid SKU',
+    });
+    const out: string[] = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      out.push(String(chunk));
+      return true;
+    });
+    await buildProgram().parseAsync(['node', 'mixshift', '--json', 'amazon', 'pricing', 'foep-batch', '--skus', 'SKU-1']);
+    const emitted = JSON.parse(out.join(''));
+    expect(emitted.status).toBe('failed');
+    expect(emitted).toMatchObject({
+      kind: 'bad_request',
+      source: 'amazon_rejected',
+      retryable: false,
+      amazon: { status: 400, code: 'InvalidInput', message: 'Invalid SKU' },
+    });
+    expect(process.exitCode).toBe(12);
+  });
+});

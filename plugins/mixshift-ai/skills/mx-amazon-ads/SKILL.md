@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -743,6 +743,7 @@ never retry it in a loop:
 | `session_expired` | 2 | Session could not be refreshed. Run `mixshift auth login` again. |
 | `restricted_report` | 4 | Amazon refused this call for an access/role reason MixShift does not hold. Do NOT retry unchanged. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: your parameters, not an outage or a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` its message. **Terminal: never retry unchanged.** Fix the parameters and resend. If this skill's own catalog notes led to the request, tell the user and encourage `mixshift feedback`: a convention we documented wrongly affects every caller, and the same code repeating on the same operation is how we find it. |
+| `invalid_request` | 15 | **MixShift refused the request before sending it**, so nothing reached Amazon: an unknown operation, a parameter it does not take, a missing or conflicting one, or a value Amazon is known to refuse. The message (and `detail`) says what is wrong; `fix`, when present, says what to change (often quoting Amazon's own rule); `missing_params` / `conflicting_params` / `invalid_params` name the parameters. **Terminal: never resend it unchanged; it is refused the same way every time.** Change the request, then call again. If this skill's catalog notes led you to that shape, tell the user and encourage `mixshift feedback`. |
 | `reauth_required` | 5 | This advertiser's grant lapsed, and NO call against it can succeed until a person re-authorizes it. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to re-connect the account in the MixShift app, then re-run. |
 | `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to activate the merchant in the MixShift platform, then re-run. Do NOT tell them to re-authorize: the connection is working, this is an activation setting. |
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
@@ -752,9 +753,19 @@ never retry it in a loop:
 | `insufficient_scope` | 11 | The credential cannot write (writes need `ads:write`). Hand the user the change list; an admin must issue a write-capable credential. Do NOT retry. |
 | `upstream_unavailable` | 1 | Amazon's side failed (a server error). Reads were already retried by the service; retry a read later. A committed write was NOT retried and may have applied: re-list before resending. A report create carries `request_outcome` (see above). |
 | `host_unreachable` | 1 | The service is unreachable or did not answer in time. If `request_outcome` is `unknown`, see above; otherwise check the network and retry. |
-| `unknown` | 1 | Unexpected failure. If `request_outcome` is `unknown`, see above; otherwise retry shortly and relay the message. |
+| `unknown` | 1 | An unexpected failure on MixShift's side. If `request_outcome` is `unknown`, see above. Otherwise relay the message and retry at most once; if it fails again, stop and suggest `mixshift feedback` with the operation and the time. Never loop on it. |
 
 Notes:
+
+- **Every failure in `--json` also says who has to act and whether a retry can
+  help.** `source` is `request` (the call itself), `account` (a MixShift setting
+  or an Amazon authorization), `amazon_rejected` (Amazon answered no),
+  `amazon_unavailable` (Amazon is down or rate-limiting) or `mixshift` (our
+  fault). `retryable: false` means the identical call fails the same way until
+  something changes, so never resend it as is. The one exception is `unknown`
+  (`source: mixshift`): our fault can be transient, so one retry is fine, then
+  stop and report it. When Amazon answered, `amazon` groups its own `status`,
+  `code` and `message`.
 
 - **An auth-class failure stops the whole run, not just the call that hit it.**
   `reauth_required`, `session_expired` and `not_authenticated` all mean the same

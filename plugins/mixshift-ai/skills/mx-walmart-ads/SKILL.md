@@ -15,7 +15,7 @@ description: >
   the user's own account (demo Walmart ads). Uses the MixShift plugin sign-in,
   so no separate connector is needed. Does not require brand setup.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - walmart campaigns
@@ -452,16 +452,22 @@ change log: quote it when asking MixShift about the change.
 | `not_found` | 7 | Walmart has no such record. Re-list the ids and try again. |
 | `throttled` | 8 | Walmart is rate-limiting. Its limits are hourly; wait and retry. `ss.api_usage` shows calls made in the last hour. |
 | `insufficient_scope` | 11 | This credential cannot make changes (needs `ads:write`). Hand the user the change list. Do not retry. |
-| `bad_request` | 12 | MixShift or Walmart rejected the request as sent: a missing parameter, a wrong body shape, an unknown operation. Fix it from the notes and resend; never retry unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
+| `invalid_request` | 15 | MixShift refused the request before sending anything to Walmart: an unknown operation, a missing parameter, a wrong body shape. The message (and `detail`) says what; `invalid_params` names the fields when a request field was malformed. Re-run `walmart ads operations` (or read the operation's notes) and fix it; never resend it unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
+| `bad_request` | 12 | Walmart rejected the request as sent. `walmart_response` carries Walmart's own answer. Fix the request from the notes and that answer, then resend; never retry unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
 | `upstream_auth` | 14 | Walmart refused MixShift's access for this advertiser. Nothing the user can fix in chat: tell them to contact MixShift. Do not retry. |
 | `upstream_unavailable` | 1 | Walmart's side failed. Retry a read later. A commit with `request_outcome: "unknown"` may or may not have applied: re-list the entity to check before resending; its `audit_id` names the change-log record. |
 | `host_unreachable` | 1 | MixShift's service did not answer. Check `request_outcome`; otherwise retry shortly. |
-| `unknown` | 1 | Unexpected. Check `request_outcome`; otherwise retry once and relay the message. |
+| `unknown` | 1 | Unexpected, on MixShift's side. Check `request_outcome`; otherwise retry at most once and relay the message. Never loop on it. |
 
 An access or sign-in failure (`not_authenticated`, `session_expired`,
 `tenant_not_allowed`, `upstream_auth`) stops the whole plan, not just the call
 that hit it. Report it once with the remedy; do not walk the rest of a change
 set into the same wall.
+
+Every failure in `--json` also carries `source` (who has to act; on this surface `amazon_rejected`
+means Walmart said no and `amazon_unavailable` means Walmart is down or rate-limiting) and
+`retryable`. `retryable: false` means the identical call fails the same way until something
+changes, so never resend it as is (the one exception is `unknown`: one retry, then report it).
 
 Display advertisers: some Display operations can answer with a permission
 error that only Walmart can lift. Tell the user that part is not available

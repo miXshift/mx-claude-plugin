@@ -36,6 +36,11 @@ import {
   type CompetitiveSummaryIncludedData,
   type ReportFailure,
 } from '../lib/amazon/pricing.js';
+import {
+  failureContractJson,
+  failureContractLines,
+  failureContractTelemetry,
+} from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import {
   listPricingRuns,
@@ -387,6 +392,8 @@ function registerPollRunCommand(pricing: Command): void {
                 ...(result.unrecognizedKind
                   ? { unrecognized_kind: result.unrecognizedKind }
                   : {}),
+                // Gateway contract (mx-ops#144): enums and a flag only.
+                ...failureContractTelemetry(result),
               },
             },
             root.dataDir,
@@ -449,6 +456,8 @@ function registerGetRunResultCommand(pricing: Command): void {
                 ...(result.unrecognizedKind
                   ? { unrecognized_kind: result.unrecognizedKind }
                   : {}),
+                // Gateway contract (mx-ops#144): enums and a flag only.
+                ...failureContractTelemetry(result),
               },
             },
             root.dataDir,
@@ -602,6 +611,8 @@ async function trackFailure(
         ...(result.unrecognizedKind
           ? { unrecognized_kind: result.unrecognizedKind }
           : {}),
+        // Gateway contract (mx-ops#144): enums and a flag only.
+        ...failureContractTelemetry(result),
       },
     },
     dataDir,
@@ -610,10 +621,21 @@ async function trackFailure(
 
 function emitFailure(failure: ReportFailure, json: boolean): void {
   if (json) {
-    writeJson({ status: 'failed', ...failure });
+    // camelCase like the rest of this surface's --json (the spread carries
+    // source, retryable, fix, docsUrl, missingParams, amazonMessage ...), plus
+    // Amazon's answer grouped as `amazon`. `status: 'failed'` goes LAST: the
+    // failure's own `status` key (a report lifecycle string, usually absent)
+    // used to overwrite it, so pricing failures carried no status at all.
+    writeJson({
+      ...failure,
+      amazon: failureContractJson(failure).amazon,
+      status: 'failed',
+      ...(failure.status !== undefined ? { runStatus: failure.status } : {}),
+    });
   } else {
     process.stderr.write(`\nerror (${failure.kind}): ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`detail: ${failure.message}\n`);
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }
