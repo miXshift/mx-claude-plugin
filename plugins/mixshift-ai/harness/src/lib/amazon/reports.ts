@@ -2190,7 +2190,7 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
     default:
       return (
         `${requestLabel(surface)} failed unexpectedly. Try it once more; if it ` +
-        'fails again, report it with `mixshift feedback` rather than retrying.'
+        'fails again, tell MixShift with `mixshift feedback` rather than retrying.'
       );
   }
 }
