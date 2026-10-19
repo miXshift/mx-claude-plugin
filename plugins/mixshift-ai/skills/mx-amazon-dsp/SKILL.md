@@ -15,7 +15,7 @@ description: >
   needed: creating or attaching creatives is NOT available yet; say so
   plainly rather than improvising. No brand setup needed, only sign-in.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -718,6 +718,7 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `merchant_inactive` | 13 | The merchant is **not active for Amazon Ads** in MixShift, so Amazon will not serve data for it. Nothing was sent to Amazon. **Terminal: never retry, and do not attempt the rest of a change set.** Tell the user to activate the merchant in the MixShift platform, then re-run. Do NOT tell them to re-authorize: the connection is working, this is an activation setting. |
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. |
+| `invalid_request` | 15 | MixShift refused the request before anything reached Amazon (an unknown operation, a parameter it does not take, a missing one). The message says what is wrong and `fix` what to change. **Never resend it unchanged.** Fix it and call again. |
 
 **If a failure carries `request_outcome: "unknown"`** (the message says the call
 may still have gone through), the report you were creating may already exist.

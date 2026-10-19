@@ -44,6 +44,9 @@ import {
 import {
   isReportFailure,
   exitCodeForKind,
+  failureContractJson,
+  failureContractLines,
+  failureContractTelemetry,
   type ReportFailure,
 } from '../lib/amazon/reports.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
@@ -331,6 +334,9 @@ function registerCall(ads: Command): void {
             // often users land here, per `operation`, decides whether report
             // creation needs real dedup. One word, no identifiers.
             ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
+            // The gateway contract (mx-ops#144): who acts, and whether the same
+            // call can succeed later. Enums and a flag; never the fix text.
+            ...failureContractTelemetry(result),
           });
           return emitFailure(result, !!root.json);
         }
@@ -480,10 +486,13 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       concurrency_cap: failure.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
       retry_after_ms: failure.retryAfterMs,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure),
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`  ${failure.message}\n`);
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }

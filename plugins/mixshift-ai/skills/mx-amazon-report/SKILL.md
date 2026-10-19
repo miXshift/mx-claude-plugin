@@ -13,7 +13,7 @@ description: >
   summary). Read-only, routes through the bundled harness CLI. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   author: "MixShift"
 trigger_phrases:
   - pull a report
@@ -814,6 +814,7 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `host_unreachable` | 1 | The service is unreachable. Check the network and retry. |
 | `download_failed` | 1 | The report document download stalled or dropped and did not finish after the built-in retries. The report itself is still ready, so just run the same `report get <runId> --out <file>` again in a moment. Not a report or auth problem. |
 | `bad_request` | 12 | **AMAZON rejected the request itself**: not an outage, not a permission problem. `amazon_error_code` carries Amazon's own code (`InvalidInput`, `InvalidParameterValue`, ...) and `detail` carries its message. **Terminal: never retry it unchanged**, it will fail identically. Fix the parameters and resend. If the operation catalog's own notes led to this request, say so to the user and encourage `mixshift feedback` — a documented convention that is wrong affects every caller, and a repeat of the same code on the same operation is how we find it. |
+| `invalid_request` | 15 | **MixShift refused the request before sending it**, so nothing reached Amazon: an unknown operation or report shape, a parameter it does not take, a missing or conflicting one, or a value Amazon is known to refuse. The message says what is wrong, `fix` says what to change (often quoting Amazon's own rule), and `missing_params` / `conflicting_params` / `invalid_params` name the parameters. **Terminal: never resend it unchanged; it is refused the same way every time.** Change the request as `fix` says, then call again. |
 | `insufficient_scope` | 11 | The credential lacks a scope this operation needs (for example `ads:write`). Not retryable as-is: the credential has to be re-issued with that scope. |
 | `ads_not_configured` | 6 | The Amazon Ads API is not enabled on the MixShift service for this account. Contact MixShift ops. |
 | `report_retired` | 1 | Amazon has retired this report type. Nothing was sent to Amazon. **Terminal**: pick a current report type from `list-reports`; never retry unchanged. |
@@ -828,11 +829,18 @@ stderr. Each kind also maps to a distinct exit code for terminal scripts.
 | `approval_mismatch` | 1 | The approval does not match the change set it was given for. Run the dry run again and approve the new set. |
 | `stale_approval` | 1 | The approval was superseded by a newer change set. Approve the current one. |
 | `schema_drift` | 1 | Amazon's listing schema changed underneath the change set. Run the dry run again against the current schema. |
-| `unknown` | 1 | Unexpected failure. Retry shortly; relay the message. |
+| `unknown` | 1 | An unexpected failure on MixShift's side. Relay the message and retry at most once; if it fails again, stop and suggest `mixshift feedback` with the report type and the time. Never loop on it. |
 
 The write-flow kinds (`patch_not_allowed` through `schema_drift`) and the four service
 availability kinds share exit code 1 for now; branch on `failure_kind` in `--json` to tell
-them apart, not on the exit code. If the service ever sends a `failure_kind` this version of the
+them apart, not on the exit code.
+
+Every failure in `--json` also says who has to act and whether a retry can help. `source` is
+`request` (the call itself), `account` (a MixShift setting or an Amazon authorization),
+`amazon_rejected` (Amazon answered no), `amazon_unavailable` (Amazon is down or rate-limiting)
+or `mixshift` (our fault). `retryable: false` means the identical call fails the same way until
+something changes, so never resend it as is. When Amazon answered, `amazon` groups its own
+`status`, `code` and `message`. If the service ever sends a `failure_kind` this version of the
 plugin does not recognise, `--json` also carries `unrecognized_kind` with the raw value the
 service sent; relay it in any bug report, since it names a gap on our side rather than a
 problem with the request. The pricing surface spells it `unrecognizedKind`, matching the rest

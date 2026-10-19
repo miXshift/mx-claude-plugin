@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-ads
 display_name: Amazon Ads (live account state + audited writes)
-version: "0.2.2"
+version: "0.2.3"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
@@ -111,7 +111,8 @@ notes: >
 
   Failures are typed: branch on failure_kind (not_authenticated,
   ads_not_configured=6, merchant_not_found=7, throttled=8,
-  insufficient_scope=11, reauth_required=5, ...), never on HTTP status.
+  insufficient_scope=11, reauth_required=5, invalid_request=15 = MixShift
+  refused it before Amazon so read `fix`, ...), never on HTTP status.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)

@@ -227,6 +227,10 @@ function registerCall(ads: Command): void {
             ...(opts.commit ? { committed: true } : {}),
             // Parameter NAMES only, never values (same rule as amazon call).
             ...(Object.keys(opts.query).length > 0 ? { query_keys: Object.keys(opts.query).sort() } : {}),
+            // Gateway contract (mx-ops#144): enums and a flag; never the fix text.
+            ...(result.source !== undefined ? { source: result.source } : {}),
+            ...(result.retryable !== undefined ? { retryable: result.retryable } : {}),
+            ...(result.fix !== undefined ? { has_fix: true } : {}),
           });
           return emitFailure(result, !!root.json);
         }
@@ -316,10 +320,18 @@ function emitFailure(failure: WalmartFailure, json: boolean): void {
       required_scope: failure.requiredScope,
       request_outcome: failure.requestOutcome,
       unrecognized_kind: failure.unrecognizedKind,
+      // Gateway contract (mx-ops#144 P5).
+      source: failure.source,
+      retryable: failure.retryable,
+      fix: failure.fix,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message && failure.message !== failure.friendly) process.stderr.write(`  ${failure.message}\n`);
+    if (failure.fix) process.stderr.write(`  fix: ${failure.fix}\n`);
+    if (failure.retryable === false && failure.source === 'request') {
+      process.stderr.write('  Not retryable as sent: change the request before calling again.\n');
+    }
   }
   process.exitCode = exitCodeForWalmartKind(failure.kind);
 }

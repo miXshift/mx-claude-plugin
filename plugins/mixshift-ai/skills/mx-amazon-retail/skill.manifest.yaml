@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-retail
 display_name: Amazon Retail Lookups (live SP-API)
-version: "0.5.0"
+version: "0.5.1"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. The retail-operations analogue of mx-amazon-report:
@@ -145,7 +145,8 @@ notes: >
   merchant_not_found, throttled, report_fatal, host_unreachable, unknown, and
   from 0.8.13 the service's full set: insufficient_scope, ads_not_configured,
   report_retired, upstream_unavailable and the listings write-flow kinds in
-  SKILL.md; unrecognized_kind carries a kind newer than this plugin),
+  SKILL.md; invalid_request (exit 15) = MixShift refused it before Amazon,
+  read `fix`; unrecognized_kind carries a kind newer than this plugin),
   never on HTTP status. Orders default to non-PII (the app holds no PII/RDT
   role; a PII element 403s as restricted_report). Vendor Orders are 1P-only;
   3P sellers 4xx (surfaces as report_fatal).

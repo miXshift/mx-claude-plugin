@@ -132,3 +132,53 @@ describe('amazon call: failure telemetry records parameter NAMES, never values',
     expect(payload).not.toHaveProperty('path_keys');
   });
 });
+
+/** What toReportFailure makes of the gateway's measured-rule refusal (the
+ *  producer envelope in testdata/gateway/error-envelopes.json). */
+const REFUSED = {
+  ok: false as const,
+  kind: 'invalid_request' as const,
+  friendly:
+    'Operation fulfillment_inbound.get_shipments needs at least one of query.ShipmentStatusList or query.ShipmentIdList when query.QueryType=DATE_RANGE.',
+  httpStatus: 400,
+  source: 'request',
+  retryable: false,
+  fix: 'Amazon: "At least one of ShipmentStatusList and ShipmentIdList must be provided" (3 in the P0 window). Reference: https://developer-docs.amazon.com/sp-api/docs/fulfillment-inbound-api-v0-reference. Nothing was sent to Amazon.',
+  docsUrl: 'https://developer-docs.amazon.com/sp-api/docs/fulfillment-inbound-api-v0-reference',
+  missingParams: ['ShipmentStatusList', 'ShipmentIdList'],
+};
+
+function lastJsonOut(): Record<string, unknown> {
+  const writes = vi.mocked(process.stdout.write).mock.calls.map((c) => String(c[0]));
+  return JSON.parse(writes[writes.length - 1]!) as Record<string, unknown>;
+}
+
+describe('amazon call: a MixShift refusal reaches the agent as one (mx-ops#144 P5)', () => {
+  it('--json names the kind, who acts, the retry verdict and the fix; exit code 15', async () => {
+    vi.mocked(spapiCall).mockResolvedValue(REFUSED as never);
+
+    await runAmazon('--json', 'call', 'fulfillment_inbound.get_shipments', '--query', 'QueryType=DATE_RANGE');
+
+    const out = lastJsonOut();
+    expect(out).toMatchObject({
+      status: 'error',
+      failure_kind: 'invalid_request',
+      source: 'request',
+      retryable: false,
+      missing_params: ['ShipmentStatusList', 'ShipmentIdList'],
+    });
+    expect(String(out.fix)).toContain('Nothing was sent to Amazon.');
+    expect(process.exitCode).toBe(15);
+  });
+
+  it('telemetry records source and retryable, and that a fix existed, but never its text', async () => {
+    vi.mocked(spapiCall).mockResolvedValue(REFUSED as never);
+
+    await runAmazon('call', 'fulfillment_inbound.get_shipments', '--query', 'QueryType=DATE_RANGE');
+
+    const payload = lastFailurePayload();
+    expect(payload).toMatchObject({ kind: 'invalid_request', source: 'request', retryable: false, has_fix: true });
+    expect(payload).not.toHaveProperty('unrecognized_kind');
+    expect(JSON.stringify(payload)).not.toContain('Nothing was sent');
+  });
+});

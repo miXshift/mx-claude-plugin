@@ -36,6 +36,7 @@ import {
   type CompetitiveSummaryIncludedData,
   type ReportFailure,
 } from '../lib/amazon/pricing.js';
+import { failureContractLines, failureContractTelemetry } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import {
   listPricingRuns,
@@ -387,6 +388,8 @@ function registerPollRunCommand(pricing: Command): void {
                 ...(result.unrecognizedKind
                   ? { unrecognized_kind: result.unrecognizedKind }
                   : {}),
+                // Gateway contract (mx-ops#144): enums and a flag only.
+                ...failureContractTelemetry(result),
               },
             },
             root.dataDir,
@@ -449,6 +452,8 @@ function registerGetRunResultCommand(pricing: Command): void {
                 ...(result.unrecognizedKind
                   ? { unrecognized_kind: result.unrecognizedKind }
                   : {}),
+                // Gateway contract (mx-ops#144): enums and a flag only.
+                ...failureContractTelemetry(result),
               },
             },
             root.dataDir,
@@ -602,6 +607,8 @@ async function trackFailure(
         ...(result.unrecognizedKind
           ? { unrecognized_kind: result.unrecognizedKind }
           : {}),
+        // Gateway contract (mx-ops#144): enums and a flag only.
+        ...failureContractTelemetry(result),
       },
     },
     dataDir,
@@ -614,6 +621,7 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
   } else {
     process.stderr.write(`\nerror (${failure.kind}): ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`detail: ${failure.message}\n`);
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }

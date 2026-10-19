@@ -139,6 +139,11 @@ export type ReportFailureKind =
   | 'merchant_inactive' // 422 — merchant is not ACTIVE for Ads in MixShift. Terminal: activate it, do not retry
   | 'profile_not_authorized' // 403 — credential is fine; Amazon denies this profile to that advertising login
   | 'bad_request' // 400 — AMAZON rejected the request; +amazonErrorCode. Terminal: do not retry
+  // --- added 2026-10-19 (mx-ops#144 P5): the gateway has emitted this since
+  // P2 (2026-10-15) for its own pre-Amazon refusals. Unlisted, it arrived as
+  // `unknown` with "try again shortly" copy, and agents re-sent the identical
+  // refused call 4-5 times in seconds (telemetry 10-16..10-19).
+  | 'invalid_request' // 400 — MIXSHIFT refused the request before sending it; +fix. Nothing reached Amazon. Terminal: change the request
   | 'too_many_items' // 400 — a sync pricing call exceeded the sync cap (100 ASINs / 200 SKUs). Terminal: use --async
   | 'restricted_report' // 403 — Amazon needs an RDT/PII role we lack; +reportType
   | 'merchant_not_found' // 404 — no merchant matched the selector
@@ -227,6 +232,28 @@ export interface ReportFailure {
   /** On `throttled` from report creation: Amazon is capping reports already
    *  running, not the request rate, so waiting alone does not clear it. */
   concurrencyCap?: boolean;
+  // --- the gateway error contract (D-117, mx-ops#144 P2/P3), read since P5 ---
+  /** Who has to act: `request` (the caller's input), `account` (a MixShift
+   *  setting or Amazon authorization), `amazon_rejected` (Amazon answered no),
+   *  `amazon_unavailable` (Amazon is down or rate-limiting) or `mixshift`
+   *  (our fault). Kept as a string so a new value stays visible. */
+  source?: string;
+  /** The gateway's verdict on whether the SAME call can succeed later.
+   *  `false` means it fails the same way until something changes. */
+  retryable?: boolean;
+  /** On `invalid_request`: the concrete change to make, in the gateway's
+   *  words. Sanitized and length-capped (see `cleanServerText`). */
+  fix?: string;
+  /** Amazon's reference page for the operation, when the refusal names one. */
+  docsUrl?: string;
+  /** Parameter NAMES (never values) the refusal is about. */
+  missingParams?: string[];
+  conflictingParams?: string[];
+  invalidParams?: string[];
+  /** Amazon's own words, when Amazon answered (the envelope's `amazon.message`).
+   *  It is about the caller's own request, so it goes to the caller and into
+   *  `--json`, never into telemetry. */
+  amazonMessage?: string;
 }
 
 export interface ListMerchantsResult {
@@ -398,6 +425,8 @@ export function exitCodeForKind(kind: ReportFailureKind): number {
       return 9; // Amazon returned FATAL / CANCELLED
     case 'bad_request':
       return 12; // Amazon rejected the request itself — terminal, fix and resend
+    case 'invalid_request':
+      return 15; // MixShift refused it before sending; nothing reached Amazon — read `fix`, change the request
     case 'host_unreachable':
     case 'download_failed': // transient download failure — retry the fetch
     case 'unknown':
@@ -1579,6 +1608,8 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'approval_mismatch',
   'stale_approval',
   'schema_drift',
+  // The gateway's pre-Amazon refusal (P2, 2026-10-15; listed here in P5).
+  'invalid_request',
   'unknown',
 ]);
 
@@ -1641,6 +1672,90 @@ export function cleanAmazonError(v: unknown): string | undefined {
     : cleaned;
 }
 
+/** Cap on gateway-authored text we carry and print (`fix`, Amazon's message). */
+export const SERVER_TEXT_MAX_CHARS = 2000;
+
+/** Server text made inert for a terminal: control characters and bidi
+ *  overrides become spaces (newlines and tabs kept), over-long text is cut at
+ *  a code point and marked. Non-strings and blank text count as absent. */
+export function cleanServerText(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  // eslint-disable-next-line no-control-regex
+  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ').trim();
+  if (cleaned.length === 0) return undefined;
+  const points = Array.from(cleaned);
+  return points.length > SERVER_TEXT_MAX_CHARS
+    ? points.slice(0, SERVER_TEXT_MAX_CHARS).join('') + '... [truncated]'
+    : cleaned;
+}
+
+/** The gateway sends `fix` as one string. The P3 design sketched an object
+ *  ({ expected, example, docsUrl }); accept that shape too, joined into one
+ *  line, so a later gateway change does not silently drop the fix. */
+function fixText(v: unknown): unknown {
+  if (typeof v === 'string' || typeof v !== 'object' || v === null) return v;
+  const o = v as Record<string, unknown>;
+  const parts = [o.expected, o.example, o.docsUrl].filter(
+    (p): p is string => typeof p === 'string' && p.trim() !== '',
+  );
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
+/** Parameter NAMES the refusal is about (strings only, capped). */
+function paramNames(
+  key: 'missingParams' | 'conflictingParams' | 'invalidParams',
+  v: unknown,
+): Partial<Pick<ReportFailure, 'missingParams' | 'conflictingParams' | 'invalidParams'>> {
+  if (!Array.isArray(v)) return {};
+  const names = v
+    .filter((n): n is string => typeof n === 'string' && n.trim() !== '')
+    .slice(0, 50)
+    .map((n) => cleanServerText(n)!)
+    .filter(Boolean);
+  return names.length > 0 ? { [key]: names } : {};
+}
+
+/** The contract fields of a failure, for a command's `--json` output. One
+ *  helper so every Amazon command prints the same names (snake_case, like the
+ *  rest of the output). Undefined fields drop out of JSON.stringify. */
+export function failureContractJson(f: ReportFailure): Record<string, unknown> {
+  const amazon =
+    f.amazonStatus !== undefined || f.amazonErrorCode !== undefined || f.amazonMessage !== undefined
+      ? { status: f.amazonStatus, code: f.amazonErrorCode, message: f.amazonMessage }
+      : undefined;
+  return {
+    source: f.source,
+    retryable: f.retryable,
+    fix: f.fix,
+    docs_url: f.docsUrl,
+    missing_params: f.missingParams,
+    conflicting_params: f.conflictingParams,
+    invalid_params: f.invalidParams,
+    amazon,
+  };
+}
+
+/** The same fields as lines for text output (stderr, under the headline). */
+export function failureContractLines(f: ReportFailure): string[] {
+  const lines: string[] = [];
+  if (f.fix) lines.push(`  fix: ${f.fix}`);
+  if (f.docsUrl && !(f.fix ?? '').includes(f.docsUrl)) lines.push(`  docs: ${f.docsUrl}`);
+  if (f.retryable === false && (f.source === 'request' || f.kind === 'invalid_request')) {
+    lines.push('  Not retryable as sent: change the request before calling again.');
+  }
+  return lines;
+}
+
+/** Contract fields for telemetry: enums and a flag only. The fix text and
+ *  Amazon's words can carry the caller's own identifiers, so they never go. */
+export function failureContractTelemetry(f: ReportFailure): Record<string, unknown> {
+  return {
+    ...(f.source !== undefined ? { source: f.source } : {}),
+    ...(f.retryable !== undefined ? { retryable: f.retryable } : {}),
+    ...(f.fix !== undefined ? { has_fix: true } : {}),
+  };
+}
+
 export type ReportReasonClass =
   | 'deprecated'
   | 'wrong_merchant_type'
@@ -1698,11 +1813,21 @@ function toReportFailure(
 ): ReportFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const recognized = KNOWN_KINDS.has(rawKind);
-  const amazonErrorCode = strOrUndef(json.amazon_error_code);
+  // Amazon's answer: the structured `amazon` object first (P2), then the
+  // top-level copies the gateway still sends during the duplication window.
+  const amazon =
+    typeof json.amazon === 'object' && json.amazon !== null
+      ? (json.amazon as Record<string, unknown>)
+      : {};
+  const amazonErrorCode = strOrUndef(amazon.code) ?? strOrUndef(json.amazon_error_code);
+  const amazonStatus = numOrUndef(amazon.status) ?? numOrUndef(json.status);
+  const amazonMessage = cleanServerText(amazon.message ?? json.amazon_message);
   const amazonError = cleanAmazonError(json.amazon_error);
+  const source = strOrUndef(json.source);
   const kind: ReportFailureKind = recognized
     ? (rawKind as ReportFailureKind)
-    : safeKindForStatus(httpStatus, amazonErrorCode);
+    : safeKindForStatus(httpStatus, amazonErrorCode, source);
+  const fix = cleanServerText(fixText(json.fix));
   const rawFriendly =
     typeof json.friendly === 'string' ? json.friendly : undefined;
   // The gateway's report_fatal copy points at `amazon_error` ONLY when it
@@ -1727,7 +1852,15 @@ function toReportFailure(
     httpStatus,
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     ...(amazonErrorCode !== undefined ? { amazonErrorCode } : {}),
-    ...(numOrUndef(json.status) !== undefined ? { amazonStatus: numOrUndef(json.status) } : {}),
+    ...(amazonStatus !== undefined ? { amazonStatus } : {}),
+    ...(amazonMessage !== undefined ? { amazonMessage } : {}),
+    ...(source !== undefined ? { source } : {}),
+    ...(typeof json.retryable === 'boolean' ? { retryable: json.retryable } : {}),
+    ...(fix !== undefined ? { fix } : {}),
+    ...(strOrUndef(json.docsUrl) !== undefined ? { docsUrl: strOrUndef(json.docsUrl) } : {}),
+    ...paramNames('missingParams', json.missing_params),
+    ...paramNames('conflictingParams', json.conflicting_params),
+    ...paramNames('invalidParams', json.invalid_params),
     ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
     ...(amazonError !== undefined ? { amazonError } : {}),
     ...(strOrUndef(json.responseText) !== undefined
@@ -1796,11 +1929,15 @@ function statusOnlyFailure(
  *
  * So this narrows to the cases where the answer cannot be wrong:
  *   400 + amazon_error_code -> bad_request. 400 ALONE is not enough: the
- *       service emits both `bad_request` and `report_retired` at 400, and its
- *       own validation failures ship at 400 as `unknown` today. `bad_request`
- *       is documented to users as "AMAZON rejected the request" with the code
- *       attached, so it is only honest when Amazon's code is actually present;
- *       that code is the evidence Amazon, not the service, did the rejecting.
+ *       service emits `bad_request`, `report_retired`, `too_many_items` and
+ *       `invalid_request` at 400. `bad_request` is documented to users as
+ *       "AMAZON rejected the request" with the code attached, so it is only
+ *       honest when Amazon's code is actually present; that code is the
+ *       evidence Amazon, not the service, did the rejecting.
+ *   400 + source 'request' (no Amazon code) -> invalid_request. The gateway's
+ *       own contract field says the caller's input was refused, and every
+ *       request-sourced kind at 400 means "change the request", so a future
+ *       kind of that shape still reads as terminal rather than "try again".
  *   429 -> throttled    (sole occupant of that status)
  * Everything else stays `unknown`, which is honest rather than confident.
  *
@@ -1809,8 +1946,10 @@ function statusOnlyFailure(
 function safeKindForStatus(
   httpStatus: number,
   amazonErrorCode?: string,
+  source?: string,
 ): ReportFailureKind {
   if (httpStatus === 400 && amazonErrorCode) return 'bad_request';
+  if (httpStatus === 400 && source === 'request') return 'invalid_request';
   if (httpStatus === 429) return 'throttled';
   return 'unknown';
 }
@@ -1948,6 +2087,12 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
         `${requestLabel(surface)} was rejected by Amazon because of the ` +
         'request itself, not a MixShift or Amazon outage. Retrying it ' +
         'unchanged will not help.'
+      );
+    case 'invalid_request':
+      return (
+        `${requestLabel(surface)} was refused by MixShift before anything was ` +
+        'sent to Amazon: something in the request has to change. Retrying it ' +
+        'unchanged will fail the same way.'
       );
     case 'too_many_items':
       return (

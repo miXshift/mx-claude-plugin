@@ -43,6 +43,9 @@ import {
   streamReportDocumentToFile,
   isReportFailure,
   exitCodeForKind,
+  failureContractJson,
+  failureContractLines,
+  failureContractTelemetry,
   throttleBackoffMs,
   queuedBackoffMs,
   chunkAsinList,
@@ -1181,6 +1184,9 @@ async function trackFailure(
         ...(failure.amazonError !== undefined
           ? { reason_class: classifyAmazonError(failure.amazonError) }
           : {}),
+        // The gateway contract (mx-ops#144): who acts, and whether the same
+        // call can succeed later. Enums and a flag; never the fix text.
+        ...failureContractTelemetry(failure),
       },
     },
     dataDir,
@@ -1212,10 +1218,13 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       amazon_error: failure.amazonError,
       // Multi-marketplace merchant_not_found: the rows to disambiguate with.
       candidates: failure.candidates,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure),
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
     if (failure.candidates && failure.candidates.length > 0) {
       process.stderr.write(renderCandidates(failure.candidates));
     }
@@ -1267,6 +1276,7 @@ function emitChunkFailure(
       retry_after_ms: failure.retryAfterMs,
       amazon_error: failure.amazonError,
       candidates: failure.candidates,
+      ...failureContractJson(failure),
       chunk,
       chunks: totalChunks,
       run_ids: completedRunIds,
@@ -1274,6 +1284,7 @@ function emitChunkFailure(
   } else {
     process.stderr.write(`\n✗ [SQP chunk ${chunk}/${totalChunks}] ${failure.friendly}\n`);
     if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
+    for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
     if (completedRunIds.length > 0) {
       process.stderr.write(
         `  ${completedRunIds.length} chunk(s) completed before this failure: ${completedRunIds.join(', ')}\n`,
