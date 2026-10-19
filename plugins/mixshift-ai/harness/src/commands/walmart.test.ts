@@ -193,3 +193,44 @@ describe('walmart ads advertisers', () => {
     expect(md).toContain('| acme | 1000001 | Sponsored Search | production | read only |');
   });
 });
+
+describe('walmart ads call: refusals and rejections (mx-ops#144 P5)', () => {
+  it('a MixShift refusal: invalid_request, exit 15, contract fields in --json, no fix text in telemetry', async () => {
+    vi.mocked(walmartAdsCall).mockResolvedValue({
+      ok: false,
+      kind: 'invalid_request',
+      friendly: "Unknown Walmart operation 'sp.list_campaigns'. Run walmart_ads_operations for the list.",
+      httpStatus: 400,
+      source: 'request',
+      retryable: false,
+      fix: 'Use an operation id from walmart ads operations. Nothing was sent to Walmart.',
+    });
+    await run('--json', 'walmart', 'ads', 'call', 'sp.list_campaigns', '--advertiser-id', '600001');
+    expect(JSON.parse(stdout)).toMatchObject({
+      status: 'error',
+      failure_kind: 'invalid_request',
+      source: 'request',
+      retryable: false,
+    });
+    expect(process.exitCode).toBe(15);
+    const t = lastTrack();
+    expect(t.payload).toMatchObject({ kind: 'invalid_request', source: 'request', retryable: false, has_fix: true });
+    expect(JSON.stringify(t.payload)).not.toContain('Nothing was sent');
+  });
+
+  it("a Walmart rejection passes Walmart's own answer to --json, never to telemetry", async () => {
+    vi.mocked(walmartAdsCall).mockResolvedValue({
+      ok: false,
+      kind: 'bad_request',
+      friendly: 'Walmart Connect rejected the request. See `walmart` for its message.',
+      httpStatus: 400,
+      source: 'amazon_rejected',
+      retryable: false,
+      walmartResponse: { code: 'INVALID_PARAMETER', details: 'campaignId must be numeric' },
+    });
+    await run('--json', 'walmart', 'ads', 'call', 'sp.get_campaign', '--advertiser-id', '600001');
+    expect(JSON.parse(stdout).walmart_response).toEqual({ code: 'INVALID_PARAMETER', details: 'campaignId must be numeric' });
+    expect(process.exitCode).toBe(12);
+    expect(JSON.stringify(lastTrack().payload)).not.toContain('campaignId must be numeric');
+  });
+});

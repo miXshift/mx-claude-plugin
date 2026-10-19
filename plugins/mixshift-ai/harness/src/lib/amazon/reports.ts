@@ -1672,6 +1672,9 @@ export function cleanAmazonError(v: unknown): string | undefined {
     : cleaned;
 }
 
+/** A gateway contract word (`source` values: request, amazon_rejected, ...). */
+export const CONTRACT_WORD = /^[a-z_]{1,32}$/;
+
 /** Cap on gateway-authored text we carry and print (`fix`, Amazon's message). */
 export const SERVER_TEXT_MAX_CHARS = 2000;
 
@@ -1680,8 +1683,10 @@ export const SERVER_TEXT_MAX_CHARS = 2000;
  *  a code point and marked. Non-strings and blank text count as absent. */
 export function cleanServerText(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;
+  // C0/C1 controls, bidi marks/overrides/isolates (incl. U+061C) and the
+  // Unicode line/paragraph separators, which some terminals treat as newlines.
   // eslint-disable-next-line no-control-regex
-  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ').trim();
+  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, ' ').trim();
   if (cleaned.length === 0) return undefined;
   const points = Array.from(cleaned);
   return points.length > SERVER_TEXT_MAX_CHARS
@@ -1699,6 +1704,33 @@ function fixText(v: unknown): unknown {
     (p): p is string => typeof p === 'string' && p.trim() !== '',
   );
   return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
+/** A docs link only when it is a plain https URL; anything else is dropped
+ *  rather than printed to a terminal. */
+function safeDocsUrl(v: unknown): string | undefined {
+  const s = cleanServerText(v);
+  return s !== undefined && /^https:\/\/[^\s]{1,500}$/.test(s) ? s : undefined;
+}
+
+/** The zod-style `issues` a route sends on a schema miss: their paths as
+ *  parameter names, and "path: message" pairs as one detail line. */
+export function parseRouteIssues(v: unknown): { paths: string[]; detail?: string } | undefined {
+  if (!Array.isArray(v) || v.length === 0) return undefined;
+  const paths: string[] = [];
+  const parts: string[] = [];
+  for (const item of v.slice(0, 20)) {
+    if (typeof item !== 'object' || item === null) continue;
+    const o = item as { path?: unknown; message?: unknown };
+    const path = Array.isArray(o.path)
+      ? o.path.filter((p) => typeof p === 'string' || typeof p === 'number').join('.')
+      : '';
+    const msg = cleanServerText(o.message);
+    if (path) paths.push(path);
+    if (msg) parts.push(path ? `${path}: ${msg}` : msg);
+  }
+  const detail = cleanServerText(parts.join('; '));
+  return { paths, ...(detail !== undefined ? { detail } : {}) };
 }
 
 /** Parameter NAMES the refusal is about (strings only, capped). */
@@ -1750,7 +1782,9 @@ export function failureContractLines(f: ReportFailure): string[] {
  *  Amazon's words can carry the caller's own identifiers, so they never go. */
 export function failureContractTelemetry(f: ReportFailure): Record<string, unknown> {
   return {
-    ...(f.source !== undefined ? { source: f.source } : {}),
+    // Contract values are short snake_case words; anything else is not one,
+    // and free-form server text does not go to telemetry.
+    ...(f.source !== undefined && CONTRACT_WORD.test(f.source) ? { source: f.source } : {}),
     ...(f.retryable !== undefined ? { retryable: f.retryable } : {}),
     ...(f.fix !== undefined ? { has_fix: true } : {}),
   };
@@ -1823,11 +1857,16 @@ function toReportFailure(
   const amazonStatus = numOrUndef(amazon.status) ?? numOrUndef(json.status);
   const amazonMessage = cleanServerText(amazon.message ?? json.amazon_message);
   const amazonError = cleanAmazonError(json.amazon_error);
-  const source = strOrUndef(json.source);
+  const source = cleanServerText(json.source);
   const kind: ReportFailureKind = recognized
     ? (rawKind as ReportFailureKind)
     : safeKindForStatus(httpStatus, amazonErrorCode, source);
   const fix = cleanServerText(fixText(json.fix));
+  const docsUrl = safeDocsUrl(json.docsUrl);
+  // A route-level schema miss carries no fix and no message, only zod-style
+  // `issues`; without them the caller is told to change the request but not
+  // what (red-team 2026-10-19).
+  const issues = parseRouteIssues(json.issues);
   const rawFriendly =
     typeof json.friendly === 'string' ? json.friendly : undefined;
   // The gateway's report_fatal copy points at `amazon_error` ONLY when it
@@ -1837,7 +1876,7 @@ function toReportFailure(
     kind === 'report_fatal' && amazonError === undefined && rawFriendly !== undefined
       ? rawFriendly.replace(/\s*See amazon_error for the reason Amazon gave\.?/, ' Check the report type and date range.').trim()
       : rawFriendly;
-  const message = typeof json.message === 'string' ? json.message : undefined;
+  const message = typeof json.message === 'string' ? json.message : issues?.detail;
   return {
     ok: false,
     kind,
@@ -1857,10 +1896,10 @@ function toReportFailure(
     ...(source !== undefined ? { source } : {}),
     ...(typeof json.retryable === 'boolean' ? { retryable: json.retryable } : {}),
     ...(fix !== undefined ? { fix } : {}),
-    ...(strOrUndef(json.docsUrl) !== undefined ? { docsUrl: strOrUndef(json.docsUrl) } : {}),
+    ...(docsUrl !== undefined ? { docsUrl } : {}),
     ...paramNames('missingParams', json.missing_params),
     ...paramNames('conflictingParams', json.conflicting_params),
-    ...paramNames('invalidParams', json.invalid_params),
+    ...paramNames('invalidParams', json.invalid_params ?? issues?.paths),
     ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
     ...(amazonError !== undefined ? { amazonError } : {}),
     ...(strOrUndef(json.responseText) !== undefined
@@ -2149,7 +2188,10 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
       );
     case 'unknown':
     default:
-      return `${requestLabel(surface)} failed unexpectedly. Try again shortly.`;
+      return (
+        `${requestLabel(surface)} failed unexpectedly. Try it once more; if it ` +
+        'fails again, report it with `mixshift feedback` rather than retrying.'
+      );
   }
 }
 

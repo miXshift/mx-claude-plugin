@@ -1041,3 +1041,70 @@ describe('report run — throttled start', () => {
     expect(lastJson().status).toBe('error');
   });
 });
+
+// ---------------------------------------------------------------------------
+// mx-ops#144 P5: a MixShift refusal on the report surface. The route-level
+// schema miss carries no fix, only `issues`, which the client folds into
+// `message` + `invalidParams`; this pins what the command does with them.
+// ---------------------------------------------------------------------------
+
+describe('report: a MixShift refusal reaches the agent as one (mx-ops#144 P5)', () => {
+  const REFUSED = {
+    ok: false as const,
+    kind: 'invalid_request' as const,
+    friendly: 'Invalid report request.',
+    message: 'reportType: Required',
+    httpStatus: 400,
+    source: 'request',
+    retryable: false,
+    invalidParams: ['reportType'],
+  };
+
+  it('report start --json carries source, retryable and invalid_params; exit 15; telemetry has no text', async () => {
+    vi.mocked(startReport).mockResolvedValue(REFUSED);
+    await runCli('amazon', 'report', 'start', '--type', 'GET_SALES_AND_TRAFFIC_REPORT', '--json');
+    expect(lastJson()).toMatchObject({
+      status: 'error',
+      failure_kind: 'invalid_request',
+      source: 'request',
+      retryable: false,
+      invalid_params: ['reportType'],
+    });
+    expect(process.exitCode).toBe(15);
+    const failed = reportFailedPayloads();
+    expect(failed[0]).toMatchObject({ kind: 'invalid_request', source: 'request', retryable: false });
+    expect(JSON.stringify(failed[0])).not.toContain('Required');
+  });
+
+  it('report start in text mode prints what to change, not just that something must', async () => {
+    vi.mocked(startReport).mockResolvedValue(REFUSED);
+    await runCli('amazon', 'report', 'start', '--type', 'GET_SALES_AND_TRAFFIC_REPORT');
+    const err = stderrChunks.join('');
+    expect(err).toContain('Invalid report request.');
+    expect(err).toContain('reportType: Required');
+    expect(err).toContain('Not retryable as sent');
+  });
+
+  it('an SQP chunk refused mid-run carries the contract fields too', async () => {
+    const asins = makeAsins(30);
+    let n = 0;
+    vi.mocked(startReport).mockImplementation(async () => {
+      n += 1;
+      return n === 1 ? { ok: true, runId: 'run-1', status: 'IN_QUEUE' } : REFUSED;
+    });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' });
+    vi.mocked(getReportDocument).mockResolvedValue({
+      ok: true, ready: true, status: 'DONE', document: '{"dataByAsin":[]}', bytes: 17,
+    });
+    await runCli(
+      'amazon', 'report', 'run', '--seller-id', 'A1SELLER', '--legacy-seller-id', '42',
+      '--type', SQP_TYPE, '--option', 'reportPeriod=WEEK', '--option', `asin=${asins.join(' ')}`,
+      '--start', '2026-07-05', '--end', '2026-07-11', '--out', join(tmpDir, 'sqp.json'), '--json',
+    );
+    // The chunk failure is the last JSON document written to stdout.
+    const text = stdoutText();
+    const out = JSON.parse(text.slice(text.lastIndexOf('{\n  "status"')));
+    expect(out).toMatchObject({ failure_kind: 'invalid_request', source: 'request', retryable: false, chunk: 2 });
+    expect(process.exitCode).toBe(15);
+  });
+});

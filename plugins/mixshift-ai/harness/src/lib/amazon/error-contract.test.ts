@@ -230,6 +230,43 @@ describe('output helpers', () => {
     expect(rejected).toEqual({ source: 'amazon_rejected', retryable: false });
     expect(JSON.stringify(rejected)).not.toContain('granularityType');
   });
+
+  it('telemetry drops a source that is not a contract word', async () => {
+    const e = envelope('spapi_unknown_operation');
+    e.source = 'request; DROP all the things';
+    expect(failureContractTelemetry(await failureFrom(400, e))).not.toHaveProperty('source');
+  });
+});
+
+describe('red-team round (2026-10-19)', () => {
+  it("a route-level schema miss keeps what to change: issues become the detail and the parameter names", async () => {
+    const r = await spapiCall({ operation: 'x' }, answering(400, envelope('route_spapi_schema_miss')));
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.kind).toBe('invalid_request');
+    expect(r.message).toBe('operation: Expected string, received number');
+    expect(r.invalidParams).toEqual(['operation']);
+  });
+
+  it("prefers amazon.message over the top-level copy", async () => {
+    const e = envelope('spapi_bad_request');
+    e.amazon_message = 'stale top-level words';
+    const r = await failureFrom(400, e);
+    expect(r.amazonMessage).toBe('Invalid granularityType');
+  });
+
+  it('drops a docs link that is not a plain https URL', async () => {
+    const e = envelope('spapi_measured_rule');
+    e.docsUrl = 'javascript:alert(1)';
+    expect((await failureFrom(400, e)).docsUrl).toBeUndefined();
+    e.docsUrl = 'https://developer-docs.amazon.com/sp-api/docs/x y';
+    expect((await failureFrom(400, e)).docsUrl).toBeUndefined();
+  });
+
+  it('makes the Unicode line and paragraph separators and U+061C inert', () => {
+    const sep = String.fromCharCode(0x2028) + String.fromCharCode(0x2029) + String.fromCharCode(0x061c);
+    expect(cleanServerText(`a${sep}b`)).toBe('a   b');
+  });
 });
 
 describe('Walmart: the same refusal on the Walmart surface', () => {
@@ -272,5 +309,34 @@ describe('Walmart: the same refusal on the Walmart surface', () => {
     );
     expect(withSource.ok === false && withSource.kind).toBe('invalid_request');
     expect(withoutSource.ok === false && withoutSource.kind).toBe('bad_request');
+  });
+
+  const walmartAnswering = (status: number, body: unknown) => ({
+    apiBaseOverride: 'https://svc.test',
+    tokenProvider: async () => 'tok',
+    fetchImpl: async () =>
+      new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }),
+  });
+
+  it('a Walmart route schema miss keeps its detail and field names', async () => {
+    const r = await walmartAdsCall(
+      { operation: 'x', advertiserId: '1' },
+      walmartAnswering(400, envelope('route_walmart_schema_miss')),
+    );
+    expect(r.ok === false && r.kind).toBe('invalid_request');
+    if (r.ok) return;
+    expect(r.message).toBe('operation: Required');
+    expect(r.invalidParams).toEqual(['operation']);
+  });
+
+  it("a Walmart rejection keeps Walmart's own answer for --json", async () => {
+    const r = await walmartAdsCall(
+      { operation: 'x', advertiserId: '1' },
+      walmartAnswering(400, envelope('walmart_bad_request')),
+    );
+    expect(r.ok === false && r.kind).toBe('bad_request');
+    if (r.ok) return;
+    expect(r.source).toBe('amazon_rejected');
+    expect(r.walmartResponse).toEqual({ code: 'INVALID_PARAMETER', details: 'campaignId must be numeric' });
   });
 });

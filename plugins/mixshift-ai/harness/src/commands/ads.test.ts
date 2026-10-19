@@ -231,3 +231,46 @@ describe('ads call failure: unknown outcome reaches --json and telemetry', () =>
     expect(process.exitCode).not.toBe(0);
   });
 });
+
+describe('ads call: a MixShift refusal reaches the agent as one (mx-ops#144 P5)', () => {
+  const REFUSED = {
+    ok: false as const,
+    kind: 'invalid_request' as const,
+    friendly: "pathParams.reportId 'ok' is not an id.",
+    httpStatus: 400,
+    source: 'request',
+    retryable: false,
+    fix: 'Poll the value of the `reportId` field returned by reporting.create_report. Nothing was sent to Amazon.',
+    invalidParams: ['pathParams.reportId'],
+  };
+
+  it('--json carries source, retryable, fix and invalid_params; exit 15', async () => {
+    vi.mocked(adsCall).mockResolvedValue(REFUSED);
+    const out: string[] = [];
+    vi.mocked(process.stdout.write).mockImplementation((chunk: unknown): boolean => {
+      out.push(String(chunk));
+      return true;
+    });
+    await buildProgram().parseAsync([
+      'node', 'mixshift', '--json', 'ads', 'call', 'reporting.get_report',
+      '--legacy-seller-id', '71', '--path', 'reportId=ok',
+    ]);
+    expect(JSON.parse(out.join(''))).toMatchObject({
+      status: 'error',
+      failure_kind: 'invalid_request',
+      source: 'request',
+      retryable: false,
+      invalid_params: ['pathParams.reportId'],
+      fix: REFUSED.fix,
+    });
+    expect(process.exitCode).toBe(15);
+  });
+
+  it('telemetry records source, retryable and has_fix, never the fix text', async () => {
+    vi.mocked(adsCall).mockResolvedValue(REFUSED);
+    await runAds('call', 'reporting.get_report', '--legacy-seller-id', '71', '--path', 'reportId=ok');
+    const payload = vi.mocked(track).mock.calls[0]?.[0]?.payload as Record<string, unknown>;
+    expect(payload).toMatchObject({ kind: 'invalid_request', source: 'request', retryable: false, has_fix: true });
+    expect(JSON.stringify(payload)).not.toContain('Nothing was sent');
+  });
+});

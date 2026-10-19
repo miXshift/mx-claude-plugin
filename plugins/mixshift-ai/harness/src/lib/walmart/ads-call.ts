@@ -31,7 +31,7 @@
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { intentHeader } from '../auth/intent.js';
-import { cleanServerText } from '../amazon/reports.js';
+import { cleanServerText, parseRouteIssues } from '../amazon/reports.js';
 
 // ---------------------------------------------------------------------------
 // Types (mirror the service's VisibleAdvertiser / describe(op) / call results)
@@ -157,6 +157,12 @@ export interface WalmartFailure {
   retryable?: boolean;
   /** The concrete change to make, when the gateway names one. */
   fix?: string;
+  /** Parameter names a route-level schema miss is about. */
+  invalidParams?: string[];
+  /** Walmart's own response body on a Walmart rejection (the envelope's
+   *  `walmart`), passed through for `--json`; the caller's own data, so never
+   *  sent to telemetry. */
+  walmartResponse?: unknown;
 }
 
 export interface WalmartClientOptions {
@@ -458,10 +464,11 @@ function isServerFailureEnvelope(json: unknown): json is Record<string, unknown>
 function toWalmartFailure(json: Record<string, unknown>, httpStatus: number): WalmartFailure {
   const rawKind = typeof json.kind === 'string' ? json.kind : '';
   const recognized = KNOWN_KINDS.has(rawKind);
-  const source = typeof json.source === 'string' ? json.source : undefined;
+  const source = cleanServerText(json.source);
   const kind: WalmartFailureKind = recognized ? (rawKind as WalmartFailureKind) : kindForStatus(httpStatus, source);
   const friendly = typeof json.friendly === 'string' && json.friendly ? json.friendly : defaultFriendly(kind);
-  const message = typeof json.message === 'string' ? json.message : undefined;
+  const issues = parseRouteIssues(json.issues);
+  const message = typeof json.message === 'string' ? json.message : issues?.detail;
   const advertiserId =
     typeof json.advertiserId === 'string' || typeof json.advertiserId === 'number'
       ? String(json.advertiserId)
@@ -479,6 +486,8 @@ function toWalmartFailure(json: Record<string, unknown>, httpStatus: number): Wa
     ...(source !== undefined ? { source } : {}),
     ...(typeof json.retryable === 'boolean' ? { retryable: json.retryable } : {}),
     ...(fix !== undefined ? { fix } : {}),
+    ...(issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {}),
+    ...(json.walmart !== undefined ? { walmartResponse: json.walmart } : {}),
   };
 }
 
@@ -519,7 +528,7 @@ function defaultFriendly(kind: WalmartFailureKind): string {
     case 'invalid_request':
       return (
         'MixShift refused this request before sending anything to Walmart: something in the ' +
-        'request has to change. Run walmart_ads_operations for the operation list and its parameters.'
+        'request has to change. Run `mixshift walmart ads operations` for the operation list and its parameters.'
       );
     case 'not_found':
       return 'Walmart has no record matching that request.';

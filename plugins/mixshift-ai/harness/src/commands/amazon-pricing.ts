@@ -36,7 +36,11 @@ import {
   type CompetitiveSummaryIncludedData,
   type ReportFailure,
 } from '../lib/amazon/pricing.js';
-import { failureContractLines, failureContractTelemetry } from '../lib/amazon/reports.js';
+import {
+  failureContractJson,
+  failureContractLines,
+  failureContractTelemetry,
+} from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import {
   listPricingRuns,
@@ -617,7 +621,17 @@ async function trackFailure(
 
 function emitFailure(failure: ReportFailure, json: boolean): void {
   if (json) {
-    writeJson({ status: 'failed', ...failure });
+    // camelCase like the rest of this surface's --json (the spread carries
+    // source, retryable, fix, docsUrl, missingParams, amazonMessage ...), plus
+    // Amazon's answer grouped as `amazon`. `status: 'failed'` goes LAST: the
+    // failure's own `status` key (a report lifecycle string, usually absent)
+    // used to overwrite it, so pricing failures carried no status at all.
+    writeJson({
+      ...failure,
+      amazon: failureContractJson(failure).amazon,
+      status: 'failed',
+      ...(failure.status !== undefined ? { runStatus: failure.status } : {}),
+    });
   } else {
     process.stderr.write(`\nerror (${failure.kind}): ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`detail: ${failure.message}\n`);

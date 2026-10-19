@@ -685,8 +685,13 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `profile_not_authorized` | 14 | Amazon denies this profile to the advertising login the merchant is connected through. The MixShift credential is fine, so re-authorizing changes nothing. **Terminal: never retry unchanged.** Ask the user to check that the advertising login has access to that advertiser in Amazon Ads, or to contact MixShift support so it can be re-mapped. |
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. Probing instances SEQUENTIALLY prevents most of these. |
 | `insufficient_scope` | 11 | The credential cannot write (audience creates, updates and deletes need `ads:write`). Signed-in user sessions hold it; a machine credential needs it issued. Hand the user the audience definition; do NOT retry. |
-| `invalid_request` | 15 | The service's audience preflight refused the request before anything reached Amazon. The message names the exact field or rule: refresh outside 0 to 21, interval date arithmetic, a query that does not select `user_id`, a missing create field, a path parameter the operation does not take. **Terminal: never resend it unchanged.** Fix what the message names and call again. |
+| `invalid_request` | 15 | MixShift refused the request before anything reached Amazon. The message names the exact field or rule: an unknown operation, a missing `instanceId` / `entityId`, a body sent to an operation that takes none (or missing where one is needed), and the audience preflight (refresh outside 0 to 21, interval date arithmetic, a query that does not select `user_id`, a missing create field). **Terminal: never resend it unchanged.** Fix what the message names and call again. |
 | `bad_request` | 12 | Amazon refused the request (`amazon_error_code` + `detail`), or the instance lacks a paid dataset the query reads (the message names the dataset and how to enable it). **Terminal: never retry unchanged.** Fix what the message names and resend. |
+
+Every failure in `--json` also carries `source` (who has to act: `request`, `account`,
+`amazon_rejected`, `amazon_unavailable` or `mixshift`) and `retryable`. `retryable: false` means
+the identical call fails the same way until something changes, so never resend it as is (the one
+exception is `unknown`: one retry, then report it). See `mx-amazon-ads` "Reactive error handling".
 
 **If a failure carries `request_outcome: "unknown"`** (the message says the call
 may still have gone through), a workflow execution or a committed audience

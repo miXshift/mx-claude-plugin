@@ -38,6 +38,7 @@ import {
   type WalmartOperationView,
   type WalmartQueryValue,
 } from '../lib/walmart/ads-call.js';
+import { cleanServerText, CONTRACT_WORD } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { keyValueOption } from '../lib/cli/option-parsers.js';
 
@@ -228,7 +229,7 @@ function registerCall(ads: Command): void {
             // Parameter NAMES only, never values (same rule as amazon call).
             ...(Object.keys(opts.query).length > 0 ? { query_keys: Object.keys(opts.query).sort() } : {}),
             // Gateway contract (mx-ops#144): enums and a flag; never the fix text.
-            ...(result.source !== undefined ? { source: result.source } : {}),
+            ...(result.source !== undefined && CONTRACT_WORD.test(result.source) ? { source: result.source } : {}),
             ...(result.retryable !== undefined ? { retryable: result.retryable } : {}),
             ...(result.fix !== undefined ? { has_fix: true } : {}),
           });
@@ -324,11 +325,20 @@ function emitFailure(failure: WalmartFailure, json: boolean): void {
       source: failure.source,
       retryable: failure.retryable,
       fix: failure.fix,
+      invalid_params: failure.invalidParams,
+      // Walmart's own answer on a Walmart rejection (the gateway's `walmart`).
+      walmart_response: failure.walmartResponse,
     });
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message && failure.message !== failure.friendly) process.stderr.write(`  ${failure.message}\n`);
     if (failure.fix) process.stderr.write(`  fix: ${failure.fix}\n`);
+    if (failure.walmartResponse !== undefined) {
+      const said = cleanServerText(
+        typeof failure.walmartResponse === 'string' ? failure.walmartResponse : JSON.stringify(failure.walmartResponse),
+      );
+      if (said) process.stderr.write(`  Walmart said: ${said.length > 500 ? `${said.slice(0, 500)}...` : said}\n`);
+    }
     if (failure.retryable === false && failure.source === 'request') {
       process.stderr.write('  Not retryable as sent: change the request before calling again.\n');
     }

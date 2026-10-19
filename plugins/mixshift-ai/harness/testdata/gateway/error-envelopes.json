@@ -1,5 +1,5 @@
 {
-  "_provenance": "Producer fixtures: each envelope was built by mx-gateway's own code at origin/main a5f34b1 (2026-10-19), not written by hand: validateOperationQuery (spapi_measured_rule), the spapi-call-service unknown-operation throw (spapi_unknown_operation), preflightAdsRequest (ads_not_an_id), classifyAmazonError(...).toEnvelope() (spapi_bad_request, ads_throttled), SpApiError.toEnvelope (unknown), WalmartError.toEnvelope (walmart_unknown_operation). Regenerate them the same way when the gateway contract changes; do not edit them by hand.",
+  "_provenance": "Producer fixtures: each envelope was built by mx-gateway's own code at origin/main a5f34b1 (2026-10-19), not written by hand: validateOperationQuery (spapi_measured_rule), the spapi-call-service unknown-operation throw (spapi_unknown_operation), preflightAdsRequest (ads_not_an_id), classifyAmazonError(...).toEnvelope() (spapi_bad_request, ads_throttled), SpApiError.toEnvelope (unknown), WalmartError.toEnvelope (walmart_unknown_operation, walmart_bad_request), and the routes' own schema-miss envelope around callSchema / walmartCallSchema.safeParse issues (route_spapi_schema_miss, route_walmart_schema_miss). One input is illustrative: walmart_bad_request's `walmart` body is an example of Walmart's 4xx body, wrapped the way connect-client.ts wraps it. Regenerate them the same way when the gateway contract changes; do not edit them by hand.",
   "spapi_measured_rule": {
     "ok": false,
     "kind": "invalid_request",
@@ -75,6 +75,55 @@
     "kind": "invalid_request",
     "friendly": "Unknown Walmart operation 'sp.list_campaigns'. Run walmart_ads_operations for the list.",
     "source": "request",
+    "retryable": false
+  },
+  "route_spapi_schema_miss": {
+    "ok": false,
+    "kind": "invalid_request",
+    "source": "request",
+    "retryable": false,
+    "friendly": "Invalid SP-API call request.",
+    "issues": [
+      {
+        "code": "invalid_type",
+        "expected": "string",
+        "received": "number",
+        "path": [
+          "operation"
+        ],
+        "message": "Expected string, received number"
+      }
+    ]
+  },
+  "route_walmart_schema_miss": {
+    "ok": false,
+    "kind": "invalid_request",
+    "source": "request",
+    "retryable": false,
+    "friendly": "Invalid Walmart Connect call request.",
+    "issues": [
+      {
+        "code": "invalid_type",
+        "expected": "string",
+        "received": "undefined",
+        "path": [
+          "operation"
+        ],
+        "message": "Required"
+      }
+    ]
+  },
+  "walmart_bad_request": {
+    "ok": false,
+    "kind": "bad_request",
+    "friendly": "Walmart Connect rejected the request. See `walmart` for its message.",
+    "status": 400,
+    "correlationId": "corr-1",
+    "walmart": {
+      "code": "INVALID_PARAMETER",
+      "details": "campaignId must be numeric"
+    },
+    "source": "amazon_rejected",
     "retryable": false
   }
 }

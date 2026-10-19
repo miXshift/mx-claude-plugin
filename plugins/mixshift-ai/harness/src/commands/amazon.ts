@@ -1224,6 +1224,11 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.amazonError) process.stderr.write(renderAmazonReason(failure.amazonError));
+    // A refusal's detail says WHAT to change (a route schema miss has no
+    // other text); other kinds keep their existing text output.
+    if (failure.kind === 'invalid_request' && failure.message && failure.message !== failure.friendly) {
+      process.stderr.write(`  ${failure.message}\n`);
+    }
     for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
     if (failure.candidates && failure.candidates.length > 0) {
       process.stderr.write(renderCandidates(failure.candidates));
