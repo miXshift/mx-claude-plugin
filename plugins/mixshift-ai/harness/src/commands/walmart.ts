@@ -249,7 +249,7 @@ function registerCall(ads: Command): void {
           return;
         }
         if (result.dryRun === true) {
-          const previewAudit = typeof result.auditId === 'string' ? ` Change id ${result.auditId}.` : '';
+          const previewAudit = safeAuditId(result.auditId) ? ` Change id ${result.auditId}.` : '';
           process.stderr.write(
             `\n✓ PREVIEW ONLY: ${result.operation} (advertiser ${result.advertiserId}, ${result.environment}). ` +
               `Nothing was sent to Walmart.${previewAudit}\n` +
@@ -268,7 +268,7 @@ function registerCall(ads: Command): void {
         process.stderr.write(
           `\n✓ ${result.operation} (advertiser ${result.advertiserId}, ${result.environment})` +
             `${opts.commit ? ' COMMITTED' : ''}` +
-            `${typeof result.auditId === 'string' ? ` (change id ${result.auditId})` : ''}\n\n`,
+            `${safeAuditId(result.auditId) ? ` (change id ${result.auditId})` : ''}\n\n`,
         );
         const shown = 'payload' in result ? result.payload : rest;
         process.stdout.write(JSON.stringify(shown, null, 2) + '\n');
@@ -302,6 +302,15 @@ async function trackWalmart(
   );
 }
 
+/**
+ * The change id is interpolated into terminal banners, so allowlist its shape
+ * (the service sends a uuid) instead of printing a network value verbatim.
+ * JSON output needs no guard: JSON.stringify escapes control characters.
+ */
+function safeAuditId(value: unknown): boolean {
+  return typeof value === 'string' && /^[0-9a-fA-F-]{8,64}$/.test(value);
+}
+
 function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
@@ -324,7 +333,7 @@ function emitFailure(failure: WalmartFailure, json: boolean): void {
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message && failure.message !== failure.friendly) process.stderr.write(`  ${failure.message}\n`);
-    if (failure.auditId) process.stderr.write(`  change id: ${failure.auditId} (MixShift change log)\n`);
+    if (safeAuditId(failure.auditId)) process.stderr.write(`  change id: ${failure.auditId} (MixShift change log)\n`);
   }
   process.exitCode = exitCodeForWalmartKind(failure.kind);
 }

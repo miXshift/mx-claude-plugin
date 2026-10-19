@@ -177,6 +177,25 @@ describe('walmart ads call', () => {
     expect(stderr).toContain('Nothing was sent to Walmart. Change id 00000000-0000-4000-8000-000000000002.');
   });
 
+  it('a change id outside the uuid allowlist never reaches the terminal banner', async () => {
+    // The id is a network value interpolated into stderr: anything but a
+    // uuid-shaped string (e.g. ANSI escapes) is dropped from the banner.
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce({
+      ok: true,
+      operation: 'ss.update_campaigns',
+      environment: 'sandbox',
+      advertiserId: '1000001',
+      dryRun: true,
+      auditId: '\u001b[2J\u001b[0;0Hevil',
+      preview: { method: 'PUT', path: '/api/v1/campaigns', body: [{ campaignId: 12345, dailyBudget: 55 }] },
+      message: 'Preview only, nothing was sent to Walmart.',
+    });
+    await run('walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]');
+    expect(stderr).toContain('Nothing was sent to Walmart.');
+    expect(stderr).not.toContain('Change id');
+    expect(stderr).not.toContain('\u001b');
+  });
+
   it('an uncertain write failure surfaces audit_id and request_outcome in --json and the change id line in human output', async () => {
     const uncertain = {
       ok: false as const,

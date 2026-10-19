@@ -162,10 +162,10 @@ with Walmart's response verbatim under `payload` and Walmart's HTTP status in
 reporting a problem to MixShift: it identifies the call on Walmart's side.
 
 A write returns the same envelope plus `auditId`, the id of this change's row
-in MixShift's change log. Previews carry it too, and a committed change also
-returns `beforeState` with the entities' values before the change (the
-rollback source). Quote `auditId` when discussing a specific change with
-MixShift.
+in MixShift's change log. Previews carry it too (best-effort: rarely absent).
+A committed UPDATE also returns `beforeState` with the entities' values before
+the change (the rollback source) when that read succeeded; creates have no
+prior state. Quote `auditId` when discussing a specific change with MixShift.
 
 MixShift checks every campaign, ad group and keyword id you name against the
 advertiser before anything is sent. An id that belongs to a different
@@ -411,8 +411,9 @@ contract, every time:
    failure's `details`. Keep the values you showed in step 3 in your reply:
    they are how the user reverts. The reply also carries `auditId`, the id of
    this change in MixShift's change log: include it when reporting the result.
-   It is the handle for audit and rollback, and `beforeState` in the same
-   reply holds the entities' values from before the change.
+   It is the handle for audit and rollback. On updates, `beforeState` in the
+   same reply holds the entities' values from before the change, when
+   MixShift could read them (creates have none).
 
 Rules for specific writes:
 
