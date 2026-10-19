@@ -202,6 +202,48 @@ describe('walmartAdsCall', () => {
     if (!r.ok) expect(r.friendly).not.toMatch(/Amazon/);
   });
 
+  it('maps the UNCERTAIN write envelope: request outcome, automaticRetry and the change id', async () => {
+    // Shape from the service's live envelope (ids faked: this repo is public).
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(502, {
+        ok: false,
+        kind: 'upstream_unavailable',
+        friendly: 'Walmart did not confirm this change, so it may or may not have been applied.',
+        message: 'Walmart Connect stopped answering partway through.',
+        requestOutcome: 'unknown',
+        automaticRetry: false,
+        auditId: '00000000-0000-4000-8000-000000000001',
+      }),
+    );
+    const r = await walmartAdsCall(
+      { operation: 'ss.update_campaigns', advertiserId: '1000001', body: [], dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(r).toMatchObject({
+      ok: false,
+      kind: 'upstream_unavailable',
+      requestOutcome: 'unknown',
+      automaticRetry: false,
+      auditId: '00000000-0000-4000-8000-000000000001',
+    });
+  });
+
+  it('a failure without those fields carries none of them (the fail-closed refusal)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(500, { ok: false, kind: 'unknown', friendly: 'The change was NOT sent to Walmart.' }),
+    );
+    const r = await walmartAdsCall(
+      { operation: 'ss.update_campaigns', advertiserId: '1000001', body: [], dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.requestOutcome).toBeUndefined();
+      expect(r.automaticRetry).toBeUndefined();
+      expect(r.auditId).toBeUndefined();
+    }
+  });
+
   it('reports an unknown outcome when a commit loses its answer', async () => {
     const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
     const fetchImpl = vi.fn().mockRejectedValueOnce(timeout);
