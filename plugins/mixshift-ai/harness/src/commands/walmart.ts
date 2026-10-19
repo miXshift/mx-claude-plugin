@@ -254,9 +254,10 @@ function registerCall(ads: Command): void {
           return;
         }
         if (result.dryRun === true) {
+          const previewAudit = safeAuditId(result.auditId) ? ` Change id ${result.auditId}.` : '';
           process.stderr.write(
             `\n✓ PREVIEW ONLY: ${result.operation} (advertiser ${result.advertiserId}, ${result.environment}). ` +
-              'Nothing was sent to Walmart.\n' +
+              `Nothing was sent to Walmart.${previewAudit}\n` +
               '  Re-run with --commit AFTER the user confirms this change.\n\n',
           );
           process.stdout.write(JSON.stringify(result.preview ?? rest, null, 2) + '\n');
@@ -271,7 +272,8 @@ function registerCall(ads: Command): void {
         }
         process.stderr.write(
           `\n✓ ${result.operation} (advertiser ${result.advertiserId}, ${result.environment})` +
-            `${opts.commit ? ' COMMITTED' : ''}\n\n`,
+            `${opts.commit ? ' COMMITTED' : ''}` +
+            `${safeAuditId(result.auditId) ? ` (change id ${result.auditId})` : ''}\n\n`,
         );
         const shown = 'payload' in result ? result.payload : rest;
         process.stdout.write(JSON.stringify(shown, null, 2) + '\n');
@@ -305,6 +307,15 @@ async function trackWalmart(
   );
 }
 
+/**
+ * The change id is interpolated into terminal banners, so allowlist its shape
+ * (the service sends a uuid) instead of printing a network value verbatim.
+ * JSON output needs no guard: JSON.stringify escapes control characters.
+ */
+function safeAuditId(value: unknown): boolean {
+  return typeof value === 'string' && /^[0-9a-fA-F-]{8,64}$/.test(value);
+}
+
 function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
@@ -320,6 +331,8 @@ function emitFailure(failure: WalmartFailure, json: boolean): void {
       advertiser_id: failure.advertiserId,
       required_scope: failure.requiredScope,
       request_outcome: failure.requestOutcome,
+      automatic_retry: failure.automaticRetry,
+      audit_id: failure.auditId,
       unrecognized_kind: failure.unrecognizedKind,
       // Gateway contract (mx-ops#144 P5).
       source: failure.source,
@@ -342,6 +355,7 @@ function emitFailure(failure: WalmartFailure, json: boolean): void {
     if (failure.retryable === false && failure.source === 'request') {
       process.stderr.write('  Not retryable as sent: change the request before calling again.\n');
     }
+    if (safeAuditId(failure.auditId)) process.stderr.write(`  change id: ${failure.auditId} (MixShift change log)\n`);
   }
   process.exitCode = exitCodeForWalmartKind(failure.kind);
 }

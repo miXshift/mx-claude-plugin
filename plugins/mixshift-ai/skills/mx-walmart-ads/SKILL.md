@@ -161,6 +161,12 @@ with Walmart's response verbatim under `payload` and Walmart's HTTP status in
 `walmart_status`. `status` is always the CLI's own `ok` or `error`. Quote `correlationId` when
 reporting a problem to MixShift: it identifies the call on Walmart's side.
 
+A write returns the same envelope plus `auditId`, the id of this change's row
+in MixShift's change log. Previews carry it too (best-effort: rarely absent).
+A committed UPDATE also returns `beforeState` with the entities' values before
+the change (the rollback source) when that read succeeded; creates have no
+prior state. Quote `auditId` when discussing a specific change with MixShift.
+
 MixShift checks every campaign, ad group and keyword id you name against the
 advertiser before anything is sent. An id that belongs to a different
 advertiser is refused (`advertiser_not_allowed`), so re-list rather than
@@ -403,7 +409,11 @@ contract, every time:
    `{ code: "success" | "failure", details, ... }`, one per item. Partial
    failure is normal: give both counts ("8 of 10 applied, 2 failed") and each
    failure's `details`. Keep the values you showed in step 3 in your reply:
-   they are how the user reverts.
+   they are how the user reverts. The reply also carries `auditId`, the id of
+   this change in MixShift's change log: include it when reporting the result.
+   It is the handle for audit and rollback. On updates, `beforeState` in the
+   same reply holds the entities' values from before the change, when
+   MixShift could read them (creates have none).
 
 Rules for specific writes:
 
@@ -421,14 +431,16 @@ Rules for specific writes:
 ## Reactive error handling (branch on failure_kind, never on HTTP status)
 
 A failure in `--json` carries `failure_kind`, `message` (safe to show the
-user), and sometimes `detail`, `http_status`, `advertiser_id` or
-`required_scope`. Each kind has its own exit code.
+user), and sometimes `detail`, `http_status`, `advertiser_id`,
+`required_scope` or `audit_id`. Each kind has its own exit code.
 
 **Check `request_outcome` first.** `request_outcome: "unknown"` means the
 answer was lost after the request went out, so a commit or a report request
 may already have happened. Never resend blindly: re-list the entities a
 commit targeted and compare before sending again. A report request resent
 makes a second report: resend at most once. Reads are always safe to retry.
+A write failure that carries `audit_id` names its record in MixShift's
+change log: quote it when asking MixShift about the change.
 
 | `failure_kind` | Exit | What it means / what to tell the user |
 |---|---|---|
@@ -443,7 +455,7 @@ makes a second report: resend at most once. Reads are always safe to retry.
 | `invalid_request` | 15 | MixShift refused the request before sending anything to Walmart: an unknown operation, a missing parameter, a wrong body shape. The message (and `detail`) says what; `invalid_params` names the fields when a request field was malformed. Re-run `walmart ads operations` (or read the operation's notes) and fix it; never resend it unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
 | `bad_request` | 12 | Walmart rejected the request as sent. `walmart_response` carries Walmart's own answer. Fix the request from the notes and that answer, then resend; never retry unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
 | `upstream_auth` | 14 | Walmart refused MixShift's access for this advertiser. Nothing the user can fix in chat: tell them to contact MixShift. Do not retry. |
-| `upstream_unavailable` | 1 | Walmart's side failed. Retry a read later; for a commit, re-list before resending. |
+| `upstream_unavailable` | 1 | Walmart's side failed. Retry a read later. A commit with `request_outcome: "unknown"` may or may not have applied: re-list the entity to check before resending; its `audit_id` names the change-log record. |
 | `host_unreachable` | 1 | MixShift's service did not answer. Check `request_outcome`; otherwise retry shortly. |
 | `unknown` | 1 | Unexpected, on MixShift's side. Check `request_outcome`; otherwise retry at most once and relay the message. Never loop on it. |
 

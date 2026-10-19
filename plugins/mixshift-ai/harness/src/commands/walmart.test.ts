@@ -43,14 +43,19 @@ async function run(...args: string[]): Promise<void> {
 }
 
 let stdout = '';
+let stderr = '';
 beforeEach(() => {
   stdout = '';
+  stderr = '';
   process.exitCode = undefined;
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
     stdout += String(chunk);
     return true;
   });
-  vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+    stderr += String(chunk);
+    return true;
+  });
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -129,6 +134,92 @@ describe('walmart ads call', () => {
     expect(vi.mocked(walmartAdsCall).mock.calls[0][0].query).toEqual({ snapshotId: '42', groupBy: 'campaignId' });
     expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', ready: false });
     expect(lastTrack().payload).toMatchObject({ ready: false });
+  });
+
+  it('a committed write prints the change id in the banner and --json keeps auditId + beforeState', async () => {
+    // Envelope shape from the live service (ids and values faked: public repo).
+    const committed = {
+      ok: true as const,
+      operation: 'ss.update_campaigns',
+      environment: 'sandbox',
+      advertiserId: '1000001',
+      dryRun: false,
+      status: 200,
+      correlationId: '00000000-0000-4000-8000-00000000000c',
+      auditId: '00000000-0000-4000-8000-000000000001',
+      beforeState: { entities: [{ campaignId: 12345, dailyBudget: 50 }] },
+      payload: [{ code: 'success', details: '', campaignId: 12345 }],
+    };
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce(committed);
+    await run('walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]', '--commit');
+    expect(stderr).toContain('COMMITTED (change id 00000000-0000-4000-8000-000000000001)');
+
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce(committed);
+    stdout = '';
+    await run('--json', 'walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]', '--commit');
+    const out = JSON.parse(stdout);
+    expect(out.auditId).toBe('00000000-0000-4000-8000-000000000001');
+    expect(out.beforeState).toEqual({ entities: [{ campaignId: 12345, dailyBudget: 50 }] });
+  });
+
+  it('a preview prints its change id after "Nothing was sent"', async () => {
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce({
+      ok: true,
+      operation: 'ss.update_campaigns',
+      environment: 'sandbox',
+      advertiserId: '1000001',
+      dryRun: true,
+      auditId: '00000000-0000-4000-8000-000000000002',
+      preview: { method: 'PUT', path: '/api/v1/campaigns', body: [{ campaignId: 12345, dailyBudget: 55 }] },
+      message: 'Preview only, nothing was sent to Walmart.',
+    });
+    await run('walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]');
+    expect(stderr).toContain('Nothing was sent to Walmart. Change id 00000000-0000-4000-8000-000000000002.');
+  });
+
+  it('a change id outside the uuid allowlist never reaches the terminal banner', async () => {
+    // The id is a network value interpolated into stderr: anything but a
+    // uuid-shaped string (e.g. ANSI escapes) is dropped from the banner.
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce({
+      ok: true,
+      operation: 'ss.update_campaigns',
+      environment: 'sandbox',
+      advertiserId: '1000001',
+      dryRun: true,
+      auditId: '\u001b[2J\u001b[0;0Hevil',
+      preview: { method: 'PUT', path: '/api/v1/campaigns', body: [{ campaignId: 12345, dailyBudget: 55 }] },
+      message: 'Preview only, nothing was sent to Walmart.',
+    });
+    await run('walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]');
+    expect(stderr).toContain('Nothing was sent to Walmart.');
+    expect(stderr).not.toContain('Change id');
+    expect(stderr).not.toContain('\u001b');
+  });
+
+  it('an uncertain write failure surfaces audit_id and request_outcome in --json and the change id line in human output', async () => {
+    const uncertain = {
+      ok: false as const,
+      kind: 'upstream_unavailable' as const,
+      friendly: 'Walmart did not confirm this change, so it may or may not have been applied.',
+      httpStatus: 502,
+      requestOutcome: 'unknown' as const,
+      automaticRetry: false,
+      auditId: '00000000-0000-4000-8000-000000000003',
+    };
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce(uncertain);
+    await run('--json', 'walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]', '--commit');
+    expect(JSON.parse(stdout)).toMatchObject({
+      status: 'error',
+      failure_kind: 'upstream_unavailable',
+      request_outcome: 'unknown',
+      automatic_retry: false,
+      audit_id: '00000000-0000-4000-8000-000000000003',
+    });
+
+    vi.mocked(walmartAdsCall).mockResolvedValueOnce(uncertain);
+    stderr = '';
+    await run('walmart', 'ads', 'call', 'ss.update_campaigns', '--advertiser-id', '1000001', '--body', '[]', '--commit');
+    expect(stderr).toContain('change id: 00000000-0000-4000-8000-000000000003 (MixShift change log)');
   });
 
   it('refuses a call with no --advertiser-id before any request', async () => {

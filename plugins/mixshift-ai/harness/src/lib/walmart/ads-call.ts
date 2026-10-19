@@ -148,6 +148,10 @@ export interface WalmartFailure {
   requiredScope?: string;
   /** 'unknown' when a call that may change something lost its answer. */
   requestOutcome?: 'unknown';
+  /** Sent alongside requestOutcome: false = the service will not retry on its own. */
+  automaticRetry?: boolean;
+  /** MixShift change-log id of the write this failure is about (audit/rollback handle). */
+  auditId?: string;
   /** The service sent a kind this build does not know (contract drift). */
   unrecognizedKind?: string;
   /** Gateway contract (D-117): who acts (`request`, `account`,
@@ -482,6 +486,12 @@ function toWalmartFailure(json: Record<string, unknown>, httpStatus: number): Wa
     ...(message !== undefined ? { message } : {}),
     ...(advertiserId !== undefined ? { advertiserId } : {}),
     ...(typeof json.required === 'string' ? { requiredScope: json.required } : {}),
+    // An UNCERTAIN write failure (the service could not confirm the outcome)
+    // carries requestOutcome:'unknown', automaticRetry:false and the change-log
+    // id of the write; a fail-closed refusal carries none of them.
+    ...(json.requestOutcome === 'unknown' ? { requestOutcome: 'unknown' as const } : {}),
+    ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
+    ...(typeof json.auditId === 'string' && json.auditId ? { auditId: json.auditId } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     ...(source !== undefined ? { source } : {}),
     ...(typeof json.retryable === 'boolean' ? { retryable: json.retryable } : {}),
