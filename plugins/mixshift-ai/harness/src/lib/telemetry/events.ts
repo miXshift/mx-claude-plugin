@@ -244,6 +244,12 @@ export const EventName = {
   ShelfZipsListed: 'shelf.zips_listed',
   ShelfUsageRead: 'shelf.usage_read',
   ShelfCalled: 'shelf.called',
+  // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
+  // it reaches for the user: payload.label from the closed list in its
+  // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never
+  // the ASIN, keyword, seller, price or zip. Which shelf jobs people run, and
+  // what the shelf told them.
+  ShelfInsight: 'shelf.insight',
 
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration

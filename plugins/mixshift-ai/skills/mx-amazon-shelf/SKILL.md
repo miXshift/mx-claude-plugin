@@ -40,6 +40,10 @@ trigger_phrases:
   - request more shelf requests
   - more shelf requests
   - shelf allowance
+  - track these keywords
+  - track my keyword rank
+  - keyword rank tracking
+  - rank history
 ---
 
 # Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)
@@ -179,6 +183,27 @@ A success envelope is
 (`beta: true` on product). `observed_at` is when the shelf looked like this:
 quote it with every number you report ("as of 23:01 UTC today").
 
+## Tracking keywords over time ("track these keywords for me")
+
+Every answer is dated and MixShift keeps every observation it takes, so the same
+keyword at the same zip asked again next week is a dated series the user can
+compare. A MixShift-run tracked keyword list (daily observations, the history
+on a page, feeding the daily health check and the monthly report) is being
+built on this data. When the user asks to track keywords, or asks for rank
+history MixShift does not hold yet, offer to send the request. With their yes,
+run:
+
+```bash
+mixshift feedback "Track keyword rank for this organization: keywords <list>; locations <zips or metros>; cadence <daily|weekly>; devices <desktop, mobile or both>. <one line on what they will use it for, if they said>" --category feature_request --skill mx-amazon-shelf --command "shelf search"
+```
+
+Tell the user MixShift sets the tracking up and gets back to them, that the daily
+observations count against the allowance like any other answer, and that the
+price of keeping history, if any, is decided before it is charged. Emailing
+MixShift the same list is the other route. Until then, the user can repeat the
+search themselves (or schedule it with the scheduled-task skill) and keep the
+dated answers.
+
 ## Requesting more ("request more shelf requests")
 
 Every data answer counts one against the organization's monthly allowance
@@ -315,6 +340,8 @@ no review counts). Mention `related_keywords` in one line.
 What is this: the search results page as the shopper sees it, position by
 position; "where do we rank" is this, by location and by device.
 
+Emit `shelf.insight` with `rank_found`, `rank_not_found` or `sponsored_only` for the desktop page (one event).
+
 Next time, just say: *"where do we rank for <keyword> in New York, desktop and mobile?"*
 
 ### Step 5: The product page as the shopper sees it
@@ -405,6 +432,24 @@ Outcomes: `ok` (the user got the shelf answer they wanted), `failed` (could
 not satisfy, e.g. `shelf_not_enabled` or the allowance was used up),
 `deferred` (the user stepped away mid-demo), `skipped` (they wanted a
 different skill, e.g. their own SP-API featured-offer data).
+
+**Emit one `shelf.insight` per conclusion you reach for the user**, with a
+label from this closed list and nothing else (no ASIN, keyword, seller, price
+or zip): `rank_found` (a user ASIN is on the page asked for), `rank_not_found`
+(none of the user's ASINs is on it), `sponsored_only` (present only in a
+sponsored position), `buy_box_held`, `promise_loss` (lost at the same or a
+lower price to a faster promise), `price_undercut` (a seller below the user's
+price on the listing), `no_featured_offer` (no Buy Box at that location),
+`unauthorized_seller_suspected` (an unrecognized storefront below the user's
+floor), `listing_issue` (a missing image, bullet or badge on the product page),
+`tracking_requested`, `more_requested`:
+
+```bash
+mixshift telemetry emit shelf.insight --skill mx-amazon-shelf --payload-json '{"label":"promise_loss"}'
+```
+
+This is how MixShift learns which of the shelf jobs people run and what the
+shelf tells them, without the subject. One event per conclusion, not per call.
 
 You do **not** need to emit per-call events. The harness fires `shelf.called`
 (plus `shelf.catalog_listed`, `shelf.zips_listed`, `shelf.usage_read`) on
