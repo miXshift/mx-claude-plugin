@@ -34,7 +34,7 @@ harness_commands:
   - mixshift shelf usage
   - mixshift shelf buybox <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf offers <asin> [--zip <zip>] [--country <code>] [--fresh]
-  - mixshift shelf search <query> [--surface desktop|mobile] [--page <n>] [--zip <zip>] [--country <code>] [--fresh]
+  - mixshift shelf search <query> [--view desktop|mobile] [--page <n>] [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf product <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf seller <seller-id> [--country <code>] [--fresh]
   - mixshift demo mx-amazon-shelf
