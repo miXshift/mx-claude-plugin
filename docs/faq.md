@@ -194,6 +194,7 @@ The boundary is whether a skill needs a brand-context build. **Everything that n
 - `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, `mx-amazon-dsp` for live reads straight from Amazon
 - `mx-amazon-ads` for live Amazon Ads reads plus audited writes (preview, confirm, commit)
 - `mx-walmart-ads` for Walmart ads (Walmart Connect): campaigns, reports and previewed changes, for Walmart advertisers connected to your MixShift account (beta)
+- `mx-amazon-shelf` for the Amazon shelf as a shopper at a zip sees it: Buy Box, every seller on a listing, keyword rank, the product page, who a seller is (beta; say "demo Amazon shelf")
 
 The **analytical PPC tier** (`mx-daily-health-check`, `mx-runaway-spend-check`, `mx-keyword-bid-health`, `mx-monthly-report`, `mx-portfolio-quick-scan`, and the search-term suite) reads a one-time brand-context build per brand. These are being vetted end-to-end on real brand contexts and roll out in waves. Watch the changelog / release notes.
 

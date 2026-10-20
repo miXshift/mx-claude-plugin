@@ -101,6 +101,7 @@ const CATALOG: HubGroup[] = [
       { id: 'mx-amazon-ads', say: 'show my campaigns', what: 'read live Ads state, or make audited changes' },
       { id: 'mx-amazon-amc', say: 'run an AMC query', what: 'Marketing Cloud SQL analytics' },
       { id: 'mx-amazon-dsp', say: 'pull a DSP report', what: 'Demand-Side Platform reporting' },
+      { id: 'mx-amazon-shelf', say: 'what does the shelf look like for <asin>', what: "the shopper's view at a zip: Buy Box, offers, keyword rank, product page (beta)" },
     ],
   },
   {
