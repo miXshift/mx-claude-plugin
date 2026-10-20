@@ -35,7 +35,12 @@ function buildProgram(): Command {
   const program = new Command();
   program.exitOverride();
   program.configureOutput({ writeOut: () => {}, writeErr: () => {} });
-  program.option('--json', 'emit machine-readable JSON to stdout', false).option('--data-dir <path>', 'override MIXSHIFT_DATA_DIR');
+  program
+    .option('--json', 'emit machine-readable JSON to stdout', false)
+    .option('--data-dir <path>', 'override MIXSHIFT_DATA_DIR')
+    // The real root program owns --surface (telemetry host, cli.ts); declared here so a shelf
+    // option can never collide with it again without this suite noticing.
+    .option('--surface <surface>', 'telemetry host flag');
   registerShelfCommands(program);
   return program;
 }
@@ -161,7 +166,7 @@ describe('shelf search', () => {
 
   it('passes surface and page, tracks page + surface + positions, and refuses page 6 locally', async () => {
     vi.mocked(shelfSearch).mockResolvedValueOnce(SEARCH);
-    await run('--json', 'shelf', 'search', 'trail mix', '--surface', 'mobile', '--page', '2', '--zip', '75201');
+    await run('--json', 'shelf', 'search', 'trail mix', '--view', 'mobile', '--page', '2', '--zip', '75201');
     expect(shelfSearch).toHaveBeenCalledWith({ query: 'trail mix', surface: 'mobile', page: 2, zip: '75201', country: 'us', fresh: false }, { dataDirOverride: undefined });
     expect(lastTrack().payload).toMatchObject({ kind: 'search_mobile', page: 2, has_zip: true, positions: 2 });
     expect(JSON.stringify(lastTrack())).not.toContain('trail mix');
@@ -170,6 +175,13 @@ describe('shelf search', () => {
     await run('--json', 'shelf', 'search', 'trail mix', '--page', '6');
     expect(shelfSearch).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+  });
+
+  it('--view reaches the client even though the root program owns --surface (the 2026-10-20 demo-walk bug)', async () => {
+    vi.mocked(shelfSearch).mockResolvedValueOnce(SEARCH);
+    await run('--json', 'shelf', 'search', 'trail mix', '--zip', '10001', '--view', 'mobile', '--origin', 'demo');
+    expect(vi.mocked(shelfSearch).mock.calls[0][0]).toMatchObject({ surface: 'mobile', zip: '10001', origin: 'demo' });
+    expect(lastTrack().payload).toMatchObject({ kind: 'search_mobile' });
   });
 
   it('renders the ranked table with sponsored, badge, coupon and stock columns', () => {

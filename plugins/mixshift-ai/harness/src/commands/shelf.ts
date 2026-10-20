@@ -8,7 +8,7 @@
  *   shelf usage                               this month's allowance (free)
  *   shelf buybox <asin> [--zip Z]             the Buy Box at a zip
  *   shelf offers <asin> [--zip Z]             every offer at a zip
- *   shelf search <query> [--surface desktop|mobile] [--page N] [--zip Z]
+ *   shelf search <query> [--view desktop|mobile] [--page N] [--zip Z]
  *   shelf product <asin> [--zip Z]            the product page (beta)
  *   shelf seller <seller-id>                  who a seller is
  *   (data calls also take --country, --fresh, --origin, --json)
@@ -62,7 +62,7 @@ interface DataOptions {
   country?: string;
   fresh?: boolean;
   origin?: string;
-  surface?: string;
+  view?: string;
   page?: string;
 }
 
@@ -145,7 +145,10 @@ function registerData(shelf: Command, kind: DataKind, arg: string, description: 
   c.option('--fresh', 'observe the shelf right now instead of serving a recent observation (same cost)');
   c.option('--origin <origin>', 'which workflow is asking (attribution only): on_demand, featured_offer_check, demo, subscription');
   if (kind === 'search') {
-    c.option('--surface <surface>', 'desktop (default, 60 positions a page) or mobile (15 a page)');
+    // `--view`, not `--surface`: the root program owns `--surface` (the telemetry host flag,
+    // cli.ts), and commander hands a parent's flag to the parent, so a subcommand option of the
+    // same name is never seen. Found by the 2026-10-20 demo walk: every mobile search came back desktop.
+    c.option('--view <view>', 'desktop (default, 60 positions a page) or mobile (15 a page)');
     c.option('--page <n>', 'results page, 1 (default) to 5');
   }
   c.action(async (subject: string, opts: DataOptions, cmd: Command) => {
@@ -163,11 +166,11 @@ function registerData(shelf: Command, kind: DataKind, arg: string, description: 
       let surface: ShelfSurface | undefined;
       let page: number | undefined;
       if (kind === 'search') {
-        if (opts.surface !== undefined) {
-          if (!(SHELF_SURFACES as readonly string[]).includes(opts.surface)) {
-            return emitError(new Error(`--surface must be ${SHELF_SURFACES.join(' or ')}.`), !!root.json);
+        if (opts.view !== undefined) {
+          if (!(SHELF_SURFACES as readonly string[]).includes(opts.view)) {
+            return emitError(new Error(`--view must be ${SHELF_SURFACES.join(' or ')}.`), !!root.json);
           }
-          surface = opts.surface as ShelfSurface;
+          surface = opts.view as ShelfSurface;
         }
         if (opts.page !== undefined) {
           page = Number(opts.page);

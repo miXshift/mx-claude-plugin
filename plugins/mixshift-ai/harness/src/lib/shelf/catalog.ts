@@ -68,7 +68,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'which are sponsored, prices, ratings, review counts, "bought in past month", badges (Amazon\'s Choice, Best Seller, ' +
       'Overall Pick), coupons, stock warnings and delivery promises, plus the sponsored-brand banners at the top. Desktop ' +
       'shows 60 positions a page, mobile 15 (and no review counts). Each page is one answer; absolute_rank counts across pages.',
-    inputs: 'a keyword; optional --surface desktop|mobile, --page 1..5, --zip, --country, --fresh',
+    inputs: 'a keyword; optional --view desktop|mobile, --page 1..5, --zip, --country, --fresh',
     returns: 'products[] (asin, rank, absolute_rank, is_sponsored, price_num, rating, reviews, monthly_sales, badges, coupon, stock_level), banners[], sponsored_count, total_results, related_keywords',
     cost: 'counts 1',
     say: 'where do we rank for "backpacking meals" in New York?',

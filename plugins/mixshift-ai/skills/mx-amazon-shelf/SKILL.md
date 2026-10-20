@@ -160,7 +160,7 @@ worth reading first, and a question it answers:
 ```bash
 mixshift shelf buybox B0055QS6AK --zip 75201 --json
 mixshift shelf offers B0055QS6AK --zip 10001 --json
-mixshift shelf search "backpacking meals" --zip 10001 --surface desktop --page 1 --json
+mixshift shelf search "backpacking meals" --zip 10001 --view desktop --page 1 --json
 mixshift shelf product B07BDBDT21 --json
 mixshift shelf seller A1EXAMPLESELLER --json
 mixshift shelf zips --country us --json
@@ -216,7 +216,7 @@ name and address are the unauthorized-reseller tell.
 
 ### "Where do we rank for a keyword?"
 
-`shelf search "<keyword>" --zip <zip>` (desktop), then `--surface mobile`.
+`shelf search "<keyword>" --zip <zip>` (desktop), then `--view mobile`.
 Report the account's ASINs by `absolute_rank` with `is_sponsored`, the badge,
 the coupon and the stock text; the top of the page (who is sponsored, which
 banners); and `related_keywords` as harvest candidates. Deeper pages:
@@ -305,7 +305,7 @@ Next time, just say: *"list every seller on <asin> and their prices"*.
 ### Step 4: Keyword rank at one zip, desktop and mobile
 
 Two calls: `mixshift shelf search "<keyword>" --zip 10001 --origin demo --json`,
-then the same with `--surface mobile`. For desktop: the top ten positions
+then the same with `--view mobile`. For desktop: the top ten positions
 with sponsored or organic, price, rating, reviews, bought in past month and
 badge; the sponsored-brand banners at the top; and where the user's own ASINs
 land (by `absolute_rank`), or that none are on page 1. For mobile: the 15
