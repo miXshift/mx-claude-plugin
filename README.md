@@ -63,7 +63,7 @@ Full step-by-step in the install docs.
 
 ## Available skills
 
-The plugin ships **29 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
+The plugin ships **30 skills**. Each is invoked naturally in chat: say what you want and Claude picks the right one. Two tiers, based on whether the skill needs a brand-context build first:
 
 ### Available right after sign-in (no brand setup needed)
 
@@ -80,6 +80,7 @@ The plugin ships **29 skills**. Each is invoked naturally in chat: say what you 
 | `mx-amazon-retail` | Live SP-API retail lookups: catalog, inventory, orders, finances, listings, offer pricing, promotions (deals, coupons, price discounts), FBA inbound shipments, Subscribe & Save, and customer review topics. The title / brand source for ASINs missing from the warehouse. Read-only. |
 | `mx-amazon-amc` | Run Amazon Marketing Cloud (AMC) clean-room SQL: submit a query, poll it, fetch the result CSV. Build AMC audiences from a plain description and activate them on DSP or sponsored ads (previewed first, applied only on your confirmation). |
 | `mx-amazon-dsp` | Read your Amazon DSP account setup (campaigns, line items, creatives, approval status) and pull DSP reports on demand. Read-only. |
+| `mx-amazon-shelf` | The Amazon shelf as a shopper at a zip sees it: who has the Buy Box and with what delivery promise, every seller on a listing with prices, where ASINs rank for a keyword (organic and sponsored, desktop and mobile) with badges and coupons, the product page as it renders, and who a seller is. Public shelf observations through MixShift's service, dated, metered against a monthly allowance. Say "demo Amazon shelf". Beta: ask MixShift to enable it. |
 | `mx-amazon-ads` | Read and change a live Amazon Ads account: campaign / ad group / keyword / target lists, live bids and budgets, recommendations, plus pause / enable, bid and budget edits, and keyword / target / negative create and delete across SP / SB / SD. Writes preview first and need your explicit confirmation. |
 | `mx-walmart-ads` | Walmart ads (Walmart Connect) for the Walmart advertisers connected to your MixShift account: campaigns and ad groups with status and budgets, items, keywords and bids, and performance reports such as the last 30 days by campaign. Changes preview first and need your explicit confirmation. Beta: ask MixShift to connect your advertiser. |
 | `mx-feedback` | Send feedback, bug reports, or feature requests to MixShift directly from chat. |

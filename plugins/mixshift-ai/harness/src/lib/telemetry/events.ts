@@ -236,6 +236,15 @@ export const EventName = {
   WalmartAdsOperationsListed: 'walmart.ads.operations_listed',
   WalmartAdsCalled: 'walmart.ads.called',
 
+  // Shelf data surface (lib/shelf/client.ts + `mixshift shelf`). Call kind,
+  // country, whether a zip was given, surface/page, fresh, observed age,
+  // outcome and duration; never the subject (an ASIN, a keyword or a seller
+  // id is the user's own research) and never the answer.
+  ShelfCatalogListed: 'shelf.catalog_listed',
+  ShelfZipsListed: 'shelf.zips_listed',
+  ShelfUsageRead: 'shelf.usage_read',
+  ShelfCalled: 'shelf.called',
+
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
   // + outcome + cache hit/miss + limitation COUNT only — never the insight

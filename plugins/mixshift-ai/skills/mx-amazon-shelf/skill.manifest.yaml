@@ -1,0 +1,110 @@
+schema_version: 1
+skill_id: mx-amazon-shelf
+display_name: "Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)"
+version: "0.1.0"
+description: >
+  See the Amazon shelf the way a shopper at a given zip sees it, on demand,
+  through the bundled harness CLI: who holds the Buy Box for an ASIN and with
+  what delivery promise, every offer on a listing with each seller's price,
+  where ASINs rank for a keyword (organic and sponsored, desktop and mobile)
+  with badges, coupons and stock warnings, the product page as it renders
+  today, and who a third-party seller is. Public shelf observations from a
+  licensed third-party provider on MixShift's own key, never your Amazon
+  credentials. Each answer counts one against the organization's monthly
+  shelf allowance. Also runs a guided demo on the user's own ASIN and keyword
+  (demo Amazon shelf) and a catalog with a plain what-is-this per call.
+
+# Tier 1 = informational, read-only against the service. Modeled per_account
+# because every call targets one marketplace country (and one organization's
+# allowance), though no brand context is consumed.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+# bash harness invocations are implicit; file_write covers saving --json
+# answers to disk for a report.
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # saves shelf answers to disk when the user asks
+review_required: never
+sql_ids: []   # shelf data is not in the MixShift warehouse
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift shelf catalog
+  - mixshift shelf zips [--country <code>]
+  - mixshift shelf usage
+  - mixshift shelf buybox <asin> [--zip <zip>] [--country <code>] [--fresh]
+  - mixshift shelf offers <asin> [--zip <zip>] [--country <code>] [--fresh]
+  - mixshift shelf search <query> [--surface desktop|mobile] [--page <n>] [--zip <zip>] [--country <code>] [--fresh]
+  - mixshift shelf product <asin> [--zip <zip>] [--country <code>] [--fresh]
+  - mixshift shelf seller <seller-id> [--country <code>] [--fresh]
+  - mixshift demo mx-amazon-shelf
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: shelf-answer
+    type: json_artifact   # a saved shelf answer (--json) when the user wants it on disk
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: free   # the discovery allowance; packages are a MixShift decision (P-129)
+trigger_phrases:
+  - shelf data
+  - what does the shelf look like
+  - who has the buy box
+  - buy box by zip
+  - buy box winner
+  - featured offer by location
+  - delivery promise by zip
+  - every seller on this asin
+  - other sellers on my listing
+  - who is this seller
+  - where do we rank for
+  - keyword rank at a zip
+  - organic rank
+  - sponsored rank
+  - search results page for
+  - what does the product page show
+  - demo amazon shelf
+  - amazon shelf demo
+  - show me a demo of amazon shelf
+  - walk me through amazon shelf
+  - tour amazon shelf
+  - what can you do with shelf data
+# Guided demo (shared/skill-runtime-contract.md "Demos"). Steps mirror the
+# SKILL.md "## Demo" subsections, in order. Reads only: nothing changes.
+demo:
+  say: demo Amazon shelf
+  summary: The shelf as a shopper sees it, on your own ASIN and keyword, one call at a time, with what each call is for.
+  minutes: 6
+  steps:
+    - What shelf data is, and your allowance
+    - The Buy Box for one ASIN across three metros
+    - Every offer on that ASIN
+    - Keyword rank at one zip, desktop and mobile
+    - The product page as the shopper sees it
+    - Who that seller is
+  changes: none
+  needs: shelf data enabled for your organization (beta), plus one ASIN and one keyword you care about
+notes: >
+  Shelf data is a public observation of what a shopper at a location sees on
+  Amazon, supplied by a licensed third-party provider on MixShift's own key.
+  It is joined to nothing of the account's and never uses the account's
+  Amazon credentials; nothing user-visible names the provider. Every data
+  answer carries observed_at (when the shelf looked like this) and counts one
+  against the organization's monthly shelf allowance (`shelf usage` shows it;
+  `shelf zips` and `shelf usage` are free). --fresh asks for the shelf as of
+  now at the same cost: use it when the question needs timeliness (right
+  after a price change); a weekly read-out does not.
+
+  Discovery-first: `mixshift shelf catalog` explains every call. Shopper
+  locations are a fixed list per country (`shelf zips`); a zip off the list is
+  refused before anything is spent.
+
+  Failures are typed: branch on failure_kind (not_authenticated=2,
+  shelf_not_enabled / shelf_not_enrolled / shelf_not_configured=6,
+  throttled=8, shelf_allowance_exhausted=10, insufficient_scope=11,
+  bad_request / zip_unavailable=12, invalid_request=15), never on HTTP status.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - shelf data enabled for the organization by MixShift (beta)
