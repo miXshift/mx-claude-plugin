@@ -37,6 +37,9 @@ trigger_phrases:
   - walk me through amazon shelf
   - tour amazon shelf
   - what can you do with shelf data
+  - request more shelf requests
+  - more shelf requests
+  - shelf allowance
 ---
 
 # Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)
@@ -74,9 +77,11 @@ When characterizing this capability to the user, use these facts:
   reset date; `shelf zips` and `shelf usage` are free. Unused requests do not
   roll over.
 - **Read-only:** nothing here changes anything, anywhere.
-- **Beta:** the organization must be enabled for shelf data by MixShift
-  (`shelf_not_enabled` otherwise), and the product-page call is itself beta
-  (fields can be missing; its answer says `beta: true`).
+- **Beta:** every enrolled organization has shelf data on from 2026-10-20, on
+  the discovery allowance (`shelf_not_enabled` means MixShift switched it off
+  for this organization; `shelf_not_enrolled` means the account has no
+  organization yet). The product-page call is itself beta (fields can be
+  missing; its answer says `beta: true`).
 
 If this conversation also has MixShift connector tools named `shelf_get_buybox`,
 `shelf_get_offers`, `shelf_search`, `shelf_get_product`, `shelf_get_seller`,
@@ -125,8 +130,8 @@ Route elsewhere:
 | State | How to check | What to do if missing |
 |---|---|---|
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
-| Shelf data enabled for the organization | `mixshift shelf usage --json` succeeds | `shelf_not_enabled` (exit 6): the organization is not on the shelf beta yet. Tell the user to ask MixShift to turn it on. `shelf_not_enrolled`: the account has no organization set up yet; same ask. |
-| Allowance left this month | `shelf usage` shows `remaining` > 0 | `shelf_allowance_exhausted` (exit 10) carries the reset date; say when it resets and that MixShift can track more. |
+| Shelf data on for the organization | `mixshift shelf usage --json` succeeds | `shelf_not_enabled` (exit 6): MixShift switched shelf data off for this organization; tell the user to ask MixShift. `shelf_not_enrolled`: the account has no organization set up yet; same ask. |
+| Allowance left this month | `shelf usage` shows `remaining` > 0 | `shelf_allowance_exhausted` (exit 10) carries the reset date and `request_more`; see "Requesting more" below. |
 
 Brand setup is **not required.** A signed-in session is enough.
 
@@ -173,6 +178,23 @@ A success envelope is
 `{ status: "ok", kind, retailer, country, zip, subject, observed_at, source: "shelf", data }`
 (`beta: true` on product). `observed_at` is when the shelf looked like this:
 quote it with every number you report ("as of 23:01 UTC today").
+
+## Requesting more ("request more shelf requests")
+
+Every data answer counts one against the organization's monthly allowance
+(`mixshift shelf usage` shows allowance, used, remaining and the reset date).
+When a call answers `shelf_allowance_exhausted`, or the user asks for more
+before that, offer to send the request to MixShift. If they say yes, run:
+
+```bash
+mixshift feedback "Request more shelf requests for this organization: used <used> of <allowance> for <period>, resets <resets_at>. <one line on what they are using it for, if they said>" --category feature_request --skill mx-amazon-shelf --command "shelf <the call that hit the wall>"
+```
+
+Take `used`, `allowance`, `period` and `resets_at` from the failure (or from
+`shelf usage`). Tell the user MixShift raises the allowance from the
+organization's settings and that it applies to the current month; the free
+reads (`shelf zips`, `shelf usage`) keep working meanwhile. One request per
+organization per month is enough; do not send it again on every refused call.
 
 ## Starter jobs
 
@@ -239,12 +261,13 @@ about eight. Say how many shopper locations the country has and name the
 three metros step 2 will use (10001 New York, 60601 Chicago, 90001 Los
 Angeles, or any three the user prefers).
 
-- `shelf_not_enabled` or `shelf_not_enrolled` (exit 6): the organization is
-  not on the shelf beta yet. Say so, and that MixShift turns it on. Then
-  describe steps 2 to 6 in one sentence each from the catalog
-  (`mixshift shelf catalog`), with no numbers, and close.
-- `shelf_allowance_exhausted` (exit 10): say when it resets; describe the
-  steps in words from the catalog and close.
+- `shelf_not_enabled` or `shelf_not_enrolled` (exit 6): shelf data is off for
+  this organization, or the account has no organization yet. Say so, and that
+  MixShift turns it on. Then describe steps 2 to 6 in one sentence each from
+  the catalog (`mixshift shelf catalog`), with no numbers, and close.
+- `shelf_allowance_exhausted` (exit 10): say when it resets, offer to request
+  more ("Requesting more"), describe the steps in words from the catalog and
+  close.
 
 Then ask for one ASIN and one keyword the user cares about, unless the
 request already named them (an ASIN is a 10-character code such as
@@ -351,7 +374,7 @@ kind has its own exit code. Reads are always safe to retry.
 | `shelf_not_enabled` | 6 | The organization is not on the shelf beta. Ask MixShift to turn it on. |
 | `shelf_not_enrolled` | 6 | The account has no organization set up yet. Ask MixShift to enroll it. |
 | `throttled` | 8 | Shelf data is busy. Wait `retry_after_ms`, then retry. |
-| `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at`. Say when it resets; MixShift can track more. |
+| `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are). Run `shelf zips` and pick one. |
 | `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace. Check the inputs; do not resend as-is. |

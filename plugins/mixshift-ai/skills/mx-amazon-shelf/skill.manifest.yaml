@@ -70,6 +70,9 @@ trigger_phrases:
   - walk me through amazon shelf
   - tour amazon shelf
   - what can you do with shelf data
+  - request more shelf requests
+  - more shelf requests
+  - shelf allowance
 # Guided demo (shared/skill-runtime-contract.md "Demos"). Steps mirror the
 # SKILL.md "## Demo" subsections, in order. Reads only: nothing changes.
 demo:
@@ -84,7 +87,7 @@ demo:
     - The product page as the shopper sees it
     - Who that seller is
   changes: none
-  needs: shelf data enabled for your organization (beta), plus one ASIN and one keyword you care about
+  needs: one ASIN and one keyword you care about (shelf data is on for every organization, beta)
 notes: >
   Shelf data is a public observation of what a shopper at a location sees on
   Amazon, supplied by a licensed third-party provider on MixShift's own key.
@@ -100,6 +103,12 @@ notes: >
   locations are a fixed list per country (`shelf zips`); a zip off the list is
   refused before anything is spent.
 
+  Every data answer counts one against the organization's monthly
+  allowance; on shelf_allowance_exhausted (or on request) offer
+  `mixshift feedback "Request more shelf requests ..." --category
+  feature_request --skill mx-amazon-shelf`: MixShift raises the allowance
+  from the organization's settings for the current month.
+
   Failures are typed: branch on failure_kind (not_authenticated=2,
   shelf_not_enabled / shelf_not_enrolled / shelf_not_configured=6,
   throttled=8, shelf_allowance_exhausted=10, insufficient_scope=11,
@@ -107,4 +116,4 @@ notes: >
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
-    - shelf data enabled for the organization by MixShift (beta)
+    - shelf data on for the organization (on by default since 2026-10-20; MixShift can switch one off)
