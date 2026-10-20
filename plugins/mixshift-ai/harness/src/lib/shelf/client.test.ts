@@ -110,6 +110,9 @@ describe('failure mapping (the shelf kind set, never collapsed to unknown)', () 
     const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(402, { ok: false, kind: 'shelf_allowance_exhausted', friendly: 'used up', period: '2026-10', allowance: 2000, used: 2000, resets_at: '2026-11-01T00:00:00.000Z' }));
     const r = await shelfSearch({ query: 'x' }, injected(fetchImpl));
     expect(r).toMatchObject({ ok: false, kind: 'shelf_allowance_exhausted', period: '2026-10', allowance: 2000, used: 2000, resetsAt: '2026-11-01T00:00:00.000Z' });
+    expect((r as { requestMore?: string }).requestMore).toBeUndefined();
+    const withHint = vi.fn().mockResolvedValueOnce(jsonResponse(402, { ok: false, kind: 'shelf_allowance_exhausted', friendly: 'used up', request_more: 'Ask MixShift for more.' }));
+    expect(await shelfSearch({ query: 'x' }, injected(withHint))).toMatchObject({ kind: 'shelf_allowance_exhausted', requestMore: 'Ask MixShift for more.' });
     expect(exitCodeForShelfKind('shelf_allowance_exhausted')).toBe(10);
   });
 

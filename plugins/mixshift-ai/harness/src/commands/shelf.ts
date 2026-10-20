@@ -273,6 +273,7 @@ function emitFailure(failure: ShelfFailure, json: boolean): void {
       allowance: failure.allowance,
       used: failure.used,
       resets_at: failure.resetsAt,
+      request_more: failure.requestMore,
       available_count: failure.availableCount,
       retry_after_ms: failure.retryAfterMs,
       required_scope: failure.requiredScope,
@@ -284,8 +285,9 @@ function emitFailure(failure: ShelfFailure, json: boolean): void {
   } else {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message && failure.message !== failure.friendly) process.stderr.write(`  ${failure.message}\n`);
-    if (failure.kind === 'shelf_allowance_exhausted' && failure.resetsAt) {
-      process.stderr.write(`  used ${failure.used ?? '?'} of ${failure.allowance ?? '?'} for ${failure.period ?? 'this month'}; resets ${failure.resetsAt}\n`);
+    if (failure.kind === 'shelf_allowance_exhausted') {
+      if (failure.resetsAt) process.stderr.write(`  used ${failure.used ?? '?'} of ${failure.allowance ?? '?'} for ${failure.period ?? 'this month'}; resets ${failure.resetsAt}\n`);
+      process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
     }
     if (failure.retryable === false && failure.source === 'request') {
       process.stderr.write('  Not retryable as sent: change the request before calling again.\n');

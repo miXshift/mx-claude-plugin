@@ -218,11 +218,12 @@ export interface ShelfFailure {
   /** Diagnostic detail, when the service sent one. */
   message?: string;
   httpStatus?: number;
-  /** shelf_allowance_exhausted: the counter. */
+  /** shelf_allowance_exhausted: the counter, and how to ask for more (the service's own words). */
   period?: string;
   allowance?: number;
   used?: number;
   resetsAt?: string;
+  requestMore?: string;
   /** zip_unavailable: how many zips the country has (shelf zips lists them). */
   availableCount?: number;
   /** insufficient_scope. */
@@ -553,6 +554,7 @@ function toShelfFailure(json: Record<string, unknown>, httpStatus: number): Shel
     ...(num(json.allowance) !== undefined ? { allowance: num(json.allowance) } : {}),
     ...(num(json.used) !== undefined ? { used: num(json.used) } : {}),
     ...(str(json.resets_at) !== undefined ? { resetsAt: str(json.resets_at) } : {}),
+    ...(str(json.request_more) !== undefined ? { requestMore: str(json.request_more) } : {}),
     ...(num(json.available_count) !== undefined ? { availableCount: num(json.available_count) } : {}),
     ...(num(json.retryAfterMs) !== undefined ? { retryAfterMs: num(json.retryAfterMs) } : {}),
     ...(typeof json.required === 'string' ? { requiredScope: json.required } : {}),
@@ -588,11 +590,11 @@ export function defaultFriendly(kind: ShelfFailureKind): string {
     case 'shelf_not_configured':
       return 'Shelf data is not set up on the MixShift service yet. Contact MixShift.';
     case 'shelf_not_enabled':
-      return 'Shelf data is not enabled for your organization yet. Ask MixShift to turn on the shelf beta for you.';
+      return 'Shelf data is switched off for your organization. Ask MixShift to turn it back on.';
     case 'shelf_not_enrolled':
       return 'Your MixShift account is not set up for shelf data yet. Ask MixShift to enroll your organization.';
     case 'shelf_allowance_exhausted':
-      return "Your organization's included shelf requests for this month are used. They reset next month; ask MixShift to track more.";
+      return "Your organization's included shelf requests for this month are used. They reset next month, or say \"request more shelf requests\" to ask MixShift for more now.";
     case 'zip_unavailable':
       return 'That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.';
     case 'bad_request':

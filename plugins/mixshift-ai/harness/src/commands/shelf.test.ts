@@ -108,14 +108,22 @@ describe('shelf buybox', () => {
   });
 
   it('a typed failure prints the friendly line, sets the exit code, and tracks the kind', async () => {
-    vi.mocked(shelfBuybox).mockResolvedValueOnce({ ok: false, kind: 'shelf_allowance_exhausted', friendly: 'used up', httpStatus: 402, period: '2026-10', allowance: 2000, used: 2000, resetsAt: '2026-11-01T00:00:00.000Z', source: 'account', retryable: false });
+    vi.mocked(shelfBuybox).mockResolvedValueOnce({ ok: false, kind: 'shelf_allowance_exhausted', friendly: 'used up', httpStatus: 402, period: '2026-10', allowance: 2000, used: 2000, resetsAt: '2026-11-01T00:00:00.000Z', requestMore: 'Ask MixShift.', source: 'account', retryable: false });
     await run('--json', 'shelf', 'buybox', 'B0EXAMPLE01');
-    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'shelf_allowance_exhausted', message: 'used up', http_status: 402, period: '2026-10', resets_at: '2026-11-01T00:00:00.000Z' });
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'shelf_allowance_exhausted', message: 'used up', http_status: 402, period: '2026-10', resets_at: '2026-11-01T00:00:00.000Z', request_more: 'Ask MixShift.' });
     expect(process.exitCode).toBe(10);
     const t = lastTrack();
     expect(t.outcome).toBe('failed');
     expect(t.error_class).toBe('shelf_allowance_exhausted');
     expect(t.payload).toMatchObject({ kind: 'buybox', kind_failed: 'shelf_allowance_exhausted', http_status: 402, source: 'account', retryable: false });
+  });
+
+  it('the allowance wall without --json says how to ask for more', async () => {
+    vi.mocked(shelfBuybox).mockResolvedValueOnce({ ok: false, kind: 'shelf_allowance_exhausted', friendly: 'used up', httpStatus: 402, period: '2026-10', allowance: 500, used: 500, resetsAt: '2026-11-01T00:00:00.000Z' });
+    await run('shelf', 'buybox', 'B0EXAMPLE01');
+    expect(stderr).toContain('used 500 of 500 for 2026-10; resets 2026-11-01T00:00:00.000Z');
+    expect(stderr).toContain('request more shelf requests');
+    expect(process.exitCode).toBe(10);
   });
 
   it('refuses a bad --country before any call', async () => {
