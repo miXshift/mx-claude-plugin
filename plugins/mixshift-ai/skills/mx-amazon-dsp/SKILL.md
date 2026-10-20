@@ -584,6 +584,12 @@ prevents a support thread:
 
 - Base conversion metrics now include **halo** (not just the promoted product).
   `metric.purchases` equals the old DSP `totalPurchases`, not the old `purchases`.
+  Halo is credited to every brand in the advertiser's tracked-product list, so
+  when a PRODUCT report shows halo rows under a brand the advertiser does not
+  own, a foreign ASIN is in the tracked list; find it by brand in that report
+  and remove it in the DSP console (removal is not retroactive; past-period
+  reports keep the halo). Tracked-product lists are built from the catalog
+  (`mws_items` with `InCatalog = 1`), never from `seller_ASIN_list`.
 - Conversions report on **traffic date** (the ad interaction) where DSP v3 used
   **conversion date**, so volume shifts earlier in flight.
 

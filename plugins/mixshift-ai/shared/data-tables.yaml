@@ -444,7 +444,7 @@ tables:
   # ---------------------------------------------------------------------
 
   mws_items:
-    description: "Seller Central catalog: ASIN, SKU, ItemName, Brand, ItemGroup, ItemNickname, ItemLabel1, ItemLabel2, Tag1..Tag4, ItemCost, LeadTime, TargetACOS, TargetTACOS, FulfillmentChannel, InCatalog. One row per SKU, so several per ASIN: to label business_reports_dpst_sku rows by ChildAsin, pick one mws_items row per ASIN (correlated subquery with LIMIT 1, or a derived table grouped by SellerID, ASIN) rather than a plain JOIN on ASIN, which multiplies rows. The 'rich' catalog table."
+    description: "Seller Central catalog: ASIN, SKU, ItemName, Brand, ItemGroup, ItemNickname, ItemLabel1, ItemLabel2, Tag1..Tag4, ItemCost, LeadTime, TargetACOS, TargetTACOS, FulfillmentChannel, InCatalog. One row per SKU, so several per ASIN: to label business_reports_dpst_sku rows by ChildAsin, pick one mws_items row per ASIN (correlated subquery with LIMIT 1, or a derived table grouped by SellerID, ASIN) rather than a plain JOIN on ASIN, which multiplies rows. The 'rich' catalog table, and the ONLY source for 'what does this seller list': a product is currently listed when InCatalog = 1."
     category: dimensional
     account_types: [SC]
     time_series: false
@@ -458,7 +458,9 @@ tables:
       quantity: ItemQuantityAvailable
     gotchas:
       - "There is no `Title`; the item name is `ItemName`."
-      - "There is no `Status`; the listing flag is `IsActive` (1 or 0)."
+      - "There is no `Status`. `IsActive` exists but is NULL on every row in every tenant (never populated); do not filter on it. The listing flag is `InCatalog`: 1 = the SKU is in Amazon's latest Merchant Listings report, 0 = it is not listed today."
+      - "Rows with `InCatalog = 0` are kept on purpose as history: SKU-to-ASIN pairs that were listed before, plus SKUs that only ever appeared in an order. An order-only row carries a synthetic `AmazonListingId` of the form `listing_<n>`, often `ItemName` '-' and `ItemPrice` 0, and may be an FBA receiving placeholder (SKU ending `.missing<n>`) for a unit Amazon received that the seller never listed, which can be another brand's product entirely. Never put an `InCatalog = 0` row into a product list for ads, DSP conversion tracking, or AMC audiences."
+      - "`Brand` is the seller's own label (bulk-uploaded or edited in the app and copied across the seller's rows), not Amazon's catalog brand. It cannot tell you whether an ASIN belongs to the seller; to verify ownership of an unfamiliar ASIN, look it up with mx-amazon-retail's catalog item call."
       - "There is no `SellerSKU`; the SKU column is `SKU`."
       - "There is no `Price`; the listed price is `ItemPrice`. Your cost is `ItemCost`."
       - "There is no `Quantity`; the stock count is `ItemQuantityAvailable`. For a daily history use mws_inventory_history."
@@ -472,6 +474,20 @@ tables:
     requires_seller_id: true
     gotchas:
       - "There is no `Title`; the item name is `ItemName`. `Brand` is Amazon's label and `CustomBrand` is your override."
+
+  seller_ASIN_list:
+    description: "SQP activation and pull-status list, NOT a catalog. One row per ASIN (and SKU) that MixShift has ever considered for Search Query Performance pulls; `IsActive` = SQP tracking switched on for that ASIN, nothing else. It is seeded from catalog and order history and is never cleaned when a listing is retired, so it carries ASINs the seller no longer lists and FBA receiving placeholders. Use it only to answer 'is SQP tracking on for this ASIN, and when did it last pull' (`IsActive`, `WeeklyLastSQPDataPullEndTime`, `LatestRecordDateRangeWeekly`). For 'what does this seller sell or list' use mws_items with `InCatalog = 1` (SC) or vendor_items (VC)."
+    category: dimensional
+    account_types: [SC]
+    time_series: false
+    requires_seller_id: true
+    key_columns:
+      asin: ASIN
+      sku: SKU
+    gotchas:
+      - "`IsActive` means SQP tracking on, not 'listing active' and not 'the seller sells this'. A list built from `IsActive = 1` is a tracking list, not a product list, and it has carried another brand's ASIN into a customer's DSP conversion tracking (2026-10)."
+      - "`ItemName` and `Brand` here are copies; the catalog row is mws_items."
+      - "Not refreshed against Amazon's listings: rows outlive the listing."
 
   # ---------------------------------------------------------------------
   # Inventory (Seller Central)
