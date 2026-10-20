@@ -330,6 +330,19 @@ If an ASIN has no `mws_items` row at all (common for Brand Analytics catalog
 ASINs, which are not necessarily listed), that is expected, not a bug: see
 mx-amazon-retail's Catalog Items lookup for a live title source in that case.
 
+**Product lists for ads, DSP conversion tracking and AMC audiences come from
+the catalog, never from an activation list.** "Every ASIN this seller sells"
+is `mws_items` with `InCatalog = 1` (SC) or `vendor_items` (VC). Do not build
+it from `seller_ASIN_list`: that table is the SQP activation list, its
+`IsActive` means "SQP tracking on", and it keeps retired listings and FBA
+receiving placeholders (SKUs ending `.missing<n>`, title '-') that can be
+another brand's product. One foreign ASIN in a DSP tracked-product list pulls
+that brand's whole catalog into the advertiser's halo sales; in an AMC
+audience it pulls that brand's shoppers into the pool. Before adding an ASIN
+you cannot name, look it up with mx-amazon-retail's catalog item call and
+check its brand. `mws_items.IsActive` is NULL on every row; do not filter on
+it.
+
 **Shortcut — resolving a handful of ASINs to titles.** When you already have a
 list of ASINs (e.g. from a `productadmetric` pull) and just want their product
 titles, you do not need to hand-write the latest-row join: run

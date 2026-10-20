@@ -599,6 +599,12 @@ that is acceptable or whether to enable the paid dataset.
   SQL you hand the user for other tools.
 - A `VALUES` list is fine for an ASIN set:
   `WITH asins (asin) AS (VALUES ('B0...'), ('B0...')) SELECT DISTINCT c.user_id FROM conversions_for_audiences c JOIN asins a ON c.tracked_asin = a.asin WHERE c.event_subtype = 'order'`.
+  Build that set from the catalog (`mws_items` with `InCatalog = 1` for SC,
+  `vendor_items` for VC), never from `seller_ASIN_list` (the SQP activation
+  list, which keeps retired listings and FBA receiving placeholders that can be
+  another brand's product). Every ASIN in the list widens the audience to that
+  ASIN's shoppers, so an ASIN you cannot name gets a catalog lookup
+  (mx-amazon-retail) before it goes in.
 - The size floor is **2,000 user_ids**, and Amazon only tells you after the
   run (status FAILED with the reason). A narrow rule on a short window fails
   there; widen the window before touching the SQL.
