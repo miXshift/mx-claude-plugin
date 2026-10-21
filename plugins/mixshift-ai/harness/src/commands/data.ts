@@ -61,7 +61,7 @@ export function registerDataCommands(program: Command): void {
         if (!meta) {
           throw new Error(
             `Table "${table}" is not documented in the curated catalog; ` +
-              `\`mixshift data query\` still works on any warehouse table. ` +
+              `\`mixshift data query\` does not require a table to be documented. ` +
               `Run \`mixshift data list-tables\` to see what is documented.`,
           );
         }
