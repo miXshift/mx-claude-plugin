@@ -60,8 +60,9 @@ export function registerDataCommands(program: Command): void {
         const meta = await describeTable(table);
         if (!meta) {
           throw new Error(
-            `Table "${table}" is not in the curated catalog. ` +
-              `Run \`mixshift data list-tables\` to see what's documented.`,
+            `Table "${table}" is not documented in the curated catalog; ` +
+              `\`mixshift data query\` still works on any warehouse table. ` +
+              `Run \`mixshift data list-tables\` to see what is documented.`,
           );
         }
         if (root.json) {
