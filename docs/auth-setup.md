@@ -263,7 +263,8 @@ mixshift auth service-setup \
   --label svc:nightly-foep-watch
 
 # Or from the environment (CI secret managers):
-MIXSHIFT_CLIENT_SECRET=... mixshift auth service-setup --client-id svc_abc123...
+MIXSHIFT_SERVICE_CLIENT_SECRET=... mixshift auth service-setup --client-id svc_abc123...
+# (the older MIXSHIFT_CLIENT_SECRET name also works; set MIXSHIFT_SERVICE_CLIENT_ID to skip --client-id)
 ```
 
 The raw secret is never accepted as a command-line argument (argv leaks into shell history and process listings). Delete the secret file after setup verifies; the credential lives in the credentials file from then on.

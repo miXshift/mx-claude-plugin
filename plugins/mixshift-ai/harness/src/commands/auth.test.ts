@@ -592,3 +592,69 @@ describe('auth device-poll — additive org_brands on the approved result only',
     };
   }
 });
+
+describe('auth service-setup - raw path env names', () => {
+  const ENV_KEYS = [
+    'MIXSHIFT_SERVICE_CLIENT_SECRET',
+    'MIXSHIFT_CLIENT_SECRET',
+    'MIXSHIFT_SERVICE_CLIENT_ID',
+  ] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  async function runServiceSetup(extra: string[]): Promise<void> {
+    const program = newProgram();
+    await program.parseAsync(
+      ['--json', 'auth', 'service-setup', '--skip-verify', '--data-dir', dataDir, ...extra],
+      { from: 'user' },
+    );
+  }
+
+  async function savedService(): Promise<{ client_id: string; client_secret: string }> {
+    const { loadCredentials } = await import('../lib/auth/credentials.js');
+    const { credentials } = await loadCredentials(dataDir);
+    return credentials!.service!;
+  }
+
+  it('MIXSHIFT_SERVICE_CLIENT_SECRET wins over the older name', async () => {
+    process.env.MIXSHIFT_SERVICE_CLIENT_SECRET = 'new-secret-0123456789abcdef';
+    process.env.MIXSHIFT_CLIENT_SECRET = 'old-secret-0123456789abcdef';
+    await runServiceSetup(['--client-id', 'svc_abcdefgh1']);
+    const svc = await savedService();
+    expect(svc.client_id).toBe('svc_abcdefgh1');
+    expect(svc.client_secret).toBe('new-secret-0123456789abcdef');
+  });
+
+  it('the older MIXSHIFT_CLIENT_SECRET still works', async () => {
+    process.env.MIXSHIFT_CLIENT_SECRET = 'old-secret-0123456789abcdef';
+    await runServiceSetup(['--client-id', 'svc_abcdefgh1']);
+    expect((await savedService()).client_secret).toBe('old-secret-0123456789abcdef');
+  });
+
+  it('client id defaults from MIXSHIFT_SERVICE_CLIENT_ID', async () => {
+    process.env.MIXSHIFT_SERVICE_CLIENT_ID = 'svc_fromenv1';
+    process.env.MIXSHIFT_SERVICE_CLIENT_SECRET = 'new-secret-0123456789abcdef';
+    await runServiceSetup([]);
+    expect((await savedService()).client_id).toBe('svc_fromenv1');
+  });
+
+  it('the missing-secret error names both env vars and never prints a secret', async () => {
+    process.env.MIXSHIFT_SERVICE_CLIENT_ID = 'svc_fromenv1';
+    await runServiceSetup([]);
+    expect(process.exitCode).toBeTruthy();
+    expect(stdout).toMatch(/MIXSHIFT_SERVICE_CLIENT_SECRET/);
+    expect(stdout).toMatch(/MIXSHIFT_CLIENT_SECRET/);
+  });
+});
