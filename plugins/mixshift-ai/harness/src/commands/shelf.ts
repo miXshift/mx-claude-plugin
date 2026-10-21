@@ -49,6 +49,7 @@ import {
   type ShelfUsage,
 } from '../lib/shelf/client.js';
 import { SHELF_CATALOG, renderShelfCatalogChat } from '../lib/shelf/catalog.js';
+import { registerFeaturedOfferCheck } from './shelf-featured-offer-check.js';
 import { CONTRACT_WORD } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
@@ -134,6 +135,7 @@ export function registerShelfCommands(program: Command): void {
   registerData(shelf, 'search', '<query>', 'The search results page for a keyword as a shopper at a zip sees it: organic and sponsored rank, badges, prices.', true);
   registerData(shelf, 'product', '<asin>', 'The product page for an ASIN as a shopper at a zip sees it: title, bullets, details, images, best-seller ranks (beta).', true);
   registerData(shelf, 'seller', '<seller-id>', 'Who a third-party seller is: storefront name, rating, business details. No zip.', false);
+  registerFeaturedOfferCheck(shelf);
 }
 
 type DataKind = 'buybox' | 'offers' | 'search' | 'product' | 'seller';

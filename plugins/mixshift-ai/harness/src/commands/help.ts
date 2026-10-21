@@ -81,6 +81,7 @@ const CATALOG: HubGroup[] = [
       { id: 'mx-portfolio-quick-scan', say: 'run a portfolio quick scan', what: 'one green/yellow/red card per brand' },
       { id: 'mx-daily-health-check', say: 'run a daily health check on <brand>', what: 'what needs attention today' },
       { id: 'mx-runaway-spend-check', say: 'check for runaway spend on <brand>', what: 'acute keyword overspend' },
+      { id: 'mx-featured-offer-check', say: 'check my featured offer', what: 'who holds your Buy Box per shopper segment, and why you lose it, from the shelf (beta)' },
       { id: 'mx-keyword-bid-health', say: 'run a bid health review on <brand>', what: 'weekly bid pullbacks and scale-ups' },
     ],
   },
