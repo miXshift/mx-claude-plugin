@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: mx-featured-offer-check
+display_name: "Featured Offer Check (who holds your Buy Box, where, and why)"
+version: "0.1.0"
+description: >
+  Check, on demand, which of your ASINs hold the Amazon featured offer (the
+  Buy Box) and which do not: Amazon's own answer per shopper segment with
+  its share of views, then the shelf for every ASIN you lose, so the loss is
+  explained (a faster delivery promise, a lower price, no featured offer at
+  all, or your offer missing from the listing) and shown by location on one
+  page. Runs in resumable phases through the bundled harness CLI; reads
+  only. Also runs a guided demo on your own account (demo featured offer
+  check). Beta.
+
+# Tier 1 = informational, read-only. per_account because every check targets
+# one merchant (--legacy-seller-id); shelf answers count against the org's
+# monthly shelf allowance, which the skill says before spending.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # writes report.md / report.html / report.json under ~/.mixshift/output
+review_required: never
+sql_ids: []   # the ASIN list may come from the warehouse through mx-data-explore's query path
+
+harness_commands:
+  - mixshift amazon merchants
+  - mixshift data query --sql <SQL>
+  - mixshift shelf featured-offer-check start --legacy-seller-id <id> (--asins <list> | --asins-file <file>) [--zips <list>] [--include-held] [--budget <n>] [--out <dir>]
+  - mixshift shelf featured-offer-check resume [--out <dir>] [--budget <n>]
+  - mixshift shelf featured-offer-check status [--out <dir>]
+  - mixshift shelf usage
+  - mixshift demo mx-featured-offer-check
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: featured-offer-check.html
+    type: report_html
+verdict_range: [OBSERVATIONAL]
+pricing_tier: free   # shelf answers draw on the organization's discovery allowance
+trigger_phrases:
+  - featured offer check
+  - check my featured offer
+  - who has my buy box
+  - did we lose the buy box
+  - buy box check
+  - am i winning the buy box
+  - why did we lose the featured offer
+  - featured offer by segment
+  - buy box across my asins
+  - demo featured offer check
+  - featured offer check demo
+  - walk me through the featured offer check
+demo:
+  say: demo featured offer check
+  summary: Amazon's answer for a few of your ASINs, then the shelf for the one you lose, on one page.
+  minutes: 6
+  steps:
+    - Your merchant and a few ASINs
+    - Amazon's answer, by shopper segment
+    - The shelf for the ASIN you lose
+    - The page, and what to do next
+  changes: none
+  needs: an Amazon seller account connected to MixShift, and three to five of its ASINs
+notes: >
+  Two sources, both dated: Amazon's Product Pricing Competitive Summary
+  (your account's data, through the retail surface: who is featured for
+  each shopper segment, with the segment's glance-view weight and sample
+  zip) and shelf data (public observations through MixShift, never your
+  credentials). The command runs in phases because a chat shell call has a
+  ceiling of about 45 s: `start` fetches the summary (sync up to 20 ASINs,
+  async beyond) and makes the first round of shelf calls; `resume` until
+  `next` is null; the page is report.html next to report.md in the output
+  directory. Every shelf call counts one against the organization's monthly
+  shelf allowance (about 5 per lost ASIN); a wall pauses the run and the
+  skill offers "request more shelf requests". Held ASINs cost nothing
+  unless --include-held. Sample zips Amazon reports that are not
+  observation points (often the DEFAULT segment's) are listed as skipped,
+  never guessed.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - the merchant must be one `mixshift amazon merchants` lists for this sign-in

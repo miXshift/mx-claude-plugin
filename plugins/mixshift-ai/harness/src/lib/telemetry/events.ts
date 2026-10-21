@@ -250,6 +250,10 @@ export const EventName = {
   // the ASIN, keyword, seller, price or zip. Which shelf jobs people run, and
   // what the shelf told them.
   ShelfInsight: 'shelf.insight',
+  // The on-demand featured-offer check (`mixshift shelf featured-offer-check`):
+  // one event per invocation with phase, ASIN/flagged/shelf-call counts, the
+  // reason counts at the end, outcome; never an ASIN, a seller or a price.
+  ShelfFeaturedOfferCheck: 'shelf.featured_offer_check',
 
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
