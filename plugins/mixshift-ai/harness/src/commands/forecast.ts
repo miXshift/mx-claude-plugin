@@ -43,6 +43,7 @@ import {
   type BudgetFailure,
 } from '../lib/forecast/budget.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { SETTING_NAMES, applySettings, parseOnOff, readAccountSettings, type AccountSettings, type SettingName } from '../lib/forecast/settings.js';
 import {
   applySubBrandRemoval,
   canonicalSubBrandId,
@@ -67,8 +68,9 @@ function collect(value: string, previous: string[] = []): string[] {
 export function registerForecastCommands(program: Command): void {
   const forecast = program
     .command('forecast')
-    .description('Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on, and the sub-brands a forecast can be run for.');
+    .description('Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on, the settings it stands on (the DSP switch), and the sub-brands a forecast can be run for.');
   registerSubBrandCommands(forecast);
+  registerSettingsCommands(forecast);
   const budget = forecast
     .command('budget')
     .description(
@@ -235,6 +237,119 @@ function scopeOrFail(raw: string, json: boolean): string | null {
     json,
   );
   return null;
+}
+
+// ------------------------------------------------------------ settings
+
+const SETTING_LABEL: Record<SettingName, string> = {
+  includeDspSpend: 'DSP spend counts in the forecast (includeDspSpend)',
+  treatMissingAdSpendAsZero: 'a month with no ad rows trains as zero spend (treatMissingAdSpendAsZero)',
+};
+
+function registerSettingsCommands(forecast: Command): void {
+  const settings = forecast
+    .command('settings')
+    .description(
+      "Show or set the settings a computed forecast stands on: whether the account's DSP spend joins sponsored spend in the fit (includeDspSpend; the answer then " +
+        'reads spend_basis ads_plus_dsp), and whether a month with sales and no ad rows trains as zero spend (treatMissingAdSpendAsZero). ' +
+        'The scope is the scope_id of a forecast answer (FCT-BASELINE-01).',
+    );
+
+  settings
+    .command('show')
+    .description('Show the settings stored for a scope (a setting never set reads as off).')
+    .requiredOption('--scope <scope_id>', 'the forecast scope, e.g. src:<database>:<seller id>')
+    .action(async (opts: { scope: string }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      const scopeId = scopeOrFail(opts.scope, !!root.json);
+      if (!scopeId) return;
+      const read = await readAccountSettings(scopeId, { dataDirOverride: root.dataDir });
+      if (!read.ok) return failSettings('show', scopeId, read, startedAt, root);
+      await track(
+        { event_name: EventName.ForecastSettingsShown, outcome: 'ok', duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, exists: read.account.exists } },
+        root.dataDir,
+      );
+      if (root.json) return writeJson({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
+      process.stdout.write(`\nForecast settings for ${scopeId}${read.account.exists ? '' : ' (nothing stored yet; every setting reads as off)'}:\n\n`);
+      for (const name of SETTING_NAMES) process.stdout.write(`  ${read.account.settings[name] === true ? 'on ' : 'off'}  ${SETTING_LABEL[name]}\n`);
+    });
+
+  settings
+    .command('set')
+    .description('Set one or both settings (one save: all or nothing). The next computed forecast stands on them.')
+    .requiredOption('--scope <scope_id>', 'the forecast scope, e.g. src:<database>:<seller id>')
+    .option('--include-dsp <on|off>', "count the account's DSP spend (the warehouse's DSP months, or a DSP figure typed into the app) in the spend the forecast stands on")
+    .option('--missing-ad-spend-as-zero <on|off>', 'train a month that has sales but no ad rows as zero spend, instead of leaving it out')
+    .option('--dry-run', 'show what would change, without saving')
+    .action(async (opts: { scope: string; includeDsp?: string; missingAdSpendAsZero?: string; dryRun?: boolean }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      const scopeId = scopeOrFail(opts.scope, !!root.json);
+      if (!scopeId) return;
+      const patch: AccountSettings = {};
+      try {
+        if (opts.includeDsp !== undefined) patch.includeDspSpend = parseOnOff(opts.includeDsp, '--include-dsp');
+        if (opts.missingAdSpendAsZero !== undefined) patch.treatMissingAdSpendAsZero = parseOnOff(opts.missingAdSpendAsZero, '--missing-ad-spend-as-zero');
+      } catch (err) {
+        return badInput(err, !!root.json);
+      }
+      if (Object.keys(patch).length === 0) return badInput(new Error('Nothing to set: pass --include-dsp on|off and/or --missing-ad-spend-as-zero on|off.'), !!root.json);
+      const r = await applySettings(scopeId, patch, { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
+      if (!r.ok) return failSettings('set', scopeId, r, startedAt, root, Object.keys(patch) as SettingName[]);
+      const line = (name: SettingName) => `  ${r.before[name] === undefined ? 'unset' : r.before[name] ? 'on' : 'off'} -> ${r.after[name] ? 'on' : 'off'}  ${SETTING_LABEL[name]}`;
+      if (opts.dryRun) {
+        if (root.json) return writeJson({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
+        process.stdout.write(`\nWould save for ${scopeId} (nothing saved):\n\n`);
+        for (const name of r.changed) process.stdout.write(line(name) + '\n');
+        if (r.unchanged.length) process.stdout.write(`\nAlready holding that value: ${r.unchanged.join(', ')}\n`);
+        return;
+      }
+      await track(
+        {
+          event_name: EventName.ForecastSettingsSet,
+          outcome: 'ok',
+          duration_ms: Date.now() - startedAt,
+          payload: { scope_id: scopeId, changed: r.changed, unchanged: r.unchanged.length, written: r.written },
+        },
+        root.dataDir,
+      );
+      if (root.json) return writeJson({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
+      if (r.changed.length === 0) {
+        process.stdout.write(`\nNothing changed for ${scopeId}: ${r.unchanged.join(', ')} already held that value.\n`);
+        return;
+      }
+      process.stdout.write(`\n\u2713 Settings saved for ${scopeId}${r.unchanged.length ? ` (${r.unchanged.join(', ')} already held that value)` : ''}:\n\n`);
+      for (const name of r.changed) process.stdout.write(line(name) + '\n');
+      process.stdout.write(
+        patch.includeDspSpend === true
+          ? '\nThe next computed forecast (FCT-BASELINE-01) adds the account\'s DSP spend by month to sponsored spend and reads spend_basis ads_plus_dsp; a budget entered with `mixshift forecast budget` stays sponsored only.\n'
+          : '\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is one more metered request, not a cache hit.\n',
+      );
+    });
+}
+
+async function failSettings(op: 'show' | 'set', scopeId: string, f: BudgetFailure, startedAt: number, root: RootOptions, names?: SettingName[]): Promise<void> {
+  await track(
+    {
+      event_name: EventName.ForecastSettingsFailed,
+      outcome: 'failed',
+      duration_ms: Date.now() - startedAt,
+      error_class: f.kind,
+      payload: {
+        op,
+        scope_id: scopeId,
+        ...(names ? { names } : {}),
+        failure_kind: f.kind,
+        ...(f.httpStatus ? { http_status: f.httpStatus } : {}),
+        ...(f.unrecognizedKind ? { unrecognized_kind: f.unrecognizedKind } : {}),
+      },
+    },
+    root.dataDir,
+  );
+  if (root.json) writeJson({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  else process.stderr.write(`\n\u2717 (${f.kind}) ${f.friendly}\n`);
+  process.exitCode = exitCodeFor(f);
 }
 
 // ------------------------------------------------------------ sub-brands
