@@ -119,9 +119,10 @@ brand, digest delivered, no Amazon writes).
    id variable is set), then the Step 3 preflight. Preflight reading READY is
    the proof the credential works; do not continue past anything else.
 4. **Put the bootstrap in the stored prompt or the environment, never in the
-   fire-time payload.** Fired sessions refuse code-execution instructions that
-   arrive in trigger payload text (a useful guardrail). Payload text can carry
-   data, such as which brand to run; the setup commands cannot ride in it.
+   fire-time payload.** In our runs, a fired session refused code-execution
+   instructions that arrived in the trigger payload text (a useful guardrail).
+   Payload text can carry data, such as which brand to run; do not rely on it
+   for the setup commands.
 5. **Scope.** Use a read-only credential for digest routines. A routine that
    writes gets its own write credential in a separate environment, so a
    read-only routine can never pick it up by accident.
