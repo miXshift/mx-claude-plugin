@@ -152,6 +152,62 @@ tables:
     gotchas:
       - "The primary key is `ID`, not `CampaignID`. campaignmetric.CampaignID joins to campaign.ID (`AmazonCampaignID` is Amazon's own id)."
 
+  campaign_tracking_3mo:
+    description: >-
+      Daily snapshot of every non-archived campaign's SETTINGS, last 90 days. One row per
+      campaign per day (primary key CampaignID + DateTime; DateTime is the snapshot day, not a
+      change time). Carries the daily budget (DailyBudget, BudgetType), State, ServingStatus,
+      CampaignType, ad format (adFormat), bidding strategy and placement modifiers, and Amazon's
+      7-day budget-recommendation fields (PercentTimeInBudget, suggestedBudget, estimated missed
+      impressions, clicks and sales). It is NOT a metrics table: it has no spend or sales. This is
+      the table the app keeps current and the one to use for recent budget-utilization and
+      time-in-budget reads. Joins to campaignmetric on CampaignID + DateTime for cost versus
+      budget, and to campaign on CampaignID = campaign.ID.
+    category: dimensional
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+    key_columns:
+      budget: DailyBudget
+      budget_type: BudgetType
+      state: State
+      serving_status: ServingStatus
+      campaign_type: CampaignType
+      ad_format: adFormat
+      percent_time_in_budget: PercentTimeInBudget
+      suggested_budget: suggestedBudget
+    gotchas:
+      - "Use this table, not `campaign_tracking`, for any window inside the last 90 days. The app writes and reads this one and copies it into the full-history `campaign_tracking`, which has been seen missing recent days (one profile, Aug to Oct 2026) and held about six times the rows for one seller."
+      - "A row is a settings snapshot for one campaign on one day (DateTime is the snapshot day). It has no spend, sales or clicks. For cost versus budget, join campaignmetric on CampaignID and DateTime and compare `Cost` with `DailyBudget`."
+      - "`CampaignID` is the MixShift campaign.ID; Amazon's own campaign id is `AmazonCampaignID`. There is no `Date` column; filter on `DateTime`."
+      - "Archived campaigns are not stored, and Sponsored Brands video campaigns are written separately from non-video ones, so tell them apart with `adFormat` (lowercase, e.g. 'video'), not by CampaignType alone. `CampaignType` values: sponsoredProducts, headlineSearch (Sponsored Brands), sponsoredDisplay, sponsoredTelevision."
+      - "The budget-recommendation columns (PercentTimeInBudget, suggestedBudget, EstimatedMissed*, 7DayMissedOpportunities*) are Amazon's trailing 7-day view and are NULL for campaigns Amazon returned no recommendation for. `7DayMissedOpportunities*` begin with a digit, so backtick-quote them. PercentTimeInBudget is stored as Amazon returns it; check the value range before treating it as a fraction or a percent."
+      - "Filter on the integer `SellerID` (indexed with CampaignType and adFormat), not `AmazonSellerID`."
+
+  campaign_tracking:
+    description: >-
+      Full-history version of campaign_tracking_3mo: the same daily campaign-settings snapshot
+      (one row per campaign per day, same columns), kept beyond 90 days. Large (about six times
+      the rows of the 90-day table for one measured seller) and filled by a copy from the 90-day
+      table, which has been seen missing recent days on one profile. Query it for windows older than 90 days; for anything recent
+      use campaign_tracking_3mo. Not a metrics table: no spend or sales.
+    category: dimensional
+    time_series: true
+    requires_seller_id: true
+    date_column: DateTime
+    key_columns:
+      budget: DailyBudget
+      budget_type: BudgetType
+      state: State
+      serving_status: ServingStatus
+      campaign_type: CampaignType
+      ad_format: adFormat
+      percent_time_in_budget: PercentTimeInBudget
+    gotchas:
+      - "Use this table only for days older than 90, and always bound DateTime: it is large, so an unbounded scan is slow, and it can miss recent days. Recent windows belong in `campaign_tracking_3mo`."
+      - "For a window that straddles day 90, query both tables and UNION on CampaignID + DateTime rather than trusting this one for the recent part."
+      - "Same columns and semantics as `campaign_tracking_3mo`: a settings snapshot with no spend or sales; join campaignmetric on CampaignID + DateTime for cost versus budget."
+
   adgroup:
     description: "Ad-group metadata: AdGroupName, DefaultBid, BidOptimization, CreativeType. Joins to campaign on CampaignID."
     category: dimensional
