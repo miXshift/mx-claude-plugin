@@ -92,6 +92,8 @@ MIXSHIFT_DATA_DIR="<data dir from step 0>" mixshift auth service-setup \
   --json
 ```
 
+In a CI job or cloud routine the secret can come from the `MIXSHIFT_SERVICE_CLIENT_SECRET` environment variable instead of a file (the older `MIXSHIFT_CLIENT_SECRET` also works), and `MIXSHIFT_SERVICE_CLIENT_ID` replaces `--client-id`. It is MixShift's own machine credential, not an Amazon app secret.
+
 3. After `verified: true`, delete the secret file yourself (`rm "<abs path>"`) and tell the user why that is safe: the credential now lives in `<data dir>/auth/credentials` (mode 0600), which is what the harness actually reads; the txt file was only the handoff. If `verified` was NOT true, keep the file and diagnose first.
 
 ## Step 5 — Verify data access and wire the schedule

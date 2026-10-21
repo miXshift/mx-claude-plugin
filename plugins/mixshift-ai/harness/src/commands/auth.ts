@@ -577,8 +577,9 @@ interface ServiceSetupOptions {
  * TTL, burned by the exchange).
  *
  * Raw path (CI / secret managers): --client-id plus the secret via
- * --client-secret-file or the MIXSHIFT_CLIENT_SECRET env var. The raw
- * secret is NEVER taken as a CLI argument.
+ * --client-secret-file or the MIXSHIFT_SERVICE_CLIENT_SECRET env var (the
+ * older MIXSHIFT_CLIENT_SECRET still works). --client-id defaults from
+ * MIXSHIFT_SERVICE_CLIENT_ID. The raw secret is NEVER taken as a CLI argument.
  */
 function registerServiceSetupSubcommand(auth: Command): void {
   auth
@@ -587,14 +588,19 @@ function registerServiceSetupSubcommand(auth: Command): void {
       'Configure a service credential for unattended runs (scheduled ' +
         'tasks, cloud automations, CI). Preferred: --setup-code from your ' +
         'tenant admin (one-time, no secret handling). Raw path: --client-id ' +
-        'plus --client-secret-file or MIXSHIFT_CLIENT_SECRET, never argv.',
+        'plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias ' +
+        'MIXSHIFT_CLIENT_SECRET), never argv.',
     )
     .option('--api-base <url>', 'mx-legacy-auth service URL.', 'https://mcp.mixshift.io')
     .option(
       '--setup-code <code>',
       'One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin.',
     )
-    .option('--client-id <id>', 'Service client id (svc_...). Raw path only.')
+    .option(
+      '--client-id <id>',
+      'Service client id (svc_...). Raw path only. Defaults to the ' +
+        'MIXSHIFT_SERVICE_CLIENT_ID env var.',
+    )
     .option(
       '--client-secret-file <path>',
       'File containing the client secret (whitespace-trimmed). Raw path only.',
@@ -619,14 +625,19 @@ function registerServiceSetupSubcommand(auth: Command): void {
           label = label ?? exchanged.label;
           via = 'setup_code';
         } else {
-          if (!opts.clientId) {
+          const rawClientId = opts.clientId ?? process.env.MIXSHIFT_SERVICE_CLIENT_ID?.trim();
+          if (!rawClientId) {
             throw new Error(
               'Pass --setup-code SVC-XXXX-XXXX (preferred, from your admin) ' +
-                'or --client-id svc_... with the secret via file/env.',
+                'or --client-id svc_... (or MIXSHIFT_SERVICE_CLIENT_ID) with the ' +
+                'secret via file/env.',
             );
           }
-          clientId = opts.clientId;
-          secret = process.env.MIXSHIFT_CLIENT_SECRET ?? '';
+          clientId = rawClientId;
+          secret =
+            process.env.MIXSHIFT_SERVICE_CLIENT_SECRET?.trim() ||
+            process.env.MIXSHIFT_CLIENT_SECRET ||
+            '';
           via = secret ? 'env' : 'secret_file';
           if (opts.clientSecretFile) {
             secret = (await readFile(opts.clientSecretFile, 'utf-8')).trim();
@@ -635,7 +646,8 @@ function registerServiceSetupSubcommand(auth: Command): void {
           if (!secret) {
             throw new Error(
               'No client secret supplied. Pass --client-secret-file <path> or ' +
-                'set the MIXSHIFT_CLIENT_SECRET env var.',
+                'set the MIXSHIFT_SERVICE_CLIENT_SECRET env var (or the older ' +
+                'MIXSHIFT_CLIENT_SECRET).',
             );
           }
         }

@@ -13,7 +13,7 @@ description: >
   context. Credential minting alone belongs to mx-auth-service-setup; this
   skill orchestrates the full task setup around it.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - set up a scheduled task
@@ -81,10 +81,54 @@ derive:
    - **Cowork desktop**: sandboxed. A scheduled fire can get a brand-new sandbox
      with a re-initialized home (this is the norm on Mac; do not rely on
      workspace reuse on any platform). The folder grant in Step 1 is required.
-   - **claude.ai web / cloud sessions**: there is no shell and no durable local
-     folder, so CLI-based scheduled tasks are not supported there today. Say so
-     plainly and point the user at Cowork desktop or Claude Code instead of
+   - **claude.ai web (chat)**: there is no shell and no durable local folder, so
+     CLI-based scheduled tasks are not supported there. Say so plainly and point
+     the user at Cowork desktop, Claude Code, or a cloud routine instead of
      improvising.
+   - **Cloud routine (trigger-fired cloud session)**: supported. Read "Cloud
+     routines" below; the anchor is environment variables, not a folder.
+
+### Cloud routines (trigger-fired cloud sessions)
+
+A routine that fires in a Claude Code cloud session IS supported, and it needs
+no machine of yours in the loop. It has no durable folder, so the anchor is
+different from Cowork: the credential lives in environment variables, and the
+CLI is installed fresh by the environment on every fire. A daily digest across
+two brands has run this way end to end (CLI, auth, preflight READY for each
+brand, digest delivered, no Amazon writes).
+
+1. **Credential anchor: environment variables.** Cloud "network secrets" only
+   inject a header for a specific host; they do not create environment
+   variables. The harness reads its credential from real environment
+   variables, so put them there, in the cloud environment the routine runs in.
+2. **Get the CLI into the session.** Plugins on the account do not sync into a
+   trigger-fired cloud session, and plugin skills are not registered there (the
+   Skill tool answers "Unknown skill"). Have the environment's setup script
+   clone `https://github.com/miXshift/mx-claude-plugin.git`, and have the
+   routine prompt follow this skill's `SKILL.md` and the other skills' files
+   from that clone, running the CLI as `node <clone>/plugins/mixshift-ai/harness/dist/cli.js`.
+   Step 3's CLI search finds it there.
+3. **Use the raw client-id path, not a setup code.** A setup code is single-use
+   with a 10-minute lifetime, which does not fit a sandbox that starts fresh on
+   every fire. Have the admin create the credential with a raw secret at
+   https://mcp.mixshift.io/admin, then set in the environment:
+   `MIXSHIFT_SERVICE_CLIENT_SECRET` (the older name `MIXSHIFT_CLIENT_SECRET`
+   also works) and, optionally, `MIXSHIFT_SERVICE_CLIENT_ID` so the prompt need
+   not pass `--client-id`. Each fire starts with
+   `node <cli> auth service-setup --client-id <svc_...>` (or no flag when the
+   id variable is set), then the Step 3 preflight. Preflight reading READY is
+   the proof the credential works; do not continue past anything else.
+4. **Put the bootstrap in the stored prompt or the environment, never in the
+   fire-time payload.** Fired sessions refuse code-execution instructions that
+   arrive in trigger payload text (a useful guardrail). Payload text can carry
+   data, such as which brand to run; the setup commands cannot ride in it.
+5. **Scope.** Use a read-only credential for digest routines. A routine that
+   writes gets its own write credential in a separate environment, so a
+   read-only routine can never pick it up by accident.
+6. **If a security review asks what this secret is:** it is a tenant-scoped
+   machine credential for MixShift's sign-in service (`mx-legacy-auth`). It is
+   not the Amazon Ads or Seller app secret; those never leave MixShift's
+   servers.
 
 ## Step 1 - The durable anchor (Cowork)
 
