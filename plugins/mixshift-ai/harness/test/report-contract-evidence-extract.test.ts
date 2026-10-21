@@ -677,3 +677,87 @@ describe('a card repeated word for word across metric roots is listed once', () 
     expect(ev[0]!.also_ids).toEqual(['yoy.evidence.units.ops-window-comparability']);
   });
 });
+
+describe('a citation id that fell back to a head slug on a stamped build is marked and noted', () => {
+  // Evidence >= 0.5.0 stamps ids, so a card served without one (and without a
+  // stamped parent) is the one id in the document a wording release moves. The
+  // engine author's ask (2026-10-21): say so, rather than let the citation
+  // break silently on the next copy release. Pre-0.5.0 documents, where every
+  // id was a head slug by contract, stay byte-identical.
+  const block = (version: string | null, groups: Record<string, unknown>[]) => ({
+    envelope: envelope(),
+    evidence: {
+      scope: { kind: 'total' },
+      ...(version ? { evidenceVersion: version } : {}),
+      statements: { ops: groups },
+      notes: [],
+      companionAttached: false,
+    },
+  });
+  const stampedCard = { id: 'ops-promo-pricing', head: 'promo pricing detected', questions: [{ question: 'x' }] };
+  const bareCard = { head: 'availability - net tailwind', questions: [{ question: 'y' }] };
+  type Doc = { evidence?: { id: string; id_fallback?: string }[]; notes?: { code: string; subject: string; detail: string }[] };
+
+  it('on 0.17.0, a card with no id and no parent carries id_fallback and one note naming its id and head', () => {
+    const doc = extractFigures(block('0.17.0', [stampedCard, bareCard])) as Doc;
+    const bare = doc.evidence!.find((e) => e.id === 'evidence.ops.availability_net_tailwind')!;
+    expect(bare.id_fallback).toBe('head_slug');
+    expect('id_fallback' in doc.evidence!.find((e) => e.id === 'evidence.ops.ops-promo-pricing')!).toBe(false);
+    expect(doc.notes).toEqual([
+      {
+        code: 'citation_id_fallback',
+        subject: 'evidence.ops.availability_net_tailwind',
+        detail: expect.stringContaining('card "availability - net tailwind" under ops carries no served id on evidence 0.17.0'),
+      },
+    ]);
+  });
+
+  it('a tail keyed to a stamped parent is not a fallback; a tail whose parent is unstamped is', () => {
+    const tailOfStamped = { parentId: 'ops-promo-pricing', presentationKind: 'details', head: 'promo pricing detected - details', questions: [{ question: 'd' }] };
+    const tailOfBare = { parentId: 'not a slug!', presentationKind: 'details', head: 'availability - details', questions: [{ question: 'd' }] };
+    const doc = extractFigures(block('0.17.0', [stampedCard, tailOfStamped, tailOfBare])) as Doc;
+    expect(doc.evidence!.find((e) => e.id === 'evidence.ops.ops-promo-pricing.details')!.id_fallback).toBeUndefined();
+    expect(doc.evidence!.find((e) => e.id === 'evidence.ops.availability_details')!.id_fallback).toBe('head_slug');
+    expect(doc.notes!.map((n) => n.subject)).toEqual(['evidence.ops.availability_details']);
+  });
+
+  it('a stamped-build document with every card stamped carries no notes key at all', () => {
+    const doc = extractFigures(block('0.17.0', [stampedCard])) as Doc;
+    expect('notes' in doc).toBe(false);
+    expect('id_fallback' in doc.evidence![0]!).toBe(false);
+  });
+
+  it('a pre-0.5.0 or unstamped block is byte-identical to before: head slugs were the contract there', () => {
+    for (const version of [null, '0.2.0', '0.4.9']) {
+      const doc = extractFigures(block(version, [bareCard])) as Doc;
+      expect('notes' in doc, String(version)).toBe(false);
+      expect('id_fallback' in doc.evidence![0]!, String(version)).toBe(false);
+    }
+  });
+
+  it('a fallback card repeated word for word on two roots is one entry and one note', () => {
+    const two = {
+      envelope: envelope(),
+      evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements: { ops: [bareCard], units: [bareCard] }, notes: [], companionAttached: false },
+    };
+    const doc = extractFigures(two) as Doc;
+    expect(doc.evidence).toHaveLength(1);
+    expect(doc.notes).toHaveLength(1);
+    expect(doc.notes![0]!.subject).toBe('evidence.ops.availability_net_tailwind');
+  });
+
+  it('on a composite, the note names the period-namespaced id', () => {
+    const doc = extractFigures(
+      {
+        ok: true,
+        mom: { ops: envelope(), ads: null, crossDomain: null, evidence: { scope: { kind: 'total' }, evidenceVersion: '0.17.0', statements: { ops: [bareCard] }, notes: [], companionAttached: false } },
+        yoy: null,
+        headline: {},
+        limitations: [],
+        meta: {},
+      },
+      'mom.ops',
+    ) as Doc;
+    expect(doc.notes![0]!.subject).toBe('mom.evidence.ops.availability_net_tailwind');
+  });
+});

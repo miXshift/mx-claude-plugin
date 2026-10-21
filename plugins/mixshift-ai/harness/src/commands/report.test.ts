@@ -769,3 +769,58 @@ describe('report -- served-unit sidecar, round-4 hardening', () => {
     expect(parsed.served_unit_conflicts).toEqual(['mom.ops.ops.p2']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Extractor notes (a citation id that fell back to a head slug on a stamped
+// evidence build) print as warnings and never gate.
+// ---------------------------------------------------------------------------
+
+describe('report extract / validate surface the citation_id_fallback note as a warning', () => {
+  const stampedRunWithBareCard = {
+    envelope: { bridgeDomain: 'ops', currency: 'USD', metrics: [], insights: [] },
+    evidence: {
+      scope: { kind: 'total' },
+      evidenceVersion: '0.17.0',
+      statements: { ops: [{ head: 'availability - net tailwind', questions: [{ question: 'y' }] }] },
+      notes: [],
+      companionAttached: false,
+    },
+  };
+
+  it('report extract --check --json: the note rides in `notes`, ok stays true, exit 0', async () => {
+    const input = await writeJsonFile('response.json', stampedRunWithBareCard);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({ json: true }, 'extract', input, '--check');
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.ok).toBe(true);
+    expect(parsed.findings).toEqual([]);
+    expect(parsed.notes).toEqual([expect.objectContaining({ code: 'citation_id_fallback', subject: 'evidence.ops.availability_net_tailwind' })]);
+    expect(process.exitCode).toBe(0);
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+
+  it('report extract (text): one warn [CITATION-ID] line on stderr, CHECK: PASS on stdout', async () => {
+    const input = await writeJsonFile('response.json', stampedRunWithBareCard);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({}, 'extract', input, '--check', '--out', join(dir, 'figures.ops.json'));
+    expect(stdoutText()).toContain('CHECK: PASS');
+    const lines = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^ {2}warn \[CITATION-ID\] evidence\.ops\.availability_net_tailwind -- card "availability - net tailwind"/);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('report validate repeats the note from the figures document beside the report, naming the file, and stays clean', async () => {
+    const input = await writeJsonFile('response.json', stampedRunWithBareCard);
+    const figures = join(dir, 'figures.ops.json');
+    await runCli({}, 'extract', input, '--out', figures);
+    stdoutChunks = [];
+    const doc = await writeJsonFile('report-data.json', { figures: [], caveat_registry: {}, sections: [] });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({}, 'validate', doc);
+    const lines = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain(`warn [CITATION-ID] ${figures}: evidence.ops.availability_net_tailwind`);
+    expect(process.exitCode).toBe(0);
+  });
+});

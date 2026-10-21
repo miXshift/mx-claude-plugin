@@ -14,6 +14,7 @@ import {
   COMPOSITE_SELECTIONS,
   CompositeSelectionError,
   type CompositeSelection,
+  type ExtractNote,
 } from '../lib/report-contract/extract.js';
 import {
   extractForecast,
@@ -168,8 +169,8 @@ async function loadServedContract(
   docPath: string,
   explicit: string[] | undefined,
   noFigures: boolean,
-): Promise<{ index?: ServedContractIndex; sources: string[]; conflicts: string[] }> {
-  const none = { sources: [] as string[], conflicts: [] as string[] };
+): Promise<{ index?: ServedContractIndex; sources: string[]; conflicts: string[]; notes: ServedNote[] }> {
+  const none = { sources: [] as string[], conflicts: [] as string[], notes: [] as ServedNote[] };
   // --no-figures means SKIP, including any stamp the document carries. Without
   // suppressAll the check would quietly continue off the figure's own
   // model-copied served_unit and the flag would be a lie.
@@ -197,6 +198,7 @@ async function loadServedContract(
   const units: Record<string, string> = {};
   const origin: Record<string, string> = {};
   const conflicts = new Set<string>();
+  const notes: ServedNote[] = [];
 
   for (const path of candidates) {
     // ⚠ UNPARSEABLE IS NOT THE SAME AS IRRELEVANT, and the difference is the
@@ -237,6 +239,18 @@ async function loadServedContract(
     // take down a render.
     const figures = (parsed as { figures?: unknown })?.figures;
     if (!Array.isArray(figures)) continue;
+    // The extractor's own notes ride the figures document (ExtractDocument.notes)
+    // so the operator sees them again at validate and render time, where the
+    // citation they are about is actually being quoted.
+    const fileNotes = (parsed as { notes?: unknown })?.notes;
+    if (Array.isArray(fileNotes)) {
+      for (const n of fileNotes) {
+        const note = n as ExtractNote;
+        if (typeof note?.code === 'string' && typeof note.subject === 'string' && typeof note.detail === 'string') {
+          notes.push({ file: path, note });
+        }
+      }
+    }
     for (const f of figures) {
       const id = (f as { id?: unknown })?.id;
       const servedUnit = (f as { served_unit?: unknown })?.served_unit;
@@ -267,7 +281,19 @@ async function loadServedContract(
     Object.keys(units).length > 0 || conflicts.size > 0
       ? { units, origin, suppressed: [...conflicts] }
       : undefined;
-  return { index, sources: contributing, conflicts: [...conflicts] };
+  return { index, sources: contributing, conflicts: [...conflicts], notes };
+}
+
+/** A note carried by a figures document, with the file it came from. */
+interface ServedNote {
+  file: string;
+  note: ExtractNote;
+}
+
+/** The warning line for an extractor note, one shape everywhere it prints. */
+function noteWarning(note: ExtractNote, file?: string): string {
+  const tag = note.code === 'citation_id_fallback' ? 'CITATION-ID' : note.code;
+  return `  warn [${tag}] ${file ? `${file}: ` : ''}${note.subject} -- ${note.detail}`;
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -393,6 +419,7 @@ export function registerReportCommands(program: Command): void {
                   'itself still applies). Remove the stale file.',
               );
             }
+            for (const n of served.notes) console.error(noteWarning(n.note, n.file));
             results.push({
               file,
               findings: validateReportData(doc, served.index),
@@ -566,10 +593,20 @@ export function registerReportCommands(program: Command): void {
         if (opts.out) {
           await writeReportOutput(opts.out, body + '\n');
         }
+        // The extractor's notes (a citation id that fell back to a head slug on
+        // a stamped evidence build) are warnings, never findings: they report
+        // a fragile id, not a wrong one, so they print and do not gate.
+        const notes = doc.notes ?? [];
         if (root.json) {
           console.log(
             JSON.stringify(
-              { ok: findings.length === 0, figures: doc.figures.length, out: opts.out ?? null, findings },
+              {
+                ok: findings.length === 0,
+                figures: doc.figures.length,
+                out: opts.out ?? null,
+                findings,
+                ...(notes.length > 0 ? { notes } : {}),
+              },
               null,
               2,
             ),
@@ -580,6 +617,7 @@ export function registerReportCommands(program: Command): void {
             `\n${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ''}`,
           );
           for (const f of findings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+          for (const n of notes) console.error(noteWarning(n));
           if (opts.check) console.log(findings.length === 0 ? 'CHECK: PASS' : `CHECK: FAIL (${findings.length})`);
         }
         process.exitCode = findings.length === 0 ? 0 : 1;
@@ -625,6 +663,7 @@ export function registerReportCommands(program: Command): void {
               'Remove the stale file.',
           );
         }
+        for (const n of served.notes) console.error(noteWarning(n.note, n.file));
         const findings = validateReportData(doc, served.index);
         const blocking = blockingFindings(findings);
         // Warnings are reported and never bar the door. Before this split the

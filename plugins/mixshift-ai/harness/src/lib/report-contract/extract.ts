@@ -288,6 +288,11 @@ type SemVer = readonly [number, number, number];
 const SERVED_FORMAT_MIN: SemVer = [0, 2, 0];
 /** `crossDomain.pairFormats`. */
 const SERVED_PAIR_FORMATS_MIN: SemVer = [0, 3, 0];
+/** Evidence (its OWN version stream, `evidence.evidenceVersion`) stamps
+ *  `DriverQuestionGroup.id` on cards from 0.5.0, so from that build a card
+ *  with neither an id nor a stamped parent is the exception worth noting,
+ *  not the rule. */
+const SERVED_CARD_IDS_MIN: SemVer = [0, 5, 0];
 
 /** Engine `DisplayUnit` -> our renderer's LEVEL token. The engine's `percent`
  *  stores a FRACTION rendered ×100 with a "%" affix, which is our `ratio`
@@ -697,6 +702,24 @@ export interface EvidenceStatement {
   statements: string[];
   /** Where in the response this came from, so a reader can go check it. */
   source_path: string;
+  /** Set when this id was slugged from the card's HEAD on an evidence build
+   *  that stamps ids (>= 0.5.0): the card carried no served id and no stamped
+   *  parent, so its id moves if the head is reworded. A citation of it is
+   *  valid today and fragile across wording releases; the document's `notes`
+   *  carry the same finding for the operator. Absent on a stamped card, on a
+   *  tail keyed to a stamped parent, and on every pre-0.5.0 document, whose
+   *  ids were always head slugs. */
+  id_fallback?: 'head_slug';
+}
+
+/** An operator-facing observation about the extraction that is not a check
+ *  finding: it never fails `--check`, it is printed as a warning and kept in
+ *  the document so `report validate` and `report render` can repeat it. */
+export interface ExtractNote {
+  code: 'citation_id_fallback';
+  /** The id the note is about (an evidence id, here). */
+  subject: string;
+  detail: string;
 }
 
 export interface ExtractDocument {
@@ -714,6 +737,10 @@ export interface ExtractDocument {
    *  `source.engineVersion` (engine 0.4.0 ships with evidence 0.5.0) —
    *  never gate an evidence-shape decision on the engine's version stream. */
   evidence_version?: string;
+  /** Present only when there is something to say (absent, never empty): today
+   *  one `citation_id_fallback` note per evidence entry whose id fell back to a
+   *  head slug on a stamped evidence build. */
+  notes?: ExtractNote[];
 }
 
 export type CheckRuleId =
@@ -1010,8 +1037,8 @@ const SERVED_KIND_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 function extractEvidence(
   whole: Rec,
   selection?: CompositeSelection,
-): { statements: EvidenceStatement[]; evidenceVersion: string | null } {
-  const none = { statements: [], evidenceVersion: null };
+): { statements: EvidenceStatement[]; evidenceVersion: string | null; notes: ExtractNote[] } {
+  const none = { statements: [], evidenceVersion: null, notes: [] };
   // For a composite, evidence is a sibling of the leg's envelope; for a single
   // response it sits at the top level next to `envelope`.
   let block: Rec | undefined;
@@ -1032,6 +1059,14 @@ function extractEvidence(
     typeof block?.evidenceVersion === 'string' && block.evidenceVersion.trim().length > 0
       ? block.evidenceVersion
       : null;
+
+  // On a build that stamps ids, a head-slug id is the exception and is marked
+  // (`id_fallback`) and noted, because it is the one id in the document that
+  // a wording release moves. Before 0.5.0 every id was a head slug, which was
+  // the contract, so those documents stay byte-identical. The engine author's
+  // ask (Todd, 2026-10-21): when the fallback fires, say so rather than let a
+  // citation quietly break on the next copy release.
+  const stampedBuild = engineAtLeast(parseEngineVersion(evidenceVersion), SERVED_CARD_IDS_MIN);
 
   const prefix = selection ? `${selection.split('.')[0]}.evidence` : 'evidence';
   const out: EvidenceStatement[] = [];
@@ -1114,10 +1149,23 @@ function extractEvidence(
         source_path: selection
           ? `${selection.split('.')[0]}.evidence.statements.${metric}[${i}]`
           : `evidence.statements.${metric}[${i}]`,
+        ...(stampedBuild && kind === null && parentKind === null ? { id_fallback: 'head_slug' as const } : {}),
       });
     });
   }
-  return { statements: collapseRepeatedCards(out), evidenceVersion };
+  const statementsOut = collapseRepeatedCards(out);
+  // One note per surviving entry (a collapsed copy is the same card; its alias
+  // ids resolve to the entry the note names).
+  const notes: ExtractNote[] = statementsOut
+    .filter((e) => e.id_fallback === 'head_slug')
+    .map((e) => ({
+      code: 'citation_id_fallback' as const,
+      subject: e.id,
+      detail:
+        `card "${e.head}" under ${e.metric} carries no served id on evidence ${evidenceVersion}; ` +
+        'its citation id is a slug of its head and moves if the head is reworded.',
+    }));
+  return { statements: statementsOut, evidenceVersion, notes };
 }
 
 /**
@@ -1377,7 +1425,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
       // `lost_sales`). Read defensively and per field: the block is optional,
       // is absent on older runs, and a partial block must not half-arm the
       // check -- so unless BOTH values are finite numbers we stamp neither and
-      // DELTA-IDENTITY keeps checking `p2 - p1`, which is the behaviour every
+      // DELTA-IDENTITY keeps checking `p2 - p1`, which is the behavior every
       // run had before this existed. Never `?? 0`: a missing comparable level
       // is not a zero one.
       // Read from BOTH candidate wire locations, sibling first.
@@ -1692,6 +1740,7 @@ function extractFiguresUnprefixed(response: unknown, selection?: CompositeSelect
       ? {
           evidence: evidence.statements,
           ...(evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {}),
+          ...(evidence.notes.length ? { notes: evidence.notes } : {}),
         }
       : {}),
   };
