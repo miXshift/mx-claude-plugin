@@ -280,6 +280,13 @@ export const EventName = {
   ForecastBudgetCleared: 'forecast.budget_cleared',
   ForecastBudgetFailed: 'forecast.budget_failed',
 
+  // Forecast settings (`mixshift forecast settings`, lib/forecast/settings.ts):
+  // the account settings a computed forecast stands on (the DSP switch, missing
+  // ad spend as zero). Payload: scope_id, op, the setting NAMES changed, failure_kind.
+  ForecastSettingsShown: 'forecast.settings_shown',
+  ForecastSettingsSet: 'forecast.settings_set',
+  ForecastSettingsFailed: 'forecast.settings_failed',
+
   // Forecast sub-brands (`mixshift forecast sub-brand`, lib/forecast/sub-brand.ts):
   // a brand inside an account, defined by labels, that a forecast reads on its own
   // (mx-ops#134). Payload: scope_id, seller, kind, item_values / campaign_values

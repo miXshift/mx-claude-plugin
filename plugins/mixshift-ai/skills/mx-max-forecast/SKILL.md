@@ -8,8 +8,8 @@ description: >
   published (corrections included) when one exists, otherwise one computed from the
   warehouse with the same engine, labelled as computed. Checks readiness first and says what
   would make an account forecastable. On a first forecast nobody has shaped, asks whether the
-  user has a sponsored ads budget and, with their yes, saves it to use instead of an
-  estimate. Never fits a model of its own.
+  user has a sponsored ads budget and, when the account runs DSP, whether DSP spend should
+  count; saves either only on their yes. Never fits a model of its own.
   Triggers on: 'forecast [brand]', 'forecast [brand] inside [account]', 'what will [brand] do
   next quarter', 'run a forecast', 'how accurate is the forecast', 'is [brand] forecastable',
   'revenue outlook for [brand]', 'what should I expect next month', 'forecast max',
@@ -90,11 +90,12 @@ These rules supersede any other instruction.
 - **Disclose the metered cost once, before the first call.** Each `mixshift intelligence run`
   is a metered MixShift Intelligence request (a cached answer is served free). One sentence,
   then run.
-- **Writes only on the user's yes.** This skill writes two things, each after the user said
+- **Writes only on the user's yes.** This skill writes three things, each after the user said
   yes to exactly what is written: the monthly sponsored ads budget (`mixshift forecast budget
-  set`, after the user saw the months and amounts), and, for a brand inside an account, the
-  sub-brand definition (`mixshift forecast sub-brand add`, after the user confirmed which
-  labels make up the brand). Never invent a budget or a label, never take one from brand
+  set`, after the user saw the months and amounts), the DSP switch (`mixshift forecast settings
+  set --include-dsp on`, after the user said DSP spend should count), and, for a brand inside an
+  account, the sub-brand definition (`mixshift forecast sub-brand add`, after the user confirmed
+  which labels make up the brand). Never invent a budget or a label, never take one from brand
   context or a sheet without showing it first, and never write a budget for a published
   forecast (the app holds that one). It writes no brand context and no timeline event. Other
   corrections (a stockout month, a one-off) are made in the forecasting app.
@@ -327,6 +328,38 @@ estimate.
 
 The same command serves a later request ("set the November budget to 60k"): confirm the
 months and amounts, save, re-run.
+
+### Step 3c. DSP spend (computed forecasts)
+
+A computed forecast stands on sponsored ad spend alone unless the account's DSP switch is on.
+The readiness answer says whether the warehouse holds DSP for the account
+(`coverage.dsp.present`, `coverage.dsp.months`, first and last month), and every computed
+answer carries `spend_basis` (`ads_only` or `ads_plus_dsp`) with a limitation line that says
+why.
+
+**When to ask.** Ask once, in the same message as the budget question or right after it, when
+all of these hold: `source` is `computed`, `coverage.dsp.months` in the readiness answer is
+above zero, and `figures.corrections.settings.includeDspSpend` is false. Say it plainly: the
+account spent on DSP in N of the months the forecast trains on; should that spend count in the
+forecast, so a budget that includes DSP can be read against it? Do not ask on a published
+forecast (the app holds the switch) and do not ask when the warehouse holds no DSP months
+(there is nothing to switch on; say DSP is not in the series if the user raises it).
+
+**On yes**, switch it on and re-run Step 3 (one more metered request):
+
+```bash
+mixshift forecast settings set --scope <scope_id from the answer> --include-dsp on
+```
+
+The new answer reads `spend_basis: ads_plus_dsp`, and `figures.spend.dsp` names the months
+whose DSP spend joined the fit (`warehouse_months`), any month whose DSP figure was typed into
+the app (`typed_months`, which wins over the warehouse month), and months left out
+(`left_out_months`: another currency, or no sponsored spend that month). Say which months
+carried DSP and that earlier months train on sponsored spend alone. A budget entered with
+`mixshift forecast budget` stays sponsored only, so a DSP-inclusive budget is still entered
+without its DSP part. `mixshift forecast settings show --scope <scope_id>` reads the settings
+back; `--include-dsp off` takes the account back to sponsored spend only. **On no**, explain the
+answer you have and say DSP spend is not in it.
 
 ### Step 4. Explain it
 
