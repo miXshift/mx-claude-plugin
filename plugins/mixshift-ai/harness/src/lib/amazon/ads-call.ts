@@ -71,7 +71,7 @@ export interface AdsOperationView {
   id: string;
   family: string;
   operation: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   pathTemplate: string;
   /** false = account-level (profiles.list); true = profile-scoped. */
   profileScope: boolean;
@@ -205,11 +205,10 @@ export async function listAdsOperations(
   return { ok: true, operations };
 }
 
-/** Execute one cataloged Ads operation (reads, or writes under the dryRun contract). */
-export async function adsCall(
-  input: AdsCallInput,
-  opts: ReportClientOptions = {},
-): Promise<AdsCallSuccess | ReportFailure> {
+/** The wire body shared by `/api/amazon/ads/call` and `/api/amazon/ads/proposals`:
+ *  operation, profile selectors, pathParams, query, body. `dryRun` is only set
+ *  when the caller set it (proposals never send it). */
+export function buildAdsRequestBody(input: AdsCallInput): Record<string, unknown> {
   const body: Record<string, unknown> = { operation: input.operation };
   if (input.profileId) body.profileId = input.profileId;
   if (
@@ -235,6 +234,15 @@ export async function adsCall(
   // Only send dryRun when the caller set it explicitly; the service's own
   // default (TRUE for writes) is the safety contract.
   if (input.dryRun !== undefined) body.dryRun = input.dryRun;
+  return body;
+}
+
+/** Execute one cataloged Ads operation (reads, or writes under the dryRun contract). */
+export async function adsCall(
+  input: AdsCallInput,
+  opts: ReportClientOptions = {},
+): Promise<AdsCallSuccess | ReportFailure> {
+  const body = buildAdsRequestBody(input);
 
   // Outlast the service on a report create: it gives Amazon 60 s and sends a
   // create only once, so a client deadline of 60 s gave up first and told the
