@@ -34,6 +34,8 @@ export interface ProposalGuardFlag {
 
 export interface ProposalGuard {
   thresholdPct?: number;
+  /** true when the service checked this operation for money changes. */
+  evaluated?: boolean;
   flagged: ProposalGuardFlag[];
 }
 
@@ -115,7 +117,7 @@ function parseProposal(json: unknown): ProposalView | undefined {
   if (typeof p !== 'object' || p === null) return undefined;
   const v = p as Partial<ProposalView>;
   if (typeof v.id !== 'string' || typeof v.payloadHash !== 'string') return undefined;
-  const guard = (p as { guard?: { flagged?: unknown; thresholdPct?: unknown } }).guard;
+  const guard = (p as { guard?: { flagged?: unknown; thresholdPct?: unknown; evaluated?: unknown } }).guard;
   return {
     ...(v as ProposalView),
     status: String(v.status ?? ''),
@@ -124,6 +126,7 @@ function parseProposal(json: unknown): ProposalView | undefined {
       ? {
           guard: {
             ...(typeof guard.thresholdPct === 'number' ? { thresholdPct: guard.thresholdPct } : {}),
+            ...(guard.evaluated === true ? { evaluated: true } : {}),
             flagged: Array.isArray(guard.flagged) ? (guard.flagged as ProposalGuardFlag[]) : [],
           },
         }
@@ -243,5 +246,18 @@ export async function commitProposal(
   );
   if (!r.ok) return r;
   const proposal = parseProposal(r.json);
-  return proposal ? { ok: true, proposal } : malformed('commit');
+  if (!proposal) return malformed('commit');
+  // Success envelope: { ok, status, proposal, commit: { auditId, itemsCount, ... } }.
+  // The audit id and count live on `commit`; fold them in when the proposal
+  // view does not already carry them.
+  const commit = (r.json as { commit?: { auditId?: unknown; itemsCount?: unknown } } | null)?.commit;
+  if (commit && typeof commit === 'object') {
+    if (!proposal.commitAuditId && typeof commit.auditId === 'string') {
+      proposal.commitAuditId = commit.auditId;
+    }
+    if (proposal.itemsCount === undefined && typeof commit.itemsCount === 'number') {
+      proposal.itemsCount = commit.itemsCount;
+    }
+  }
+  return { ok: true, proposal };
 }

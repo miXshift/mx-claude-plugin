@@ -440,7 +440,8 @@ are different: those are available, see "Changing DSP campaigns and ad groups".
 Two write operations change what already exists. They follow the **same
 contract as Sponsored Ads writes** (see `mx-amazon-ads`, "The write contract"):
 preview first, the user confirms the exact change set in a separate turn, then
-commit. Nothing reaches Amazon on a preview.
+commit. Nothing reaches Amazon on a preview. DSP changes can also be proposed
+for later approval by a person: see `mx-amazon-ads`, "Proposals (approve later)".
 
 | Operation | What it edits | Cap per call |
 |---|---|---|

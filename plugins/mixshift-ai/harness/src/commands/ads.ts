@@ -585,12 +585,30 @@ async function proposalFailed(
     ...(failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {}),
     ...(failure.requestOutcome ? { request_outcome: failure.requestOutcome } : {}),
     ...(failure.drift ? { drift_count: failure.drift.length } : {}),
+    ...(failure.proposalStatus ? { proposal_status: failure.proposalStatus } : {}),
     ...failureContractTelemetry(failure),
   });
-  emitFailure(failure, !!root.json);
+  const next = action === 'commit' ? commitOutcomeHint(failure) : undefined;
+  emitFailure(failure, !!root.json, next);
   if (!root.json) {
     for (const line of renderDrift(failure)) process.stderr.write(`${line}\n`);
   }
+}
+
+/** What to do after a commit the gateway answered with an error envelope that
+ *  names the proposal's state. UNCERTAIN: Amazon may have applied it. FAILED:
+ *  Amazon refused it. The exit code stays the original error kind's. */
+function commitOutcomeHint(failure: ReportFailure): string | undefined {
+  if (failure.proposalStatus === 'UNCERTAIN') {
+    return (
+      'Amazon may have applied it. Do NOT commit again and do not propose it again: ' +
+      're-list the targeted entities and check them first.'
+    );
+  }
+  if (failure.proposalStatus === 'FAILED') {
+    return 'Amazon refused it and nothing was applied. Propose the change again if it is still wanted.';
+  }
+  return undefined;
 }
 
 function registerProposals(ads: Command): void {
@@ -652,7 +670,7 @@ function registerProposals(ads: Command): void {
           writeJson({ status: 'ok', proposal: r.proposal });
         } else {
           process.stderr.write(
-            `\nproposal ${r.proposal.id}\n${renderProposalSummary(r.proposal, true).join('\n')}\n\n`,
+            `\nproposal ${r.proposal.id}\n${renderProposalSummary(r.proposal, 'compact').join('\n')}\n\n`,
           );
           process.stdout.write(JSON.stringify(r.proposal, null, 2) + '\n');
         }
@@ -685,7 +703,7 @@ function registerProposals(ads: Command): void {
           const p = fetched.proposal;
           process.stderr.write(
             `\nApproving this proposal (the version fetched just now, hash ${p.payloadHash.slice(0, 12)}):\n` +
-              renderProposalSummary(p, true).join('\n') +
+              renderProposalSummary(p, 'full').join('\n') +
               '\n\n',
           );
           const r = await approveProposal(
@@ -765,7 +783,8 @@ function registerProposals(ads: Command): void {
           ...(done.commitAuditId ? { audit_id: done.commitAuditId } : {}),
         };
         if (done.status === 'FAILED' || done.status === 'UNCERTAIN') {
-          // Answered, but the write did not land cleanly. UNCERTAIN means Amazon
+          // Fallback only: the gateway reports these as an error envelope
+          // (handled in proposalFailed). Answered, but the write did not land cleanly. UNCERTAIN means Amazon
           // may have applied it: never resend, re-list the entities first.
           await trackAds(EventName.AdsProposalFailed, 'failed', startedAt, root.dataDir, {
             action: 'commit',
@@ -777,7 +796,7 @@ function registerProposals(ads: Command): void {
             !!root.json,
             done.status,
             done.status === 'UNCERTAIN'
-              ? 'Amazon may have applied it. Do NOT commit again: re-list the targeted entities first.'
+              ? 'Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first.'
               : 'Amazon refused it before applying anything. Propose the change again if it is still wanted.',
           );
           process.exitCode = 1;
@@ -851,7 +870,7 @@ function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
 
-function emitFailure(failure: ReportFailure, json: boolean): void {
+function emitFailure(failure: ReportFailure, json: boolean, nextStep?: string): void {
   if (json) {
     writeJson({
       status: 'error',
@@ -873,6 +892,10 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       request_outcome: failure.requestOutcome,
       // proposal_stale: which live values moved since the proposal was written.
       drift: failure.drift,
+      // A failed commit names the proposal and its state (FAILED, UNCERTAIN).
+      proposal_id: failure.proposalId,
+      proposal_status: failure.proposalStatus,
+      next_step: nextStep,
       automatic_retry: failure.automaticRetry,
       concurrency_cap: failure.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
@@ -884,6 +907,12 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`  ${failure.message}\n`);
     for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
+    if (failure.proposalId) {
+      process.stderr.write(
+        `  proposal: ${failure.proposalId}${failure.proposalStatus ? ` (${failure.proposalStatus})` : ''}\n`,
+      );
+    }
+    if (nextStep) process.stderr.write(`  ${nextStep}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }

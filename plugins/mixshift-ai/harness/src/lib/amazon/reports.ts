@@ -171,12 +171,12 @@ export type ReportFailureKind =
   // --- Ads proposals (deferred approval; gateway ads-proposals routes) ---
   | 'proposal_not_found' // 404 - no such proposal for this tenant
   | 'proposal_expired' // 409 - proposal aged out; propose again
-  | 'proposal_not_approved' // 409 - commit before approval (or after reject)
+  | 'proposal_not_approved' // 409 - wrong state for this call; +proposalStatus
   | 'proposal_hash_mismatch' // 409 - the hash sent is not the stored one
   | 'proposal_stale' // 409 - live values moved since the proposal; +drift
   | 'proposal_guard_ack_required' // 409 - a flagged change needs --acknowledge-guard
   | 'proposal_before_state_unavailable' // 409 - no snapshot to compare; propose again
-  | 'approval_requires_human' // 403 - approve/reject need a signed-in person
+  | 'approval_requires_human' // 403 - approve/reject need a person in a different session
   | 'proposal_limit_reached' // 429 - too many open proposals for this tenant
   // --- local-only (this module) ---
   | 'not_authenticated' // no datahub creds on disk; run `mixshift auth login`
@@ -201,6 +201,13 @@ export interface ReportFailure {
    *  choose from. Re-run report-start with one row's `legacySellerId` (or the
    *  matching `marketplace`). */
   candidates?: MerchantCandidate[];
+  /** On a failed commit (and any proposal error that names one): the proposal
+   *  the failure belongs to. Sanitized and length-capped. */
+  proposalId?: string;
+  /** The proposal's state after the failure: `FAILED` (Amazon refused, nothing
+   *  applied), `UNCERTAIN` (Amazon may have applied it), `COMMITTING` (another
+   *  commit is in flight), `COMMITTED`, `REJECTED`, `PROPOSED`, `EXPIRED`... */
+  proposalStatus?: string;
   /** On `proposal_stale`: which fields moved (bounded, primitives only). */
   drift?: Array<Record<string, string | number | boolean | null>>;
   /** HTTP status of the failing call — diagnostics only; do not branch on it. */
@@ -1912,10 +1919,18 @@ function toReportFailure(
       ? rawFriendly.replace(/\s*See amazon_error for the reason Amazon gave\.?/, ' Check the report type and date range.').trim()
       : rawFriendly;
   const message = typeof json.message === 'string' ? json.message : issues?.detail;
+  const proposalId = cleanProposalToken(json.proposalId);
+  const proposalStatus = cleanProposalToken(json.proposalStatus)?.toUpperCase();
+  // The wording of a wrong-state refusal comes from the ACTUAL state, so it is
+  // rendered here and wins over generic server copy.
+  const friendly =
+    kind === 'proposal_not_approved' && proposalStatus !== undefined
+      ? proposalNotApprovedText(proposalStatus)
+      : (serverFriendly ?? defaultFriendly(kind, surface));
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly(kind, surface),
+    friendly,
     message,
     amazonSellerId: strOrUndef(json.amazonSellerId),
     reportType: strOrUndef(json.reportType),
@@ -1924,6 +1939,8 @@ function toReportFailure(
     status: strOrUndef(json.status),
     candidates: parseCandidates(json.candidates),
     httpStatus,
+    ...(proposalId !== undefined ? { proposalId } : {}),
+    ...(proposalStatus !== undefined ? { proposalStatus } : {}),
     ...(parseDrift(json.drift) !== undefined ? { drift: parseDrift(json.drift) } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     ...(amazonErrorCode !== undefined ? { amazonErrorCode } : {}),
@@ -1947,6 +1964,38 @@ function toReportFailure(
     ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
     ...(json.concurrencyCap === true ? { concurrencyCap: true } : {}),
   };
+}
+
+/** An id or state name from the failure envelope: letters, digits, `-` and
+ *  `_` only, 64 characters at most, so it is safe to print and forward. */
+function cleanProposalToken(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  return t === '' ? undefined : t;
+}
+
+/** Why a commit (or approve) was refused for a proposal in this state. */
+export function proposalNotApprovedText(status: string): string {
+  switch (status) {
+    case 'PROPOSED':
+      return 'This proposal is still waiting for approval, so it cannot be committed. Nothing was changed. A person has to approve it first.';
+    case 'COMMITTING':
+      return 'Another commit of this proposal is in flight right now. Do not send it again: wait, then check its state with `mixshift ads proposals show`. Nothing new was sent.';
+    case 'COMMITTED':
+      return 'This proposal was already committed, so it was not sent again. Nothing new was changed. See the audit id with `mixshift ads proposals show`.';
+    case 'UNCERTAIN':
+      return 'An earlier commit of this proposal ended uncertain: Amazon may have applied it. It was not sent again. Re-list the targeted entities and check them first, and do not propose it again until you have.';
+    case 'FAILED':
+      return 'An earlier commit of this proposal failed (Amazon refused it, nothing was applied), so it cannot be committed again. Propose the change again if it is still wanted.';
+    case 'REJECTED':
+      return 'This proposal was rejected, so it can never be committed. Nothing was changed. Propose the change again if it is still wanted.';
+    case 'EXPIRED':
+      return 'This proposal expired before it was approved and committed. Nothing was changed. Propose the change again.';
+    case 'STALE':
+      return 'This proposal went stale: the live values moved after it was written. Nothing was changed. Propose the change again from the current values.';
+    default:
+      return `This proposal is in state ${status}, not APPROVED, so it cannot be committed. Nothing was changed. Check it with \`mixshift ads proposals show\`.`;
+  }
 }
 
 /** The `drift` list the gateway attaches to `proposal_stale`: one object per
@@ -2216,7 +2265,7 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
     case 'proposal_expired':
       return 'This proposal expired before it was committed. Nothing was changed. Propose the change again.';
     case 'proposal_not_approved':
-      return 'This proposal has not been approved (or was rejected), so it cannot be committed. Nothing was changed.';
+      return 'This proposal is not in an approved state, so it cannot be committed. Nothing was changed. Check its state with `mixshift ads proposals show`.';
     case 'proposal_hash_mismatch':
       return 'The proposal on file is not the one that was approved. Nothing was changed. Fetch it again with `mixshift ads proposals show` and review it.';
     case 'proposal_stale':
@@ -2224,9 +2273,9 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
     case 'proposal_guard_ack_required':
       return 'This proposal changes a money value by more than the safety threshold. The person approving it must pass --acknowledge-guard to confirm they saw that.';
     case 'proposal_before_state_unavailable':
-      return 'This proposal has no saved snapshot of the live values to check against, so it cannot be committed safely. Propose the change again.';
+      return 'An item in this proposal is missing from the live account snapshot, so the values to check against are unavailable and it cannot be written or committed safely. Re-list the entities to confirm the ids, then propose the change again.';
     case 'approval_requires_human':
-      return 'Approving or rejecting a proposal has to be done by a signed-in person, not a machine credential. Run `mixshift auth login` as yourself.';
+      return 'Approval has to come from a person\'s own sign-in, in a different session from the one that proposed it. Service credentials and scheduled routines cannot approve or reject. Ask the person to approve from their own session or the claude.ai app.';
     case 'proposal_limit_reached':
       return 'This account already has the maximum number of open proposals. Approve, reject or wait for some to expire, then propose again.';
     case 'throttled':

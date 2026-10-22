@@ -263,7 +263,7 @@ describe('ads proposals list / show', () => {
     expect(text).toContain('expires: 2026-10-25T00:00:00Z');
     expect(text).toContain('1 money change(s) above the 25% threshold');
     expect(text).toContain('1 budget.budget: 20 -> 30 (+50%)');
-    expect(text).toContain('{"campaignId":"1","budget":{"budget":30}}');
+    expect(text).toContain('1. budget={"budget":30} | other: {"campaignId":"1"}');
     expect(JSON.parse(out.join(''))).toMatchObject({ id: FLAGGED.id });
   });
 });
@@ -349,20 +349,124 @@ describe('ads proposals reject / commit', () => {
     expect(JSON.stringify(ev.payload)).not.toContain('success');
   });
 
-  it.each([
-    ['UNCERTAIN', 'commit_uncertain', 'Do NOT commit again'],
-    ['FAILED', 'commit_failed', 'Propose the change again'],
-  ])('a commit that ends %s exits 1, records %s, and says what to do', async (status, kind, hint) => {
+  it('success envelope: audit id and counts come from `commit`, proposal is COMMITTED', async () => {
     gateway
-      .mockResolvedValueOnce(reply(200, { status: 'ok', proposal: { ...PROPOSAL, status: 'APPROVED' } }))
-      .mockResolvedValueOnce(reply(200, { status: 'ok', proposal: { ...PROPOSAL, status } }));
+      .mockResolvedValueOnce(reply(200, { ok: true, status: 'ok', proposal: { ...PROPOSAL, status: 'APPROVED' } }))
+      .mockResolvedValueOnce(
+        reply(200, {
+          ok: true,
+          status: 'ok',
+          proposal: { ...PROPOSAL, status: 'COMMITTED', itemsCount: undefined },
+          commit: { auditId: 'audit-9', itemsCount: 2, successCount: 2, errorCount: 0 },
+        }),
+      );
     await run('ads', 'proposals', 'commit', PROPOSAL.id);
-    expect(process.exitCode).toBe(1);
-    expect(err.join('')).toContain(hint);
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(err.join('')).toContain('audit: audit-9');
     const ev = vi.mocked(track).mock.calls.at(-1)![0];
-    expect(ev.event_name).toBe('ads.proposal_failed');
-    expect(ev.outcome).toBe('failed');
-    expect(ev.payload).toMatchObject({ kind });
+    expect(ev.event_name).toBe('ads.proposal_committed');
+    expect(ev.payload).toMatchObject({ audit_id: 'audit-9', items_count: 2 });
+  });
+});
+
+describe('a commit that ends FAILED or UNCERTAIN arrives as an ERROR envelope', () => {
+  const UNCERTAIN_HINT =
+    'Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first.';
+  const CASES: Array<
+    [proposalStatus: string, kind: string, httpStatus: number, hint: string, notHint: string]
+  > = [
+    ['UNCERTAIN', 'host_unreachable', 502, UNCERTAIN_HINT, 'nothing was applied'],
+    ['UNCERTAIN', 'unknown', 500, UNCERTAIN_HINT, 'nothing was applied'],
+    ['FAILED', 'bad_request', 400, 'Amazon refused it and nothing was applied', 'Do NOT commit again'],
+  ];
+
+  it.each(CASES)(
+    'proposalStatus %s with kind %s: original exit code, id and status kept, right words',
+    async (proposalStatus, kind, httpStatus, hint, notHint) => {
+      const envelope = { ok: false, kind, friendly: 'Amazon did not take the write.', proposalId: PROPOSAL.id, proposalStatus };
+      gateway
+        .mockResolvedValueOnce(reply(200, { ok: true, status: 'ok', proposal: { ...PROPOSAL, status: 'APPROVED' } }))
+        .mockResolvedValueOnce(reply(httpStatus, envelope));
+      await run('ads', 'proposals', 'commit', PROPOSAL.id);
+      const code = process.exitCode;
+      expect(code).toBeGreaterThan(0);
+      const text = err.join('');
+      expect(text).toContain(hint);
+      expect(text).not.toContain(notHint);
+      expect(text).toContain(`proposal: ${PROPOSAL.id} (${proposalStatus})`);
+      const ev = vi.mocked(track).mock.calls.at(-1)![0];
+      expect(ev.event_name).toBe('ads.proposal_failed');
+      expect(ev.payload).toMatchObject({ action: 'commit', kind, proposal_status: proposalStatus });
+
+      // Same call with --json: the envelope keeps the id, the state and the next step.
+      process.exitCode = undefined;
+      out = [];
+      gateway
+        .mockResolvedValueOnce(reply(200, { ok: true, status: 'ok', proposal: { ...PROPOSAL, status: 'APPROVED' } }))
+        .mockResolvedValueOnce(reply(httpStatus, envelope));
+      await run('--json', 'ads', 'proposals', 'commit', PROPOSAL.id);
+      expect(process.exitCode).toBe(code);
+      expect(json()).toMatchObject({
+        status: 'error',
+        failure_kind: kind,
+        proposal_id: PROPOSAL.id,
+        proposal_status: proposalStatus,
+      });
+      expect(String(json().next_step)).toContain(hint);
+    },
+  );
+
+  it('the proposal id and status from the envelope are sanitized before use', async () => {
+    gateway
+      .mockResolvedValueOnce(reply(200, { ok: true, status: 'ok', proposal: { ...PROPOSAL, status: 'APPROVED' } }))
+      .mockResolvedValueOnce(
+        reply(502, {
+          ok: false,
+          kind: 'host_unreachable',
+          friendly: 'x',
+          proposalId: 'p-1\u001b[2J',
+          proposalStatus: 'uncertain\n',
+        }),
+      );
+    await run('--json', 'ads', 'proposals', 'commit', PROPOSAL.id);
+    expect(json()).toMatchObject({ proposal_id: 'p-12J', proposal_status: 'UNCERTAIN' });
+  });
+});
+
+describe('wrong-state refusals name the actual state', () => {
+  it.each([
+    ['UNCERTAIN', 'may have applied it'],
+    ['COMMITTED', 'already committed'],
+    ['REJECTED', 'was rejected'],
+    ['COMMITTING', 'another commit of this proposal is in flight'],
+    ['PROPOSED', 'still waiting for approval'],
+    ['EXPIRED', 'expired'],
+  ])('proposal_not_approved with proposalStatus %s', async (status, words) => {
+    gateway.mockResolvedValue(
+      reply(409, {
+        ok: false,
+        kind: 'proposal_not_approved',
+        friendly: 'has not been approved (or was rejected)',
+        proposalId: PROPOSAL.id,
+        proposalStatus: status,
+      }),
+    );
+    await run('--json', 'ads', 'proposals', 'show', PROPOSAL.id);
+    expect(process.exitCode).toBe(16);
+    const msg = String(json().message);
+    expect(msg.toLowerCase()).toContain(words.toLowerCase());
+    expect(msg).not.toContain('or was rejected');
+    expect(json()).toMatchObject({ proposal_status: status });
+  });
+
+  it('approval_requires_human default text: a person, own sign-in, different session', async () => {
+    gateway.mockResolvedValue(reply(403, { ok: false, kind: 'approval_requires_human' }));
+    await run('--json', 'ads', 'proposals', 'show', PROPOSAL.id);
+    expect(process.exitCode).toBe(19);
+    const msg = String(json().message);
+    expect(msg).toContain("person's own sign-in");
+    expect(msg).toContain('different session');
+    expect(msg).toContain('Service credentials and scheduled routines cannot approve');
   });
 });
 
