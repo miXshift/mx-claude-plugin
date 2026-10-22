@@ -416,6 +416,18 @@ queries:
     consumers: [mx-keyword-bid-health]
     tier: 1
 
+  - id: BB-01
+    file: BB-01.sql
+    purpose: Per-campaign trailing-14-day Sponsored Products performance and budget pressure (spend, sales, orders, ACoS, average daily budget, days at or above the utilization threshold, days with spend). Campaign-day grain from campaignmetric; window ends the day before :run_date.
+    consumers: [mx-budget-balance]
+    tier: 1
+
+  - id: BB-02
+    file: BB-02.sql
+    purpose: Latest settings snapshot per enabled Sponsored Products campaign from campaign_tracking_3mo (DailyBudget, BudgetType, State, ServingStatus, PercentTimeInBudget, suggestedBudget, AmazonCampaignID).
+    consumers: [mx-budget-balance]
+    tier: 1
+
   - id: LIB-PT-01
     file: LIB-PT-01.sql
     purpose: Price-test ASIN-level sales/units/sessions comparison between two windows (one row per ASIN that sold in either window, each product's sessions counted once per day).
