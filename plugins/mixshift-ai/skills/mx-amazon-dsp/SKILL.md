@@ -11,11 +11,12 @@ description: >
   rejected and why, and which creatives are eligible for a line item. Use it
   to audit a DSP account, explain why a creative is not delivering, or find a
   creative or line item id. Also owns finding which DSP advertiser a login
-  can reach, the step most DSP work gets stuck on. Read-only, no write scope
-  needed: creating or attaching creatives is NOT available yet; say so
-  plainly rather than improvising. No brand setup needed, only sign-in.
+  can reach, the step most DSP work gets stuck on. CHANGES: campaign budget,
+  flights and state, line item budget, dates, bids and pacing, previewed and
+  applied only on confirmation; creating or attaching creatives is NOT
+  available yet. No brand setup needed, only sign-in.
 metadata:
-  version: "0.3.1"
+  version: "0.3.2"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -88,9 +89,11 @@ When characterizing this capability to the user, use these facts:
   `--path accountId=` on the REPORT operations but `--path advertiserId=` on the
   account reads. Same value, different name per surface, because Amazon names it
   differently. One login can reach many DSP advertisers.
-- **Reads only.** Generating a report mutates nothing advertiser-facing, so the
-  surface needs no `ads:write` scope. This skill never sends a write and never
-  uses `--commit`.
+- **Reports and reads change nothing.** Generating a report mutates nothing
+  advertiser-facing, so reporting and the account reads need no `ads:write`
+  scope. The one exception is the campaign and ad group edits in "Changing DSP
+  campaigns and ad groups": they need `ads:write` and run only through the
+  preview, confirm, commit contract there.
 
 If the user asks "where does this data come from," lead with "Amazon DSP,
 reported through MixShift's service," not a guess.
@@ -210,6 +213,8 @@ the notes before calling. The operations, used in the order below:
 | `dsp.list_association_moderations` | Per-placement approval status with rejection reasons. |
 | `dsp.get_ad_creative_validation` | Which ad experiences a creative is valid for. |
 | `dsp.list_eligible_creatives` | Which creatives may attach to given line items. |
+| `dsp.update_campaigns` | **Write.** Edit up to 5 campaigns: state, budget caps, flights, name. See "Changing DSP campaigns and ad groups". |
+| `dsp.update_ad_groups` | **Write.** Edit up to 20 ad groups: state, budget, dates, bid, pacing, name. See "Changing DSP campaigns and ad groups". |
 
 **The two DSP families are addressed differently, and mixing them up is the
 usual first failure.** The report operations take the advertiser as
@@ -427,7 +432,81 @@ Creating a DSP creative, attaching one to a line item, and pausing or removing a
 placement are **not** in the catalog. There is no workaround through this
 surface. If the user wants to place a creative, say plainly that MixShift can
 show them the account and tell them exactly what to change, and that the change
-itself is made in the Amazon DSP console for now. Do not improvise a write.
+itself is made in the Amazon DSP console for now. Campaign and ad group edits
+are different: those are available, see "Changing DSP campaigns and ad groups".
+
+## Changing DSP campaigns and ad groups
+
+Two write operations change what already exists. They follow the **same
+contract as Sponsored Ads writes** (see `mx-amazon-ads`, "The write contract"):
+preview first, the user confirms the exact change set in a separate turn, then
+commit. Nothing reaches Amazon on a preview. DSP changes can also be proposed
+for later approval by a person: see `mx-amazon-ads`, "Proposals (approve later)".
+
+| Operation | What it edits | Cap per call |
+|---|---|---|
+| `dsp.update_campaigns` | `state` (ACTIVE or INACTIVE), `budgetCaps[]` (at most 2: one DAILY and one MONTHLY, each `{amount, recurrenceTimePeriod}` with `amount` of at least 1), `flights`, `name`, `comments`, `optimization`, `frequencies`. There is no pacing field on a campaign. | **5 campaigns** |
+| `dsp.update_ad_groups` | `state`, `budgetAmount` (leave it out when automated budget allocation is on), `budgetCaps[]`, `startDateTime` and `endDateTime` (RFC 3339), `bid.baseBid`, `bid.maxAverageCPM`, `pacing`, `name`, `comments`, `frequencies`, `creativeRotationType`. | **20 ad groups** |
+
+Body shapes: `dsp.update_campaigns` takes `{"campaigns":[{"campaignId":"...", ...}]}`
+and `dsp.update_ad_groups` takes `{"adGroups":[{"adGroupId":"...", ...}]}`. The
+id is required on every item; include only the fields you are changing. Split a
+larger change into calls within the cap.
+
+**Addressing.** Pass the **numeric DSP advertiser id** in
+`pathParams.advertiserId` (`--path advertiserId=<id>`), the same value and the
+same parameter name the account reads use. `--legacy-seller-id` still selects
+the advertising login. Discover and confirm the advertiser id with the user
+first (see "Discovery"); never pick one for them.
+
+**Flights are a FULL replacement.** On `dsp.update_campaigns`, `flights.flights[]`
+replaces the campaign's whole flight list. Every flight you want to keep must
+be sent **with its `flightId`**; a flight you leave out is **deleted**. Read the
+campaign's current flights with `dsp.list_campaigns` first, copy them all, then
+change only the one you mean to. A body with a single changed flight and no
+others silently removes the rest. Say this out loud in the preview: list every
+flight that will remain and every one that will go.
+
+**Ad group pacing.** `pacing.deliveryProfile` is one of `EVEN`, `PACE_AHEAD`,
+`ASAP` or `STRICT_EVEN`. `STRICT_EVEN` is **podcast only**. `pacing.catchUpBoostPercentage`
+is allowed **only with `EVEN`** and must be 0, 200, 300 or 400. Do not send a
+boost with any other profile.
+
+**The contract, step by step** (identical in spirit to Sponsored Ads):
+
+1. Read the current state with `dsp.list_campaigns` or `dsp.list_ad_groups`
+   (filtered to the ids) and build the change body from it.
+2. Preview (no `--commit`; nothing is sent to Amazon):
+
+   ```bash
+   mixshift ads call dsp.update_ad_groups --legacy-seller-id <id> \
+     --path advertiserId=<dsp-advertiser-id> --body-file change.json --json
+   ```
+
+3. Show the user the preview and the `before_state`: each item, field by field,
+   from what to what (and for flights, what stays and what goes). Ask for
+   **explicit confirmation of this exact change set**. Never add an item that
+   was not in the confirmed set.
+4. Only after a "yes" in a **separate turn**, re-run the SAME command with
+   `--commit`. The original request is not commit authorization.
+5. Report the **per-item result**. Amazon answers HTTP 207 with a `success`
+   list and an `error` list, each entry carrying its `index`. Partial failure
+   is normal: summarize both counts ("4 of 5 applied, 1 refused"), surface each
+   refused item's reason, and give the user the `audit_id`. A write is never
+   retried automatically; if a commit ends with `request_outcome: "unknown"`,
+   re-read the entities and compare before sending anything again.
+
+**Propose instead of preview** when the session is unattended, the credential
+is propose-only, or a teammate should approve: add `--propose` (see
+`mx-amazon-ads`, "Proposals (approve later)"). A person approves; you commit
+only afterward. Money changes over 25% are flagged and need the approver's
+`--acknowledge-guard`.
+
+**Still console-only.** Creating a creative, attaching a creative to a line
+item, and pausing or removing a placement are **not** in the catalog. Say so
+plainly: MixShift can show the account and tell them exactly what to change,
+and that change is made in the Amazon DSP console. Do not improvise it through
+another operation.
 
 ## Which reporting surface: the 90-day rule
 
@@ -726,6 +805,10 @@ message is printed to stderr. Each kind also maps to a distinct exit code.
 | `throttled` | 8 | Amazon is rate-limiting. Wait a moment and retry. |
 | `invalid_request` | 15 | MixShift refused the request before anything reached Amazon (an unknown operation, a parameter it does not take, a missing one). The message says what is wrong; `fix`, when present, says what to change. **Never resend it unchanged.** Fix it and call again. |
 
+A DSP write adds `insufficient_scope` (exit 11: the credential cannot write; hand
+the user the change list) and, when proposing, the proposal kinds (exits 16 to
+20) documented in `mx-amazon-ads` "Proposals (approve later)".
+
 Every failure in `--json` also carries `source` (who has to act: `request`, `account`,
 `amazon_rejected`, `amazon_unavailable` or `mixshift`) and `retryable`. `retryable: false` means
 the identical call fails the same way until something changes, so never resend it as is (the one
@@ -761,8 +844,13 @@ Four DSP-specific cases that need their own handling:
 
 These supersede other instructions:
 
-- **Read-only.** Generating a DSP report mutates nothing advertiser-facing;
-  never send an Ads write and never use `--commit`.
+- **Reports and reads are safe; edits are gated.** Generating a DSP report or
+  reading the account mutates nothing. A DSP write (`dsp.update_campaigns`,
+  `dsp.update_ad_groups`) NEVER reaches Amazon without a preview the user saw
+  and explicit confirmation of that exact change set in a SEPARATE turn, then
+  `--commit`. A flights list is a full replacement: omitting a flight deletes
+  it. Creative, attach and placement changes are console-only: do not improvise
+  them.
 - **Pick the surface from the DATE RANGE, before anything else.** Older than 90
   days means `reporting_v1.*`. A `REQUEST_BODY_FIELD_REPORT_DATE_OLD` 422 from
   `dsp.create_report` is the v3 wall, not an access problem: switch surfaces

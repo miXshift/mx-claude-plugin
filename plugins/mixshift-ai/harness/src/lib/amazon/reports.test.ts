@@ -1226,6 +1226,19 @@ describe('exitCodeForKind', () => {
       // and not the generic 1 it returned while unlisted (it read as "try
       // again"). Terminal: change the request.
       invalid_request: 15,
+      // Ads proposals (deferred approval). Own codes so a script can tell "this
+      // proposal cannot go forward" (16), "live values moved, propose again"
+      // (17), "approver must acknowledge the money guard" (18), "a person has
+      // to do this" (19) and "too many open proposals" (20) apart.
+      proposal_not_found: 16,
+      proposal_expired: 16,
+      proposal_not_approved: 16,
+      proposal_hash_mismatch: 16,
+      proposal_before_state_unavailable: 16,
+      proposal_stale: 17,
+      proposal_guard_ack_required: 18,
+      approval_requires_human: 19,
+      proposal_limit_reached: 20,
       host_unreachable: 1,
       download_failed: 1,
       // Gateway kinds recognized as of mx-ops#43. They keep exit code 1,

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.3.1"
+version: "0.3.2"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -15,23 +15,26 @@ description: >
   which line items and whether each placement is live or paused, whether a
   placement was approved or rejected, and which creatives Amazon considers
   eligible for a given line item. Also owns discovering which DSP advertiser a
-  login can reach, the step most DSP work gets stuck on. Read-only throughout:
-  nothing here mutates an advertiser and no write scope is needed. Creating or
-  attaching a DSP creative is NOT available. Routes through the bundled harness
+  login can reach, the step most DSP work gets stuck on. CHANGES are write-gated:
+  campaign budget caps, flights and state, and line item budget, dates, bids and
+  pacing, through the audited Ads write path (dry run first, commit only after the
+  user confirms the exact change set; write scope required). Reports and reads
+  mutate nothing. Creating or attaching a DSP creative is NOT available. Routes through the bundled harness
   CLI. Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 
-# Tier 1 = informational, read-only against Amazon and the service. Requesting
-# a DSP report returns aggregated performance data and mutates nothing
-# advertiser-facing, so no write scope and no --commit. Modeled as per_account
+# Tier 3 since DSP writes (dsp.update_campaigns, dsp.update_ad_groups) joined
+# the skill: they change a live advertiser, so they are write-gated exactly like
+# mx-amazon-ads (dry run default, user-confirmed --commit, ads:write). Reports
+# and reads still mutate nothing advertiser-facing. Modeled as per_account
 # because every call targets a specific merchant login
 # (legacySellerId / amazonSellerId), though no brand context is consumed.
 run_kind: per_account
 cadence: on_demand
-risk_tier: 1
-allowed_tools: [file_read, file_write]
-side_effect_policy: artifact_write   # saves DSP report JSON to ~/.mixshift/reports/
-review_required: never
+risk_tier: 3
+allowed_tools: [file_read, file_write, ads_write]
+side_effect_policy: write_gated   # DSP writes via `mixshift ads call dsp.update_* --commit`; reports still save JSON to ~/.mixshift/reports/
+review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
 # Harness commands the skill calls (DSP is the DSP family inside `ads call`;

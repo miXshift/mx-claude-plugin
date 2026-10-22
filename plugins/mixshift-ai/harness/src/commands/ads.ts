@@ -9,12 +9,18 @@
  *   ads operations [--family <name>]          browse what is callable
  *   ads call <operation> [selectors] [--query k=v ...] [--path k=v ...]
  *                         [--body-file <f> | --body <json>] [--commit]
+ *   ads call <write-op> ... --propose [--title --rationale --evidence-file
+ *                         --expires-hours]   write a proposal, not a change
+ *   ads proposals list|show|approve|reject|commit   approve-later flow
  *
  * WRITE CONTRACT: operations marked write: true (bid updates, negatives,
  * campaign creation) run as a DRY RUN by default: the service validates,
  * snapshots current state, logs an audit row, and returns a preview without
  * touching Amazon. `--commit` is the ONLY way to mutate, and the skill layer
  * must show the user the preview and get explicit confirmation first.
+ * `--propose` is the deferred variant: the same change set is stored as a
+ * proposal for a signed-in person to approve later (`ads proposals approve`),
+ * then committed with `ads proposals commit`. It never mutates Amazon.
  * Commits return Amazon's multi-status response (partial failure is normal)
  * plus the audit row id holding the pre-write snapshot.
  *
@@ -49,6 +55,20 @@ import {
   failureContractTelemetry,
   type ReportFailure,
 } from '../lib/amazon/reports.js';
+import {
+  createProposal,
+  listProposals,
+  getProposal,
+  approveProposal,
+  rejectProposal,
+  commitProposal,
+  type ProposalView,
+} from '../lib/ads/proposals.js';
+import {
+  renderProposalSummary,
+  renderProposalTable,
+  renderDrift,
+} from '../lib/ads/proposals-render.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { keyValueOption } from '../lib/cli/option-parsers.js';
@@ -65,12 +85,14 @@ export function registerAdsCommands(program: Command): void {
       'Call the Amazon Ads API: reporting v3, entity exports, ' +
         'campaign/keyword/target lists with current bids, intraday budget usage, ' +
         'live bid and keyword recommendations, and audited writes (bids, ' +
-        'negatives, campaign creation; dry-run by default, --commit to apply).',
+        'negatives, campaign creation; dry-run by default, --commit to apply; ' +
+        '--propose and `ads proposals` to have a person approve a change later).',
     );
 
   registerProfiles(ads);
   registerOperations(ads);
   registerCall(ads);
+  registerProposals(ads);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +225,11 @@ interface CallCliOptions {
   contentType?: string;
   commit?: boolean;
   proposalId?: string;
+  propose?: boolean;
+  title?: string;
+  rationale?: string;
+  evidenceFile?: string;
+  expiresHours?: string;
 }
 
 function registerCall(ads: Command): void {
@@ -250,6 +277,23 @@ function registerCall(ads: Command): void {
         'override it) also rides every request to MixShift as the ' +
         'x-mixshift-intent header, for usage attribution only.',
     )
+    .option(
+      '--propose',
+      'WRITE operations: store this change set as a PROPOSAL for a signed-in person ' +
+        'to approve later (`ads proposals approve <id>`), instead of previewing or ' +
+        'committing. Mutates nothing. Cannot be combined with --commit. This is the ' +
+        'mode for scheduled routines and propose-only credentials.',
+    )
+    .option('--title <text>', 'with --propose: short title shown to the approver')
+    .option('--rationale <text>', 'with --propose: why this change, shown to the approver')
+    .option(
+      '--evidence-file <file>',
+      'with --propose: JSON file of supporting evidence (numbers the change rests on)',
+    )
+    .option(
+      '--expires-hours <n>',
+      'with --propose: hours the proposal stays open (1-168, default 72)',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -268,6 +312,44 @@ function registerCall(ads: Command): void {
             ),
             !!root.json,
           );
+        }
+        const proposeOnly: Array<[string, unknown]> = [
+          ['--title', opts.title],
+          ['--rationale', opts.rationale],
+          ['--evidence-file', opts.evidenceFile],
+          ['--expires-hours', opts.expiresHours],
+        ];
+        if (opts.propose) {
+          if (opts.commit) {
+            return emitError(
+              new Error(
+                '--propose and --commit cannot be combined: a proposal never commits. ' +
+                  'Propose now; after a person approves it, run `ads proposals commit <id>`.',
+              ),
+              !!root.json,
+            );
+          }
+          if (opts.proposalId !== undefined) {
+            return emitError(
+              new Error('--proposal-id belongs to --commit and cannot be used with --propose.'),
+              !!root.json,
+            );
+          }
+        } else {
+          const stray = proposeOnly.find(([, v]) => v !== undefined);
+          if (stray) {
+            return emitError(new Error(`${stray[0]} only applies with --propose.`), !!root.json);
+          }
+        }
+        let expiresInHours: number | undefined;
+        if (opts.expiresHours !== undefined) {
+          expiresInHours = Number(opts.expiresHours);
+          if (!Number.isInteger(expiresInHours) || expiresInHours < 1 || expiresInHours > 168) {
+            return emitError(
+              new Error('--expires-hours must be a whole number from 1 to 168.'),
+              !!root.json,
+            );
+          }
         }
         let body: unknown;
         if (opts.bodyFile && opts.body) {
@@ -293,6 +375,51 @@ function registerCall(ads: Command): void {
           // dry-run default is the contract (and reads ignore it entirely).
           ...(opts.commit ? { dryRun: false } : {}),
         };
+        if (opts.propose) {
+          let evidence: unknown;
+          if (opts.evidenceFile) {
+            evidence = JSON.parse(await readFile(opts.evidenceFile, 'utf8'));
+          }
+          const created = await createProposal(
+            {
+              call: input,
+              ...(opts.title ? { title: opts.title } : {}),
+              ...(opts.rationale ? { rationale: opts.rationale } : {}),
+              ...(evidence !== undefined ? { evidence } : {}),
+              ...(expiresInHours !== undefined ? { expiresInHours } : {}),
+            },
+            { dataDirOverride: root.dataDir },
+          );
+          if (isReportFailure(created)) {
+            return proposalFailed(created, 'propose', startedAt, root, undefined, operation);
+          }
+          const p = created.proposal;
+          await trackAds(EventName.AdsProposalCreated, 'ok', startedAt, root.dataDir, {
+            proposal_id: p.id,
+            operation: p.operation || operation,
+            ...(typeof p.itemsCount === 'number' ? { items_count: p.itemsCount } : {}),
+            guard_flagged: p.guard?.flagged.length ?? 0,
+            has_evidence: evidence !== undefined,
+          });
+          if (root.json) {
+            writeJson({ status: 'ok', proposal: p });
+          } else {
+            process.stderr.write(
+              `\nPROPOSED ${p.operation || operation}: ${p.itemsCount ?? '?'} item(s) stored, nothing applied.\n` +
+                renderProposalSummary(p).join('\n') +
+                '\n  A signed-in person approves it with `mixshift ads proposals approve ' +
+                `${p.id}\`, then it is committed with \`mixshift ads proposals commit ${p.id}\`.\n\n`,
+            );
+            process.stdout.write(
+              JSON.stringify(
+                { id: p.id, status: p.status, expiresAt: p.expiresAt, payloadHash: p.payloadHash },
+                null,
+                2,
+              ) + '\n',
+            );
+          }
+          return;
+        }
         const result = await adsCall(input, { dataDirOverride: root.dataDir });
         if (isReportFailure(result)) {
           await trackAds(EventName.AdsCalled, 'failed', startedAt, root.dataDir, {
@@ -434,6 +561,287 @@ function registerCall(ads: Command): void {
 }
 
 // ---------------------------------------------------------------------------
+// ads proposals ...
+// ---------------------------------------------------------------------------
+
+type ProposalAction = 'propose' | 'list' | 'show' | 'approve' | 'reject' | 'commit';
+
+/** One failure path for every proposal action: telemetry, then the shared
+ *  failure output (plus the drift list on a stale proposal), then the exit code. */
+async function proposalFailed(
+  failure: ReportFailure,
+  action: ProposalAction,
+  startedAt: number,
+  root: RootOptions,
+  proposalId?: string,
+  operation?: string,
+): Promise<void> {
+  await trackAds(EventName.AdsProposalFailed, 'failed', startedAt, root.dataDir, {
+    action,
+    kind: failure.kind,
+    ...(proposalId ? { proposal_id: proposalId } : {}),
+    ...(operation ? { operation } : {}),
+    ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
+    ...(failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {}),
+    ...(failure.requestOutcome ? { request_outcome: failure.requestOutcome } : {}),
+    ...(failure.drift ? { drift_count: failure.drift.length } : {}),
+    ...(failure.proposalStatus ? { proposal_status: failure.proposalStatus } : {}),
+    ...failureContractTelemetry(failure),
+  });
+  const next = action === 'commit' ? commitOutcomeHint(failure) : undefined;
+  emitFailure(failure, !!root.json, next);
+  if (!root.json) {
+    for (const line of renderDrift(failure)) process.stderr.write(`${line}\n`);
+  }
+}
+
+/** What to do after a commit the gateway answered with an error envelope that
+ *  names the proposal's state. UNCERTAIN: Amazon may have applied it. FAILED:
+ *  Amazon refused it. The exit code stays the original error kind's. */
+function commitOutcomeHint(failure: ReportFailure): string | undefined {
+  if (failure.proposalStatus === 'UNCERTAIN') {
+    return (
+      'Amazon may have applied it. Do NOT commit again and do not propose it again: ' +
+      're-list the targeted entities and check them first.'
+    );
+  }
+  if (failure.proposalStatus === 'FAILED') {
+    return 'Amazon refused it and nothing was applied. Propose the change again if it is still wanted.';
+  }
+  return undefined;
+}
+
+function registerProposals(ads: Command): void {
+  const proposals = ads
+    .command('proposals')
+    .description(
+      'Proposals: change sets written now, approved later by a signed-in person, ' +
+        'committed only after approval. Create one with `ads call <write-op> --propose`.',
+    );
+
+  proposals
+    .command('list')
+    .description('List proposals for this account, newest first.')
+    .option(
+      '--status <s>',
+      'filter: PROPOSED, APPROVED, REJECTED, COMMITTED, FAILED, UNCERTAIN, STALE, EXPIRED',
+    )
+    .option('--limit <n>', 'how many to return (default 50)')
+    .action(async (opts: { status?: string; limit?: string }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        let limit: number | undefined;
+        if (opts.limit !== undefined) {
+          limit = Number(opts.limit);
+          if (!Number.isInteger(limit) || limit < 1) {
+            return emitError(new Error('--limit must be a positive whole number.'), !!root.json);
+          }
+        }
+        const r = await listProposals(
+          {
+            ...(opts.status ? { status: opts.status.toUpperCase() } : {}),
+            ...(limit ? { limit } : {}),
+          },
+          { dataDirOverride: root.dataDir },
+        );
+        if (isReportFailure(r)) return proposalFailed(r, 'list', startedAt, root);
+        if (root.json) {
+          writeJson({ status: 'ok', count: r.proposals.length, proposals: r.proposals });
+        } else {
+          process.stderr.write(`\n${r.proposals.length} proposal(s)\n\n`);
+          process.stdout.write(renderProposalTable(r.proposals) + '\n');
+        }
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
+    });
+
+  proposals
+    .command('show <id>')
+    .description('Show one proposal in full: operation, items, guard flags, expiry, state.')
+    .action(async (id: string, _opts: unknown, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        const r = await getProposal(id, { dataDirOverride: root.dataDir });
+        if (isReportFailure(r)) return proposalFailed(r, 'show', startedAt, root, id);
+        if (root.json) {
+          writeJson({ status: 'ok', proposal: r.proposal });
+        } else {
+          process.stderr.write(
+            `\nproposal ${r.proposal.id}\n${renderProposalSummary(r.proposal, 'compact').join('\n')}\n\n`,
+          );
+          process.stdout.write(JSON.stringify(r.proposal, null, 2) + '\n');
+        }
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
+    });
+
+  proposals
+    .command('approve <id>')
+    .description(
+      'Approve a proposal. A HUMAN act: it needs a signed-in person (machine credentials are ' +
+        'refused). Fetches the proposal, prints what is being approved, then approves exactly ' +
+        'that version. Run it ONLY after the person has seen the proposal and said yes.',
+    )
+    .option(
+      '--acknowledge-guard',
+      'confirm you saw the money changes flagged above the safety threshold (required when any are flagged)',
+    )
+    .option('--note <text>', 'a note kept with the approval')
+    .action(
+      async (id: string, opts: { acknowledgeGuard?: boolean; note?: string }, cmd: Command) => {
+        const root = cmd.optsWithGlobals<RootOptions>();
+        const startedAt = Date.now();
+        try {
+          const fetched = await getProposal(id, { dataDirOverride: root.dataDir });
+          if (isReportFailure(fetched)) {
+            return proposalFailed(fetched, 'approve', startedAt, root, id);
+          }
+          const p = fetched.proposal;
+          process.stderr.write(
+            `\nApproving this proposal (the version fetched just now, hash ${p.payloadHash.slice(0, 12)}):\n` +
+              renderProposalSummary(p, 'full').join('\n') +
+              '\n\n',
+          );
+          const r = await approveProposal(
+            {
+              id,
+              payloadHash: p.payloadHash,
+              ...(opts.acknowledgeGuard ? { acknowledgeGuard: true } : {}),
+              ...(opts.note ? { note: opts.note } : {}),
+            },
+            { dataDirOverride: root.dataDir },
+          );
+          if (isReportFailure(r)) {
+            return proposalFailed(r, 'approve', startedAt, root, id, p.operation);
+          }
+          await trackAds(EventName.AdsProposalApproved, 'ok', startedAt, root.dataDir, {
+            proposal_id: id,
+            operation: p.operation,
+            ...(typeof p.itemsCount === 'number' ? { items_count: p.itemsCount } : {}),
+            guard_flagged: p.guard?.flagged.length ?? 0,
+            acknowledged_guard: opts.acknowledgeGuard === true,
+          });
+          printProposalResult(
+            r.proposal,
+            !!root.json,
+            'APPROVED',
+            `Commit it with \`mixshift ads proposals commit ${id}\`.`,
+          );
+        } catch (err) {
+          emitError(err, !!root.json);
+        }
+      },
+    );
+
+  proposals
+    .command('reject <id>')
+    .description('Reject a proposal so it can never be committed. A human act, like approve.')
+    .option('--reason <text>', 'why it was rejected')
+    .action(async (id: string, opts: { reason?: string }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        const r = await rejectProposal(id, opts.reason, { dataDirOverride: root.dataDir });
+        if (isReportFailure(r)) return proposalFailed(r, 'reject', startedAt, root, id);
+        await trackAds(EventName.AdsProposalRejected, 'ok', startedAt, root.dataDir, {
+          proposal_id: id,
+          operation: r.proposal.operation,
+          has_reason: !!opts.reason,
+        });
+        printProposalResult(r.proposal, !!root.json, 'REJECTED');
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
+    });
+
+  proposals
+    .command('commit <id>')
+    .description(
+      'Commit an APPROVED proposal to Amazon. Fetches it and sends its hash; the service ' +
+        'refuses an unapproved, expired or changed proposal, and one whose live values moved ' +
+        'since it was written. Works with a machine credential that holds ads:write.',
+    )
+    .action(async (id: string, _opts: unknown, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        const fetched = await getProposal(id, { dataDirOverride: root.dataDir });
+        if (isReportFailure(fetched)) return proposalFailed(fetched, 'commit', startedAt, root, id);
+        const p = fetched.proposal;
+        const r = await commitProposal(id, p.payloadHash, { dataDirOverride: root.dataDir });
+        if (isReportFailure(r)) return proposalFailed(r, 'commit', startedAt, root, id, p.operation);
+        const done = r.proposal;
+        const base = {
+          proposal_id: id,
+          operation: done.operation || p.operation,
+          status: done.status,
+          ...(typeof done.itemsCount === 'number' ? { items_count: done.itemsCount } : {}),
+          ...(done.commitAuditId ? { audit_id: done.commitAuditId } : {}),
+        };
+        if (done.status === 'FAILED' || done.status === 'UNCERTAIN') {
+          // Fallback only: the gateway reports these as an error envelope
+          // (handled in proposalFailed). Answered, but the write did not land cleanly. UNCERTAIN means Amazon
+          // may have applied it: never resend, re-list the entities first.
+          await trackAds(EventName.AdsProposalFailed, 'failed', startedAt, root.dataDir, {
+            action: 'commit',
+            kind: done.status === 'UNCERTAIN' ? 'commit_uncertain' : 'commit_failed',
+            ...base,
+          });
+          printProposalResult(
+            done,
+            !!root.json,
+            done.status,
+            done.status === 'UNCERTAIN'
+              ? 'Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first.'
+              : 'Amazon refused it before applying anything. Propose the change again if it is still wanted.',
+          );
+          process.exitCode = 1;
+          return;
+        }
+        await trackAds(EventName.AdsProposalCommitted, 'ok', startedAt, root.dataDir, base);
+        printProposalResult(
+          done,
+          !!root.json,
+          done.status || 'COMMITTED',
+          'Amazon answers per item: read the response below for any item that errored.',
+          true,
+        );
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
+    });
+}
+
+function printProposalResult(
+  p: ProposalView,
+  json: boolean,
+  label: string,
+  hint?: string,
+  withResponse = false,
+): void {
+  if (json) {
+    writeJson({ status: 'ok', proposal: p });
+    return;
+  }
+  process.stderr.write(
+    `\n${label} proposal ${p.id}\n${renderProposalSummary(p).join('\n')}\n` +
+      (hint ? `  ${hint}\n` : '') +
+      '\n',
+  );
+  process.stdout.write(
+    JSON.stringify(
+      withResponse && p.response !== undefined ? { response: p.response } : { id: p.id, status: p.status },
+      null,
+      2,
+    ) + '\n',
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -462,7 +870,7 @@ function writeJson(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
 
-function emitFailure(failure: ReportFailure, json: boolean): void {
+function emitFailure(failure: ReportFailure, json: boolean, nextStep?: string): void {
   if (json) {
     writeJson({
       status: 'error',
@@ -482,6 +890,12 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       // check before resending. Dropped until now, so --json callers could not
       // tell a lost answer from a refusal.
       request_outcome: failure.requestOutcome,
+      // proposal_stale: which live values moved since the proposal was written.
+      drift: failure.drift,
+      // A failed commit names the proposal and its state (FAILED, UNCERTAIN).
+      proposal_id: failure.proposalId,
+      proposal_status: failure.proposalStatus,
+      next_step: nextStep,
       automatic_retry: failure.automaticRetry,
       concurrency_cap: failure.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
@@ -493,6 +907,12 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
     process.stderr.write(`\n✗ ${failure.friendly}\n`);
     if (failure.message) process.stderr.write(`  ${failure.message}\n`);
     for (const line of failureContractLines(failure)) process.stderr.write(`${line}\n`);
+    if (failure.proposalId) {
+      process.stderr.write(
+        `  proposal: ${failure.proposalId}${failure.proposalStatus ? ` (${failure.proposalStatus})` : ''}\n`,
+      );
+    }
+    if (nextStep) process.stderr.write(`  ${nextStep}\n`);
   }
   process.exitCode = exitCodeForKind(failure.kind);
 }

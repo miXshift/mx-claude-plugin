@@ -228,6 +228,14 @@ export const EventName = {
   AdsProfilesListed: 'ads.profiles_listed',
   AdsOperationsListed: 'ads.operations_listed',
   AdsCalled: 'ads.called',
+  // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
+  // `ads call --propose`). Payloads carry the proposal id, operation id,
+  // items count and guard counts, never the change set, rationale or evidence.
+  AdsProposalCreated: 'ads.proposal_created',
+  AdsProposalApproved: 'ads.proposal_approved',
+  AdsProposalRejected: 'ads.proposal_rejected',
+  AdsProposalCommitted: 'ads.proposal_committed',
+  AdsProposalFailed: 'ads.proposal_failed',
 
   // Walmart Connect call surface (lib/walmart/ads-call.ts + `mixshift walmart
   // ads`). Operation id + advertiser id + environment + outcome; never the

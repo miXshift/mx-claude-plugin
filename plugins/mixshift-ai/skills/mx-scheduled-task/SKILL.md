@@ -13,7 +13,7 @@ description: >
   context. Credential minting alone belongs to mx-auth-service-setup; this
   skill orchestrates the full task setup around it.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   author: "MixShift"
 trigger_phrases:
   - set up a scheduled task
@@ -125,7 +125,11 @@ brand, digest delivered, no Amazon writes).
    for the setup commands.
 5. **Scope.** Use a read-only credential for digest routines. A routine that
    writes gets its own write credential in a separate environment, so a
-   read-only routine can never pick it up by accident.
+   read-only routine can never pick it up by accident. An unattended routine
+   that wants an Ads change **proposes** it (`mixshift ads call <write-op>
+   --propose`, with a propose-only credential) and never commits a change no
+   human approved; a person approves it later (see `mx-amazon-ads`,
+   "Proposals (approve later)").
 6. **If a security review asks what this secret is:** it is a tenant-scoped
    machine credential for MixShift's sign-in service (`mx-legacy-auth`). It is
    not the Amazon Ads or Seller app secret; those never leave MixShift's
