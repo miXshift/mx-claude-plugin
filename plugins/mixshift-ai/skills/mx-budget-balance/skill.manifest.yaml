@@ -1,0 +1,148 @@
+schema_version: 1
+skill_id: mx-budget-balance
+display_name: Budget Balance (weekly budget-mix pass)
+version: "0.1.0"
+description: >
+  Weekly budget-mix pass for Sponsored Products. Sorts every campaign into
+  three buckets, each with a stated reason: RAISE (budget-capped campaigns
+  that run at or under the ACoS target get a budget raise, never above
+  Amazon's suggested budget), WIDEN (efficient campaigns that underspend,
+  advisory, with the bid raises handed to the keyword bid review) and CAP
+  (poor performers well over target with real spend get a budget cut). Every
+  change stays within a per-change limit (default 25 percent). Previews by
+  default; nothing reaches Amazon until you confirm that exact change set,
+  and a scheduled routine files a proposal a person approves later. Also runs
+  a guided demo on your own account (demo budget balance).
+run_kind: per_account
+cadence: weekly
+risk_tier: 3
+allowed_tools: [db_read, file_read, file_write, renderer, prefetch, ads_write]
+side_effect_policy: write_gated   # live sp.update_campaigns --commit; dry-run default, user-confirmed
+review_required: always
+escalation_conditions:
+  - acos target absent or a bootstrap default (the buckets run observational until it is confirmed)
+  - any proposed change above max_change_pct (never proposed by this skill; stop and surface it)
+sql_ids:
+  - BB-01
+  - BB-02
+pre_execution:
+  enabled: true
+  artifact_path: "runs/{brand_slug}/{skill_id}/{run_date}/data.json"
+  batch_plan:
+    - round: 1
+      parallel: [BB-01, BB-02]
+required_context_fields:
+  - accounts[*].seller_id
+  - accounts[*].account_type
+optional_context_fields:
+  - management.acos_target_pct       # seeds the calibration ACoS target
+  - management.acos_target_source    # default means a bootstrap placeholder, not the brand's number
+  - goals.monthly_total_sales_target # context line in the Bottom Line only
+  - posture.stance                   # orders the buckets and annotates the Bottom Line
+  - structural_events                # promos or price tests that distort a campaign's ACoS
+harness_commands:
+  - mixshift prefetch --brand <brand-slug> --skill mx-budget-balance
+  - mixshift skill config mx-budget-balance --brand <brand-slug>
+  - mixshift ads call sp.budget_usage
+  - mixshift ads call sp.budget_recommendations
+  - mixshift ads call sp.update_campaigns
+  - mixshift ads proposals
+  - mixshift demo mx-budget-balance
+  - mixshift telemetry emit
+artifacts: []
+verdict_range: [GREEN, YELLOW, RED, OBSERVATIONAL]
+pricing_tier: pro
+trigger_phrases:
+  - budget balance
+  - run a budget balance
+  - balance my budgets
+  - weekly budget check
+  - budget mix
+  - which campaigns need more budget
+  - which campaigns are capped
+  - where should budget move
+  - demo budget balance
+  - budget balance demo
+  - walk me through budget balance
+notes: >
+  BB-01 pulls the trailing 14 complete days per Sponsored Products campaign from
+  campaignmetric (one row per campaign per day, so Cost compares directly with that
+  day's CampaignBudget). BB-02 pulls the latest settings row per enabled campaign
+  (DailyBudget, Amazon's PercentTimeInBudget and suggestedBudget, Amazon's campaign id).
+  PercentTimeInBudget is a fraction and -1 means no recommendation. Live
+  sp.budget_usage and sp.budget_recommendations are optional reads that never block.
+  v1 writes Sponsored Products budgets only, through sp.update_campaigns; Sponsored
+  Brands and Display are advisory. A session whose credential can only propose (a
+  scheduled routine) files a stored proposal with --propose, and a person approves it
+  with `mixshift ads proposals approve <id>`. Bid raises for WIDEN campaigns belong to
+  mx-keyword-bid-health.
+
+# OCL: the confirm-on-run knobs. All required: false, so a first run is never blocked;
+# a field the brand has not set uses the labeled default in SKILL.md Step 1.5.
+calibration:
+  schema_version: 1
+  fields:
+    - id: acos_target
+      label: "ACoS target"
+      prompt: "ACoS target the budget pass should use for {brand_name}?"
+      help: >
+        Campaigns at or under this ACoS are efficient (RAISE and WIDEN candidates);
+        campaigns far over it are CAP candidates. Defaults to your brand's ACoS target.
+      type: percent
+      range: { min: 0.05, max: 1.0 }
+      seed_from: context.management.acos_target_pct
+      required: false
+    - id: capped_days_threshold
+      label: "Capped days (of 14)"
+      prompt: "On how many of the last 14 days must a campaign hit 90 percent of its budget to count as budget-capped for {brand_name}?"
+      help: >
+        A campaign that reached at least 90 percent of its daily budget on this many
+        days or more is budget-capped. Lower flags more campaigns.
+      type: int
+      default: 4
+      range: { min: 1, max: 14 }
+      required: false
+    - id: max_change_pct
+      label: "Max change per campaign"
+      prompt: "Largest budget change per campaign, per run, for {brand_name}?"
+      help: >
+        No budget moves by more than this in one run, up or down. The Ads write guard
+        also flags changes above 25 percent, so keep this at or under 25 unless you
+        mean to acknowledge the flag.
+      type: percent
+      default: 0.25
+      range: { min: 0.05, max: 0.5 }
+      required: false
+    - id: cut_acos_multiple
+      label: "Cut at ACoS multiple"
+      prompt: "A campaign becomes a CAP (budget cut) candidate above how many times the ACoS target for {brand_name}?"
+      help: >
+        1.5 means a campaign running above 1.5 times the target (with real spend) is a
+        cut candidate. Campaigns between the target and this multiple are held.
+      type: float
+      default: 1.5
+      range: { min: 1.1, max: 5 }
+      decimals: 1
+      required: false
+    - id: min_spend
+      label: "Minimum spend (14 days)"
+      prompt: "Minimum 14-day spend before a campaign can be a CAP candidate for {brand_name}?"
+      help: >
+        Campaigns that spent less than this over the last 14 days are never cut: too
+        little money to judge. In the account's currency.
+      type: float
+      default: 50
+      range: { min: 0, max: 10000 }
+      decimals: 0
+      required: false
+demo:
+  say: demo budget balance
+  summary: Your campaigns sorted into raise, widen and cap, with the reason for each and the budget changes previewed (nothing sent).
+  minutes: 6
+  steps:
+    - Your account and your ACoS target
+    - Which campaigns hit their budget
+    - The three buckets, with reasons
+    - A change set previewed, not sent
+  changes: preview
+  needs: a Sponsored Products account connected to MixShift with at least two weeks of campaign history
