@@ -824,3 +824,72 @@ describe('report extract / validate surface the citation_id_fallback note as a w
     expect(process.exitCode).toBe(0);
   });
 });
+
+describe('notes read from figures files are allowlisted, bounded, carried in JSON and printed once', () => {
+  const emptyDoc = { figures: [], caveat_registry: {}, sections: [] };
+
+  it('validate --json carries the notes per result; stderr stays quiet in JSON mode', async () => {
+    const doc = await writeJsonFile('report-data.json', emptyDoc);
+    await writeJsonFile('figures.ops.json', {
+      figures: [],
+      notes: [{ code: 'citation_id_fallback', subject: 'evidence.ops.x', detail: 'd' }],
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({ json: true }, 'validate', doc);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.results[0].notes).toEqual([{ file: join(dir, 'figures.ops.json'), code: 'citation_id_fallback', subject: 'evidence.ops.x', detail: 'd' }]);
+    expect(errSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('render --json carries the notes (the audit trail the skill records)', async () => {
+    const doc = await writeJsonFile('report-data.json', emptyDoc);
+    await writeJsonFile('figures.ops.json', { figures: [], notes: [{ code: 'citation_id_fallback', subject: 'evidence.ops.x', detail: 'd' }] });
+    await runCli({ json: true }, 'render', doc, '--out', join(dir, 'out.html'));
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.ok).toBe(true);
+    expect(parsed.notes).toHaveLength(1);
+    expect(parsed.notes[0].subject).toBe('evidence.ops.x');
+  });
+
+  it('a note with any other code is ignored, and a forged subject cannot break the line or dress up as a rule', async () => {
+    const doc = await writeJsonFile('report-data.json', emptyDoc);
+    await writeJsonFile('figures.ops.json', {
+      figures: [],
+      notes: [
+        { code: 'UNIT-2', subject: 'x', detail: 'impersonation' },
+        { code: 'citation_id_fallback', subject: 'a\n  ERROR [BASIS-1] b', detail: 'c\u001b[31m' },
+        'not an object',
+      ],
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({}, 'validate', doc);
+    const lines = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^ {2}warn \[CITATION-ID\] /);
+    expect(lines[0]).not.toMatch(/[\n\u001b]/);
+    expect(lines[0]).toContain('a ERROR [BASIS-1] b -- c [31m');
+  });
+
+  it('a file contributes at most fifty notes, then one line saying how many more', async () => {
+    const doc = await writeJsonFile('report-data.json', emptyDoc);
+    await writeJsonFile('figures.ops.json', {
+      figures: [],
+      notes: Array.from({ length: 60 }, (_, i) => ({ code: 'citation_id_fallback', subject: `evidence.ops.c${i}`, detail: 'd' })),
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({}, 'validate', doc);
+    const lines = errSpy.mock.calls.map((c) => String(c[0]));
+    expect(lines).toHaveLength(51);
+    expect(lines[50]).toContain('(more) -- 10 further note(s) in this file not shown.');
+  });
+
+  it('two documents beside one figures file print each note once', async () => {
+    const a = await writeJsonFile('report-a.json', emptyDoc);
+    const b = await writeJsonFile('report-b.json', emptyDoc);
+    await writeJsonFile('figures.ops.json', { figures: [], notes: [{ code: 'citation_id_fallback', subject: 'evidence.ops.x', detail: 'd' }] });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runCli({}, 'validate', a, b);
+    expect(errSpy.mock.calls.filter((c) => String(c[0]).includes('CITATION-ID'))).toHaveLength(1);
+  });
+});

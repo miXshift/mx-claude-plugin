@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractFigures } from '../src/lib/report-contract/extract';
+import { boundedProse, extractFigures } from '../src/lib/report-contract/extract';
 
 /**
  * Extracting the "What we know" statements into typed, referenceable entries.
@@ -759,5 +759,35 @@ describe('a citation id that fell back to a head slug on a stamped build is mark
       'mom.ops',
     ) as Doc;
     expect(doc.notes![0]!.subject).toBe('mom.evidence.ops.availability_net_tailwind');
+  });
+});
+
+describe('the note is safe to print: wire prose is cleaned and bounded, the version is the parsed triple', () => {
+  const run = (head: string, version = '0.17.0', metric = 'ops') =>
+    extractFigures({
+      envelope: { bridgeDomain: 'ops', currency: 'USD', metrics: [], insights: [] },
+      evidence: { scope: { kind: 'total' }, evidenceVersion: version, statements: { [metric]: [{ head, questions: [{ question: 'y' }] }] }, notes: [], companionAttached: false },
+    }) as { notes?: { detail: string }[] };
+
+  it('a head carrying a newline and an escape sequence cannot forge a second terminal line', () => {
+    const detail = run('x\n  ERROR [BASIS-1] revenue -- basis mismatch\u001b[31m').notes![0]!.detail;
+    expect(detail).not.toMatch(/[\n\r\u001b]/);
+    expect(detail).toContain('card "x ERROR [BASIS-1] revenue -- basis mismatch [31m"');
+  });
+
+  it('a very long head is cut with a marker, and the metric root is bounded too', () => {
+    const detail = run('h'.repeat(5000), '0.17.0', 'm'.repeat(300)).notes![0]!.detail;
+    expect(detail.length).toBeLessThan(400);
+    expect(detail).toContain(`"${'h'.repeat(120)}..."`);
+    expect(detail).toContain(`under ${'m'.repeat(64)}...`);
+  });
+
+  it('the version in the note is the parsed triple, never the raw string', () => {
+    expect(run('bare card', ' v0.17.0-rc.1 \u0007').notes![0]!.detail).toContain('on evidence 0.17.0;');
+  });
+
+  it('boundedProse: control and format characters become one space, whitespace collapses', () => {
+    expect(boundedProse('a\u0000\u0001b​  c\t\td', 50)).toBe('a b c d');
+    expect(boundedProse('  plain  ', 50)).toBe('plain');
   });
 });

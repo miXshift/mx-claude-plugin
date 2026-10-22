@@ -15,6 +15,7 @@ import {
   CompositeSelectionError,
   type CompositeSelection,
   type ExtractNote,
+  boundedProse,
 } from '../lib/report-contract/extract.js';
 import {
   extractForecast,
@@ -242,13 +243,27 @@ async function loadServedContract(
     // The extractor's own notes ride the figures document (ExtractDocument.notes)
     // so the operator sees them again at validate and render time, where the
     // citation they are about is actually being quoted.
+    //
+    // A figures file is user-controlled input (a hand-placed one, a stale one
+    // from another run), so only the one note code this harness emits is
+    // accepted, its text is cleaned and bounded before it can reach a
+    // terminal line, and a file contributes at most NOTES_PER_FILE_MAX lines.
+    // Red team 2026-10-21, P2/P3.
     const fileNotes = (parsed as { notes?: unknown })?.notes;
     if (Array.isArray(fileNotes)) {
+      let kept = 0;
       for (const n of fileNotes) {
-        const note = n as ExtractNote;
-        if (typeof note?.code === 'string' && typeof note.subject === 'string' && typeof note.detail === 'string') {
-          notes.push({ file: path, note });
+        const note = n as Partial<ExtractNote> | null;
+        if (note?.code !== 'citation_id_fallback' || typeof note.subject !== 'string' || typeof note.detail !== 'string') continue;
+        if (kept === NOTES_PER_FILE_MAX) {
+          notes.push({
+            file: path,
+            note: { code: 'citation_id_fallback', subject: '(more)', detail: `${fileNotes.length - kept} further note(s) in this file not shown.` },
+          });
+          break;
         }
+        notes.push({ file: path, note: { code: 'citation_id_fallback', subject: boundedProse(note.subject, 200), detail: boundedProse(note.detail, 400) } });
+        kept += 1;
       }
     }
     for (const f of figures) {
@@ -290,10 +305,20 @@ interface ServedNote {
   note: ExtractNote;
 }
 
-/** The warning line for an extractor note, one shape everywhere it prints. */
+/** Notes read from one figures file: enough for every card of a run, few
+ *  enough that a hostile or corrupt file cannot flood the terminal. */
+const NOTES_PER_FILE_MAX = 50;
+
+/** The warning line for an extractor note, one shape everywhere it prints.
+ *  The tag is fixed: `code` is allowlisted to the one value above, so a file
+ *  cannot dress a note up as a validator rule. */
 function noteWarning(note: ExtractNote, file?: string): string {
-  const tag = note.code === 'citation_id_fallback' ? 'CITATION-ID' : note.code;
-  return `  warn [${tag}] ${file ? `${file}: ` : ''}${note.subject} -- ${note.detail}`;
+  return `  warn [CITATION-ID] ${file ? `${file}: ` : ''}${note.subject} -- ${note.detail}`;
+}
+
+/** The notes as a JSON payload carries them (the audit trail SKILL.md records). */
+function notesPayload(notes: ServedNote[]): { notes?: Array<{ file: string; code: string; subject: string; detail: string }> } {
+  return notes.length > 0 ? { notes: notes.map((n) => ({ file: n.file, ...n.note })) } : {};
 }
 
 /** Write `body` to `out`, creating its parent directory first (matches the
@@ -330,6 +355,8 @@ interface FileResult {
    *  check reads identical to a passing one, and Step 6 records this output
    *  as the run's audit trail. */
   served_unit_conflicts?: string[];
+  /** Extractor notes read from the figures files beside this document. */
+  notes?: Array<{ file: string; code: string; subject: string; detail: string }>;
 }
 
 /**
@@ -404,6 +431,9 @@ export function registerReportCommands(program: Command): void {
         await assertFiguresReadable(figuresOpt(opts.figures));
         const results: FileResult[] = [];
         let anyUnreadable = false;
+        // Several documents in one directory share one set of figures files:
+        // each note prints once per command, not once per document.
+        const notesPrinted = new Set<string>();
         // Per-file try/catch: an unreadable file mid-list used to throw out
         // of this loop before ANY result printed, hiding every finding
         // already computed for the files that came before it. Now it
@@ -419,11 +449,17 @@ export function registerReportCommands(program: Command): void {
                   'itself still applies). Remove the stale file.',
               );
             }
-            for (const n of served.notes) console.error(noteWarning(n.note, n.file));
+            for (const n of served.notes) {
+              const key = `${n.file} ${n.note.subject}`;
+              if (notesPrinted.has(key)) continue;
+              notesPrinted.add(key);
+              if (!root.json) console.error(noteWarning(n.note, n.file));
+            }
             results.push({
               file,
               findings: validateReportData(doc, served.index),
               ...(served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}),
+              ...notesPayload(served.notes),
             });
           } catch (err) {
             // A corrupt figures*.json is an ENVIRONMENT problem, not a property
@@ -663,7 +699,7 @@ export function registerReportCommands(program: Command): void {
               'Remove the stale file.',
           );
         }
-        for (const n of served.notes) console.error(noteWarning(n.note, n.file));
+        if (!root.json) for (const n of served.notes) console.error(noteWarning(n.note, n.file));
         const findings = validateReportData(doc, served.index);
         const blocking = blockingFindings(findings);
         // Warnings are reported and never bar the door. Before this split the
@@ -736,6 +772,7 @@ export function registerReportCommands(program: Command): void {
                 ...(served.conflicts.length > 0
                   ? { served_unit_conflicts: served.conflicts }
                   : {}),
+                ...notesPayload(served.notes),
               },
               null,
               2,

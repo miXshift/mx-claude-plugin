@@ -1155,17 +1155,31 @@ function extractEvidence(
   }
   const statementsOut = collapseRepeatedCards(out);
   // One note per surviving entry (a collapsed copy is the same card; its alias
-  // ids resolve to the entry the note names).
+  // ids resolve to the entry the note names). The head and the metric root
+  // are wire prose that lands on an operator's terminal and in a figures
+  // document, so they are cleaned and bounded here (the same posture
+  // SERVED_KIND_RE takes with ids): no control or format characters, a
+  // length cap, and the version as the parsed triple rather than the raw
+  // string. Red team 2026-10-21, P2.
+  const versionLabel = parseEngineVersion(evidenceVersion)?.join('.') ?? 'unknown';
   const notes: ExtractNote[] = statementsOut
     .filter((e) => e.id_fallback === 'head_slug')
     .map((e) => ({
       code: 'citation_id_fallback' as const,
       subject: e.id,
       detail:
-        `card "${e.head}" under ${e.metric} carries no served id on evidence ${evidenceVersion}; ` +
+        `card "${boundedProse(e.head, 120)}" under ${boundedProse(e.metric, 64)} carries no served id on evidence ${versionLabel}; ` +
         'its citation id is a slug of its head and moves if the head is reworded.',
     }));
   return { statements: statementsOut, evidenceVersion, notes };
+}
+
+/** Wire prose made safe for a terminal line: control and format characters
+ *  become spaces, runs collapse, and anything past `max` is cut with an
+ *  ellipsis marker. */
+export function boundedProse(raw: string, max: number): string {
+  const cleaned = raw.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.length > max ? `${cleaned.slice(0, max)}...` : cleaned;
 }
 
 /**
