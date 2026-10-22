@@ -30,6 +30,8 @@ export interface ProposalGuardFlag {
   from?: number | string | null;
   to?: number | string | null;
   pctChange?: number | null;
+  /** Placement bid adjustments: change in percentage points (pctChange is null). */
+  pointsChange?: number;
 }
 
 export interface ProposalGuard {

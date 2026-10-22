@@ -757,7 +757,10 @@ claude.ai app). The service refuses `approve` and `reject` from service
 credentials and scheduled routines, and from the same session that proposed
 (`approval_requires_human`, exit 19). So **the agent that proposed a change
 cannot approve its own proposal**: tell the user to approve it from their own
-session or the claude.ai app. In practice:
+session or the claude.ai app. A person who proposed from a plugin session
+approves from a different sign-in (another device, the claude.ai app, or after
+signing out and back in), because the plugin keeps one session across token
+refreshes. In practice:
 
 - **Show the user the whole proposal first** (`ads proposals show <id>`):
   operation, every item with its from and to values, the guard flags, the

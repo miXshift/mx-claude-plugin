@@ -104,7 +104,11 @@ export function renderGuard(p: ProposalView, full = false): string[] {
   ];
   for (const f of flagged.slice(0, cap)) {
     const change =
-      typeof f.pctChange === 'number' ? ` (${f.pctChange > 0 ? '+' : ''}${f.pctChange}%)` : '';
+      typeof f.pctChange === 'number'
+        ? ` (${f.pctChange > 0 ? '+' : ''}${f.pctChange}%)`
+        : typeof f.pointsChange === 'number'
+          ? ` (${f.pointsChange > 0 ? '+' : ''}${f.pointsChange} points)`
+          : '';
     lines.push(
       `    - ${fmtVal(f.id)} ${fmtVal(f.field)}: ${fmtVal(f.from)} -> ${fmtVal(f.to)}${change}`,
     );

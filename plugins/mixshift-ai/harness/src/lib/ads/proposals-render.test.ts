@@ -114,6 +114,22 @@ describe('money fields first', () => {
   });
 });
 
+describe('flagged entry change text', () => {
+  it('renders a percent change as (+N%)', () => {
+    const p = proposal({ guard: { evaluated: true, flagged: [{ id: '1', field: 'bid', from: 1, to: 2, pctChange: 100 }] } });
+    expect(renderGuard(p).join('\n')).toContain('bid: 1 -> 2 (+100%)');
+  });
+
+  it('renders a placement adjustment as (+N points) and never prints null%', () => {
+    const p = proposal({
+      guard: { evaluated: true, flagged: [{ id: '1', field: 'placementTop', from: 10, to: 60, pctChange: null, pointsChange: 50 }] },
+    });
+    const text = renderGuard(p).join('\n');
+    expect(text).toContain('placementTop: 10 -> 60 (+50 points)');
+    expect(text).not.toContain('null%');
+  });
+});
+
 describe('guard line', () => {
   it('says "not evaluated" when evaluated is not true', () => {
     expect(renderGuard(proposal({ guard: { flagged: [] } }))).toEqual(['  guard: not evaluated for this operation']);
