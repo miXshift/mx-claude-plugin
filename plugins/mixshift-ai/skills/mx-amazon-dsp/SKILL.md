@@ -11,9 +11,10 @@ description: >
   rejected and why, and which creatives are eligible for a line item. Use it
   to audit a DSP account, explain why a creative is not delivering, or find a
   creative or line item id. Also owns finding which DSP advertiser a login
-  can reach, the step most DSP work gets stuck on. Read-only, no write scope
-  needed: creating or attaching creatives is NOT available yet; say so
-  plainly rather than improvising. No brand setup needed, only sign-in.
+  can reach, the step most DSP work gets stuck on. CHANGES: campaign budget,
+  flights and state, line item budget, dates, bids and pacing, previewed and
+  applied only on confirmation; creating or attaching creatives is NOT
+  available yet. No brand setup needed, only sign-in.
 metadata:
   version: "0.3.2"
   author: "MixShift"
