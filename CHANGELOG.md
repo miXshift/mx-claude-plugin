@@ -22,7 +22,7 @@ starts at 0.5.39; earlier versions predate the changelog.
   ASIN and keyword, or "what can you do with shelf data" for the catalog.
 
 - **New skill: Featured Offer Check (beta).** Ask "check my featured offer" and
-  the plugin reads Amazon's own answer for your ASINs, per shopper segment with
+  the plugin reads the answer Amazon gives for your ASINs, per shopper segment with
   its share of views, then looks at the shelf for every ASIN you lose: the Buy
   Box by location with the delivery promise, and the offer list. Each loss comes
   back explained (a faster promise, a lower price, no featured offer, your offer
@@ -40,7 +40,7 @@ starts at 0.5.39; earlier versions predate the changelog.
   budget of efficient campaigns that keep running out of it, widen the reach of
   efficient campaigns that underspend (bids, not budget), and cut the budget of
   poor performers. No change is larger than your limit (25 percent by default)
-  and no raise goes above Amazon's suggested budget. Changes are previewed
+  and no raise goes above the budget Amazon suggests. Changes are previewed
   first and applied only after you confirm that exact set; a scheduled run files
   a proposal for a person to approve. Say "demo budget balance" for a
   walkthrough on your own account.
@@ -97,7 +97,7 @@ starts at 0.5.39; earlier versions predate the changelog.
   parameter names. Every failure the MixShift service answers on the Amazon
   and Walmart commands also says in `--json` who has to act (`source`) and
   whether retrying can help (`retryable`), and, when Amazon answered, gives
-  Amazon's own status, code and message (`amazon`). The Amazon and Walmart
+  the status, code and message Amazon gave (`amazon`). The Amazon and Walmart
   skills tell the agent not to resend a refused call unchanged.
 
 - **A product list built from the warehouse no longer picks up ASINs the seller does not sell.** The catalog now says plainly that `seller_ASIN_list` is the Search Query Performance activation list, not a catalog (its `IsActive` means "SQP tracking on"), that `mws_items.IsActive` is empty and `InCatalog` is the listing flag, and that order-only rows can be FBA receiving placeholders for another brand's product. The data, DSP and AMC skills carry the same rule for tracked-product lists and audience ASIN sets.
@@ -128,8 +128,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   `add` and `remove` manage these brands.
 
 - **Your FBA inbound shipments now show their tracking, boxes, pallets and carrier.** Ask for
-  the tracking or PRO number on an `FBA...` shipment and Claude walks Amazon's newer inbound
-  plans to find it, along with each box's contents and case-pack template, the pallets, the
+  the tracking or PRO number on an `FBA...` shipment and Claude walks the newer inbound
+  plans at Amazon to find it, along with each box's contents and case-pack template, the pallets, the
   carrier, and the placement fees. Amazon removed the old transport-details call in January
   2025; these are its replacement, on the authorization you already granted.
 
@@ -296,7 +296,7 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 - **You can now see your live Amazon promotions: coupons, deals, price
   discounts, and basket-building offers.** Ask which promotions are running or
-  scheduled on your products and you get Amazon's current answer, including
+  scheduled on your products and you get the current answer from Amazon, including
   each promotion's dates, discount, budget, the products it covers, and any
   problems Amazon has flagged, without requesting a report and waiting for it.
   Available for seller accounts.
@@ -406,8 +406,8 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 - **DSP reporting can now go back further than 90 days.** Asking for DSP
   performance from last year used to come back empty, because the DSP reporting
-  Amazon exposes only keeps the last 90 days. MixShift now reaches Amazon's
-  unified reporting as well, so a DSP report can cover months or years instead
+  Amazon exposes only keeps the last 90 days. MixShift now reaches the unified
+  reporting at Amazon as well, so a DSP report can cover months or years instead
   of one quarter, and you can pull a monthly history in a single request rather
   than exporting a year at a time from the console. Two things worth knowing
   when you compare the results to older exports: the numbers will not match
@@ -534,7 +534,7 @@ starts at 0.5.39; earlier versions predate the changelog.
   Sponsored Products on Seller Central), which reads about 2% below the Ad Sales and Ad
   Orders figures in Report Center on an account that runs view-based Sponsored Display, and
   the brief did not say why. The battery now offers a `legacy_sales` basis that sums
-  Amazon's reported Sales and Orders per campaign, the same figures Report Center prints,
+  the Sales and Orders Amazon reports per campaign, the same figures Report Center prints,
   and uses it unless `mixshift report battery --attribution all_14` or `sc_default` asks for
   the click-only reading. The figures document records the basis applied with a
   plain-language sentence, and the brief quotes it once as a footnote under the first ad
@@ -619,8 +619,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   and get just its columns back. The AMC guidance also now states the clean-room
   rule that rejects more first queries than any SQL mistake does: shopper-level
   identifiers can be grouped and joined inside a query, but what comes back has
-  to be aggregated, and a result that arrives empty may be Amazon's privacy
-  floor rather than an absence of sales.
+  to be aggregated, and a result that arrives empty may be the privacy
+  floor at Amazon rather than an absence of sales.
 
 - **Sponsored Brands bid and state changes now say what Amazon actually
   requires, and a bad one is caught before it reaches your account.** Updating
@@ -648,8 +648,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   not recognise, `--json` now carries the raw value as `unrecognized_kind` so it
   can be reported. And on that same rare path, the exit code now follows the
   HTTP status where the status is unambiguous (a 429 is treated as `throttled`
-  and backed off rather than aborted; a 400 is `bad_request` only when Amazon's
-  own error code is present) instead of always being 1.
+  and backed off rather than aborted; a 400 is `bad_request` only when the error code
+  Amazon gives is present) instead of always being 1.
 
 - **MixShift Intelligence failures are reported more accurately too.** Two more
   service kinds are recognised, and a credential that lacks the Intelligence
@@ -667,7 +667,7 @@ starts at 0.5.39; earlier versions predate the changelog.
   away rows with no spend, was silently dropping those conversions: on the
   accounts we checked they carried 4 to 12 percent of attributed sales. The
   catalog entry now states that these rows are additive rather than duplicates,
-  that Amazon's own line-item totals already include them, and that they have to
+  that the line-item totals Amazon gives already include them, and that they have to
   be kept when you group by creative type. Doc-only: nothing about the data
   itself changed.
 
@@ -685,9 +685,9 @@ starts at 0.5.39; earlier versions predate the changelog.
   A request that is genuinely wrong still fails straight away rather than being
   retried.
 
-- **A report waiting in Amazon's queue is no longer checked flat out, and a run
+- **A report waiting in the queue at Amazon is no longer checked flat out, and a run
   that stops now says so.** Some report types, Search Query Performance most of
-  all, can sit in Amazon's queue for hours. The plugin used to re-check such a
+  all, can sit in the queue at Amazon for hours. The plugin used to re-check such a
   report at the same rate for as long as you were willing to wait, which does
   not make it arrive sooner and competes for the same Amazon limit the report
   itself needs. It now waits longer between checks the longer a report stays
@@ -741,8 +741,8 @@ starts at 0.5.39; earlier versions predate the changelog.
   out what actually moved and why: availability, pricing and Buy Box, catalog
   mix, or demand, each tested rather than guessed, with Buy Box weighted by
   page views so an outage that already recovered is not reported as a live
-  problem. Featured-offer losses get diagnosed against Amazon's live offer
-  state, so the brief says whether the box was lost to a competitor or
+  problem. Featured-offer losses get diagnosed against the live offer
+  state at Amazon, so the brief says whether the box was lost to a competitor or
   suppressed, and what the fix is. Core figures still come from the MixShift
   Intelligence service with the same typed extraction and checks. It also now
   works out of the box on any account with zero setup: a brand-new or empty
@@ -919,12 +919,12 @@ starts at 0.5.39; earlier versions predate the changelog.
   movement. Previously only the change carried the caveat, so a section could
   quote the flagged total with no warning shown and no check complaining.
 
-- **When Amazon rejects your request, you now see Amazon's own reason, and the
+- **When Amazon rejects your request, you now see the reason Amazon gives, and the
   plugin stops pretending it was a server problem.** A request Amazon refused
   because of its own parameters used to come back looking like a MixShift
   outage, so the natural response was to try again, and trying again could
   never work. These failures are now reported as what they are: the request
-  itself, terminal until it changes. You get Amazon's own error code alongside
+  itself, terminal until it changes. You get the error code Amazon gives alongside
   its message, and in `--json` the full response Amazon sent, so there is
   something complete to act on or to send us. Scripts get a distinct exit code
   (12) and can stop instead of retrying.
@@ -952,8 +952,8 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 - **The table catalog now says which seller column to filter on, so settlement
   queries take the fast path.** Most seller-scoped warehouse tables carry two
-  seller columns that hold the same seller: an integer id and Amazon's own
-  merchant token. They are not interchangeable for speed, because the indexes
+  seller columns that hold the same seller: an integer id and the merchant
+  token from Amazon. They are not interchangeable for speed, because the indexes
   are generally built on the integer, and on the settlement table the integer
   is the one paired with the posted date. Filtering by the merchant token plus
   a date range leaves the date with no index to use and scans every row for
@@ -1420,7 +1420,7 @@ starts at 0.5.39; earlier versions predate the changelog.
 - **Sponsored Brands product target bids can now be changed through
   MixShift.** Sponsored Brands was the one ad type with no way to apply a
   product target bid or state change, so those rows had to be entered in
-  Amazon's console by hand while everything else in the same plan applied
+  the console at Amazon by hand while everything else in the same plan applied
   automatically. Ask for a Sponsored Brands target bid change and it now goes
   through the usual preview, confirm, and commit flow alongside your Sponsored
   Products and Sponsored Display changes, video campaigns included. Listing
@@ -1615,13 +1615,13 @@ starts at 0.5.39; earlier versions predate the changelog.
 
 ## 0.8.5
 
-Amazon's ASIN-level Search Query Performance report now works, and you can pull
+The ASIN-level Search Query Performance report from Amazon now works, and you can pull
 it for any number of ASINs in one command.
 
 ### Fixed
 
-- **Search Query Performance reports no longer fail.** Amazon's ASIN-level
-  Search Query Performance report needs a list of ASINs to run. Without one,
+- **Search Query Performance reports no longer fail.** The ASIN-level
+  Search Query Performance report from Amazon needs a list of ASINs to run. Without one,
   Amazon accepted the request and then failed the report while generating it,
   with an unhelpful error. The plugin now always sends the ASIN list, and tells
   you right away if it is missing, so the report completes.
