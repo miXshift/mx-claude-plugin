@@ -1420,7 +1420,7 @@ starts at 0.5.39; earlier versions predate the changelog.
 - **Sponsored Brands product target bids can now be changed through
   MixShift.** Sponsored Brands was the one ad type with no way to apply a
   product target bid or state change, so those rows had to be entered in
-  the console at Amazon by hand while everything else in the same plan applied
+  the Amazon Ads console by hand while everything else in the same plan applied
   automatically. Ask for a Sponsored Brands target bid change and it now goes
   through the usual preview, confirm, and commit flow alongside your Sponsored
   Products and Sponsored Display changes, video campaigns included. Listing
