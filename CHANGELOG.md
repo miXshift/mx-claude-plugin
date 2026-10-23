@@ -3,6 +3,105 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.19
+
+
+### Added
+
+- **New skill: Amazon Shelf (beta), the shelf as a shopper sees it.** Ask who has
+  the Buy Box for an ASIN at a zip and with what delivery promise, list every
+  seller on a listing with their prices, see where ASINs rank for a keyword
+  (organic and sponsored, desktop and mobile) with badges, coupons and stock
+  warnings, read the product page as it renders today, and look up who a
+  third-party seller is. Public shelf observations through MixShift's service,
+  never your Amazon credentials; every answer is dated and counts one against
+  your organization's monthly shelf allowance (`mixshift shelf usage`). Shelf
+  data is on for every organization: when the month's allowance is used up, the
+  answer says how to ask for more, and the skill offers to send that request to
+  MixShift for you. Say "demo Amazon shelf" for a guided walkthrough on your own
+  ASIN and keyword, or "what can you do with shelf data" for the catalog.
+
+- **New skill: Featured Offer Check (beta).** Ask "check my featured offer" and
+  the plugin reads Amazon's own answer for your ASINs, per shopper segment with
+  its share of views, then looks at the shelf for every ASIN you lose: the Buy
+  Box by location with the delivery promise, and the offer list. Each loss comes
+  back explained (a faster promise, a lower price, no featured offer, your offer
+  missing) on one page you can act on. Reads only; the shelf reads count against
+  your organization's monthly shelf allowance. Say "demo featured offer check"
+  for a walkthrough on your own account.
+
+- **Amazon Shelf: ask to have keywords tracked.** Say "track these keywords for me"
+  with the keywords, locations and cadence and the skill sends the request to
+  MixShift; every observation is already kept and dated, so a keyword asked again
+  next week is a series you can compare.
+
+- **New skill: Budget Balance.** Ask "run a budget balance" and the plugin sorts your
+  Sponsored Products campaigns into three buckets, each with a reason: raise the
+  budget of efficient campaigns that keep running out of it, widen the reach of
+  efficient campaigns that underspend (bids, not budget), and cut the budget of
+  poor performers. No change is larger than your limit (25 percent by default)
+  and no raise goes above Amazon's suggested budget. Changes are previewed
+  first and applied only after you confirm that exact set; a scheduled run files
+  a proposal for a person to approve. Say "demo budget balance" for a
+  walkthrough on your own account.
+
+- **Ads changes can now be proposed and approved later.** Add `--propose` to a write such as `mixshift ads call sp.update_campaigns` and the change set is saved as a proposal instead of being applied, with a title, a rationale and optional evidence for whoever approves it. A signed-in person reviews it with `mixshift ads proposals show`, approves it with `mixshift ads proposals approve` (a money change over 25% needs their explicit acknowledgment), and only then does `mixshift ads proposals commit` send it to Amazon. A proposal expires if nobody acts, and is refused rather than applied if the live values changed since it was written. This is the way for a scheduled routine to suggest budget and bid changes without ever making them.
+
+- **DSP campaigns and ad groups can now be edited, with the same preview-first safety as Sponsored Ads.** The DSP skill can change a campaign's state, budget caps and flights (up to 5 campaigns per call) and an ad group's state, budget, dates, bid and pacing (up to 20 per call). It shows you the exact before and after, waits for your confirmation, and reports each item's result separately. Creating creatives, attaching them to ad groups and placement changes are still done in the Amazon DSP console.
+
+- **A forecast can now count DSP spend.** `mixshift forecast settings set --scope <scope_id>
+  --include-dsp on` switches an account's DSP spend into the spend its computed forecast stands
+  on; the answer then reads `spend_basis: ads_plus_dsp` and names the months whose DSP spend
+  joined the fit. `mixshift forecast settings show` reads the settings back, and
+  `--missing-ad-spend-as-zero on|off` sets whether a month with sales and no ad rows trains as
+  zero spend. The Forecast Max skill asks once about DSP, the way it asks about the budget,
+  when the warehouse holds DSP months for the account. A month whose figures come from a
+  correction now also counts toward the history a forecast needs.
+
+- **Walmart ads changes now come back with a change id.** Every committed
+  Walmart change, and its preview, is recorded in MixShift's change log, and
+  the reply carries the record's id (`auditId`), shown in the call output.
+  A committed change also returns the entities' values from before the change.
+  If Walmart does not confirm a change (no answer, or the answer was cut off),
+  the failure now says the outcome is unknown and carries the same id, so you
+  can check the entity before trying again.
+
+- **Campaign budget and time-in-budget history is now documented in the data catalog.** `mixshift data describe campaign_tracking_3mo` (last 90 days) and `campaign_tracking` (full history) explain the daily campaign-settings snapshot, which columns carry the budget, state, campaign type and ad format, and how to join it to `campaignmetric` for spend versus budget. `data describe` on a table the catalog does not cover now says the table can still be queried with `data query`.
+
+### Changed
+
+- **Scheduled tasks now cover cloud routines.** The scheduled-task skill used to
+  say that cloud sessions were not supported. A routine that fires in a Claude
+  Code cloud session works: the sign-in lives in environment variables, the
+  plugin is installed fresh on each run, and a read-only credential is the
+  default for digests. The skill now walks through that setup instead of
+  sending you elsewhere.
+
+- **The service sign-in variables have clearer names.** `mixshift auth
+  service-setup` now reads the secret from `MIXSHIFT_SERVICE_CLIENT_SECRET` and
+  the client id from `MIXSHIFT_SERVICE_CLIENT_ID`, so it is no longer mistaken
+  for an Amazon app secret and a scheduled prompt no longer needs to pass
+  `--client-id`. The older `MIXSHIFT_CLIENT_SECRET` keeps working.
+
+- **A Report Max citation that could break on the next wording release is now flagged.** When the service serves an evidence card without its stable id, the extracted figures document used to name it by a slug of its headline with no word that the id would move if that headline were reworded. The document now marks that entry and carries a note, `report extract` prints one warning line for it, and `report validate` and `report render` repeat the warning beside the report that quotes it. Nothing fails: the citation is right today, and the warning says which one to check after an upgrade.
+
+### Fixed
+
+- **A call MixShift refuses before it reaches Amazon now says so, with the fix.**
+  When a request has a parameter missing, one it does not take, or an
+  operation name that does not exist, MixShift stops it before anything is
+  sent to Amazon and says what to change. The plugin labeled these as an
+  unexpected failure and the skills told the agent to try again shortly, so
+  agents re-sent the identical call several times before reading the message.
+  They now arrive as `invalid_request` (exit code 15) with the `fix` and the
+  parameter names. Every failure the MixShift service answers on the Amazon
+  and Walmart commands also says in `--json` who has to act (`source`) and
+  whether retrying can help (`retryable`), and, when Amazon answered, gives
+  Amazon's own status, code and message (`amazon`). The Amazon and Walmart
+  skills tell the agent not to resend a refused call unchanged.
+
+- **A product list built from the warehouse no longer picks up ASINs the seller does not sell.** The catalog now says plainly that `seller_ASIN_list` is the Search Query Performance activation list, not a catalog (its `IsActive` means "SQP tracking on"), that `mws_items.IsActive` is empty and `InCatalog` is the listing flag, and that order-only rows can be FBA receiving placeholders for another brand's product. The data, DSP and AMC skills carry the same rule for tracked-product lists and audience ASIN sets.
+
 ## 0.8.18
 
 

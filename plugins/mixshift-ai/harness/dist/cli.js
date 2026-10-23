@@ -834,8 +834,8 @@ var require_util = __commonJS({
     }
     function nop() {
     }
-    function isStream(obj) {
-      return obj && typeof obj === "object" && typeof obj.pipe === "function" && typeof obj.on === "function";
+    function isStream(obj2) {
+      return obj2 && typeof obj2 === "object" && typeof obj2.pipe === "function" && typeof obj2.on === "function";
     }
     function isBlobLike(object2) {
       if (object2 === null) {
@@ -940,14 +940,14 @@ var require_util = __commonJS({
       }
       return servername;
     }
-    function deepClone(obj) {
-      return JSON.parse(JSON.stringify(obj));
+    function deepClone(obj2) {
+      return JSON.parse(JSON.stringify(obj2));
     }
-    function isAsyncIterable(obj) {
-      return !!(obj != null && typeof obj[Symbol.asyncIterator] === "function");
+    function isAsyncIterable(obj2) {
+      return !!(obj2 != null && typeof obj2[Symbol.asyncIterator] === "function");
     }
-    function isIterable(obj) {
-      return !!(obj != null && (typeof obj[Symbol.iterator] === "function" || typeof obj[Symbol.asyncIterator] === "function"));
+    function isIterable(obj2) {
+      return !!(obj2 != null && (typeof obj2[Symbol.iterator] === "function" || typeof obj2[Symbol.asyncIterator] === "function"));
     }
     function bodyLength(body) {
       if (body == null) {
@@ -994,30 +994,30 @@ var require_util = __commonJS({
     function bufferToLowerCasedHeaderName(value) {
       return tree.lookup(value) ?? value.toString("latin1").toLowerCase();
     }
-    function parseHeaders(headers, obj) {
-      if (obj === void 0) obj = {};
+    function parseHeaders(headers, obj2) {
+      if (obj2 === void 0) obj2 = {};
       for (let i = 0; i < headers.length; i += 2) {
         const key = headerNameToString(headers[i]);
-        let val = obj[key];
+        let val = obj2[key];
         if (val) {
           if (typeof val === "string") {
             val = [val];
-            obj[key] = val;
+            obj2[key] = val;
           }
           val.push(headers[i + 1].toString("utf8"));
         } else {
           const headersValue = headers[i + 1];
           if (typeof headersValue === "string") {
-            obj[key] = headersValue;
+            obj2[key] = headersValue;
           } else {
-            obj[key] = Array.isArray(headersValue) ? headersValue.map((x) => x.toString("utf8")) : headersValue.toString("utf8");
+            obj2[key] = Array.isArray(headersValue) ? headersValue.map((x) => x.toString("utf8")) : headersValue.toString("utf8");
           }
         }
       }
-      if ("content-length" in obj && "content-disposition" in obj) {
-        obj["content-disposition"] = Buffer.from(obj["content-disposition"]).toString("latin1");
+      if ("content-length" in obj2 && "content-disposition" in obj2) {
+        obj2["content-disposition"] = Buffer.from(obj2["content-disposition"]).toString("latin1");
       }
-      return obj;
+      return obj2;
     }
     function parseRawHeaders(headers) {
       const len = headers.length;
@@ -1195,17 +1195,17 @@ var require_util = __commonJS({
         size: m[3] ? parseInt(m[3]) : null
       } : null;
     }
-    function addListener(obj, name, listener) {
-      const listeners = obj[kListeners] ??= [];
+    function addListener(obj2, name, listener) {
+      const listeners = obj2[kListeners] ??= [];
       listeners.push([name, listener]);
-      obj.on(name, listener);
-      return obj;
+      obj2.on(name, listener);
+      return obj2;
     }
-    function removeAllListeners(obj) {
-      for (const [name, listener] of obj[kListeners] ?? []) {
-        obj.removeListener(name, listener);
+    function removeAllListeners(obj2) {
+      for (const [name, listener] of obj2[kListeners] ?? []) {
+        obj2.removeListener(name, listener);
       }
-      obj[kListeners] = null;
+      obj2[kListeners] = null;
     }
     function errorRequest(client, request2, err) {
       try {
@@ -2447,10 +2447,10 @@ var require_utils = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.enumToMap = void 0;
-    function enumToMap(obj) {
+    function enumToMap(obj2) {
       const res = {};
-      Object.keys(obj).forEach((key) => {
-        const value = obj[key];
+      Object.keys(obj2).forEach((key) => {
+        const value = obj2[key];
         if (typeof value === "number") {
           res[key] = value;
         }
@@ -3123,13 +3123,13 @@ var require_data_url = __commonJS({
     }
     function collectASequenceOfCodePointsFast(char, input, position) {
       const idx = input.indexOf(char, position.position);
-      const start = position.position;
+      const start2 = position.position;
       if (idx === -1) {
         position.position = input.length;
-        return input.slice(start);
+        return input.slice(start2);
       }
       position.position = idx;
-      return input.slice(start, position.position);
+      return input.slice(start2, position.position);
     }
     function stringPercentDecode(input) {
       const bytes = encoder.encode(input);
@@ -3316,25 +3316,25 @@ var require_data_url = __commonJS({
     function isHTTPWhiteSpace(char) {
       return char === 13 || char === 10 || char === 9 || char === 32;
     }
-    function removeHTTPWhitespace(str2, leading = true, trailing = true) {
-      return removeChars(str2, leading, trailing, isHTTPWhiteSpace);
+    function removeHTTPWhitespace(str4, leading = true, trailing = true) {
+      return removeChars(str4, leading, trailing, isHTTPWhiteSpace);
     }
     function isASCIIWhitespace(char) {
       return char === 13 || char === 10 || char === 9 || char === 12 || char === 32;
     }
-    function removeASCIIWhitespace(str2, leading = true, trailing = true) {
-      return removeChars(str2, leading, trailing, isASCIIWhitespace);
+    function removeASCIIWhitespace(str4, leading = true, trailing = true) {
+      return removeChars(str4, leading, trailing, isASCIIWhitespace);
     }
-    function removeChars(str2, leading, trailing, predicate) {
+    function removeChars(str4, leading, trailing, predicate) {
       let lead = 0;
-      let trail = str2.length - 1;
+      let trail = str4.length - 1;
       if (leading) {
-        while (lead < str2.length && predicate(str2.charCodeAt(lead))) lead++;
+        while (lead < str4.length && predicate(str4.charCodeAt(lead))) lead++;
       }
       if (trailing) {
-        while (trail > 0 && predicate(str2.charCodeAt(trail))) trail--;
+        while (trail > 0 && predicate(str4.charCodeAt(trail))) trail--;
       }
-      return lead === 0 && trail === str2.length - 1 ? str2 : str2.slice(lead, trail + 1);
+      return lead === 0 && trail === str4.length - 1 ? str4 : str4.slice(lead, trail + 1);
     }
     function isomorphicDecode(input) {
       const length = input.length;
@@ -4608,8 +4608,8 @@ var require_util2 = __commonJS({
       }
       return values;
     }
-    function getDecodeSplit(name, list) {
-      const value = list.get(name, true);
+    function getDecodeSplit(name, list2) {
+      const value = list2.get(name, true);
       if (value === null) {
         return null;
       }
@@ -5135,11 +5135,11 @@ var require_formdata_parser = __commonJS({
       return name;
     }
     function collectASequenceOfBytes(condition, input, position) {
-      let start = position.position;
-      while (start < input.length && condition(input[start])) {
-        ++start;
+      let start2 = position.position;
+      while (start2 < input.length && condition(input[start2])) {
+        ++start2;
       }
-      return input.subarray(position.position, position.position = start);
+      return input.subarray(position.position, position.position = start2);
     }
     function removeChars(buf, leading, trailing, predicate) {
       let lead = 0;
@@ -5152,12 +5152,12 @@ var require_formdata_parser = __commonJS({
       }
       return lead === 0 && trail === buf.length - 1 ? buf : buf.subarray(lead, trail + 1);
     }
-    function bufferStartsWith(buffer, start, position) {
-      if (buffer.length < start.length) {
+    function bufferStartsWith(buffer, start2, position) {
+      if (buffer.length < start2.length) {
         return false;
       }
-      for (let i = 0; i < start.length; i++) {
-        if (start[i] !== buffer[position.position + i]) {
+      for (let i = 0; i < start2.length; i++) {
+        if (start2[i] !== buffer[position.position + i]) {
           return false;
         }
       }
@@ -5253,7 +5253,7 @@ var require_body = __commonJS({
         const boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, "0")}`;
         const prefix = `--${boundary}\r
 Content-Disposition: form-data`;
-        const escape = (str2) => str2.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
+        const escape = (str4) => str4.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
         const normalizeLinefeeds = (value) => value.replace(/\r?\n|\r/g, "\r\n");
         const blobParts = [];
         const rn = new Uint8Array([13, 10]);
@@ -5562,8 +5562,8 @@ var require_client_h1 = __commonJS({
           },
           wasm_on_status: (p, at, len) => {
             assert2(currentParser.ptr === p);
-            const start = at - currentBufferPtr + currentBufferRef.byteOffset;
-            return currentParser.onStatus(new FastBuffer(currentBufferRef.buffer, start, len)) || 0;
+            const start2 = at - currentBufferPtr + currentBufferRef.byteOffset;
+            return currentParser.onStatus(new FastBuffer(currentBufferRef.buffer, start2, len)) || 0;
           },
           wasm_on_message_begin: (p) => {
             assert2(currentParser.ptr === p);
@@ -5571,13 +5571,13 @@ var require_client_h1 = __commonJS({
           },
           wasm_on_header_field: (p, at, len) => {
             assert2(currentParser.ptr === p);
-            const start = at - currentBufferPtr + currentBufferRef.byteOffset;
-            return currentParser.onHeaderField(new FastBuffer(currentBufferRef.buffer, start, len)) || 0;
+            const start2 = at - currentBufferPtr + currentBufferRef.byteOffset;
+            return currentParser.onHeaderField(new FastBuffer(currentBufferRef.buffer, start2, len)) || 0;
           },
           wasm_on_header_value: (p, at, len) => {
             assert2(currentParser.ptr === p);
-            const start = at - currentBufferPtr + currentBufferRef.byteOffset;
-            return currentParser.onHeaderValue(new FastBuffer(currentBufferRef.buffer, start, len)) || 0;
+            const start2 = at - currentBufferPtr + currentBufferRef.byteOffset;
+            return currentParser.onHeaderValue(new FastBuffer(currentBufferRef.buffer, start2, len)) || 0;
           },
           wasm_on_headers_complete: (p, statusCode, upgrade, shouldKeepAlive) => {
             assert2(currentParser.ptr === p);
@@ -5585,8 +5585,8 @@ var require_client_h1 = __commonJS({
           },
           wasm_on_body: (p, at, len) => {
             assert2(currentParser.ptr === p);
-            const start = at - currentBufferPtr + currentBufferRef.byteOffset;
-            return currentParser.onBody(new FastBuffer(currentBufferRef.buffer, start, len)) || 0;
+            const start2 = at - currentBufferPtr + currentBufferRef.byteOffset;
+            return currentParser.onBody(new FastBuffer(currentBufferRef.buffer, start2, len)) || 0;
           },
           wasm_on_message_complete: (p) => {
             assert2(currentParser.ptr === p);
@@ -8947,8 +8947,8 @@ var require_retry_handler = __commonJS({
             );
             return false;
           }
-          const { start, size, end = size - 1 } = contentRange;
-          assert2(this.start === start, "content-range mismatch");
+          const { start: start2, size, end = size - 1 } = contentRange;
+          assert2(this.start === start2, "content-range mismatch");
           assert2(this.end == null || this.end === end, "content-range mismatch");
           this.resume = resume;
           return true;
@@ -8964,13 +8964,13 @@ var require_retry_handler = __commonJS({
                 statusMessage
               );
             }
-            const { start, size, end = size - 1 } = range;
+            const { start: start2, size, end = size - 1 } = range;
             assert2(
-              start != null && Number.isFinite(start),
+              start2 != null && Number.isFinite(start2),
               "content-range mismatch"
             );
             assert2(end != null && Number.isFinite(end), "invalid content-length");
-            this.start = start;
+            this.start = start2;
             this.end = end;
           }
           if (this.end == null) {
@@ -9295,9 +9295,9 @@ var require_readable = __commonJS({
       }
       const { _readableState: state } = consume2.stream;
       if (state.bufferIndex) {
-        const start = state.bufferIndex;
+        const start2 = state.bufferIndex;
         const end = state.buffer.length;
-        for (let n = start; n < end; n++) {
+        for (let n = start2; n < end; n++) {
           consumePush(consume2, state.buffer[n]);
         }
       } else {
@@ -9322,8 +9322,8 @@ var require_readable = __commonJS({
       }
       const buffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks, length);
       const bufferLength = buffer.length;
-      const start = bufferLength > 2 && buffer[0] === 239 && buffer[1] === 187 && buffer[2] === 191 ? 3 : 0;
-      return buffer.utf8Slice(start, bufferLength);
+      const start2 = bufferLength > 2 && buffer[0] === 239 && buffer[1] === 187 && buffer[2] === 191 ? 3 : 0;
+      return buffer.utf8Slice(start2, bufferLength);
     }
     function chunksConcat(chunks, length) {
       if (chunks.length === 0 || length === 0) {
@@ -11919,9 +11919,9 @@ var require_headers = __commonJS({
       // https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
       getSetCookie() {
         webidl.brandCheck(this, _Headers);
-        const list = this.#headersList.cookies;
-        if (list) {
-          return [...list];
+        const list2 = this.#headersList.cookies;
+        if (list2) {
+          return [...list2];
         }
         return [];
       }
@@ -11961,8 +11961,8 @@ var require_headers = __commonJS({
       static getHeadersList(o) {
         return o.#headersList;
       }
-      static setHeadersList(o, list) {
-        o.#headersList = list;
+      static setHeadersList(o, list2) {
+        o.#headersList = list2;
       }
     };
     var { getHeadersGuard, setHeadersGuard, getHeadersList, setHeadersList } = Headers;
@@ -12930,13 +12930,13 @@ var require_request2 = __commonJS({
         if (this.signal.aborted) {
           ac.abort(this.signal.reason);
         } else {
-          let list = dependentControllerMap.get(this.signal);
-          if (list === void 0) {
-            list = /* @__PURE__ */ new Set();
-            dependentControllerMap.set(this.signal, list);
+          let list2 = dependentControllerMap.get(this.signal);
+          if (list2 === void 0) {
+            list2 = /* @__PURE__ */ new Set();
+            dependentControllerMap.set(this.signal, list2);
           }
           const acRef = new WeakRef(ac);
-          list.add(acRef);
+          list2.add(acRef);
           util.addAbortListener(
             ac.signal,
             buildAbort(acRef)
@@ -16098,9 +16098,9 @@ var require_cookies = __commonJS({
       webidl.argumentLengthCheck(arguments, 2, "setCookie");
       webidl.brandCheck(headers, Headers, { strict: false });
       cookie = webidl.converters.Cookie(cookie);
-      const str2 = stringify(cookie);
-      if (str2) {
-        headers.append("Set-Cookie", str2);
+      const str4 = stringify(cookie);
+      if (str4) {
+        headers.append("Set-Cookie", str4);
       }
     }
     webidl.converters.DeleteCookieAttributes = webidl.dictionaryConverter([
@@ -16660,8 +16660,8 @@ var require_util7 = __commonJS({
           return false;
         }
       }
-      const num2 = Number.parseInt(value, 10);
-      return num2 >= 8 && num2 <= 15;
+      const num4 = Number.parseInt(value, 10);
+      return num4 >= 8 && num4 <= 15;
     }
     var hasIntl = typeof process.versions.icu === "string";
     var fatalDecoder = hasIntl ? new TextDecoder("utf-8", { fatal: true }) : void 0;
@@ -19124,14 +19124,14 @@ var require_help = __commonJS({
        * @return {string}
        *
        */
-      wrap(str2, width, indent, minColumnWidth = 40) {
+      wrap(str4, width, indent, minColumnWidth = 40) {
         const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
         const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str2.match(manualIndent)) return str2;
+        if (str4.match(manualIndent)) return str4;
         const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str2;
-        const leadingStr = str2.slice(0, indent);
-        const columnText = str2.slice(indent).replace("\r\n", "\n");
+        if (columnWidth < minColumnWidth) return str4;
+        const leadingStr = str4.slice(0, indent);
+        const columnText = str4.slice(indent).replace("\r\n", "\n");
         const indentString = " ".repeat(indent);
         const zeroWidthSpace = "\u200B";
         const breaks = `\\s${zeroWidthSpace}`;
@@ -19400,9 +19400,9 @@ var require_option = __commonJS({
         return option.negate === (negativeValue === value);
       }
     };
-    function camelcase(str2) {
-      return str2.split("-").reduce((str3, word) => {
-        return str3 + word[0].toUpperCase() + word.slice(1);
+    function camelcase(str4) {
+      return str4.split("-").reduce((str5, word) => {
+        return str5 + word[0].toUpperCase() + word.slice(1);
       });
     }
     function splitOptionFlags(flags) {
@@ -19509,7 +19509,7 @@ var require_command = __commonJS({
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
     var path2 = __require("node:path");
-    var fs5 = __require("node:fs");
+    var fs6 = __require("node:fs");
     var process5 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
     var { CommanderError: CommanderError2 } = require_error();
@@ -19556,11 +19556,11 @@ var require_command = __commonJS({
         this._showHelpAfterError = false;
         this._showSuggestionAfterError = true;
         this._outputConfiguration = {
-          writeOut: (str2) => process5.stdout.write(str2),
-          writeErr: (str2) => process5.stderr.write(str2),
+          writeOut: (str4) => process5.stdout.write(str4),
+          writeErr: (str4) => process5.stderr.write(str4),
           getOutHelpWidth: () => process5.stdout.isTTY ? process5.stdout.columns : void 0,
           getErrHelpWidth: () => process5.stderr.isTTY ? process5.stderr.columns : void 0,
-          outputError: (str2, write) => write(str2)
+          outputError: (str4, write) => write(str4)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -20442,10 +20442,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
           const localBin = path2.resolve(baseDir, baseName);
-          if (fs5.existsSync(localBin)) return localBin;
+          if (fs6.existsSync(localBin)) return localBin;
           if (sourceExt.includes(path2.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
-            (ext) => fs5.existsSync(`${localBin}${ext}`)
+            (ext) => fs6.existsSync(`${localBin}${ext}`)
           );
           if (foundExt) return `${localBin}${foundExt}`;
           return void 0;
@@ -20457,7 +20457,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         if (this._scriptPath) {
           let resolvedScriptPath;
           try {
-            resolvedScriptPath = fs5.realpathSync(this._scriptPath);
+            resolvedScriptPath = fs6.realpathSync(this._scriptPath);
           } catch (err) {
             resolvedScriptPath = this._scriptPath;
           }
@@ -21196,18 +21196,18 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str2, flags, description) {
-        if (str2 === void 0) return this._version;
-        this._version = str2;
+      version(str4, flags, description) {
+        if (str4 === void 0) return this._version;
+        this._version = str4;
         flags = flags || "-V, --version";
         description = description || "output the version number";
         const versionOption = this.createOption(flags, description);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str2}
+          this._outputConfiguration.writeOut(`${str4}
 `);
-          this._exit(0, "commander.version", str2);
+          this._exit(0, "commander.version", str4);
         });
         return this;
       }
@@ -21218,10 +21218,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {object} [argsDescription]
        * @return {(string|Command)}
        */
-      description(str2, argsDescription) {
-        if (str2 === void 0 && argsDescription === void 0)
+      description(str4, argsDescription) {
+        if (str4 === void 0 && argsDescription === void 0)
           return this._description;
-        this._description = str2;
+        this._description = str4;
         if (argsDescription) {
           this._argsDescription = argsDescription;
         }
@@ -21233,9 +21233,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      summary(str2) {
-        if (str2 === void 0) return this._summary;
-        this._summary = str2;
+      summary(str4) {
+        if (str4 === void 0) return this._summary;
+        this._summary = str4;
         return this;
       }
       /**
@@ -21283,8 +21283,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      usage(str2) {
-        if (str2 === void 0) {
+      usage(str4) {
+        if (str4 === void 0) {
           if (this._usage) return this._usage;
           const args = this.registeredArguments.map((arg) => {
             return humanReadableArgName(arg);
@@ -21295,7 +21295,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             this.registeredArguments.length ? args : []
           ).join(" ");
         }
-        this._usage = str2;
+        this._usage = str4;
         return this;
       }
       /**
@@ -21304,9 +21304,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      name(str2) {
-        if (str2 === void 0) return this._name;
-        this._name = str2;
+      name(str4) {
+        if (str4 === void 0) return this._name;
+        this._name = str4;
         return this;
       }
       /**
@@ -22054,7 +22054,7 @@ var require_anchors = __commonJS({
 var require_applyReviver = __commonJS({
   "node_modules/yaml/dist/doc/applyReviver.js"(exports) {
     "use strict";
-    function applyReviver(reviver, obj, key, val) {
+    function applyReviver(reviver, obj2, key, val) {
       if (val && typeof val === "object") {
         if (Array.isArray(val)) {
           for (let i = 0, len = val.length; i < len; ++i) {
@@ -22094,7 +22094,7 @@ var require_applyReviver = __commonJS({
           }
         }
       }
-      return reviver.call(obj, key, val);
+      return reviver.call(obj2, key, val);
     }
     exports.applyReviver = applyReviver;
   }
@@ -22539,13 +22539,13 @@ var require_Collection = __commonJS({
 var require_stringifyComment = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
-    var stringifyComment = (str2) => str2.replace(/^(?!$)(?: $)?/gm, "#");
+    var stringifyComment = (str4) => str4.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
       if (/^\n+$/.test(comment))
         return comment.substring(1);
       return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
     }
-    var lineComment = (str2, indent, comment) => str2.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str2.endsWith(" ") ? "" : " ") + comment;
+    var lineComment = (str4, indent, comment) => str4.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str4.endsWith(" ") ? "" : " ") + comment;
     exports.indentComment = indentComment;
     exports.lineComment = lineComment;
     exports.stringifyComment = stringifyComment;
@@ -22665,18 +22665,18 @@ ${indent}${text.slice(fold + 1, end2)}`;
     }
     function consumeMoreIndentedLines(text, i, indent) {
       let end = i;
-      let start = i + 1;
-      let ch = text[start];
+      let start2 = i + 1;
+      let ch = text[start2];
       while (ch === " " || ch === "	") {
-        if (i < start + indent) {
+        if (i < start2 + indent) {
           ch = text[++i];
         } else {
           do {
             ch = text[++i];
           } while (ch && ch !== "\n");
           end = i;
-          start = i + 1;
-          ch = text[start];
+          start2 = i + 1;
+          ch = text[start2];
         }
       }
       return end;
@@ -22699,104 +22699,104 @@ var require_stringifyString = __commonJS({
       lineWidth: ctx.options.lineWidth,
       minContentWidth: ctx.options.minContentWidth
     });
-    var containsDocumentMarker = (str2) => /^(%|---|\.\.\.)/m.test(str2);
-    function lineLengthOverLimit(str2, lineWidth, indentLength) {
+    var containsDocumentMarker = (str4) => /^(%|---|\.\.\.)/m.test(str4);
+    function lineLengthOverLimit(str4, lineWidth, indentLength) {
       if (!lineWidth || lineWidth < 0)
         return false;
       const limit = lineWidth - indentLength;
-      const strLen = str2.length;
+      const strLen = str4.length;
       if (strLen <= limit)
         return false;
-      for (let i = 0, start = 0; i < strLen; ++i) {
-        if (str2[i] === "\n") {
-          if (i - start > limit)
+      for (let i = 0, start2 = 0; i < strLen; ++i) {
+        if (str4[i] === "\n") {
+          if (i - start2 > limit)
             return true;
-          start = i + 1;
-          if (strLen - start <= limit)
+          start2 = i + 1;
+          if (strLen - start2 <= limit)
             return false;
         }
       }
       return true;
     }
     function doubleQuotedString(value, ctx) {
-      const json2 = JSON.stringify(value);
+      const json3 = JSON.stringify(value);
       if (ctx.options.doubleQuotedAsJSON)
-        return json2;
+        return json3;
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
-      let str2 = "";
-      let start = 0;
-      for (let i = 0, ch = json2[i]; ch; ch = json2[++i]) {
-        if (ch === " " && json2[i + 1] === "\\" && json2[i + 2] === "n") {
-          str2 += json2.slice(start, i) + "\\ ";
+      let str4 = "";
+      let start2 = 0;
+      for (let i = 0, ch = json3[i]; ch; ch = json3[++i]) {
+        if (ch === " " && json3[i + 1] === "\\" && json3[i + 2] === "n") {
+          str4 += json3.slice(start2, i) + "\\ ";
           i += 1;
-          start = i;
+          start2 = i;
           ch = "\\";
         }
         if (ch === "\\")
-          switch (json2[i + 1]) {
+          switch (json3[i + 1]) {
             case "u":
               {
-                str2 += json2.slice(start, i);
-                const code = json2.substr(i + 2, 4);
+                str4 += json3.slice(start2, i);
+                const code = json3.substr(i + 2, 4);
                 switch (code) {
                   case "0000":
-                    str2 += "\\0";
+                    str4 += "\\0";
                     break;
                   case "0007":
-                    str2 += "\\a";
+                    str4 += "\\a";
                     break;
                   case "000b":
-                    str2 += "\\v";
+                    str4 += "\\v";
                     break;
                   case "001b":
-                    str2 += "\\e";
+                    str4 += "\\e";
                     break;
                   case "0085":
-                    str2 += "\\N";
+                    str4 += "\\N";
                     break;
                   case "00a0":
-                    str2 += "\\_";
+                    str4 += "\\_";
                     break;
                   case "2028":
-                    str2 += "\\L";
+                    str4 += "\\L";
                     break;
                   case "2029":
-                    str2 += "\\P";
+                    str4 += "\\P";
                     break;
                   default:
                     if (code.substr(0, 2) === "00")
-                      str2 += "\\x" + code.substr(2);
+                      str4 += "\\x" + code.substr(2);
                     else
-                      str2 += json2.substr(i, 6);
+                      str4 += json3.substr(i, 6);
                 }
                 i += 5;
-                start = i + 1;
+                start2 = i + 1;
               }
               break;
             case "n":
-              if (implicitKey || json2[i + 2] === '"' || json2.length < minMultiLineLength) {
+              if (implicitKey || json3[i + 2] === '"' || json3.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str2 += json2.slice(start, i) + "\n\n";
-                while (json2[i + 2] === "\\" && json2[i + 3] === "n" && json2[i + 4] !== '"') {
-                  str2 += "\n";
+                str4 += json3.slice(start2, i) + "\n\n";
+                while (json3[i + 2] === "\\" && json3[i + 3] === "n" && json3[i + 4] !== '"') {
+                  str4 += "\n";
                   i += 2;
                 }
-                str2 += indent;
-                if (json2[i + 2] === " ")
-                  str2 += "\\";
+                str4 += indent;
+                if (json3[i + 2] === " ")
+                  str4 += "\\";
                 i += 1;
-                start = i + 1;
+                start2 = i + 1;
               }
               break;
             default:
               i += 1;
           }
       }
-      str2 = start ? str2 + json2.slice(start) : json2;
-      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
+      str4 = start2 ? str4 + json3.slice(start2) : json3;
+      return implicitKey ? str4 : foldFlowLines.foldFlowLines(str4, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
       if (ctx.options.singleQuote === false || ctx.implicitKey && value.includes("\n") || /[ \t]\n|\n[ \t]/.test(value))
@@ -22874,10 +22874,10 @@ ${indent}`) + "'";
         else
           break;
       }
-      let start = value.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
-      if (start) {
-        value = value.substring(start.length);
-        start = start.replace(/\n+/g, `$&${indent}`);
+      let start2 = value.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
+      if (start2) {
+        value = value.substring(start2.length);
+        start2 = start2.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
       let header = (startWithSpace ? indentSize : "") + chomp;
@@ -22895,14 +22895,14 @@ ${indent}`) + "'";
             literalFallback = true;
           };
         }
-        const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
+        const body = foldFlowLines.foldFlowLines(`${start2}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
           return `>${header}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
       return `|${header}
-${indent}${start}${value}${end}`;
+${indent}${start2}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
       const { type, value } = item;
@@ -22924,15 +22924,15 @@ ${indent}${start}${value}${end}`;
           return quotedString(value, ctx);
         }
       }
-      const str2 = value.replace(/\n+/g, `$&
+      const str4 = value.replace(/\n+/g, `$&
 ${indent}`);
       if (actualString) {
-        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str2);
+        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str4);
         const { compat, tags } = ctx.doc.schema;
         if (tags.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
-      return implicitKey ? str2 : foldFlowLines.foldFlowLines(str2, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
+      return implicitKey ? str4 : foldFlowLines.foldFlowLines(str4, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
     }
     function stringifyString(item, ctx, onComment, onChompKeep) {
       const { implicitKey, inFlow } = ctx;
@@ -23028,10 +23028,10 @@ var require_stringify = __commonJS({
           return match.find((t) => t.format === item.format) ?? match[0];
       }
       let tagObj = void 0;
-      let obj;
+      let obj2;
       if (identity.isScalar(item)) {
-        obj = item.value;
-        let match = tags.filter((t) => t.identify?.(obj));
+        obj2 = item.value;
+        let match = tags.filter((t) => t.identify?.(obj2));
         if (match.length > 1) {
           const testMatch = match.filter((t) => t.test);
           if (testMatch.length > 0)
@@ -23039,11 +23039,11 @@ var require_stringify = __commonJS({
         }
         tagObj = match.find((t) => t.format === item.format) ?? match.find((t) => !t.format);
       } else {
-        obj = item;
-        tagObj = tags.find((t) => t.nodeClass && obj instanceof t.nodeClass);
+        obj2 = item;
+        tagObj = tags.find((t) => t.nodeClass && obj2 instanceof t.nodeClass);
       }
       if (!tagObj) {
-        const name = obj?.constructor?.name ?? (obj === null ? "null" : typeof obj);
+        const name = obj2?.constructor?.name ?? (obj2 === null ? "null" : typeof obj2);
         throw new Error(`Tag not resolved for ${name} value`);
       }
       return tagObj;
@@ -23084,11 +23084,11 @@ var require_stringify = __commonJS({
       const props = stringifyProps(node, tagObj, ctx);
       if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
-      const str2 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
+      const str4 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
       if (!props)
-        return str2;
-      return identity.isScalar(node) || str2[0] === "{" || str2[0] === "[" ? `${props} ${str2}` : `${props}
-${ctx.indent}${str2}`;
+        return str4;
+      return identity.isScalar(node) || str4[0] === "{" || str4[0] === "[" ? `${props} ${str4}` : `${props}
+${ctx.indent}${str4}`;
     }
     exports.createStringifyContext = createStringifyContext;
     exports.stringify = stringify;
@@ -23123,8 +23123,8 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str2 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
-      if (!explicitKey && !ctx.inFlow && str2.length > 1024) {
+      let str4 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      if (!explicitKey && !ctx.inFlow && str4.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
         explicitKey = true;
@@ -23133,27 +23133,27 @@ var require_stringifyPair = __commonJS({
         if (allNullValues || value == null) {
           if (keyCommentDone && onComment)
             onComment();
-          return str2 === "" ? "?" : explicitKey ? `? ${str2}` : str2;
+          return str4 === "" ? "?" : explicitKey ? `? ${str4}` : str4;
         }
       } else if (allNullValues && !simpleKeys || value == null && explicitKey) {
-        str2 = `? ${str2}`;
+        str4 = `? ${str4}`;
         if (keyComment && !keyCommentDone) {
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
         } else if (chompKeep && onChompKeep)
           onChompKeep();
-        return str2;
+        return str4;
       }
       if (keyCommentDone)
         keyComment = null;
       if (explicitKey) {
         if (keyComment)
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
-        str2 = `? ${str2}
+          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
+        str4 = `? ${str4}
 ${indent}:`;
       } else {
-        str2 = `${str2}:`;
+        str4 = `${str4}:`;
         if (keyComment)
-          str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(keyComment));
+          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
       }
       let vsb, vcb, valueComment;
       if (identity.isNode(value)) {
@@ -23169,7 +23169,7 @@ ${indent}:`;
       }
       ctx.implicitKey = false;
       if (!explicitKey && !keyComment && identity.isScalar(value))
-        ctx.indentAtStart = str2.length + 1;
+        ctx.indentAtStart = str4.length + 1;
       chompKeep = false;
       if (!indentSeq && indentStep.length >= 2 && !ctx.inFlow && !explicitKey && identity.isSeq(value) && !value.flow && !value.tag && !value.anchor) {
         ctx.indent = ctx.indent.substring(2);
@@ -23213,16 +23213,16 @@ ${ctx.indent}`;
       } else if (valueStr === "" || valueStr[0] === "\n") {
         ws = "";
       }
-      str2 += ws + valueStr;
+      str4 += ws + valueStr;
       if (ctx.inFlow) {
         if (valueCommentDone && onComment)
           onComment();
       } else if (valueComment && !valueCommentDone) {
-        str2 += stringifyComment.lineComment(str2, ctx.indent, commentString(valueComment));
+        str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(valueComment));
       } else if (chompKeep && onChompKeep) {
         onChompKeep();
       }
-      return str2;
+      return str4;
     }
     exports.stringifyPair = stringifyPair;
   }
@@ -23449,31 +23449,31 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str3 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str5 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
-          str3 += stringifyComment.lineComment(str3, itemIndent, commentString(comment2));
+          str5 += stringifyComment.lineComment(str5, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str3);
+        lines.push(blockItemPrefix + str5);
       }
-      let str2;
+      let str4;
       if (lines.length === 0) {
-        str2 = flowChars.start + flowChars.end;
+        str4 = flowChars.start + flowChars.end;
       } else {
-        str2 = lines[0];
+        str4 = lines[0];
         for (let i = 1; i < lines.length; ++i) {
           const line = lines[i];
-          str2 += line ? `
+          str4 += line ? `
 ${indent}${line}` : "\n";
         }
       }
       if (comment) {
-        str2 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
+        str4 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
         if (onComment)
           onComment();
       } else if (chompKeep && onChompKeep)
         onChompKeep();
-      return str2;
+      return str4;
     }
     function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
@@ -23516,40 +23516,40 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str2 = stringify.stringify(item, itemCtx, () => comment = null);
-        reqNewline || (reqNewline = lines.length > linesAtValue || str2.includes("\n"));
+        let str4 = stringify.stringify(item, itemCtx, () => comment = null);
+        reqNewline || (reqNewline = lines.length > linesAtValue || str4.includes("\n"));
         if (i < items.length - 1) {
-          str2 += ",";
+          str4 += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str2.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str4.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
-            str2 += ",";
+            str4 += ",";
           }
         }
         if (comment)
-          str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment));
-        lines.push(str2);
+          str4 += stringifyComment.lineComment(str4, itemIndent, commentString(comment));
+        lines.push(str4);
         linesAtValue = lines.length;
       }
-      const { start, end } = flowChars;
+      const { start: start2, end } = flowChars;
       if (lines.length === 0) {
-        return start + end;
+        return start2 + end;
       } else {
         if (!reqNewline) {
           const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str2 = start;
+          let str4 = start2;
           for (const line of lines)
-            str2 += line ? `
+            str4 += line ? `
 ${indentStep}${indent}${line}` : "\n";
-          return `${str2}
+          return `${str4}
 ${indent}${end}`;
         } else {
-          return `${start}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
+          return `${start2}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
         }
       }
     }
@@ -23599,23 +23599,23 @@ var require_YAMLMap = __commonJS({
        * A generic collection parsing method that can be extended
        * to other node classes that inherit from YAMLMap
        */
-      static from(schema, obj, ctx) {
+      static from(schema, obj2, ctx) {
         const { keepUndefined, replacer } = ctx;
         const map2 = new this(schema);
         const add = (key, value) => {
           if (typeof replacer === "function")
-            value = replacer.call(obj, key, value);
+            value = replacer.call(obj2, key, value);
           else if (Array.isArray(replacer) && !replacer.includes(key))
             return;
           if (value !== void 0 || keepUndefined)
             map2.items.push(Pair.createPair(key, value, ctx));
         };
-        if (obj instanceof Map) {
-          for (const [key, value] of obj)
+        if (obj2 instanceof Map) {
+          for (const [key, value] of obj2)
             add(key, value);
-        } else if (obj && typeof obj === "object") {
-          for (const key of Object.keys(obj))
-            add(key, obj[key]);
+        } else if (obj2 && typeof obj2 === "object") {
+          for (const key of Object.keys(obj2))
+            add(key, obj2[key]);
         }
         if (typeof schema.sortMapEntries === "function") {
           map2.items.sort(schema.sortMapEntries);
@@ -23725,7 +23725,7 @@ var require_map = __commonJS({
           onError("Expected a mapping for this tag");
         return map3;
       },
-      createNode: (schema, obj, ctx) => YAMLMap.YAMLMap.from(schema, obj, ctx)
+      createNode: (schema, obj2, ctx) => YAMLMap.YAMLMap.from(schema, obj2, ctx)
     };
     exports.map = map2;
   }
@@ -23821,15 +23821,15 @@ var require_YAMLSeq = __commonJS({
           onComment
         });
       }
-      static from(schema, obj, ctx) {
+      static from(schema, obj2, ctx) {
         const { replacer } = ctx;
         const seq = new this(schema);
-        if (obj && Symbol.iterator in Object(obj)) {
+        if (obj2 && Symbol.iterator in Object(obj2)) {
           let i = 0;
-          for (let it of obj) {
+          for (let it of obj2) {
             if (typeof replacer === "function") {
-              const key = obj instanceof Set ? it : String(i++);
-              it = replacer.call(obj, key, it);
+              const key = obj2 instanceof Set ? it : String(i++);
+              it = replacer.call(obj2, key, it);
             }
             seq.items.push(createNode.createNode(it, void 0, ctx));
           }
@@ -23863,7 +23863,7 @@ var require_seq = __commonJS({
           onError("Expected a sequence for this tag");
         return seq2;
       },
-      createNode: (schema, obj, ctx) => YAMLSeq.YAMLSeq.from(schema, obj, ctx)
+      createNode: (schema, obj2, ctx) => YAMLSeq.YAMLSeq.from(schema, obj2, ctx)
     };
     exports.seq = seq;
   }
@@ -23878,7 +23878,7 @@ var require_string = __commonJS({
       identify: (value) => typeof value === "string",
       default: true,
       tag: "tag:yaml.org,2002:str",
-      resolve: (str2) => str2,
+      resolve: (str4) => str4,
       stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
         return stringifyString.stringifyString(item, ctx, onComment, onChompKeep);
@@ -23916,7 +23916,7 @@ var require_bool = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:bool",
       test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
-      resolve: (str2) => new Scalar.Scalar(str2[0] === "t" || str2[0] === "T"),
+      resolve: (str4) => new Scalar.Scalar(str4[0] === "t" || str4[0] === "T"),
       stringify({ source, value }, ctx) {
         if (source && boolTag.test.test(source)) {
           const sv = source[0] === "t" || source[0] === "T";
@@ -23937,9 +23937,9 @@ var require_stringifyNumber = __commonJS({
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
         return String(value);
-      const num2 = typeof value === "number" ? value : Number(value);
-      if (!isFinite(num2))
-        return isNaN(num2) ? ".nan" : num2 < 0 ? "-.inf" : ".inf";
+      const num4 = typeof value === "number" ? value : Number(value);
+      if (!isFinite(num4))
+        return isNaN(num4) ? ".nan" : num4 < 0 ? "-.inf" : ".inf";
       let n = Object.is(value, -0) ? "-0" : JSON.stringify(value);
       if (!format && minFractionDigits && (!tag || tag === "tag:yaml.org,2002:float") && /^-?\d/.test(n) && !n.includes("e")) {
         let i = n.indexOf(".");
@@ -23968,7 +23968,7 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str4) => str4.slice(-3).toLowerCase() === "nan" ? NaN : str4[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -23977,10 +23977,10 @@ var require_float = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
-      resolve: (str2) => parseFloat(str2),
+      resolve: (str4) => parseFloat(str4),
       stringify(node) {
-        const num2 = Number(node.value);
-        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num4 = Number(node.value);
+        return isFinite(num4) ? num4.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -23988,11 +23988,11 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
-      resolve(str2) {
-        const node = new Scalar.Scalar(parseFloat(str2));
-        const dot = str2.indexOf(".");
-        if (dot !== -1 && str2[str2.length - 1] === "0")
-          node.minFractionDigits = str2.length - dot - 1;
+      resolve(str4) {
+        const node = new Scalar.Scalar(parseFloat(str4));
+        const dot = str4.indexOf(".");
+        if (dot !== -1 && str4[str4.length - 1] === "0")
+          node.minFractionDigits = str4.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -24009,7 +24009,7 @@ var require_int = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    var intResolve = (str2, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2.substring(offset), radix);
+    var intResolve = (str4, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str4) : parseInt(str4.substring(offset), radix);
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value) && value >= 0)
@@ -24022,7 +24022,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^0o[0-7]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 8, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 2, 8, opt),
       stringify: (node) => intStringify(node, 8, "0o")
     };
     var int2 = {
@@ -24030,7 +24030,7 @@ var require_int = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24039,7 +24039,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^0x[0-9a-fA-F]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24092,7 +24092,7 @@ var require_schema2 = __commonJS({
         identify: (value) => typeof value === "string",
         default: true,
         tag: "tag:yaml.org,2002:str",
-        resolve: (str2) => str2,
+        resolve: (str4) => str4,
         stringify: stringifyJSON
       },
       {
@@ -24109,7 +24109,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:bool",
         test: /^true$|^false$/,
-        resolve: (str2) => str2 === "true",
+        resolve: (str4) => str4 === "true",
         stringify: stringifyJSON
       },
       {
@@ -24117,7 +24117,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:int",
         test: /^-?(?:0|[1-9][0-9]*)$/,
-        resolve: (str2, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str2) : parseInt(str2, 10),
+        resolve: (str4, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str4) : parseInt(str4, 10),
         stringify: ({ value }) => intIdentify(value) ? value.toString() : JSON.stringify(value)
       },
       {
@@ -24125,7 +24125,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:float",
         test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
-        resolve: (str2) => parseFloat(str2),
+        resolve: (str4) => parseFloat(str4),
         stringify: stringifyJSON
       }
     ];
@@ -24133,9 +24133,9 @@ var require_schema2 = __commonJS({
       default: true,
       tag: "",
       test: /^/,
-      resolve(str2, onError) {
-        onError(`Unresolved plain scalar ${JSON.stringify(str2)}`);
-        return str2;
+      resolve(str4, onError) {
+        onError(`Unresolved plain scalar ${JSON.stringify(str4)}`);
+        return str4;
       }
     };
     var schema = [map2.map, seq.seq].concat(jsonScalars, jsonError);
@@ -24167,10 +24167,10 @@ var require_binary = __commonJS({
         if (typeof node_buffer.Buffer === "function") {
           return node_buffer.Buffer.from(src, "base64");
         } else if (typeof atob === "function") {
-          const str2 = atob(src.replace(/[\n\r]/g, ""));
-          const buffer = new Uint8Array(str2.length);
-          for (let i = 0; i < str2.length; ++i)
-            buffer[i] = str2.charCodeAt(i);
+          const str4 = atob(src.replace(/[\n\r]/g, ""));
+          const buffer = new Uint8Array(str4.length);
+          for (let i = 0; i < str4.length; ++i)
+            buffer[i] = str4.charCodeAt(i);
           return buffer;
         } else {
           onError("This environment does not support reading binary tags; either Buffer or atob is required");
@@ -24181,28 +24181,28 @@ var require_binary = __commonJS({
         if (!value)
           return "";
         const buf = value;
-        let str2;
+        let str4;
         if (typeof node_buffer.Buffer === "function") {
-          str2 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
+          str4 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
         } else if (typeof btoa === "function") {
           let s = "";
           for (let i = 0; i < buf.length; ++i)
             s += String.fromCharCode(buf[i]);
-          str2 = btoa(s);
+          str4 = btoa(s);
         } else {
           throw new Error("This environment does not support writing binary tags; either Buffer or btoa is required");
         }
         type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
-          const n = Math.ceil(str2.length / lineWidth);
+          const n = Math.ceil(str4.length / lineWidth);
           const lines = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str2.substr(o, lineWidth);
+            lines[i] = str4.substr(o, lineWidth);
           }
-          str2 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str4 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
-        return stringifyString.stringifyString({ comment, type, value: str2 }, ctx, onComment, onChompKeep);
+        return stringifyString.stringifyString({ comment, type, value: str4 }, ctx, onComment, onChompKeep);
       }
     };
     exports.binary = binary;
@@ -24408,7 +24408,7 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str2) => str2.slice(-3).toLowerCase() === "nan" ? NaN : str2[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str4) => str4.slice(-3).toLowerCase() === "nan" ? NaN : str4[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -24417,10 +24417,10 @@ var require_float2 = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
-      resolve: (str2) => parseFloat(str2.replace(/_/g, "")),
+      resolve: (str4) => parseFloat(str4.replace(/_/g, "")),
       stringify(node) {
-        const num2 = Number(node.value);
-        return isFinite(num2) ? num2.toExponential() : stringifyNumber.stringifyNumber(node);
+        const num4 = Number(node.value);
+        return isFinite(num4) ? num4.toExponential() : stringifyNumber.stringifyNumber(node);
       }
     };
     var float = {
@@ -24428,11 +24428,11 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
-      resolve(str2) {
-        const node = new Scalar.Scalar(parseFloat(str2.replace(/_/g, "")));
-        const dot = str2.indexOf(".");
+      resolve(str4) {
+        const node = new Scalar.Scalar(parseFloat(str4.replace(/_/g, "")));
+        const dot = str4.indexOf(".");
         if (dot !== -1) {
-          const f = str2.substring(dot + 1).replace(/_/g, "");
+          const f = str4.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -24452,34 +24452,34 @@ var require_int2 = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    function intResolve(str2, offset, radix, { intAsBigInt }) {
-      const sign = str2[0];
+    function intResolve(str4, offset, radix, { intAsBigInt }) {
+      const sign = str4[0];
       if (sign === "-" || sign === "+")
         offset += 1;
-      str2 = str2.substring(offset).replace(/_/g, "");
+      str4 = str4.substring(offset).replace(/_/g, "");
       if (intAsBigInt) {
         switch (radix) {
           case 2:
-            str2 = `0b${str2}`;
+            str4 = `0b${str4}`;
             break;
           case 8:
-            str2 = `0o${str2}`;
+            str4 = `0o${str4}`;
             break;
           case 16:
-            str2 = `0x${str2}`;
+            str4 = `0x${str4}`;
             break;
         }
-        const n2 = BigInt(str2);
+        const n2 = BigInt(str4);
         return sign === "-" ? BigInt(-1) * n2 : n2;
       }
-      const n = parseInt(str2, radix);
+      const n = parseInt(str4, radix);
       return sign === "-" ? -1 * n : n;
     }
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value)) {
-        const str2 = value.toString(radix);
-        return value < 0 ? "-" + prefix + str2.substr(1) : prefix + str2;
+        const str4 = value.toString(radix);
+        return value < 0 ? "-" + prefix + str4.substr(1) : prefix + str4;
       }
       return stringifyNumber.stringifyNumber(node);
     }
@@ -24489,7 +24489,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "BIN",
       test: /^[-+]?0b[0-1_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 2, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 2, 2, opt),
       stringify: (node) => intStringify(node, 2, "0b")
     };
     var intOct = {
@@ -24498,7 +24498,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^[-+]?0[0-7_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 1, 8, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 1, 8, opt),
       stringify: (node) => intStringify(node, 8, "0")
     };
     var int2 = {
@@ -24506,7 +24506,7 @@ var require_int2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9][0-9_]*$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 0, 10, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24515,7 +24515,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^[-+]?0x[0-9a-fA-F_]+$/,
-      resolve: (str2, _onError, opt) => intResolve(str2, 2, 16, opt),
+      resolve: (str4, _onError, opt) => intResolve(str4, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24619,26 +24619,26 @@ var require_timestamp = __commonJS({
   "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
-    function parseSexagesimal(str2, asBigInt) {
-      const sign = str2[0];
-      const parts = sign === "-" || sign === "+" ? str2.substring(1) : str2;
-      const num2 = (n) => asBigInt ? BigInt(n) : Number(n);
-      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num2(60) + num2(p), num2(0));
-      return sign === "-" ? num2(-1) * res : res;
+    function parseSexagesimal(str4, asBigInt) {
+      const sign = str4[0];
+      const parts = sign === "-" || sign === "+" ? str4.substring(1) : str4;
+      const num4 = (n) => asBigInt ? BigInt(n) : Number(n);
+      const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num4(60) + num4(p), num4(0));
+      return sign === "-" ? num4(-1) * res : res;
     }
     function stringifySexagesimal(node) {
       let { value } = node;
-      let num2 = (n) => n;
+      let num4 = (n) => n;
       if (typeof value === "bigint")
-        num2 = (n) => BigInt(n);
+        num4 = (n) => BigInt(n);
       else if (isNaN(value) || !isFinite(value))
         return stringifyNumber.stringifyNumber(node);
       let sign = "";
       if (value < 0) {
         sign = "-";
-        value *= num2(-1);
+        value *= num4(-1);
       }
-      const _60 = num2(60);
+      const _60 = num4(60);
       const parts = [value % _60];
       if (value < 60) {
         parts.unshift(0);
@@ -24658,7 +24658,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+$/,
-      resolve: (str2, _onError, { intAsBigInt }) => parseSexagesimal(str2, intAsBigInt),
+      resolve: (str4, _onError, { intAsBigInt }) => parseSexagesimal(str4, intAsBigInt),
       stringify: stringifySexagesimal
     };
     var floatTime = {
@@ -24667,7 +24667,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*$/,
-      resolve: (str2) => parseSexagesimal(str2, false),
+      resolve: (str4) => parseSexagesimal(str4, false),
       stringify: stringifySexagesimal
     };
     var timestamp = {
@@ -24678,8 +24678,8 @@ var require_timestamp = __commonJS({
       // may be omitted altogether, resulting in a date format. In such a case, the time part is
       // assumed to be 00:00:00Z (start of day, UTC).
       test: RegExp("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:(?:t|T|[ \\t]+)([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$"),
-      resolve(str2) {
-        const match = str2.match(timestamp.test);
+      resolve(str4) {
+        const match = str4.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
         const [, year, month, day, hour, minute, second] = match.map(Number);
@@ -25217,11 +25217,11 @@ var require_Document = __commonJS({
           throw new Error(`With a null YAML version, the { schema: Schema } option is required`);
       }
       // json & jsonArg are only used from toJSON()
-      toJS({ json: json2, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
+      toJS({ json: json3, jsonArg, mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
         const ctx = {
           anchors: /* @__PURE__ */ new Map(),
           doc: this,
-          keep: !json2,
+          keep: !json3,
           mapAsMap: mapAsMap === true,
           mapKeyWarned: false,
           maxAliasCount: typeof maxAliasCount === "number" ? maxAliasCount : 100
@@ -25344,7 +25344,7 @@ var require_resolve_props = __commonJS({
       let newlineAfterProp = null;
       let comma = null;
       let found = null;
-      let start = null;
+      let start2 = null;
       for (const token of tokens) {
         if (reqSpace) {
           if (token.type !== "space" && token.type !== "newline" && token.type !== "comma")
@@ -25396,7 +25396,7 @@ var require_resolve_props = __commonJS({
             if (token.source.endsWith(":"))
               onError(token.offset + token.source.length - 1, "BAD_ALIAS", "Anchor ending in : is ambiguous", true);
             anchor = token;
-            start ?? (start = token.offset);
+            start2 ?? (start2 = token.offset);
             atNewline = false;
             hasSpace = false;
             reqSpace = true;
@@ -25405,7 +25405,7 @@ var require_resolve_props = __commonJS({
             if (tag)
               onError(token, "MULTIPLE_TAGS", "A node can have at most one tag");
             tag = token;
-            start ?? (start = token.offset);
+            start2 ?? (start2 = token.offset);
             atNewline = false;
             hasSpace = false;
             reqSpace = true;
@@ -25453,7 +25453,7 @@ var require_resolve_props = __commonJS({
         tag,
         newlineAfterProp,
         end,
-        start: start ?? end
+        start: start2 ?? end
       };
     }
     exports.resolveProps = resolveProps;
@@ -25555,8 +25555,8 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
-        const keyProps = resolveProps.resolveProps(start, {
+        const { start: start2, key, sep, value } = collItem;
+        const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
           next: key ?? sep?.[0],
           offset,
@@ -25583,14 +25583,14 @@ var require_resolve_block_map = __commonJS({
             continue;
           }
           if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key)) {
-            onError(key ?? start[start.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
+            onError(key ?? start2[start2.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
           }
         } else if (keyProps.found?.indent !== bm.indent) {
           onError(offset, "BAD_INDENT", startColMsg);
         }
         ctx.atKey = true;
         const keyStart = keyProps.end;
-        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start, null, keyProps, onError);
+        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start2, null, keyProps, onError);
         if (ctx.schema.compat)
           utilFlowIndentCheck.flowIndentCheck(bm.indent, key, onError);
         ctx.atKey = false;
@@ -25660,8 +25660,8 @@ var require_resolve_block_seq = __commonJS({
         ctx.atKey = false;
       let offset = bs.offset;
       let commentEnd = null;
-      for (const { start, value } of bs.items) {
-        const props = resolveProps.resolveProps(start, {
+      for (const { start: start2, value } of bs.items) {
+        const props = resolveProps.resolveProps(start2, {
           indicator: "seq-item-ind",
           next: value,
           offset,
@@ -25682,7 +25682,7 @@ var require_resolve_block_seq = __commonJS({
             continue;
           }
         }
-        const node = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, start, null, props, onError);
+        const node = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, start2, null, props, onError);
         if (ctx.schema.compat)
           utilFlowIndentCheck.flowIndentCheck(bs.indent, value, onError);
         offset = node.range[2];
@@ -25766,8 +25766,8 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
-        const props = resolveProps.resolveProps(start, {
+        const { start: start2, key, sep, value } = collItem;
+        const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
           next: key ?? sep?.[0],
@@ -25807,7 +25807,7 @@ var require_resolve_flow_collection = __commonJS({
             onError(props.start, "MISSING_CHAR", `Missing , between ${fcName} items`);
           if (props.comment) {
             let prevItemComment = "";
-            loop: for (const st of start) {
+            loop: for (const st of start2) {
               switch (st.type) {
                 case "comma":
                 case "space":
@@ -25840,7 +25840,7 @@ var require_resolve_flow_collection = __commonJS({
         } else {
           ctx.atKey = true;
           const keyStart = props.end;
-          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start, null, props, onError);
+          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start2, null, props, onError);
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
@@ -26003,10 +26003,10 @@ var require_resolve_block_scalar = __commonJS({
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
-      const start = scalar.offset;
+      const start2 = scalar.offset;
       const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
       if (!header)
-        return { value: "", type: null, comment: "", range: [start, start, start] };
+        return { value: "", type: null, comment: "", range: [start2, start2, start2] };
       const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
@@ -26019,10 +26019,10 @@ var require_resolve_block_scalar = __commonJS({
       }
       if (chompStart === 0) {
         const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header.length;
+        let end2 = start2 + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header.comment, range: [start2, end2, end2] };
       }
       let trimIndent = scalar.indent + header.indent;
       let offset = scalar.offset + header.length;
@@ -26103,8 +26103,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start, end, end] };
+      const end = start2 + header.length + scalar.source.length;
+      return { value, type, comment: header.comment, range: [start2, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -26625,7 +26625,7 @@ var require_compose_doc = __commonJS({
     var composeNode = require_compose_node();
     var resolveEnd = require_resolve_end();
     var resolveProps = require_resolve_props();
-    function composeDoc(options, directives, { offset, start, value, end }, onError) {
+    function composeDoc(options, directives, { offset, start: start2, value, end }, onError) {
       const opts = Object.assign({ _directives: directives }, options);
       const doc = new Document2.Document(void 0, opts);
       const ctx = {
@@ -26635,7 +26635,7 @@ var require_compose_doc = __commonJS({
         options: doc.options,
         schema: doc.schema
       };
-      const props = resolveProps.resolveProps(start, {
+      const props = resolveProps.resolveProps(start2, {
         indicator: "doc-start",
         next: value ?? end?.[0],
         offset,
@@ -26648,7 +26648,7 @@ var require_compose_doc = __commonJS({
         if (value && (value.type === "block-map" || value.type === "block-seq") && !props.hasNewline)
           onError(props.end, "MISSING_CHAR", "Block collection cannot start on same line with directives-end marker");
       }
-      doc.contents = value ? composeNode.composeNode(ctx, value, props, onError) : composeNode.composeEmptyNode(ctx, props.end, start, null, props, onError);
+      doc.contents = value ? composeNode.composeNode(ctx, value, props, onError) : composeNode.composeEmptyNode(ctx, props.end, start2, null, props, onError);
       const contentEnd = doc.contents.range[2];
       const re = resolveEnd.resolveEnd(end, contentEnd, false, onError);
       if (re.comment)
@@ -27097,9 +27097,9 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start: start2, key, sep, value }) {
       let res = "";
-      for (const st of start)
+      for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
@@ -27889,8 +27889,8 @@ var require_line_counter = __commonJS({
             return { line: low + 1, col: 1 };
           if (low === 0)
             return { line: 0, col: offset };
-          const start = this.lineStarts[low - 1];
-          return { line: low, col: offset - start + 1 };
+          const start2 = this.lineStarts[low - 1];
+          return { line: low, col: offset - start2 + 1 };
         };
       }
     };
@@ -27905,15 +27905,15 @@ var require_parser = __commonJS({
     var node_process = __require("process");
     var cst = require_cst();
     var lexer = require_lexer();
-    function includesToken(list, type) {
-      for (let i = 0; i < list.length; ++i)
-        if (list[i].type === type)
+    function includesToken(list2, type) {
+      for (let i = 0; i < list2.length; ++i)
+        if (list2[i].type === type)
           return true;
       return false;
     }
-    function findNonEmptyIndex(list) {
-      for (let i = 0; i < list.length; ++i) {
-        switch (list[i].type) {
+    function findNonEmptyIndex(list2) {
+      for (let i = 0; i < list2.length; ++i) {
+        switch (list2[i].type) {
           case "space":
           case "comment":
           case "newline":
@@ -28270,7 +28270,7 @@ var require_parser = __commonJS({
       *scalar(scalar) {
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
-          const start = getFirstKeyStartProps(prev);
+          const start2 = getFirstKeyStartProps(prev);
           let sep;
           if (scalar.end) {
             sep = scalar.end;
@@ -28282,7 +28282,7 @@ var require_parser = __commonJS({
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep }]
+            items: [{ start: start2, key: scalar, sep }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map2;
@@ -28357,7 +28357,7 @@ var require_parser = __commonJS({
         if (this.indent >= map2.indent) {
           const atMapIndent = !this.onKeyLine && this.indent === map2.indent;
           const atNextItem = atMapIndent && (it.sep || it.explicitKey) && this.type !== "seq-item-ind";
-          let start = [];
+          let start2 = [];
           if (atNextItem && it.sep && !it.value) {
             const nl = [];
             for (let i = 0; i < it.sep.length; ++i) {
@@ -28377,14 +28377,14 @@ var require_parser = __commonJS({
               }
             }
             if (nl.length >= 2)
-              start = it.sep.splice(nl[1]);
+              start2 = it.sep.splice(nl[1]);
           }
           switch (this.type) {
             case "anchor":
             case "tag":
               if (atNextItem || it.value) {
-                start.push(this.sourceToken);
-                map2.items.push({ start });
+                start2.push(this.sourceToken);
+                map2.items.push({ start: start2 });
                 this.onKeyLine = true;
               } else if (it.sep) {
                 it.sep.push(this.sourceToken);
@@ -28397,8 +28397,8 @@ var require_parser = __commonJS({
                 it.start.push(this.sourceToken);
                 it.explicitKey = true;
               } else if (atNextItem || it.value) {
-                start.push(this.sourceToken);
-                map2.items.push({ start, explicitKey: true });
+                start2.push(this.sourceToken);
+                map2.items.push({ start: start2, explicitKey: true });
               } else {
                 this.stack.push({
                   type: "block-map",
@@ -28415,12 +28415,12 @@ var require_parser = __commonJS({
                   if (includesToken(it.start, "newline")) {
                     Object.assign(it, { key: null, sep: [this.sourceToken] });
                   } else {
-                    const start2 = getFirstKeyStartProps(it.start);
+                    const start3 = getFirstKeyStartProps(it.start);
                     this.stack.push({
                       type: "block-map",
                       offset: this.offset,
                       indent: this.indent,
-                      items: [{ start: start2, key: null, sep: [this.sourceToken] }]
+                      items: [{ start: start3, key: null, sep: [this.sourceToken] }]
                     });
                   }
                 } else if (it.value) {
@@ -28430,10 +28430,10 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start, key: null, sep: [this.sourceToken] }]
+                    items: [{ start: start2, key: null, sep: [this.sourceToken] }]
                   });
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
-                  const start2 = getFirstKeyStartProps(it.start);
+                  const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
                   const sep = it.sep;
                   sep.push(this.sourceToken);
@@ -28443,10 +28443,10 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start3, key, sep }]
                   });
-                } else if (start.length > 0) {
-                  it.sep = it.sep.concat(start, this.sourceToken);
+                } else if (start2.length > 0) {
+                  it.sep = it.sep.concat(start2, this.sourceToken);
                 } else {
                   it.sep.push(this.sourceToken);
                 }
@@ -28454,7 +28454,7 @@ var require_parser = __commonJS({
                 if (!it.sep) {
                   Object.assign(it, { key: null, sep: [this.sourceToken] });
                 } else if (it.value || atNextItem) {
-                  map2.items.push({ start, key: null, sep: [this.sourceToken] });
+                  map2.items.push({ start: start2, key: null, sep: [this.sourceToken] });
                 } else if (includesToken(it.sep, "map-value-ind")) {
                   this.stack.push({
                     type: "block-map",
@@ -28472,14 +28472,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs5 = this.flowScalar(this.type);
+              const fs6 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map2.items.push({ start, key: fs5, sep: [] });
+                map2.items.push({ start: start2, key: fs6, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs5);
+                this.stack.push(fs6);
               } else {
-                Object.assign(it, { key: fs5, sep: [] });
+                Object.assign(it, { key: fs6, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -28498,7 +28498,7 @@ var require_parser = __commonJS({
                     return;
                   }
                 } else if (atMapIndent) {
-                  map2.items.push({ start });
+                  map2.items.push({ start: start2 });
                 }
                 this.stack.push(bv);
                 return;
@@ -28607,13 +28607,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs5 = this.flowScalar(this.type);
+              const fs6 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs5, sep: [] });
+                fc.items.push({ start: [], key: fs6, sep: [] });
               else if (it.sep)
-                this.stack.push(fs5);
+                this.stack.push(fs6);
               else
-                Object.assign(it, { key: fs5, sep: [] });
+                Object.assign(it, { key: fs6, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -28635,7 +28635,7 @@ var require_parser = __commonJS({
             yield* this.step();
           } else if (this.type === "map-value-ind" && parent.type !== "flow-collection") {
             const prev = getPrevProps(parent);
-            const start = getFirstKeyStartProps(prev);
+            const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
             const sep = fc.end.splice(1, fc.end.length);
             sep.push(this.sourceToken);
@@ -28643,7 +28643,7 @@ var require_parser = __commonJS({
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep }]
+              items: [{ start: start2, key: fc, sep }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map2;
@@ -28702,35 +28702,35 @@ var require_parser = __commonJS({
           case "explicit-key-ind": {
             this.onKeyLine = true;
             const prev = getPrevProps(parent);
-            const start = getFirstKeyStartProps(prev);
-            start.push(this.sourceToken);
+            const start2 = getFirstKeyStartProps(prev);
+            start2.push(this.sourceToken);
             return {
               type: "block-map",
               offset: this.offset,
               indent: this.indent,
-              items: [{ start, explicitKey: true }]
+              items: [{ start: start2, explicitKey: true }]
             };
           }
           case "map-value-ind": {
             this.onKeyLine = true;
             const prev = getPrevProps(parent);
-            const start = getFirstKeyStartProps(prev);
+            const start2 = getFirstKeyStartProps(prev);
             return {
               type: "block-map",
               offset: this.offset,
               indent: this.indent,
-              items: [{ start, key: null, sep: [this.sourceToken] }]
+              items: [{ start: start2, key: null, sep: [this.sourceToken] }]
             };
           }
         }
         return null;
       }
-      atIndentedComment(start, indent) {
+      atIndentedComment(start2, indent) {
         if (this.type !== "comment")
           return false;
         if (this.indent <= indent)
           return false;
-        return start.every((st) => st.type === "newline" || st.type === "space");
+        return start2.every((st) => st.type === "newline" || st.type === "space");
       }
       *documentEnd(docEnd) {
         if (this.type !== "doc-mode") {
@@ -29226,9 +29226,9 @@ function nullish(input) {
   return input === null || input === void 0;
 }
 function cleanRegex(source) {
-  const start = source.startsWith("^") ? 1 : 0;
+  const start2 = source.startsWith("^") ? 1 : 0;
   const end = source.endsWith("$") ? source.length - 1 : source.length;
-  return source.slice(start, end);
+  return source.slice(start2, end);
 }
 function floatSafeRemainder(val, step) {
   const ratio = val / step;
@@ -29260,8 +29260,8 @@ function defineLazy(object2, key, getter) {
     configurable: true
   });
 }
-function objectClone(obj) {
-  return Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj));
+function objectClone(obj2) {
+  return Object.create(Object.getPrototypeOf(obj2), Object.getOwnPropertyDescriptors(obj2));
 }
 function assignProp(target, prop, value) {
   Object.defineProperty(target, prop, {
@@ -29282,10 +29282,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
+function getElementAtPath(obj2, path2) {
   if (!path2)
-    return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+    return obj2;
+  return path2.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -29300,14 +29300,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str2 = "";
+  let str4 = "";
   for (let i = 0; i < length; i++) {
-    str2 += chars[Math.floor(Math.random() * chars.length)];
+    str4 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str2;
+  return str4;
 }
-function esc(str2) {
-  return JSON.stringify(str2);
+function esc(str4) {
+  return JSON.stringify(str4);
 }
 function slugify(input) {
   return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -29351,8 +29351,8 @@ function numKeys(data) {
   }
   return keyCount;
 }
-function escapeRegex(str2) {
-  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str4) {
+  return str4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -29663,9 +29663,9 @@ function parsedType(data) {
       if (Array.isArray(data)) {
         return "array";
       }
-      const obj = data;
-      if (obj && Object.getPrototypeOf(obj) !== Object.prototype && "constructor" in obj && obj.constructor) {
-        return obj.constructor.name;
+      const obj2 = data;
+      if (obj2 && Object.getPrototypeOf(obj2) !== Object.prototype && "constructor" in obj2 && obj2.constructor) {
+        return obj2.constructor.name;
       }
     }
   }
@@ -29683,8 +29683,8 @@ function issue(...args) {
   }
   return { ...iss };
 }
-function cleanEnum(obj) {
-  return Object.entries(obj).filter(([k, _]) => {
+function cleanEnum(obj2) {
+  return Object.entries(obj2).filter(([k, _]) => {
     return Number.isNaN(Number.parseInt(k, 10));
   }).map((el) => el[1]);
 }
@@ -32787,9 +32787,9 @@ var init_schemas = __esm({
           const source = part._zod.pattern instanceof RegExp ? part._zod.pattern.source : part._zod.pattern;
           if (!source)
             throw new Error(`Invalid template literal part: ${part._zod.traits}`);
-          const start = source.startsWith("^") ? 1 : 0;
+          const start2 = source.startsWith("^") ? 1 : 0;
           const end = source.endsWith("$") ? source.length - 1 : source.length;
-          regexParts.push(source.slice(start, end));
+          regexParts.push(source.slice(start2, end));
         } else if (part === null || primitiveTypes.has(typeof part)) {
           regexParts.push(escapeRegex(`${part}`));
         } else {
@@ -40777,29 +40777,29 @@ var init_json_schema_processors = __esm({
       // do not set
     };
     stringProcessor = (schema, ctx, _json, _params) => {
-      const json2 = _json;
-      json2.type = "string";
+      const json3 = _json;
+      json3.type = "string";
       const { minimum, maximum, format, patterns, contentEncoding } = schema._zod.bag;
       if (typeof minimum === "number")
-        json2.minLength = minimum;
+        json3.minLength = minimum;
       if (typeof maximum === "number")
-        json2.maxLength = maximum;
+        json3.maxLength = maximum;
       if (format) {
-        json2.format = formatMap[format] ?? format;
-        if (json2.format === "")
-          delete json2.format;
+        json3.format = formatMap[format] ?? format;
+        if (json3.format === "")
+          delete json3.format;
         if (format === "time") {
-          delete json2.format;
+          delete json3.format;
         }
       }
       if (contentEncoding)
-        json2.contentEncoding = contentEncoding;
+        json3.contentEncoding = contentEncoding;
       if (patterns && patterns.size > 0) {
         const regexes = [...patterns];
         if (regexes.length === 1)
-          json2.pattern = regexes[0].source;
+          json3.pattern = regexes[0].source;
         else if (regexes.length > 1) {
-          json2.allOf = [
+          json3.allOf = [
             ...regexes.map((regex) => ({
               ...ctx.target === "draft-07" || ctx.target === "draft-04" || ctx.target === "openapi-3.0" ? { type: "string" } : {},
               pattern: regex.source
@@ -40809,40 +40809,40 @@ var init_json_schema_processors = __esm({
       }
     };
     numberProcessor = (schema, ctx, _json, _params) => {
-      const json2 = _json;
+      const json3 = _json;
       const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema._zod.bag;
       if (typeof format === "string" && format.includes("int"))
-        json2.type = "integer";
+        json3.type = "integer";
       else
-        json2.type = "number";
+        json3.type = "number";
       const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
       const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
       const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
       if (exMin) {
         if (legacy) {
-          json2.minimum = exclusiveMinimum;
-          json2.exclusiveMinimum = true;
+          json3.minimum = exclusiveMinimum;
+          json3.exclusiveMinimum = true;
         } else {
-          json2.exclusiveMinimum = exclusiveMinimum;
+          json3.exclusiveMinimum = exclusiveMinimum;
         }
       } else if (typeof minimum === "number") {
-        json2.minimum = minimum;
+        json3.minimum = minimum;
       }
       if (exMax) {
         if (legacy) {
-          json2.maximum = exclusiveMaximum;
-          json2.exclusiveMaximum = true;
+          json3.maximum = exclusiveMaximum;
+          json3.exclusiveMaximum = true;
         } else {
-          json2.exclusiveMaximum = exclusiveMaximum;
+          json3.exclusiveMaximum = exclusiveMaximum;
         }
       } else if (typeof maximum === "number") {
-        json2.maximum = maximum;
+        json3.maximum = maximum;
       }
       if (typeof multipleOf === "number")
-        json2.multipleOf = multipleOf;
+        json3.multipleOf = multipleOf;
     };
-    booleanProcessor = (_schema, _ctx, json2, _params) => {
-      json2.type = "boolean";
+    booleanProcessor = (_schema, _ctx, json3, _params) => {
+      json3.type = "boolean";
     };
     bigintProcessor = (_schema, ctx, _json, _params) => {
       if (ctx.unrepresentable === "throw") {
@@ -40854,13 +40854,13 @@ var init_json_schema_processors = __esm({
         throw new Error("Symbols cannot be represented in JSON Schema");
       }
     };
-    nullProcessor = (_schema, ctx, json2, _params) => {
+    nullProcessor = (_schema, ctx, json3, _params) => {
       if (ctx.target === "openapi-3.0") {
-        json2.type = "string";
-        json2.nullable = true;
-        json2.enum = [null];
+        json3.type = "string";
+        json3.nullable = true;
+        json3.enum = [null];
       } else {
-        json2.type = "null";
+        json3.type = "null";
       }
     };
     undefinedProcessor = (_schema, ctx, _json, _params) => {
@@ -40873,8 +40873,8 @@ var init_json_schema_processors = __esm({
         throw new Error("Void cannot be represented in JSON Schema");
       }
     };
-    neverProcessor = (_schema, _ctx, json2, _params) => {
-      json2.not = {};
+    neverProcessor = (_schema, _ctx, json3, _params) => {
+      json3.not = {};
     };
     anyProcessor = (_schema, _ctx, _json, _params) => {
     };
@@ -40885,16 +40885,16 @@ var init_json_schema_processors = __esm({
         throw new Error("Date cannot be represented in JSON Schema");
       }
     };
-    enumProcessor = (schema, _ctx, json2, _params) => {
+    enumProcessor = (schema, _ctx, json3, _params) => {
       const def = schema._zod.def;
       const values = getEnumValues(def.entries);
       if (values.every((v) => typeof v === "number"))
-        json2.type = "number";
+        json3.type = "number";
       if (values.every((v) => typeof v === "string"))
-        json2.type = "string";
-      json2.enum = values;
+        json3.type = "string";
+      json3.enum = values;
     };
-    literalProcessor = (schema, ctx, json2, _params) => {
+    literalProcessor = (schema, ctx, json3, _params) => {
       const def = schema._zod.def;
       const vals = [];
       for (const val of def.values) {
@@ -40916,22 +40916,22 @@ var init_json_schema_processors = __esm({
       if (vals.length === 0) {
       } else if (vals.length === 1) {
         const val = vals[0];
-        json2.type = val === null ? "null" : typeof val;
+        json3.type = val === null ? "null" : typeof val;
         if (ctx.target === "draft-04" || ctx.target === "openapi-3.0") {
-          json2.enum = [val];
+          json3.enum = [val];
         } else {
-          json2.const = val;
+          json3.const = val;
         }
       } else {
         if (vals.every((v) => typeof v === "number"))
-          json2.type = "number";
+          json3.type = "number";
         if (vals.every((v) => typeof v === "string"))
-          json2.type = "string";
+          json3.type = "string";
         if (vals.every((v) => typeof v === "boolean"))
-          json2.type = "boolean";
+          json3.type = "boolean";
         if (vals.every((v) => v === null))
-          json2.type = "null";
-        json2.enum = vals;
+          json3.type = "null";
+        json3.enum = vals;
       }
     };
     nanProcessor = (_schema, ctx, _json, _params) => {
@@ -40939,16 +40939,16 @@ var init_json_schema_processors = __esm({
         throw new Error("NaN cannot be represented in JSON Schema");
       }
     };
-    templateLiteralProcessor = (schema, _ctx, json2, _params) => {
-      const _json = json2;
+    templateLiteralProcessor = (schema, _ctx, json3, _params) => {
+      const _json = json3;
       const pattern = schema._zod.pattern;
       if (!pattern)
         throw new Error("Pattern not found in template literal");
       _json.type = "string";
       _json.pattern = pattern.source;
     };
-    fileProcessor = (schema, _ctx, json2, _params) => {
-      const _json = json2;
+    fileProcessor = (schema, _ctx, json3, _params) => {
+      const _json = json3;
       const file2 = {
         type: "string",
         format: "binary",
@@ -40971,8 +40971,8 @@ var init_json_schema_processors = __esm({
         Object.assign(_json, file2);
       }
     };
-    successProcessor = (_schema, _ctx, json2, _params) => {
-      json2.type = "boolean";
+    successProcessor = (_schema, _ctx, json3, _params) => {
+      json3.type = "boolean";
     };
     customProcessor = (_schema, ctx, _json, _params) => {
       if (ctx.unrepresentable === "throw") {
@@ -41000,27 +41000,27 @@ var init_json_schema_processors = __esm({
       }
     };
     arrayProcessor = (schema, ctx, _json, params) => {
-      const json2 = _json;
+      const json3 = _json;
       const def = schema._zod.def;
       const { minimum, maximum } = schema._zod.bag;
       if (typeof minimum === "number")
-        json2.minItems = minimum;
+        json3.minItems = minimum;
       if (typeof maximum === "number")
-        json2.maxItems = maximum;
-      json2.type = "array";
-      json2.items = process2(def.element, ctx, {
+        json3.maxItems = maximum;
+      json3.type = "array";
+      json3.items = process2(def.element, ctx, {
         ...params,
         path: [...params.path, "items"]
       });
     };
     objectProcessor = (schema, ctx, _json, params) => {
-      const json2 = _json;
+      const json3 = _json;
       const def = schema._zod.def;
-      json2.type = "object";
-      json2.properties = {};
+      json3.type = "object";
+      json3.properties = {};
       const shape = def.shape;
       for (const key in shape) {
-        json2.properties[key] = process2(shape[key], ctx, {
+        json3.properties[key] = process2(shape[key], ctx, {
           ...params,
           path: [...params.path, "properties", key]
         });
@@ -41035,21 +41035,21 @@ var init_json_schema_processors = __esm({
         }
       }));
       if (requiredKeys.size > 0) {
-        json2.required = Array.from(requiredKeys);
+        json3.required = Array.from(requiredKeys);
       }
       if (def.catchall?._zod.def.type === "never") {
-        json2.additionalProperties = false;
+        json3.additionalProperties = false;
       } else if (!def.catchall) {
         if (ctx.io === "output")
-          json2.additionalProperties = false;
+          json3.additionalProperties = false;
       } else if (def.catchall) {
-        json2.additionalProperties = process2(def.catchall, ctx, {
+        json3.additionalProperties = process2(def.catchall, ctx, {
           ...params,
           path: [...params.path, "additionalProperties"]
         });
       }
     };
-    unionProcessor = (schema, ctx, json2, params) => {
+    unionProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       const isExclusive = def.inclusive === false;
       const options = def.options.map((x, i) => process2(x, ctx, {
@@ -41057,12 +41057,12 @@ var init_json_schema_processors = __esm({
         path: [...params.path, isExclusive ? "oneOf" : "anyOf", i]
       }));
       if (isExclusive) {
-        json2.oneOf = options;
+        json3.oneOf = options;
       } else {
-        json2.anyOf = options;
+        json3.anyOf = options;
       }
     };
-    intersectionProcessor = (schema, ctx, json2, params) => {
+    intersectionProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       const a = process2(def.left, ctx, {
         ...params,
@@ -41077,12 +41077,12 @@ var init_json_schema_processors = __esm({
         ...isSimpleIntersection(a) ? a.allOf : [a],
         ...isSimpleIntersection(b) ? b.allOf : [b]
       ];
-      json2.allOf = allOf;
+      json3.allOf = allOf;
     };
     tupleProcessor = (schema, ctx, _json, params) => {
-      const json2 = _json;
+      const json3 = _json;
       const def = schema._zod.def;
-      json2.type = "array";
+      json3.type = "array";
       const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
       const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
       const prefixItems = def.items.map((x, i) => process2(x, ctx, {
@@ -41094,37 +41094,37 @@ var init_json_schema_processors = __esm({
         path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
       }) : null;
       if (ctx.target === "draft-2020-12") {
-        json2.prefixItems = prefixItems;
+        json3.prefixItems = prefixItems;
         if (rest) {
-          json2.items = rest;
+          json3.items = rest;
         }
       } else if (ctx.target === "openapi-3.0") {
-        json2.items = {
+        json3.items = {
           anyOf: prefixItems
         };
         if (rest) {
-          json2.items.anyOf.push(rest);
+          json3.items.anyOf.push(rest);
         }
-        json2.minItems = prefixItems.length;
+        json3.minItems = prefixItems.length;
         if (!rest) {
-          json2.maxItems = prefixItems.length;
+          json3.maxItems = prefixItems.length;
         }
       } else {
-        json2.items = prefixItems;
+        json3.items = prefixItems;
         if (rest) {
-          json2.additionalItems = rest;
+          json3.additionalItems = rest;
         }
       }
       const { minimum, maximum } = schema._zod.bag;
       if (typeof minimum === "number")
-        json2.minItems = minimum;
+        json3.minItems = minimum;
       if (typeof maximum === "number")
-        json2.maxItems = maximum;
+        json3.maxItems = maximum;
     };
     recordProcessor = (schema, ctx, _json, params) => {
-      const json2 = _json;
+      const json3 = _json;
       const def = schema._zod.def;
-      json2.type = "object";
+      json3.type = "object";
       const keyType = def.keyType;
       const keyBag = keyType._zod.bag;
       const patterns = keyBag?.patterns;
@@ -41133,18 +41133,18 @@ var init_json_schema_processors = __esm({
           ...params,
           path: [...params.path, "patternProperties", "*"]
         });
-        json2.patternProperties = {};
+        json3.patternProperties = {};
         for (const pattern of patterns) {
-          json2.patternProperties[pattern.source] = valueSchema;
+          json3.patternProperties[pattern.source] = valueSchema;
         }
       } else {
         if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") {
-          json2.propertyNames = process2(def.keyType, ctx, {
+          json3.propertyNames = process2(def.keyType, ctx, {
             ...params,
             path: [...params.path, "propertyNames"]
           });
         }
-        json2.additionalProperties = process2(def.valueType, ctx, {
+        json3.additionalProperties = process2(def.valueType, ctx, {
           ...params,
           path: [...params.path, "additionalProperties"]
         });
@@ -41153,19 +41153,19 @@ var init_json_schema_processors = __esm({
       if (keyValues) {
         const validKeyValues = [...keyValues].filter((v) => typeof v === "string" || typeof v === "number");
         if (validKeyValues.length > 0) {
-          json2.required = validKeyValues;
+          json3.required = validKeyValues;
         }
       }
     };
-    nullableProcessor = (schema, ctx, json2, params) => {
+    nullableProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       const inner = process2(def.innerType, ctx, params);
       const seen = ctx.seen.get(schema);
       if (ctx.target === "openapi-3.0") {
         seen.ref = def.innerType;
-        json2.nullable = true;
+        json3.nullable = true;
       } else {
-        json2.anyOf = [inner, { type: "null" }];
+        json3.anyOf = [inner, { type: "null" }];
       }
     };
     nonoptionalProcessor = (schema, ctx, _json, params) => {
@@ -41174,22 +41174,22 @@ var init_json_schema_processors = __esm({
       const seen = ctx.seen.get(schema);
       seen.ref = def.innerType;
     };
-    defaultProcessor = (schema, ctx, json2, params) => {
+    defaultProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       process2(def.innerType, ctx, params);
       const seen = ctx.seen.get(schema);
       seen.ref = def.innerType;
-      json2.default = JSON.parse(JSON.stringify(def.defaultValue));
+      json3.default = JSON.parse(JSON.stringify(def.defaultValue));
     };
-    prefaultProcessor = (schema, ctx, json2, params) => {
+    prefaultProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       process2(def.innerType, ctx, params);
       const seen = ctx.seen.get(schema);
       seen.ref = def.innerType;
       if (ctx.io === "input")
-        json2._prefault = JSON.parse(JSON.stringify(def.defaultValue));
+        json3._prefault = JSON.parse(JSON.stringify(def.defaultValue));
     };
-    catchProcessor = (schema, ctx, json2, params) => {
+    catchProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       process2(def.innerType, ctx, params);
       const seen = ctx.seen.get(schema);
@@ -41200,7 +41200,7 @@ var init_json_schema_processors = __esm({
       } catch {
         throw new Error("Dynamic catch values are not supported in JSON Schema");
       }
-      json2.default = catchValue;
+      json3.default = catchValue;
     };
     pipeProcessor = (schema, ctx, _json, params) => {
       const def = schema._zod.def;
@@ -41210,12 +41210,12 @@ var init_json_schema_processors = __esm({
       const seen = ctx.seen.get(schema);
       seen.ref = innerType;
     };
-    readonlyProcessor = (schema, ctx, json2, params) => {
+    readonlyProcessor = (schema, ctx, json3, params) => {
       const def = schema._zod.def;
       process2(def.innerType, ctx, params);
       const seen = ctx.seen.get(schema);
       seen.ref = def.innerType;
-      json2.readOnly = true;
+      json3.readOnly = true;
     };
     promiseProcessor = (schema, ctx, _json, params) => {
       const def = schema._zod.def;
@@ -42648,7 +42648,7 @@ var init_schemas2 = __esm({
     _ZodString = /* @__PURE__ */ $constructor("_ZodString", (inst, def) => {
       $ZodString.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => stringProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => stringProcessor(inst, ctx, json3, params);
       const bag = inst._zod.bag;
       inst.format = bag.format ?? null;
       inst.minLength = bag.minimum ?? null;
@@ -42823,7 +42823,7 @@ var init_schemas2 = __esm({
     ZodNumber = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
       $ZodNumber.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => numberProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => numberProcessor(inst, ctx, json3, params);
       _installLazyMethods(inst, "ZodNumber", {
         gt(value, params) {
           return this.check(_gt(value, params));
@@ -42885,12 +42885,12 @@ var init_schemas2 = __esm({
     ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
       $ZodBoolean.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => booleanProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => booleanProcessor(inst, ctx, json3, params);
     });
     ZodBigInt = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
       $ZodBigInt.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => bigintProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => bigintProcessor(inst, ctx, json3, params);
       inst.gte = (value, params) => inst.check(_gte(value, params));
       inst.min = (value, params) => inst.check(_gte(value, params));
       inst.gt = (value, params) => inst.check(_gt(value, params));
@@ -42916,42 +42916,42 @@ var init_schemas2 = __esm({
     ZodSymbol = /* @__PURE__ */ $constructor("ZodSymbol", (inst, def) => {
       $ZodSymbol.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => symbolProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => symbolProcessor(inst, ctx, json3, params);
     });
     ZodUndefined = /* @__PURE__ */ $constructor("ZodUndefined", (inst, def) => {
       $ZodUndefined.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => undefinedProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => undefinedProcessor(inst, ctx, json3, params);
     });
     ZodNull = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
       $ZodNull.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => nullProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => nullProcessor(inst, ctx, json3, params);
     });
     ZodAny = /* @__PURE__ */ $constructor("ZodAny", (inst, def) => {
       $ZodAny.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => anyProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => anyProcessor(inst, ctx, json3, params);
     });
     ZodUnknown = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
       $ZodUnknown.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => unknownProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => unknownProcessor(inst, ctx, json3, params);
     });
     ZodNever = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
       $ZodNever.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => neverProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => neverProcessor(inst, ctx, json3, params);
     });
     ZodVoid = /* @__PURE__ */ $constructor("ZodVoid", (inst, def) => {
       $ZodVoid.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => voidProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => voidProcessor(inst, ctx, json3, params);
     });
     ZodDate = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
       $ZodDate.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => dateProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => dateProcessor(inst, ctx, json3, params);
       inst.min = (value, params) => inst.check(_gte(value, params));
       inst.max = (value, params) => inst.check(_lte(value, params));
       const c = inst._zod.bag;
@@ -42961,7 +42961,7 @@ var init_schemas2 = __esm({
     ZodArray = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
       $ZodArray.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => arrayProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => arrayProcessor(inst, ctx, json3, params);
       inst.element = def.element;
       _installLazyMethods(inst, "ZodArray", {
         min(n, params) {
@@ -42984,7 +42984,7 @@ var init_schemas2 = __esm({
     ZodObject = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
       $ZodObjectJIT.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => objectProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => objectProcessor(inst, ctx, json3, params);
       util_exports.defineLazy(inst, "shape", () => {
         return def.shape;
       });
@@ -43033,13 +43033,13 @@ var init_schemas2 = __esm({
     ZodUnion = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
       $ZodUnion.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => unionProcessor(inst, ctx, json3, params);
       inst.options = def.options;
     });
     ZodXor = /* @__PURE__ */ $constructor("ZodXor", (inst, def) => {
       ZodUnion.init(inst, def);
       $ZodXor.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => unionProcessor(inst, ctx, json3, params);
       inst.options = def.options;
     });
     ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("ZodDiscriminatedUnion", (inst, def) => {
@@ -43049,12 +43049,12 @@ var init_schemas2 = __esm({
     ZodIntersection = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
       $ZodIntersection.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => intersectionProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => intersectionProcessor(inst, ctx, json3, params);
     });
     ZodTuple = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
       $ZodTuple.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => tupleProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => tupleProcessor(inst, ctx, json3, params);
       inst.rest = (rest) => inst.clone({
         ...inst._zod.def,
         rest
@@ -43063,14 +43063,14 @@ var init_schemas2 = __esm({
     ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
       $ZodRecord.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => recordProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => recordProcessor(inst, ctx, json3, params);
       inst.keyType = def.keyType;
       inst.valueType = def.valueType;
     });
     ZodMap = /* @__PURE__ */ $constructor("ZodMap", (inst, def) => {
       $ZodMap.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => mapProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => mapProcessor(inst, ctx, json3, params);
       inst.keyType = def.keyType;
       inst.valueType = def.valueType;
       inst.min = (...args) => inst.check(_minSize(...args));
@@ -43081,7 +43081,7 @@ var init_schemas2 = __esm({
     ZodSet = /* @__PURE__ */ $constructor("ZodSet", (inst, def) => {
       $ZodSet.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => setProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => setProcessor(inst, ctx, json3, params);
       inst.min = (...args) => inst.check(_minSize(...args));
       inst.nonempty = (params) => inst.check(_minSize(1, params));
       inst.max = (...args) => inst.check(_maxSize(...args));
@@ -43090,7 +43090,7 @@ var init_schemas2 = __esm({
     ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
       $ZodEnum.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => enumProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => enumProcessor(inst, ctx, json3, params);
       inst.enum = def.entries;
       inst.options = Object.values(def.entries);
       const keys = new Set(Object.keys(def.entries));
@@ -43128,7 +43128,7 @@ var init_schemas2 = __esm({
     ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
       $ZodLiteral.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => literalProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => literalProcessor(inst, ctx, json3, params);
       inst.values = new Set(def.values);
       Object.defineProperty(inst, "value", {
         get() {
@@ -43142,7 +43142,7 @@ var init_schemas2 = __esm({
     ZodFile = /* @__PURE__ */ $constructor("ZodFile", (inst, def) => {
       $ZodFile.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => fileProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => fileProcessor(inst, ctx, json3, params);
       inst.min = (size, params) => inst.check(_minSize(size, params));
       inst.max = (size, params) => inst.check(_maxSize(size, params));
       inst.mime = (types, params) => inst.check(_mime(Array.isArray(types) ? types : [types], params));
@@ -43150,7 +43150,7 @@ var init_schemas2 = __esm({
     ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
       $ZodTransform.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => transformProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => transformProcessor(inst, ctx, json3, params);
       inst._zod.parse = (payload, _ctx) => {
         if (_ctx.direction === "backward") {
           throw new $ZodEncodeError(inst.constructor.name);
@@ -43184,62 +43184,62 @@ var init_schemas2 = __esm({
     ZodOptional = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
       $ZodOptional.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => optionalProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodExactOptional = /* @__PURE__ */ $constructor("ZodExactOptional", (inst, def) => {
       $ZodExactOptional.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => optionalProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodNullable = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
       $ZodNullable.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => nullableProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => nullableProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodDefault = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
       $ZodDefault.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => defaultProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => defaultProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
       inst.removeDefault = inst.unwrap;
     });
     ZodPrefault = /* @__PURE__ */ $constructor("ZodPrefault", (inst, def) => {
       $ZodPrefault.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => prefaultProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => prefaultProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodNonOptional = /* @__PURE__ */ $constructor("ZodNonOptional", (inst, def) => {
       $ZodNonOptional.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => nonoptionalProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => nonoptionalProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodSuccess = /* @__PURE__ */ $constructor("ZodSuccess", (inst, def) => {
       $ZodSuccess.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => successProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => successProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodCatch = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
       $ZodCatch.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => catchProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => catchProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
       inst.removeCatch = inst.unwrap;
     });
     ZodNaN = /* @__PURE__ */ $constructor("ZodNaN", (inst, def) => {
       $ZodNaN.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => nanProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => nanProcessor(inst, ctx, json3, params);
     });
     ZodPipe = /* @__PURE__ */ $constructor("ZodPipe", (inst, def) => {
       $ZodPipe.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => pipeProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => pipeProcessor(inst, ctx, json3, params);
       inst.in = def.in;
       inst.out = def.out;
     });
@@ -43254,35 +43254,35 @@ var init_schemas2 = __esm({
     ZodReadonly = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
       $ZodReadonly.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => readonlyProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => readonlyProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodTemplateLiteral = /* @__PURE__ */ $constructor("ZodTemplateLiteral", (inst, def) => {
       $ZodTemplateLiteral.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => templateLiteralProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => templateLiteralProcessor(inst, ctx, json3, params);
     });
     ZodLazy = /* @__PURE__ */ $constructor("ZodLazy", (inst, def) => {
       $ZodLazy.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => lazyProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => lazyProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.getter();
     });
     ZodPromise = /* @__PURE__ */ $constructor("ZodPromise", (inst, def) => {
       $ZodPromise.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => promiseProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => promiseProcessor(inst, ctx, json3, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodFunction = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
       $ZodFunction.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => functionProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => functionProcessor(inst, ctx, json3, params);
     });
     ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
       $ZodCustom.init(inst, def);
       ZodType.init(inst, def);
-      inst._zod.processJSONSchema = (ctx, json2, params) => customProcessor(inst, ctx, json2, params);
+      inst._zod.processJSONSchema = (ctx, json3, params) => customProcessor(inst, ctx, json3, params);
     });
     describe2 = describe;
     meta2 = meta;
@@ -44313,8 +44313,8 @@ function normalizeLegacyTacosFields(raw) {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return raw;
   }
-  const obj = raw;
-  const management = obj.management;
+  const obj2 = raw;
+  const management = obj2.management;
   if (management === null || typeof management !== "object" || Array.isArray(management)) {
     return raw;
   }
@@ -44325,7 +44325,7 @@ function normalizeLegacyTacosFields(raw) {
     normalizedMgmt.tacos_goal_pct = normalizedMgmt.tacos_target_pct;
   }
   delete normalizedMgmt.tacos_target_pct;
-  return { ...obj, management: normalizedMgmt };
+  return { ...obj2, management: normalizedMgmt };
 }
 var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
 var init_schema2 = __esm({
@@ -44728,10 +44728,10 @@ var require_lib = __commonJS({
     var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
     var isWordChar = (code) => code >= 65 && code <= 90 || code >= 97 && code <= 122 || code >= 48 && code <= 57 || code === 95;
     var isWhitespace = (code) => code === charCode.space || code === charCode.tab || code === charCode.newline || code === charCode.carriageReturn;
-    var hasOnlyWhitespaceBetween = (sql, start, end) => {
-      if (start >= end)
+    var hasOnlyWhitespaceBetween = (sql, start2, end) => {
+      if (start2 >= end)
         return true;
-      for (let i = start; i < end; i++) {
+      for (let i = start2; i < end; i++) {
         const code = sql.charCodeAt(i);
         if (code !== charCode.space && code !== charCode.tab && code !== charCode.newline && code !== charCode.carriageReturn)
           return false;
@@ -44780,9 +44780,9 @@ var require_lib = __commonJS({
       }
       return -1;
     };
-    var findNextPlaceholder = (sql, start) => {
+    var findNextPlaceholder = (sql, start2) => {
       const sqlLength = sql.length;
-      for (let position = start; position < sqlLength; position++) {
+      for (let position = start2; position < sqlLength; position++) {
         const code = sql.charCodeAt(position);
         if (code === charCode.questionMark)
           return position;
@@ -45647,8 +45647,8 @@ var require_denque = __commonJS({
       this._list.length >>>= 1;
       this._capacityMask >>>= 1;
     };
-    Denque.prototype._nextPowerOf2 = function _nextPowerOf2(num2) {
-      var log2 = Math.log(num2) / Math.log(2);
+    Denque.prototype._nextPowerOf2 = function _nextPowerOf2(num4) {
+      var log2 = Math.log(num4) / Math.log(2);
       var nextPow2 = 1 << log2 + 1;
       return Math.max(nextPow2, 4);
     };
@@ -49970,8 +49970,8 @@ var require_umd = __commonJS({
         Object.defineProperty(Long.prototype, "__isLong__", {
           value: true
         });
-        function isLong(obj) {
-          return (obj && obj["__isLong__"]) === true;
+        function isLong(obj2) {
+          return (obj2 && obj2["__isLong__"]) === true;
         }
         function ctz32(value) {
           var c = Math.clz32(value & -value);
@@ -49981,25 +49981,25 @@ var require_umd = __commonJS({
         var INT_CACHE = {};
         var UINT_CACHE = {};
         function fromInt(value, unsigned) {
-          var obj, cachedObj, cache;
+          var obj2, cachedObj, cache;
           if (unsigned) {
             value >>>= 0;
             if (cache = 0 <= value && value < 256) {
               cachedObj = UINT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
-            obj = fromBits(value, 0, true);
-            if (cache) UINT_CACHE[value] = obj;
-            return obj;
+            obj2 = fromBits(value, 0, true);
+            if (cache) UINT_CACHE[value] = obj2;
+            return obj2;
           } else {
             value |= 0;
             if (cache = -128 <= value && value < 128) {
               cachedObj = INT_CACHE[value];
               if (cachedObj) return cachedObj;
             }
-            obj = fromBits(value, value < 0 ? -1 : 0, false);
-            if (cache) INT_CACHE[value] = obj;
-            return obj;
+            obj2 = fromBits(value, value < 0 ? -1 : 0, false);
+            if (cache) INT_CACHE[value] = obj2;
+            return obj2;
           }
         }
         Long.fromInt = fromInt;
@@ -50025,27 +50025,27 @@ var require_umd = __commonJS({
         }
         Long.fromBits = fromBits;
         var pow_dbl = Math.pow;
-        function fromString(str2, unsigned, radix) {
-          if (str2.length === 0) throw Error("empty string");
+        function fromString(str4, unsigned, radix) {
+          if (str4.length === 0) throw Error("empty string");
           if (typeof unsigned === "number") {
             radix = unsigned;
             unsigned = false;
           } else {
             unsigned = !!unsigned;
           }
-          if (str2 === "NaN" || str2 === "Infinity" || str2 === "+Infinity" || str2 === "-Infinity")
+          if (str4 === "NaN" || str4 === "Infinity" || str4 === "+Infinity" || str4 === "-Infinity")
             return unsigned ? UZERO : ZERO;
           radix = radix || 10;
           if (radix < 2 || 36 < radix) throw RangeError("radix");
           var p;
-          if ((p = str2.indexOf("-")) > 0) throw Error("interior hyphen");
+          if ((p = str4.indexOf("-")) > 0) throw Error("interior hyphen");
           else if (p === 0) {
-            return fromString(str2.substring(1), unsigned, radix).neg();
+            return fromString(str4.substring(1), unsigned, radix).neg();
           }
           var radixToPower = fromNumber(pow_dbl(radix, 8));
           var result = ZERO;
-          for (var i = 0; i < str2.length; i += 8) {
-            var size = Math.min(8, str2.length - i), value = parseInt(str2.substring(i, i + size), radix);
+          for (var i = 0; i < str4.length; i += 8) {
+            var size = Math.min(8, str4.length - i), value = parseInt(str4.substring(i, i + size), radix);
             if (size < 8) {
               var power = fromNumber(pow_dbl(radix, size));
               result = result.mul(power).add(fromNumber(value));
@@ -50661,12 +50661,12 @@ var require_bom_handling = __commonJS({
       this.encoder = encoder;
       this.addBOM = true;
     }
-    PrependBOMWrapper.prototype.write = function(str2) {
+    PrependBOMWrapper.prototype.write = function(str4) {
       if (this.addBOM) {
-        str2 = BOMChar + str2;
+        str4 = BOMChar + str4;
         this.addBOM = false;
       }
-      return this.encoder.write(str2);
+      return this.encoder.write(str4);
     };
     PrependBOMWrapper.prototype.end = function() {
       return this.encoder.end();
@@ -50765,31 +50765,31 @@ var require_internal = __commonJS({
     function InternalEncoder(options, codec2) {
       this.enc = codec2.enc;
     }
-    InternalEncoder.prototype.write = function(str2) {
-      return Buffer2.from(str2, this.enc);
+    InternalEncoder.prototype.write = function(str4) {
+      return Buffer2.from(str4, this.enc);
     };
     InternalEncoder.prototype.end = function() {
     };
     function InternalEncoderBase64(options, codec2) {
       this.prevStr = "";
     }
-    InternalEncoderBase64.prototype.write = function(str2) {
-      str2 = this.prevStr + str2;
-      var completeQuads = str2.length - str2.length % 4;
-      this.prevStr = str2.slice(completeQuads);
-      str2 = str2.slice(0, completeQuads);
-      return Buffer2.from(str2, "base64");
+    InternalEncoderBase64.prototype.write = function(str4) {
+      str4 = this.prevStr + str4;
+      var completeQuads = str4.length - str4.length % 4;
+      this.prevStr = str4.slice(completeQuads);
+      str4 = str4.slice(0, completeQuads);
+      return Buffer2.from(str4, "base64");
     };
     InternalEncoderBase64.prototype.end = function() {
       return Buffer2.from(this.prevStr, "base64");
     };
     function InternalEncoderCesu8(options, codec2) {
     }
-    InternalEncoderCesu8.prototype.write = function(str2) {
-      var buf = Buffer2.alloc(str2.length * 3);
+    InternalEncoderCesu8.prototype.write = function(str4) {
+      var buf = Buffer2.alloc(str4.length * 3);
       var bufIdx = 0;
-      for (var i = 0; i < str2.length; i++) {
-        var charCode = str2.charCodeAt(i);
+      for (var i = 0; i < str4.length; i++) {
+        var charCode = str4.charCodeAt(i);
         if (charCode < 128) {
           buf[bufIdx++] = charCode;
         } else if (charCode < 2048) {
@@ -50870,25 +50870,25 @@ var require_internal = __commonJS({
     function InternalEncoderUtf8(options, codec2) {
       this.highSurrogate = "";
     }
-    InternalEncoderUtf8.prototype.write = function(str2) {
+    InternalEncoderUtf8.prototype.write = function(str4) {
       if (this.highSurrogate) {
-        str2 = this.highSurrogate + str2;
+        str4 = this.highSurrogate + str4;
         this.highSurrogate = "";
       }
-      if (str2.length > 0) {
-        var charCode = str2.charCodeAt(str2.length - 1);
+      if (str4.length > 0) {
+        var charCode = str4.charCodeAt(str4.length - 1);
         if (charCode >= 55296 && charCode < 56320) {
-          this.highSurrogate = str2[str2.length - 1];
-          str2 = str2.slice(0, str2.length - 1);
+          this.highSurrogate = str4[str4.length - 1];
+          str4 = str4.slice(0, str4.length - 1);
         }
       }
-      return Buffer2.from(str2, this.enc);
+      return Buffer2.from(str4, this.enc);
     };
     InternalEncoderUtf8.prototype.end = function() {
       if (this.highSurrogate) {
-        var str2 = this.highSurrogate;
+        var str4 = this.highSurrogate;
         this.highSurrogate = "";
-        return Buffer2.from(str2, this.enc);
+        return Buffer2.from(str4, this.enc);
       }
     };
   }
@@ -50915,8 +50915,8 @@ var require_utf32 = __commonJS({
       this.isLE = codec2.isLE;
       this.highSurrogate = 0;
     }
-    Utf32Encoder.prototype.write = function(str2) {
-      var src = Buffer2.from(str2, "ucs2");
+    Utf32Encoder.prototype.write = function(str4) {
+      var src = Buffer2.from(str4, "ucs2");
       var dst = Buffer2.alloc(src.length * 2);
       var write32 = this.isLE ? dst.writeUInt32LE : dst.writeUInt32BE;
       var offset = 0;
@@ -51037,8 +51037,8 @@ var require_utf32 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder(options.defaultEncoding || "utf-32le", options);
     }
-    Utf32AutoEncoder.prototype.write = function(str2) {
-      return this.encoder.write(str2);
+    Utf32AutoEncoder.prototype.write = function(str4) {
+      return this.encoder.write(str4);
     };
     Utf32AutoEncoder.prototype.end = function() {
       return this.encoder.end();
@@ -51138,8 +51138,8 @@ var require_utf16 = __commonJS({
     Utf16BECodec.prototype.bomAware = true;
     function Utf16BEEncoder() {
     }
-    Utf16BEEncoder.prototype.write = function(str2) {
-      var buf = Buffer2.from(str2, "ucs2");
+    Utf16BEEncoder.prototype.write = function(str4) {
+      var buf = Buffer2.from(str4, "ucs2");
       for (var i = 0; i < buf.length; i += 2) {
         var tmp = buf[i];
         buf[i] = buf[i + 1];
@@ -51188,8 +51188,8 @@ var require_utf16 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder("utf-16le", options);
     }
-    Utf16Encoder.prototype.write = function(str2) {
-      return this.encoder.write(str2);
+    Utf16Encoder.prototype.write = function(str4) {
+      return this.encoder.write(str4);
     };
     Utf16Encoder.prototype.end = function() {
       return this.encoder.end();
@@ -51285,8 +51285,8 @@ var require_utf7 = __commonJS({
     function Utf7Encoder(options, codec2) {
       this.iconv = codec2.iconv;
     }
-    Utf7Encoder.prototype.write = function(str2) {
-      return Buffer2.from(str2.replace(nonDirectChars, function(chunk) {
+    Utf7Encoder.prototype.write = function(str4) {
+      return Buffer2.from(str4.replace(nonDirectChars, function(chunk) {
         return "+" + (chunk === "+" ? "" : this.iconv.encode(chunk, "utf16-be").toString("base64").replace(/=+$/, "")) + "-";
       }.bind(this)));
     };
@@ -51370,14 +51370,14 @@ var require_utf7 = __commonJS({
       this.base64Accum = Buffer2.alloc(6);
       this.base64AccumIdx = 0;
     }
-    Utf7IMAPEncoder.prototype.write = function(str2) {
+    Utf7IMAPEncoder.prototype.write = function(str4) {
       var inBase64 = this.inBase64;
       var base64Accum = this.base64Accum;
       var base64AccumIdx = this.base64AccumIdx;
-      var buf = Buffer2.alloc(str2.length * 5 + 10);
+      var buf = Buffer2.alloc(str4.length * 5 + 10);
       var bufIdx = 0;
-      for (var i2 = 0; i2 < str2.length; i2++) {
-        var uChar = str2.charCodeAt(i2);
+      for (var i2 = 0; i2 < str4.length; i2++) {
+        var uChar = str4.charCodeAt(i2);
         if (uChar >= 32 && uChar <= 126) {
           if (inBase64) {
             if (base64AccumIdx > 0) {
@@ -51518,10 +51518,10 @@ var require_sbcs_codec = __commonJS({
     function SBCSEncoder(options, codec2) {
       this.encodeBuf = codec2.encodeBuf;
     }
-    SBCSEncoder.prototype.write = function(str2) {
-      var buf = Buffer2.alloc(str2.length);
-      for (var i = 0; i < str2.length; i++) {
-        buf[i] = this.encodeBuf[str2.charCodeAt(i)];
+    SBCSEncoder.prototype.write = function(str4) {
+      var buf = Buffer2.alloc(str4.length);
+      for (var i = 0; i < str4.length; i++) {
+        buf[i] = this.encodeBuf[str4.charCodeAt(i)];
       }
       return buf;
     };
@@ -52395,8 +52395,8 @@ var require_dbcs_codec = __commonJS({
       this.defaultCharSingleByte = codec2.defCharSB;
       this.gb18030 = codec2.gb18030;
     }
-    DBCSEncoder.prototype.write = function(str2) {
-      var newBuf = Buffer2.alloc(str2.length * (this.gb18030 ? 4 : 3));
+    DBCSEncoder.prototype.write = function(str4) {
+      var newBuf = Buffer2.alloc(str4.length * (this.gb18030 ? 4 : 3));
       var leadSurrogate = this.leadSurrogate;
       var seqObj = this.seqObj;
       var nextChar = -1;
@@ -52404,8 +52404,8 @@ var require_dbcs_codec = __commonJS({
       var j = 0;
       while (true) {
         if (nextChar === -1) {
-          if (i2 == str2.length) break;
-          var uCode = str2.charCodeAt(i2++);
+          if (i2 == str4.length) break;
+          var uCode = str4.charCodeAt(i2++);
         } else {
           var uCode = nextChar;
           nextChar = -1;
@@ -54243,10 +54243,10 @@ var require_lib3 = __commonJS({
     module.exports.encodings = null;
     module.exports.defaultCharUnicode = "\uFFFD";
     module.exports.defaultCharSingleByte = "?";
-    module.exports.encode = function encode3(str2, encoding, options) {
-      str2 = "" + (str2 || "");
+    module.exports.encode = function encode3(str4, encoding, options) {
+      str4 = "" + (str4 || "");
       var encoder = module.exports.getEncoder(encoding, options);
-      var res = encoder.write(str2);
+      var res = encoder.write(str4);
       var trail = encoder.end();
       return trail && trail.length > 0 ? Buffer2.concat([res, trail]) : res;
     };
@@ -54374,9 +54374,9 @@ var require_string2 = __commonJS({
     var decoderCache = createLRU({
       max: 500
     });
-    exports.decode = function(buffer, encoding, start, end, options) {
+    exports.decode = function(buffer, encoding, start2, end, options) {
       if (Buffer.isEncoding(encoding)) {
-        return buffer.toString(encoding, start, end);
+        return buffer.toString(encoding, start2, end);
       }
       let decoder;
       if (!options) {
@@ -54394,7 +54394,7 @@ var require_string2 = __commonJS({
           decoderCache.set(decoderKey, decoder);
         }
       }
-      const res = decoder.write(buffer.slice(start, end));
+      const res = decoder.write(buffer.slice(start2, end));
       const trail = decoder.end();
       return trail ? res + trail : res;
     };
@@ -54514,12 +54514,12 @@ var require_packet = __commonJS({
     var Types = require_types();
     var INVALID_DATE = /* @__PURE__ */ new Date(NaN);
     var pad = "000000000000";
-    function leftPad(num2, value) {
+    function leftPad(num4, value) {
       const s = value.toString();
-      if (s.length >= num2) {
+      if (s.length >= num4) {
         return s;
       }
-      return (pad + s).slice(-num2);
+      return (pad + s).slice(-num4);
     }
     var minus = "-".charCodeAt(0);
     var plus = "+".charCodeAt(0);
@@ -54527,12 +54527,12 @@ var require_packet = __commonJS({
     var exponent = "e".charCodeAt(0);
     var exponentCapital = "E".charCodeAt(0);
     var Packet = class _Packet {
-      constructor(id, buffer, start, end) {
+      constructor(id, buffer, start2, end) {
         this.sequenceId = id;
         this.numPackets = 1;
         this.buffer = buffer;
-        this.start = start;
-        this.offset = start + 4;
+        this.start = start2;
+        this.offset = start2 + 4;
         this.end = end;
       }
       // ==============================
@@ -54558,8 +54558,8 @@ var require_packet = __commonJS({
       haveMoreData() {
         return this.end > this.offset;
       }
-      skip(num2) {
-        this.offset += num2;
+      skip(num4) {
+        this.offset += num4;
       }
       readInt8() {
         return this.buffer[this.offset++];
@@ -54730,14 +54730,14 @@ var require_packet = __commonJS({
           }
           return new Date(y, m - 1, d, H, M, S, ms);
         }
-        let str2 = this.readDateTimeString(6, "T", null);
-        if (!str2) {
+        let str4 = this.readDateTimeString(6, "T", null);
+        if (!str4) {
           return INVALID_DATE;
         }
-        if (str2.length === 10) {
-          str2 += "T00:00:00";
+        if (str4.length === 10) {
+          str4 += "T00:00:00";
         }
-        return new Date(str2 + timezone);
+        return new Date(str4 + timezone);
       }
       readDateTimeString(decimals, timeSep, columnType) {
         const length = this.readInt8();
@@ -54748,37 +54748,37 @@ var require_packet = __commonJS({
         let M = 0;
         let S = 0;
         let ms = 0;
-        let str2;
+        let str4;
         if (length > 3) {
           y = this.readInt16();
           m = this.readInt8();
           d = this.readInt8();
-          str2 = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
+          str4 = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
         }
         if (length > 6) {
           H = this.readInt8();
           M = this.readInt8();
           S = this.readInt8();
-          str2 += `${timeSep || " "}${[
+          str4 += `${timeSep || " "}${[
             leftPad(2, H),
             leftPad(2, M),
             leftPad(2, S)
           ].join(":")}`;
         } else if (columnType === Types.DATETIME) {
-          str2 += " 00:00:00";
+          str4 += " 00:00:00";
         }
         if (length > 10) {
           ms = this.readInt32();
-          str2 += ".";
+          str4 += ".";
           if (decimals) {
             ms = leftPad(6, ms);
             if (ms.length > decimals) {
               ms = ms.substring(0, decimals);
             }
           }
-          str2 += ms;
+          str4 += ms;
         }
-        return str2;
+        return str4;
       }
       // TIME - value as a string, Can be negative
       readTimeString(convertTtoMs) {
@@ -54832,13 +54832,13 @@ var require_packet = __commonJS({
         return this.readBuffer(len);
       }
       readNullTerminatedString(encoding) {
-        const start = this.offset;
+        const start2 = this.offset;
         let end = this.offset;
         while (end < this.end && this.buffer[end] !== 0) {
           end = end + 1;
         }
         this.offset = end + 1;
-        return StringParser.decode(this.buffer, encoding, start, end);
+        return StringParser.decode(this.buffer, encoding, start2, end);
       }
       // TODO reuse?
       readString(len, encoding) {
@@ -54867,7 +54867,7 @@ var require_packet = __commonJS({
           return Number(s);
         }
         let result = 0;
-        const start = this.offset;
+        const start2 = this.offset;
         const end = this.offset + len;
         let sign = 1;
         if (len === 0) {
@@ -54877,20 +54877,20 @@ var require_packet = __commonJS({
           this.offset++;
           sign = -1;
         }
-        let str2;
+        let str4;
         const numDigits = end - this.offset;
         if (supportBigNumbers) {
           if (numDigits >= 15) {
-            str2 = this.readString(end - this.offset, "binary");
-            result = parseInt(str2, 10);
+            str4 = this.readString(end - this.offset, "binary");
+            result = parseInt(str4, 10);
             if (Number.isSafeInteger(sign * result)) {
               return sign * result;
             }
-            return sign === -1 ? `-${str2}` : str2;
+            return sign === -1 ? `-${str4}` : str4;
           }
           if (numDigits > 16) {
-            str2 = this.readString(end - this.offset);
-            return sign === -1 ? `-${str2}` : str2;
+            str4 = this.readString(end - this.offset);
+            return sign === -1 ? `-${str4}` : str4;
           }
         }
         if (this.buffer[this.offset] === plus) {
@@ -54901,14 +54901,14 @@ var require_packet = __commonJS({
           result += this.buffer[this.offset] - 48;
           this.offset++;
         }
-        const num2 = result * sign;
+        const num4 = result * sign;
         if (!supportBigNumbers) {
-          return num2;
+          return num4;
         }
-        if (Number.isSafeInteger(num2)) {
-          return num2;
+        if (Number.isSafeInteger(num4)) {
+          return num4;
         }
-        return this.buffer.toString("ascii", start, end);
+        return this.buffer.toString("ascii", start2, end);
       }
       // note that if value of inputNumberAsString is bigger than MAX_SAFE_INTEGER
       // ( or smaller than MIN_SAFE_INTEGER ) the parseIntNoBigCheck result might be
@@ -54947,7 +54947,7 @@ var require_packet = __commonJS({
         }
         const bufferLength = buffer.length;
         function parseGeometry() {
-          let x, y, i, j, numPoints, numRings, num2, line;
+          let x, y, i, j, numPoints, numRings, num4, line;
           let result = null;
           if (offset + 5 > bufferLength) {
             return null;
@@ -55028,13 +55028,13 @@ var require_packet = __commonJS({
               if (offset + 4 > bufferLength) {
                 return null;
               }
-              num2 = byteOrder ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
+              num4 = byteOrder ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
               offset += 4;
-              if (num2 > (bufferLength - offset) / 9) {
+              if (num4 > (bufferLength - offset) / 9) {
                 return null;
               }
               result = [];
-              for (i = num2; i > 0; i--) {
+              for (i = num4; i > 0; i--) {
                 result.push(parseGeometry());
               }
               break;
@@ -55076,14 +55076,14 @@ var require_packet = __commonJS({
         );
       }
       parseDateTime(timezone) {
-        const str2 = this.readLengthCodedString("binary");
-        if (str2 === null) {
+        const str4 = this.readLengthCodedString("binary");
+        if (str4 === null) {
           return null;
         }
         if (!timezone || timezone === "local") {
-          return new Date(str2);
+          return new Date(str4);
         }
-        return /* @__PURE__ */ new Date(`${str2}${timezone}`);
+        return /* @__PURE__ */ new Date(`${str4}${timezone}`);
       }
       parseFloat(len) {
         if (len === null) {
@@ -55093,9 +55093,9 @@ var require_packet = __commonJS({
           return 0;
         }
         if (len > 17) {
-          const str2 = this.buffer.toString("utf8", this.offset, this.offset + len);
+          const str4 = this.buffer.toString("utf8", this.offset, this.offset + len);
           this.offset += len;
-          return Number.parseFloat(str2);
+          return Number.parseFloat(str4);
         }
         let result = 0;
         const end = this.offset + len;
@@ -55115,10 +55115,10 @@ var require_packet = __commonJS({
             pastDot = true;
             this.offset++;
           } else if (charCode === exponent || charCode === exponentCapital) {
-            const start = end - len;
-            const str2 = this.buffer.toString("utf8", start, end);
+            const start2 = end - len;
+            const str4 = this.buffer.toString("utf8", start2, end);
             this.offset = end;
-            return Number.parseFloat(str2);
+            return Number.parseFloat(str4);
           } else {
             result *= 10;
             result += this.buffer[this.offset] - 48;
@@ -55311,8 +55311,8 @@ var require_packet = __commonJS({
         }
         return 9;
       }
-      static lengthCodedStringLength(str2, encoding) {
-        const buf = StringParser.encode(str2, encoding);
+      static lengthCodedStringLength(str4, encoding) {
+        const buf = StringParser.encode(str4, encoding);
         const slen = buf.length;
         return _Packet.lengthCodedNumberLength(slen) + slen;
       }
@@ -55382,19 +55382,19 @@ var require_packet_parser = __commonJS({
         this.onPacket(packet);
       }
       executeStart(chunk) {
-        let start = 0;
+        let start2 = 0;
         const end = chunk.length;
-        while (end - start >= 3) {
-          this.length = readPacketLength(chunk, start);
-          if (end - start >= this.length + this.packetHeaderLength) {
-            const sequenceId = chunk[start + 3];
+        while (end - start2 >= 3) {
+          this.length = readPacketLength(chunk, start2);
+          if (end - start2 >= this.length + this.packetHeaderLength) {
+            const sequenceId = chunk[start2 + 3];
             if (this.length < MAX_PACKET_LENGTH && this.largePacketParts.length === 0) {
               this.onPacket(
                 new Packet(
                   sequenceId,
                   chunk,
-                  start,
-                  start + this.packetHeaderLength + this.length
+                  start2,
+                  start2 + this.packetHeaderLength + this.length
                 )
               );
             } else {
@@ -55403,27 +55403,27 @@ var require_packet_parser = __commonJS({
               }
               this.largePacketParts.push(
                 chunk.slice(
-                  start + this.packetHeaderLength,
-                  start + this.packetHeaderLength + this.length
+                  start2 + this.packetHeaderLength,
+                  start2 + this.packetHeaderLength + this.length
                 )
               );
               if (this.length < MAX_PACKET_LENGTH) {
                 this._flushLargePacket();
               }
             }
-            start += this.packetHeaderLength + this.length;
+            start2 += this.packetHeaderLength + this.length;
           } else {
-            this.buffer = [chunk.slice(start + 3, end)];
-            this.bufferLength = end - start - 3;
+            this.buffer = [chunk.slice(start2 + 3, end)];
+            this.bufferLength = end - start2 - 3;
             this.execute = _PacketParser.prototype.executePayload;
             return;
           }
         }
-        if (end - start > 0) {
-          this.headerLen = end - start;
-          this.length = chunk[start];
+        if (end - start2 > 0) {
+          this.headerLen = end - start2;
+          this.length = chunk[start2];
           if (this.headerLen === 2) {
-            this.length = chunk[start] + (chunk[start + 1] << 8);
+            this.length = chunk[start2] + (chunk[start2 + 1] << 8);
             this.execute = _PacketParser.prototype.executeHeader3;
           } else {
             this.execute = _PacketParser.prototype.executeHeader2;
@@ -55431,17 +55431,17 @@ var require_packet_parser = __commonJS({
         }
       }
       executePayload(chunk) {
-        let start = 0;
+        let start2 = 0;
         const end = chunk.length;
         const remainingPayload = this.length - this.bufferLength + this.packetHeaderLength - 3;
-        if (end - start >= remainingPayload) {
+        if (end - start2 >= remainingPayload) {
           const payload = Buffer.allocUnsafe(this.length + this.packetHeaderLength);
           let offset = 3;
           for (let i = 0; i < this.buffer.length; ++i) {
             this.buffer[i].copy(payload, offset);
             offset += this.buffer[i].length;
           }
-          chunk.copy(payload, offset, start, start + remainingPayload);
+          chunk.copy(payload, offset, start2, start2 + remainingPayload);
           const sequenceId = payload[3];
           if (this.length < MAX_PACKET_LENGTH && this.largePacketParts.length === 0) {
             this.onPacket(
@@ -55469,9 +55469,9 @@ var require_packet_parser = __commonJS({
           this.buffer = [];
           this.bufferLength = 0;
           this.execute = _PacketParser.prototype.executeStart;
-          start += remainingPayload;
-          if (end - start > 0) {
-            return this.execute(chunk.slice(start, end));
+          start2 += remainingPayload;
+          if (end - start2 > 0) {
+            return this.execute(chunk.slice(start2, end));
           }
         } else {
           this.buffer.push(chunk);
@@ -56561,12 +56561,12 @@ var require_column_definition = __commonJS({
     var addString = function(name) {
       Object.defineProperty(ColumnDefinition.prototype, name, {
         get: function() {
-          const start = this[`_${name}Start`];
-          const end = start + this[`_${name}Length`];
+          const start2 = this[`_${name}Start`];
+          const end = start2 + this[`_${name}Length`];
           const val = StringParser.decode(
             this._buf,
             this.encoding === "binary" ? this._clientEncoding : this.encoding,
-            start,
+            start2,
             end
           );
           Object.defineProperty(this, name, {
@@ -57895,8 +57895,8 @@ var require_mysql_native_password = __commonJS({
 var require_mysql_clear_password = __commonJS({
   "node_modules/mysql2/lib/auth_plugins/mysql_clear_password.js"(exports, module) {
     "use strict";
-    function bufferFromStr(str2) {
-      return Buffer.from(`${str2}\0`);
+    function bufferFromStr(str4) {
+      return Buffer.from(`${str4}\0`);
     }
     var create_mysql_clear_password_plugin = (pluginOptions) => function mysql_clear_password_plugin({ connection, command }) {
       const password = command.password || pluginOptions.password || connection.config.password;
@@ -58072,13 +58072,13 @@ var require_compressed_protocol = __commonJS({
     }
     function writeCompressed(buffer) {
       const MAX_COMPRESSED_LENGTH = 16777210;
-      let start;
+      let start2;
       if (buffer.length > MAX_COMPRESSED_LENGTH) {
-        for (start = 0; start < buffer.length; start += MAX_COMPRESSED_LENGTH) {
+        for (start2 = 0; start2 < buffer.length; start2 += MAX_COMPRESSED_LENGTH) {
           writeCompressed.call(
             // eslint-disable-next-line no-invalid-this
             this,
-            buffer.slice(start, start + MAX_COMPRESSED_LENGTH)
+            buffer.slice(start2, start2 + MAX_COMPRESSED_LENGTH)
           );
         }
         return;
@@ -58897,9 +58897,9 @@ var require_charsets = __commonJS({
 var require_helpers = __commonJS({
   "node_modules/mysql2/lib/helpers.js"(exports) {
     "use strict";
-    function srcEscape(str2) {
+    function srcEscape(str4) {
       return JSON.stringify({
-        [str2]: 1
+        [str4]: 1
       }).slice(1, -3);
     }
     exports.srcEscape = srcEscape;
@@ -58926,11 +58926,11 @@ ${msg2}:
 `);
     }
     exports.printDebugWithCode = printDebugWithCode;
-    function typeMatch(type, list, Types) {
-      if (Array.isArray(list)) {
-        return list.some((t) => type === Types[t]);
+    function typeMatch(type, list2, Types) {
+      if (Array.isArray(list2)) {
+        return list2.some((t) => type === Types[t]);
       }
-      return !!list;
+      return !!list2;
     }
     exports.typeMatch = typeMatch;
     var privateObjectProps = /* @__PURE__ */ new Set([
@@ -58957,8 +58957,8 @@ ${msg2}:
 var require_is_property = __commonJS({
   "node_modules/is-property/is-property.js"(exports, module) {
     "use strict";
-    function isProperty(str2) {
-      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str2);
+    function isProperty(str4) {
+      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str4);
     }
     module.exports = isProperty;
   }
@@ -59046,10 +59046,10 @@ var require_generate_function = __commonJS({
       var lines = [];
       var indent = 0;
       var vars = {};
-      var push2 = function(str2) {
+      var push2 = function(str4) {
         var spaces = "";
         while (spaces.length < indent * 2) spaces += "  ";
-        lines.push(spaces + str2);
+        lines.push(spaces + str4);
       };
       var pushLine = function(line2) {
         if (INDENT_END.test(line2.trim()[0]) && INDENT_START.test(line2[line2.length - 1])) {
@@ -59089,14 +59089,14 @@ var require_generate_function = __commonJS({
         if (!vars[name]) vars[name] = 0;
         return name + (vars[name]++ || "");
       };
-      line.property = function(obj, name) {
+      line.property = function(obj2, name) {
         if (arguments.length === 1) {
-          name = obj;
-          obj = "";
+          name = obj2;
+          obj2 = "";
         }
         name = name + "";
-        if (isProperty(name)) return obj ? obj + "." + name : name;
-        return obj ? obj + "[" + JSON.stringify(name) + "]" : JSON.stringify(name);
+        if (isProperty(name)) return obj2 ? obj2 + "." + name : name;
+        return obj2 ? obj2 + "[" + JSON.stringify(name) + "]" : JSON.stringify(name);
       };
       line.toString = function() {
         return lines.join("\n");
@@ -61281,11 +61281,11 @@ var require_connection_config = __commonJS({
         return defaultFlags;
       }
       static getCharsetNumber(charset) {
-        const num2 = Charsets[charset.toUpperCase()];
-        if (num2 === void 0) {
+        const num4 = Charsets[charset.toUpperCase()];
+        if (num4 === void 0) {
           throw new TypeError(`Unknown charset '${charset}'`);
         }
-        return num2;
+        return num4;
       }
       static getSSLProfile(name) {
         if (!SSLProfiles) {
@@ -61393,7 +61393,7 @@ var require_named_placeholders = __commonJS({
     function parse4(query) {
       let ppos = RE_PARAM.exec(query);
       let curpos = 0;
-      let start = 0;
+      let start2 = 0;
       let end;
       const parts = [];
       let inQuote = false;
@@ -61426,10 +61426,10 @@ var require_named_placeholders = __commonJS({
             }
           }
           if (!inQuote) {
-            parts.push(query.substring(start, end));
+            parts.push(query.substring(start2, end));
             tokens.push(ppos[0].length === 1 ? qcnt++ : ppos[1]);
-            start = end + ppos[0].length;
-            lastTokenEndPos = start;
+            start2 = end + ppos[0].length;
+            lastTokenEndPos = start2;
           }
           curpos = end + ppos[0].length;
         } while (ppos = RE_PARAM.exec(query));
@@ -61479,7 +61479,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join32(tree) {
+      function join33(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61505,7 +61505,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join32(parse4(query));
+        tree = join33(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -64208,14 +64208,14 @@ async function doRefresh(current, dataDirOverride, isRetry = false) {
       `/auth/refresh returned HTTP ${res.status}: ${body.slice(0, 500)}`
     );
   }
-  const json2 = await res.json();
+  const json3 = await res.json();
   const updated = {
     ...current,
-    access_token: json2.access_token,
-    refresh_token: json2.refresh_token,
-    expires_at: json2.expires_at,
-    refresh_expires_at: json2.refresh_expires_at,
-    user_id: json2.user_id
+    access_token: json3.access_token,
+    refresh_token: json3.refresh_token,
+    expires_at: json3.expires_at,
+    refresh_expires_at: json3.refresh_expires_at,
+    user_id: json3.user_id
   };
   await saveDatahub(updated, dataDirOverride);
   return updated;
@@ -64306,23 +64306,23 @@ async function doMintServiceToken(service, dataDirOverride) {
     );
   }
   const rawJson = await res.json();
-  const json2 = rawJson && typeof rawJson === "object" ? rawJson : {};
-  if (!json2.access_token) {
+  const json3 = rawJson && typeof rawJson === "object" ? rawJson : {};
+  if (!json3.access_token) {
     throw new Error("/oauth/token returned no access_token.");
   }
-  const expiresInSec = typeof json2.expires_in === "number" ? json2.expires_in : 3600;
+  const expiresInSec = typeof json3.expires_in === "number" ? json3.expires_in : 3600;
   await writeServiceTokenCache(
     {
-      access_token: json2.access_token,
+      access_token: json3.access_token,
       expires_at: new Date(Date.now() + expiresInSec * 1e3).toISOString(),
       client_id: service.client_id,
       // Persist the attribution echo (feedback #10) when present so telemetry
       // can self-attribute this automation without a network call.
-      ...json2.attribution ? { attribution: json2.attribution } : {}
+      ...json3.attribution ? { attribution: json3.attribution } : {}
     },
     dataDirOverride
   );
-  return json2.access_token;
+  return json3.access_token;
 }
 async function readServiceTokenCache(dataDirOverride) {
   try {
@@ -64703,7 +64703,7 @@ async function claimQueue(dataDirOverride) {
     liveBuf = b;
   }
   let known = liveBuf.length;
-  const { events, malformed } = parseJsonl(adopted.reduce((acc, a) => joinJsonl(acc, a.raw), liveBuf.toString("utf-8")));
+  const { events, malformed: malformed2 } = parseJsonl(adopted.reduce((acc, a) => joinJsonl(acc, a.raw), liveBuf.toString("utf-8")));
   const handBack = async (bytes) => {
     try {
       await mkdir3(dir, { recursive: true });
@@ -64714,8 +64714,8 @@ async function claimQueue(dataDirOverride) {
       return false;
     }
   };
-  if (malformed.length && !await deadLetterLines(malformed, dataDirOverride)) {
-    if (!await handBack(Buffer.from(malformed.join("\n") + "\n", "utf-8"))) return "busy";
+  if (malformed2.length && !await deadLetterLines(malformed2, dataDirOverride)) {
+    if (!await handBack(Buffer.from(malformed2.join("\n") + "\n", "utf-8"))) return "busy";
   }
   const rescueLate = async () => {
     const buf = await readSettled(mine);
@@ -64731,7 +64731,7 @@ async function claimQueue(dataDirOverride) {
     for (const a of adopted) await unlinkWithRetry(a.path);
     return null;
   }
-  if (adopted.length || malformed.length || took !== "ok") {
+  if (adopted.length || malformed2.length || took !== "ok") {
     if (took === "ok" && !await rescueLate()) return "busy";
     const body = toJsonl(events);
     if (!await atomicWriteOk(mine, body)) return "busy";
@@ -64977,18 +64977,18 @@ ${b}`;
 }
 function parseJsonl(raw) {
   const events = [];
-  const malformed = [];
+  const malformed2 = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
     try {
       const v = JSON.parse(line);
       if (v && typeof v === "object" && !Array.isArray(v)) events.push(v);
-      else malformed.push(line);
+      else malformed2.push(line);
     } catch {
-      malformed.push(line);
+      malformed2.push(line);
     }
   }
-  return { events, malformed };
+  return { events, malformed: malformed2 };
 }
 function toJsonl(records) {
   return records.length ? records.map((r) => JSON.stringify(r)).join("\n") + "\n" : "";
@@ -65420,12 +65420,38 @@ var init_events = __esm({
       AdsProfilesListed: "ads.profiles_listed",
       AdsOperationsListed: "ads.operations_listed",
       AdsCalled: "ads.called",
+      // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
+      // `ads call --propose`). Payloads carry the proposal id, operation id,
+      // items count and guard counts, never the change set, rationale or evidence.
+      AdsProposalCreated: "ads.proposal_created",
+      AdsProposalApproved: "ads.proposal_approved",
+      AdsProposalRejected: "ads.proposal_rejected",
+      AdsProposalCommitted: "ads.proposal_committed",
+      AdsProposalFailed: "ads.proposal_failed",
       // Walmart Connect call surface (lib/walmart/ads-call.ts + `mixshift walmart
       // ads`). Operation id + advertiser id + environment + outcome; never the
       // payload (campaign data is the advertiser's business data).
       WalmartAdsAdvertisersListed: "walmart.ads.advertisers_listed",
       WalmartAdsOperationsListed: "walmart.ads.operations_listed",
       WalmartAdsCalled: "walmart.ads.called",
+      // Shelf data surface (lib/shelf/client.ts + `mixshift shelf`). Call kind,
+      // country, whether a zip was given, surface/page, fresh, observed age,
+      // outcome and duration; never the subject (an ASIN, a keyword or a seller
+      // id is the user's own research) and never the answer.
+      ShelfCatalogListed: "shelf.catalog_listed",
+      ShelfZipsListed: "shelf.zips_listed",
+      ShelfUsageRead: "shelf.usage_read",
+      ShelfCalled: "shelf.called",
+      // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
+      // it reaches for the user: payload.label from the closed list in its
+      // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never
+      // the ASIN, keyword, seller, price or zip. Which shelf jobs people run, and
+      // what the shelf told them.
+      ShelfInsight: "shelf.insight",
+      // The on-demand featured-offer check (`mixshift shelf featured-offer-check`):
+      // one event per invocation with phase, ASIN/flagged/shelf-call counts, the
+      // reason counts at the end, outcome; never an ASIN, a seller or a price.
+      ShelfFeaturedOfferCheck: "shelf.featured_offer_check",
       // MixShift Intelligence service consumption (lib/intelligence/ +
       // `mixshift intelligence`). Privacy: capture insight id + run id + duration
       // + outcome + cache hit/miss + limitation COUNT only — never the insight
@@ -65449,6 +65475,12 @@ var init_events = __esm({
       ForecastBudgetSet: "forecast.budget_set",
       ForecastBudgetCleared: "forecast.budget_cleared",
       ForecastBudgetFailed: "forecast.budget_failed",
+      // Forecast settings (`mixshift forecast settings`, lib/forecast/settings.ts):
+      // the account settings a computed forecast stands on (the DSP switch, missing
+      // ad spend as zero). Payload: scope_id, op, the setting NAMES changed, failure_kind.
+      ForecastSettingsShown: "forecast.settings_shown",
+      ForecastSettingsSet: "forecast.settings_set",
+      ForecastSettingsFailed: "forecast.settings_failed",
       // Forecast sub-brands (`mixshift forecast sub-brand`, lib/forecast/sub-brand.ts):
       // a brand inside an account, defined by labels, that a forecast reads on its own
       // (mx-ops#134). Payload: scope_id, seller, kind, item_values / campaign_values
@@ -65675,14 +65707,14 @@ function decodeAccessTokenClaims(token) {
     const parts = token.split(".");
     if (parts.length < 2 || !parts[1]) return {};
     const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json2 = Buffer.from(b64, "base64").toString("utf8");
-    if (!json2) return {};
-    const obj = JSON.parse(json2);
-    if (obj === null || typeof obj !== "object") return {};
+    const json3 = Buffer.from(b64, "base64").toString("utf8");
+    if (!json3) return {};
+    const obj2 = JSON.parse(json3);
+    if (obj2 === null || typeof obj2 !== "object") return {};
     return {
-      user_id: nonEmptyString(obj.sub) ?? nonEmptyString(obj.user_id),
-      email: nonEmptyString(obj.email),
-      actor: nonEmptyString(obj.actor)
+      user_id: nonEmptyString(obj2.sub) ?? nonEmptyString(obj2.user_id),
+      email: nonEmptyString(obj2.email),
+      actor: nonEmptyString(obj2.actor)
     };
   } catch {
     return {};
@@ -67117,11 +67149,11 @@ function stripSqlComments(sql) {
   }
   return out2;
 }
-function firstKeywordAtDepth0(sql, start, keyword) {
+function firstKeywordAtDepth0(sql, start2, keyword) {
   let depth = 0;
   let quote2 = null;
   const kw = keyword.toLowerCase();
-  for (let i = start; i < sql.length; i++) {
+  for (let i = start2; i < sql.length; i++) {
     const ch = sql[i];
     if (quote2) {
       if ((quote2 === "'" || quote2 === '"') && ch === "\\") {
@@ -67202,7 +67234,7 @@ function splitTopLevelTerms(projection) {
   const terms = [];
   let depth = 0;
   let quote2 = null;
-  let start = 0;
+  let start2 = 0;
   for (let i = 0; i < projection.length; i++) {
     const ch = projection[i];
     if (quote2) {
@@ -67221,11 +67253,11 @@ function splitTopLevelTerms(projection) {
     else if (ch === ")") {
       if (depth > 0) depth--;
     } else if (ch === "," && depth === 0) {
-      terms.push(projection.slice(start, i).trim());
-      start = i + 1;
+      terms.push(projection.slice(start2, i).trim());
+      start2 = i + 1;
     }
   }
-  terms.push(projection.slice(start).trim());
+  terms.push(projection.slice(start2).trim());
   return terms;
 }
 function parsePrimaryTable(sql, fromEnd) {
@@ -67380,12 +67412,12 @@ async function runDatahubQuery(creds, sql, params, options) {
       options.dataDirOverride
     );
     headersMs = Date.now() - t0;
-    const json2 = await readDatahubJson(res);
+    const json3 = await readDatahubJson(res);
     const durationMs = Date.now() - t0;
-    if (json2.ok === true) {
-      const rows = json2.rows ?? [];
-      const rowCount = json2.rowCount ?? rows.length;
-      const serverDuration = json2.durationMs ?? durationMs;
+    if (json3.ok === true) {
+      const rows = json3.rows ?? [];
+      const rowCount = json3.rowCount ?? rows.length;
+      const serverDuration = json3.durationMs ?? durationMs;
       void track(
         {
           event_name: EventName.QueryExecuted,
@@ -67406,24 +67438,24 @@ async function runDatahubQuery(creds, sql, params, options) {
       );
       return { ok: true, rows, rowCount, durationMs: serverDuration };
     }
-    const serverKind = json2.kind ?? "unknown";
-    const serverFriendly = json2.friendly ?? json2.message ?? "Query failed";
+    const serverKind = json3.kind ?? "unknown";
+    const serverFriendly = json3.friendly ?? json3.message ?? "Query failed";
     const failure2 = {
       ok: false,
       kind: serverKind,
-      table_name: json2.table_name,
-      raw_code: json2.raw_code,
-      message: json2.message ?? "Query failed",
+      table_name: json3.table_name,
+      raw_code: json3.raw_code,
+      message: json3.message ?? "Query failed",
       friendly: syntaxErrorGuidance(
         capFriendlyMessage(serverKind, serverFriendly),
-        { kind: serverKind, raw_code: json2.raw_code, message: json2.message },
+        { kind: serverKind, raw_code: json3.raw_code, message: json3.message },
         sql,
         options.query_shape?.table
       ),
       durationMs,
       // Cap-rejection size hints (Track B), when the service provides them.
-      ...typeof json2.actualRowCount === "number" ? { actualRowCount: json2.actualRowCount } : {},
-      ...typeof json2.actualBytes === "number" ? { actualBytes: json2.actualBytes } : {}
+      ...typeof json3.actualRowCount === "number" ? { actualRowCount: json3.actualRowCount } : {},
+      ...typeof json3.actualBytes === "number" ? { actualBytes: json3.actualBytes } : {}
     };
     void track(
       {
@@ -67539,12 +67571,12 @@ async function runNamedQuery(id, options = {}) {
       options.dataDirOverride
     );
     headersMs = Date.now() - t0;
-    const json2 = await readDatahubJson(res);
+    const json3 = await readDatahubJson(res);
     const durationMs = Date.now() - t0;
-    if (json2.ok === true) {
-      const rows = json2.rows ?? [];
-      const rowCount = json2.rowCount ?? rows.length;
-      const serverDuration = json2.durationMs ?? durationMs;
+    if (json3.ok === true) {
+      const rows = json3.rows ?? [];
+      const rowCount = json3.rowCount ?? rows.length;
+      const serverDuration = json3.durationMs ?? durationMs;
       void track(
         {
           event_name: EventName.QueryExecuted,
@@ -67556,8 +67588,8 @@ async function runNamedQuery(id, options = {}) {
             auth_path: "datahub",
             named_query: true,
             server_duration_ms: serverDuration,
-            revision: json2.revision,
-            applied_params: json2.applied_params
+            revision: json3.revision,
+            applied_params: json3.applied_params
           }
         },
         options.dataDirOverride
@@ -67567,18 +67599,18 @@ async function runNamedQuery(id, options = {}) {
         rows,
         rowCount,
         durationMs: serverDuration,
-        revision: json2.revision,
-        appliedParams: json2.applied_params
+        revision: json3.revision,
+        appliedParams: json3.applied_params
       };
     }
     const failure2 = {
       ok: false,
-      kind: json2.kind ?? "unknown",
-      table_name: json2.table_name,
-      raw_code: json2.raw_code,
-      missing_params: json2.missing_params,
-      message: json2.message ?? `Named query ${id} failed`,
-      friendly: json2.friendly ?? json2.message ?? `Named query ${id} failed`,
+      kind: json3.kind ?? "unknown",
+      table_name: json3.table_name,
+      raw_code: json3.raw_code,
+      missing_params: json3.missing_params,
+      message: json3.message ?? `Named query ${id} failed`,
+      friendly: json3.friendly ?? json3.message ?? `Named query ${id} failed`,
       durationMs
     };
     void track(
@@ -68118,15 +68150,15 @@ function createContextSyncClient(options = {}) {
           void 0,
           TEXT_DOC_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && Array.isArray(json2.brands)) {
+        const json3 = await parseEnvelope(res);
+        if (json3.ok === true && Array.isArray(json3.brands)) {
           return {
             ok: true,
-            brands: json2.brands,
-            ...typeof json2.retired_count === "number" ? { retired_count: json2.retired_count } : {}
+            brands: json3.brands,
+            ...typeof json3.retired_count === "number" ? { retired_count: json3.retired_count } : {}
           };
         }
-        return failureFromEnvelope(json2, res.status);
+        return failureFromEnvelope(json3, res.status);
       } catch (err) {
         return failureFromException(err);
       }
@@ -68142,11 +68174,11 @@ function createContextSyncClient(options = {}) {
           void 0,
           timeoutMs
         );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && typeof json2.doc === "object" && json2.doc !== null) {
-          return { ok: true, doc: json2.doc };
+        const json3 = await parseEnvelope(res);
+        if (json3.ok === true && typeof json3.doc === "object" && json3.doc !== null) {
+          return { ok: true, doc: json3.doc };
         }
-        return failureFromEnvelope(json2, res.status);
+        return failureFromEnvelope(json3, res.status);
       } catch (err) {
         return failureFromException(err);
       }
@@ -68155,11 +68187,11 @@ function createContextSyncClient(options = {}) {
       try {
         const timeoutMs = input.doc_type === "corpus" ? CORPUS_TIMEOUT_MS : TEXT_DOC_TIMEOUT_MS;
         const res = await authedRequest("PUT", "/api/context/doc", input, timeoutMs);
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true && (json2.status === "created" || json2.status === "updated" || json2.status === "noop") && typeof json2.revision === "number") {
-          return { ok: true, status: json2.status, revision: json2.revision };
+        const json3 = await parseEnvelope(res);
+        if (json3.ok === true && (json3.status === "created" || json3.status === "updated" || json3.status === "noop") && typeof json3.revision === "number") {
+          return { ok: true, status: json3.status, revision: json3.revision };
         }
-        return failureFromEnvelope(json2, res.status);
+        return failureFromEnvelope(json3, res.status);
       } catch (err) {
         return failureFromException(err);
       }
@@ -68172,9 +68204,9 @@ function createContextSyncClient(options = {}) {
           input,
           ASSIGNMENT_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope(res);
-        if (json2.ok === true) return { ok: true };
-        return failureFromEnvelope(json2, res.status);
+        const json3 = await parseEnvelope(res);
+        if (json3.ok === true) return { ok: true };
+        return failureFromEnvelope(json3, res.status);
       } catch (err) {
         return failureFromException(err);
       }
@@ -68187,25 +68219,25 @@ function createContextSyncClient(options = {}) {
           input,
           LIFECYCLE_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope(res);
-        return lifecycleResultFrom(json2, res.status, input.brand_slug);
+        const json3 = await parseEnvelope(res);
+        return lifecycleResultFrom(json3, res.status, input.brand_slug);
       } catch (err) {
         return failureFromException(err);
       }
     }
   };
 }
-function lifecycleResultFrom(json2, httpStatus, requestedSlug) {
-  const isUnknownBrand = json2.error === "unknown_brand" || json2.kind === "unknown_brand";
+function lifecycleResultFrom(json3, httpStatus, requestedSlug) {
+  const isUnknownBrand = json3.error === "unknown_brand" || json3.kind === "unknown_brand";
   if (httpStatus >= 200 && httpStatus < 300) {
-    if ((json2.state === "active" || json2.state === "retired") && typeof json2.changed === "boolean") {
+    if ((json3.state === "active" || json3.state === "retired") && typeof json3.changed === "boolean") {
       return {
         ok: true,
-        brand_slug: typeof json2.brand_slug === "string" ? json2.brand_slug : requestedSlug,
-        state: json2.state,
-        changed: json2.changed,
-        at: typeof json2.at === "string" ? json2.at : (/* @__PURE__ */ new Date()).toISOString(),
-        ...typeof json2.event_id === "string" ? { event_id: json2.event_id } : {}
+        brand_slug: typeof json3.brand_slug === "string" ? json3.brand_slug : requestedSlug,
+        state: json3.state,
+        changed: json3.changed,
+        at: typeof json3.at === "string" ? json3.at : (/* @__PURE__ */ new Date()).toISOString(),
+        ...typeof json3.event_id === "string" ? { event_id: json3.event_id } : {}
       };
     }
     return lifecycleFailure(
@@ -68230,14 +68262,14 @@ function lifecycleResultFrom(json2, httpStatus, requestedSlug) {
   }
   const base = failureFromEnvelope(
     {
-      ...json2,
+      ...json3,
       // The lifecycle route may answer with a bare {error:'...'} code; keep it
       // as the message when no friendly text came with it.
-      ...json2.friendly === void 0 && json2.message === void 0 && typeof json2.error === "string" ? { message: json2.error } : {}
+      ...json3.friendly === void 0 && json3.message === void 0 && typeof json3.error === "string" ? { message: json3.error } : {}
     },
     httpStatus
   );
-  const friendly = httpStatus === 403 && json2.friendly === void 0 ? "This sign-in is not allowed to change your team's shared brand context. Sign in with an account that can edit brand context, or ask your MixShift admin." : base.friendly;
+  const friendly = httpStatus === 403 && json3.friendly === void 0 ? "This sign-in is not allowed to change your team's shared brand context. Sign in with an account that can edit brand context, or ask your MixShift admin." : base.friendly;
   return {
     ok: false,
     kind: httpStatus === 403 && base.kind === "unknown" ? "insufficient_scope" : base.kind,
@@ -68266,15 +68298,15 @@ async function parseEnvelope(res) {
     return {};
   }
 }
-function failureFromEnvelope(json2, httpStatus) {
-  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS.has(json2.kind) ? json2.kind : "unknown";
-  const friendly = json2.friendly ?? json2.message ?? `Context service returned HTTP ${httpStatus}.`;
+function failureFromEnvelope(json3, httpStatus) {
+  const kind = json3.kind !== void 0 && KNOWN_FAILURE_KINDS.has(json3.kind) ? json3.kind : "unknown";
+  const friendly = json3.friendly ?? json3.message ?? `Context service returned HTTP ${httpStatus}.`;
   return {
     ok: false,
     kind,
-    message: json2.message ?? friendly,
+    message: json3.message ?? friendly,
     friendly,
-    ...kind === "revision_conflict" && json2.server ? { server: json2.server } : {}
+    ...kind === "revision_conflict" && json3.server ? { server: json3.server } : {}
   };
 }
 function failureFromException(err) {
@@ -68343,8 +68375,8 @@ async function listLocalBrands(dataDirOverride) {
 }
 async function readLocalDocs(brandSlug, dataDirOverride) {
   const docs = [];
-  for (const { docType, pathFor } of TEXT_DOCS) {
-    const path2 = pathFor(brandSlug, dataDirOverride);
+  for (const { docType, pathFor: pathFor2 } of TEXT_DOCS) {
+    const path2 = pathFor2(brandSlug, dataDirOverride);
     const content = await readFileIfPresent(path2);
     if (content === null) continue;
     docs.push({ key: docType, docType, path: path2, content, hash: hashContent(content) });
@@ -69204,15 +69236,15 @@ function createTimelineClient(options = {}) {
           void 0,
           TIMELINE_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && Array.isArray(json2.events)) {
+        const json3 = await parseEnvelope2(res);
+        if (json3.ok === true && Array.isArray(json3.events)) {
           return {
             ok: true,
-            events: json2.events,
-            ...typeof json2.next_cursor === "string" ? { next_cursor: json2.next_cursor } : {}
+            events: json3.events,
+            ...typeof json3.next_cursor === "string" ? { next_cursor: json3.next_cursor } : {}
           };
         }
-        return failureFromEnvelope2(json2, res.status);
+        return failureFromEnvelope2(json3, res.status);
       } catch (err) {
         return failureFromException2(err);
       }
@@ -69225,15 +69257,15 @@ function createTimelineClient(options = {}) {
           input,
           opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && typeof json2.id === "string") {
+        const json3 = await parseEnvelope2(res);
+        if (json3.ok === true && typeof json3.id === "string") {
           return {
             ok: true,
-            id: json2.id,
-            ...json2.duplicate === true ? { duplicate: true } : {}
+            id: json3.id,
+            ...json3.duplicate === true ? { duplicate: true } : {}
           };
         }
-        return failureFromEnvelope2(json2, res.status);
+        return failureFromEnvelope2(json3, res.status);
       } catch (err) {
         return failureFromException2(err);
       }
@@ -69246,15 +69278,15 @@ function createTimelineClient(options = {}) {
           input,
           opts.timeoutMs ?? TIMELINE_TIMEOUT_MS
         );
-        const json2 = await parseEnvelope2(res);
-        if (json2.ok === true && typeof json2.event === "object" && json2.event !== null && typeof json2.corroboration_id === "string") {
+        const json3 = await parseEnvelope2(res);
+        if (json3.ok === true && typeof json3.event === "object" && json3.event !== null && typeof json3.corroboration_id === "string") {
           return {
             ok: true,
-            event: json2.event,
-            corroboration_id: json2.corroboration_id
+            event: json3.event,
+            corroboration_id: json3.corroboration_id
           };
         }
-        return failureFromEnvelope2(json2, res.status);
+        return failureFromEnvelope2(json3, res.status);
       } catch (err) {
         return failureFromException2(err);
       }
@@ -69293,13 +69325,13 @@ async function parseEnvelope2(res) {
     return {};
   }
 }
-function failureFromEnvelope2(json2, httpStatus) {
-  const kind = json2.kind !== void 0 && KNOWN_FAILURE_KINDS2.has(json2.kind) ? json2.kind : "unknown";
-  const friendly = json2.friendly ?? json2.message ?? `Timeline service returned HTTP ${httpStatus}.`;
+function failureFromEnvelope2(json3, httpStatus) {
+  const kind = json3.kind !== void 0 && KNOWN_FAILURE_KINDS2.has(json3.kind) ? json3.kind : "unknown";
+  const friendly = json3.friendly ?? json3.message ?? `Timeline service returned HTTP ${httpStatus}.`;
   return {
     ok: false,
     kind,
-    message: json2.message ?? friendly,
+    message: json3.message ?? friendly,
     friendly
   };
 }
@@ -70736,12 +70768,12 @@ init_schema();
 init_format_error();
 
 // src/lib/utils/set-nested.ts
-function setNested(obj, path2, value) {
+function setNested(obj2, path2, value) {
   if (path2.length === 0) {
     throw new Error("Path cannot be empty.");
   }
   const keys = path2.split(".");
-  let current = obj;
+  let current = obj2;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
     const next = current[key];
@@ -70826,9 +70858,9 @@ function registerProfileCommands(program3) {
     }
   });
 }
-function emitError(err, json2) {
+function emitError(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
     );
@@ -70870,8 +70902,8 @@ function notYetImplemented(command, args) {
 init_load2();
 
 // src/commands/_render-validation.ts
-function renderValidationResult(brandSlug, result, json2) {
-  if (json2) {
+function renderValidationResult(brandSlug, result, json3) {
+  if (json3) {
     if (result.ok) {
       process.stdout.write(
         JSON.stringify(
@@ -70985,18 +71017,18 @@ function renderDiscoveryTableChat(suggestions) {
   if (suggestions.length === 0) {
     return "\nNo brands discovered. Check that your MySQL user has read access to the `seller` table.\n";
   }
-  const esc2 = (s) => s.replace(/\|/g, "\\|");
+  const esc3 = (s) => s.replace(/\|/g, "\\|");
   const lines = [];
   lines.push("| ID | Brand | Accounts | Types | Markets | Ads | Retail |");
   lines.push("| --- | --- | ---: | --- | --- | :-: | :-: |");
   for (const s of suggestions) {
     lines.push(
       "| " + [
-        esc2(s.slug),
-        esc2(s.display_name),
+        esc3(s.slug),
+        esc3(s.display_name),
         String(s.accounts.length),
-        esc2(summarizeAccountTypes(s.accounts.map((a) => a.account_type))),
-        esc2(summarizeMarketplaces(s.accounts.map((a) => a.marketplace))),
+        esc3(summarizeAccountTypes(s.accounts.map((a) => a.account_type))),
+        esc3(summarizeMarketplaces(s.accounts.map((a) => a.marketplace))),
         s.ads_active ? "\u2713" : "\u2717",
         s.retail_active ? "\u2713" : "\u2717"
       ].join(" | ") + " |"
@@ -73792,9 +73824,9 @@ function parseDate(v) {
   return null;
 }
 function daysBetween(startISO, endISO) {
-  const start = /* @__PURE__ */ new Date(startISO + "T00:00:00Z");
+  const start2 = /* @__PURE__ */ new Date(startISO + "T00:00:00Z");
   const end = /* @__PURE__ */ new Date(endISO + "T00:00:00Z");
-  return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1e3));
+  return Math.round((end.getTime() - start2.getTime()) / (24 * 60 * 60 * 1e3));
 }
 function numOrNull(v) {
   if (v === null || v === void 0 || v === "") return null;
@@ -75083,12 +75115,12 @@ var BRAND_FIELD_REGISTRY = {
 var BRAND_FIELD_KEYS = Object.keys(
   BRAND_FIELD_REGISTRY
 );
-function getByPath(obj, path2) {
+function getByPath(obj2, path2) {
   return path2.split(".").reduce((acc, seg) => {
     if (acc == null || typeof acc !== "object") return void 0;
     const key = /^\d+$/.test(seg) ? Number(seg) : seg;
     return acc[key];
-  }, obj);
+  }, obj2);
 }
 function isPresent(v) {
   if (v == null) return false;
@@ -75864,8 +75896,8 @@ async function readStatusFile(slug, dataDirOverride) {
     return null;
   }
 }
-function renderFetchResult(slug, result, json2) {
-  if (json2) {
+function renderFetchResult(slug, result, json3) {
+  if (json3) {
     process.stdout.write(JSON.stringify({ slug, ...result }, null, 2) + "\n");
     return;
   }
@@ -76686,10 +76718,10 @@ function denormalizePercentForStorage(field, v) {
   }
   return v;
 }
-function getByPath2(obj, path2) {
-  if (obj === null || obj === void 0) return void 0;
+function getByPath2(obj2, path2) {
+  if (obj2 === null || obj2 === void 0) return void 0;
   const parts = path2.split(".");
-  let cur = obj;
+  let cur = obj2;
   for (const p of parts) {
     if (cur === null || cur === void 0 || typeof cur !== "object") {
       return void 0;
@@ -76727,9 +76759,9 @@ async function tryReadContextObject(brandSlug, dataDirOverride) {
     return null;
   }
 }
-async function writeContextFile(path2, obj) {
+async function writeContextFile(path2, obj2) {
   await mkdir13(dirname17(path2), { recursive: true });
-  const yamlText = (0, import_yaml14.stringify)(obj, { indent: 2, lineWidth: 0 });
+  const yamlText = (0, import_yaml14.stringify)(obj2, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.tmp`;
   await writeFile13(tmpPath, yamlText, "utf-8");
   try {
@@ -76938,9 +76970,9 @@ function renderBrandConfigCard(payload) {
 }
 function renderFieldLine(state) {
   const idx = state._idx ?? 0;
-  const num2 = idx.toString().padStart(2, " ");
+  const num4 = idx.toString().padStart(2, " ");
   const label = humanLabel(state.field).padEnd(24);
-  return `  ${num2}. ${label}  ${state.display}`;
+  return `  ${num4}. ${label}  ${state.display}`;
 }
 function renderSourceHint(state) {
   switch (state.source) {
@@ -76981,8 +77013,8 @@ ${candidates}`
   }
   return null;
 }
-function emitError2(json2, message) {
-  if (json2) {
+function emitError2(json3, message) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
     );
@@ -77112,22 +77144,22 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
     open_gaps_count
   };
 }
-function resolveAuditPath(obj, path2) {
-  if (obj === null || obj === void 0) return void 0;
+function resolveAuditPath(obj2, path2) {
+  if (obj2 === null || obj2 === void 0) return void 0;
   const arrayWildcard = path2.includes("[]");
   if (arrayWildcard) {
     const [head, tail] = path2.split("[]");
-    const arr = getNested(obj, head.replace(/\.$/, ""));
+    const arr = getNested(obj2, head.replace(/\.$/, ""));
     if (!Array.isArray(arr)) return void 0;
     if (!tail || tail === "") return arr;
     return arr.map((el) => getNested(el, tail.replace(/^\./, "")));
   }
-  return getNested(obj, path2);
+  return getNested(obj2, path2);
 }
-function getNested(obj, path2) {
-  if (!path2) return obj;
+function getNested(obj2, path2) {
+  if (!path2) return obj2;
   const parts = path2.split(".");
-  let cur = obj;
+  let cur = obj2;
   for (const p of parts) {
     if (cur === null || cur === void 0 || typeof cur !== "object") {
       return void 0;
@@ -77148,12 +77180,12 @@ function isAuditMissing(value) {
   }
   return false;
 }
-function isStaleDate(value, now, days = 30) {
+function isStaleDate(value, now, days2 = 30) {
   try {
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return false;
     const ageMs = now.getTime() - d.getTime();
-    return ageMs > days * 24 * 60 * 60 * 1e3;
+    return ageMs > days2 * 24 * 60 * 60 * 1e3;
   } catch {
     return false;
   }
@@ -77692,15 +77724,15 @@ function sectionSeasonality(s) {
     { key: "window", label: "Window" },
     { key: "notes", label: "Notes" }
   ];
-  const str2 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
+  const str4 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
   const brandRows = brandEvents.map((e) => {
-    const start = str2(e.start);
-    const end = str2(e.end);
-    const activeThrough = str2(e.active_through);
+    const start2 = str4(e.start);
+    const end = str4(e.end);
+    const activeThrough = str4(e.active_through);
     return {
-      event: str2(e.id) ?? "(unnamed event)",
-      window: start ? `${start}${end ? ` to ${end}` : " (open-ended)"}` : activeThrough ? `through ${activeThrough}` : end ? `until ${end}` : "\u2014",
-      notes: [str2(e.type)?.replace(/_/g, " "), str2(e.interpretation)].filter(Boolean).join(": ")
+      event: str4(e.id) ?? "(unnamed event)",
+      window: start2 ? `${start2}${end ? ` to ${end}` : " (open-ended)"}` : activeThrough ? `through ${activeThrough}` : end ? `until ${end}` : "\u2014",
+      notes: [str4(e.type)?.replace(/_/g, " "), str4(e.interpretation)].filter(Boolean).join(": ")
     };
   });
   const genericTentpoles = [
@@ -78304,8 +78336,8 @@ async function openInBrowser2(path2) {
   } catch {
   }
 }
-function emitError3(json2, message) {
-  if (json2) {
+function emitError3(json3, message) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
     );
@@ -78515,8 +78547,8 @@ ${candidates}`
   }
   return null;
 }
-function emitError4(json2, message) {
-  if (json2) {
+function emitError4(json3, message) {
+  if (json3) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
     process.stderr.write(`error: ${message}
@@ -78544,11 +78576,11 @@ var CONFIG_MIGRATIONS = [
     type: "percent"
   }
 ];
-function getByPath3(obj, path2) {
+function getByPath3(obj2, path2) {
   return path2.split(".").reduce((acc, seg) => {
     if (acc == null || typeof acc !== "object") return void 0;
     return acc[seg];
-  }, obj);
+  }, obj2);
 }
 function normalizeForOcl(type, value) {
   if (type === "percent" && typeof value === "number") {
@@ -79827,9 +79859,9 @@ async function writeBindingBlock(slug, binding, dataDirOverride) {
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: "binding written" };
 }
-async function writeYamlAtomic2(path2, obj) {
+async function writeYamlAtomic2(path2, obj2) {
   await mkdir16(dirname20(path2), { recursive: true });
-  const yamlText = (0, import_yaml17.stringify)(obj, { indent: 2, lineWidth: 0 });
+  const yamlText = (0, import_yaml17.stringify)(obj2, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.${Date.now()}.tmp`;
   await writeFile16(tmpPath, yamlText, "utf-8");
   await rename14(tmpPath, path2);
@@ -79956,9 +79988,9 @@ async function unsetBindingBlock(slug, dataDirOverride) {
   await pushAfterWrite(slug, { dataDirOverride });
   return { ok: true, detail: "binding unset" };
 }
-async function writeYamlAtomic3(path2, obj) {
+async function writeYamlAtomic3(path2, obj2) {
   await mkdir17(dirname21(path2), { recursive: true });
-  const yamlText = (0, import_yaml18.stringify)(obj, { indent: 2, lineWidth: 0 });
+  const yamlText = (0, import_yaml18.stringify)(obj2, { indent: 2, lineWidth: 0 });
   const tmpPath = `${path2}.${process.pid}.${Date.now()}.tmp`;
   await writeFile17(tmpPath, yamlText, "utf-8");
   await rename15(tmpPath, path2);
@@ -80231,10 +80263,10 @@ function renderPlanItem(item) {
   } else {
     base = `  + "${item.label}": would create "${item.proposed_slug}"`;
   }
-  const money = item.economic_weight > 0 ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend` : "      trailing 365d: no revenue or ad spend found";
+  const money3 = item.economic_weight > 0 ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend` : "      trailing 365d: no revenue or ad spend found";
   const adsDetail = item.has_ads ? `${item.ads_campaign_count} campaign(s)` : item.spend_365d > 0 ? "no live campaigns (the spend above is historical)" : "no campaigns yet";
   const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? "n/a"}]; ads: ${adsDetail}`;
-  const lines = [base, money, detail];
+  const lines = [base, money3, detail];
   if (item.status === "flagged") {
     lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);
     lines.push("      promote it anyway with --apply if that is wrong.");
@@ -80273,8 +80305,8 @@ Demotion preview for "${preview.slug}"`);
   lines.push("");
   return lines.join("\n");
 }
-function emitError5(json2, message) {
-  if (json2) {
+function emitError5(json3, message) {
+  if (json3) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
     process.stderr.write(`error: ${message}
@@ -81864,8 +81896,8 @@ function isPlainObject2(value) {
 }
 function deepMerge(...objects) {
   const output = {};
-  for (const obj of objects) {
-    for (const [key, value] of Object.entries(obj)) {
+  for (const obj2 of objects) {
+    for (const [key, value] of Object.entries(obj2)) {
       const prevValue = output[key];
       output[key] = isPlainObject2(prevValue) && isPlainObject2(value) ? deepMerge(prevValue, value) : value;
     }
@@ -82276,7 +82308,7 @@ function wrapAnsi(string4, columns, options) {
 
 // node_modules/@inquirer/core/dist/lib/utils.js
 function breakLines(content, width) {
-  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str2) => str2.trimEnd())).join("\n");
+  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str4) => str4.trimEnd())).join("\n");
 }
 function readlineWidth() {
   return (0, import_cli_width.default)({ defaultWidth: 80, output: readline().output });
@@ -82342,15 +82374,15 @@ var Emitter = class {
     this.listeners[ev].push(fn);
   }
   removeListener(ev, fn) {
-    const list = this.listeners[ev];
-    const i = list.indexOf(fn);
+    const list2 = this.listeners[ev];
+    const i = list2.indexOf(fn);
     if (i === -1) {
       return;
     }
-    if (i === 0 && list.length === 1) {
-      list.length = 0;
+    if (i === 0 && list2.length === 1) {
+      list2.length = 0;
     } else {
-      list.splice(i, 1);
+      list2.splice(i, 1);
     }
   }
   emit(ev, code, signal) {
@@ -83801,15 +83833,15 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
       `/oauth/service-setup/exchange returned HTTP ${res.status}: ${body.slice(0, 300)}`
     );
   }
-  const json2 = await res.json();
-  if (!json2.client_id || !json2.client_secret) {
+  const json3 = await res.json();
+  if (!json3.client_id || !json3.client_secret) {
     throw new Error("Exchange succeeded but the response carried no credential.");
   }
   return {
-    client_id: json2.client_id,
-    client_secret: json2.client_secret,
-    ...json2.label ? { label: json2.label } : {},
-    ...json2.scopes ? { scopes: json2.scopes } : {}
+    client_id: json3.client_id,
+    client_secret: json3.client_secret,
+    ...json3.label ? { label: json3.label } : {},
+    ...json3.scopes ? { scopes: json3.scopes } : {}
   };
 }
 
@@ -84115,8 +84147,8 @@ function orgAwarenessLine(org) {
   const retired = org.retired ? ` (${org.retired} more retired)` : "";
   return `Your org has ${org.total} brands set up${retired}. ${org.not_local} not yet on this machine.`;
 }
-function renderLoginResult(result, json2, org) {
-  if (json2) {
+function renderLoginResult(result, json3, org) {
+  if (json3) {
     const out2 = { ...result };
     if (org) out2.org_brands = org;
     process.stdout.write(JSON.stringify(out2, null, 2) + "\n");
@@ -84139,11 +84171,14 @@ Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 }
 function registerServiceSetupSubcommand(auth) {
   auth.command("service-setup").description(
-    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from your tenant admin (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_CLIENT_SECRET, never argv."
+    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from your tenant admin (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias MIXSHIFT_CLIENT_SECRET), never argv."
   ).option("--api-base <url>", "mx-legacy-auth service URL.", "https://mcp.mixshift.io").option(
     "--setup-code <code>",
     "One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin."
-  ).option("--client-id <id>", "Service client id (svc_...). Raw path only.").option(
+  ).option(
+    "--client-id <id>",
+    "Service client id (svc_...). Raw path only. Defaults to the MIXSHIFT_SERVICE_CLIENT_ID env var."
+  ).option(
     "--client-secret-file <path>",
     "File containing the client secret (whitespace-trimmed). Raw path only."
   ).option("--label <label>", "Informational label, e.g. svc:my-cron (for telemetry).").option("--skip-verify", "Save without minting a test token.", false).action(async (opts, cmd) => {
@@ -84161,13 +84196,14 @@ function registerServiceSetupSubcommand(auth) {
         label = label ?? exchanged.label;
         via = "setup_code";
       } else {
-        if (!opts.clientId) {
+        const rawClientId = opts.clientId ?? process.env.MIXSHIFT_SERVICE_CLIENT_ID?.trim();
+        if (!rawClientId) {
           throw new Error(
-            "Pass --setup-code SVC-XXXX-XXXX (preferred, from your admin) or --client-id svc_... with the secret via file/env."
+            "Pass --setup-code SVC-XXXX-XXXX (preferred, from your admin) or --client-id svc_... (or MIXSHIFT_SERVICE_CLIENT_ID) with the secret via file/env."
           );
         }
-        clientId = opts.clientId;
-        secret = process.env.MIXSHIFT_CLIENT_SECRET ?? "";
+        clientId = rawClientId;
+        secret = process.env.MIXSHIFT_SERVICE_CLIENT_SECRET?.trim() || process.env.MIXSHIFT_CLIENT_SECRET || "";
         via = secret ? "env" : "secret_file";
         if (opts.clientSecretFile) {
           secret = (await readFile26(opts.clientSecretFile, "utf-8")).trim();
@@ -84175,7 +84211,7 @@ function registerServiceSetupSubcommand(auth) {
         }
         if (!secret) {
           throw new Error(
-            "No client secret supplied. Pass --client-secret-file <path> or set the MIXSHIFT_CLIENT_SECRET env var."
+            "No client secret supplied. Pass --client-secret-file <path> or set the MIXSHIFT_SERVICE_CLIENT_SECRET env var (or the older MIXSHIFT_CLIENT_SECRET)."
           );
         }
       }
@@ -84451,11 +84487,11 @@ async function loadInputsFromFile(path2, opts) {
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error(`${path2} must be an object with email + mysql fields.`);
   }
-  const obj = parsed;
-  if (typeof obj.email !== "string") {
+  const obj2 = parsed;
+  if (typeof obj2.email !== "string") {
     throw new Error(`${path2} is missing a top-level "email" string.`);
   }
-  const mysqlInput = obj.mysql ?? {};
+  const mysqlInput = obj2.mysql ?? {};
   if (opts.passwordFile && mysqlInput.password === void 0) {
     mysqlInput.password = "";
   }
@@ -84466,7 +84502,7 @@ async function loadInputsFromFile(path2, opts) {
     );
   }
   return {
-    email: obj.email,
+    email: obj2.email,
     mysql: mysqlParse.data,
     auto_request_whitelist: opts.requestWhitelist,
     skip_connection_test: opts.skipConnectionTest
@@ -84541,8 +84577,8 @@ For scripted / CI use, pass --from-file <path> with a YAML/JSON file containing 
     skip_connection_test: opts.skipConnectionTest
   };
 }
-function renderResult(result, json2) {
-  if (json2) {
+function renderResult(result, json3) {
+  if (json3) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return;
   }
@@ -84827,9 +84863,9 @@ function isoToDate(s) {
 function isoFromDate(d) {
   return d.toISOString().slice(0, 10);
 }
-function addDays(d, days) {
+function addDays(d, days2) {
   const out2 = new Date(d.getTime());
-  out2.setUTCDate(out2.getUTCDate() + days);
+  out2.setUTCDate(out2.getUTCDate() + days2);
   return out2;
 }
 function addMonths(d, months) {
@@ -84846,9 +84882,9 @@ function lastOfMonth(d) {
   const next = firstOfMonth(addMonths(d, 1));
   return addDays(next, -1);
 }
-function readNumberFromUnknownObject(obj, key, fallback) {
-  if (typeof obj !== "object" || obj === null) return fallback;
-  const value = obj[key];
+function readNumberFromUnknownObject(obj2, key, fallback) {
+  if (typeof obj2 !== "object" || obj2 === null) return fallback;
+  const value = obj2[key];
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
@@ -85369,8 +85405,8 @@ function parseParamOverrides(pairs) {
   }
   return out2;
 }
-function renderResult2(result, json2) {
-  if (json2) {
+function renderResult2(result, json3) {
+  if (json3) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return;
   }
@@ -86325,10 +86361,10 @@ function integerOption(flag, hints = {}) {
     return n;
   };
 }
-function correctedKeyValueFlags(flag, json2) {
+function correctedKeyValueFlags(flag, json3) {
   let parsed;
   try {
-    parsed = JSON.parse(json2);
+    parsed = JSON.parse(json3);
   } catch {
     return null;
   }
@@ -86386,7 +86422,7 @@ function registerDataCommands(program3) {
       const meta3 = await describeTable(table);
       if (!meta3) {
         throw new Error(
-          `Table "${table}" is not in the curated catalog. Run \`mixshift data list-tables\` to see what's documented.`
+          `Table "${table}" is not documented in the curated catalog; \`mixshift data query\` does not require a table to be documented. Run \`mixshift data list-tables\` to see what is documented.`
         );
       }
       if (root.json) {
@@ -86642,9 +86678,9 @@ function renderTableList(tables) {
   const order = ["ad_metrics", "ops_revenue", "inventory", "dimensional", "other"];
   const byCategory = /* @__PURE__ */ new Map();
   for (const t of tables) {
-    const list = byCategory.get(t.category) ?? [];
-    list.push(t);
-    byCategory.set(t.category, list);
+    const list2 = byCategory.get(t.category) ?? [];
+    list2.push(t);
+    byCategory.set(t.category, list2);
   }
   const sortedCategories = [
     ...order.filter((c) => byCategory.has(c)),
@@ -86712,9 +86748,9 @@ function formatCellForMd(v) {
   const s = String(v);
   return s.replace(/\|/g, "\\|");
 }
-function emitQueryFailure(failure2, json2, partialPath) {
+function emitQueryFailure(failure2, json3, partialPath) {
   const incomplete = partialPath !== void 0;
-  if (json2) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify(
         {
@@ -86754,7 +86790,7 @@ function progressReporter(sink) {
     }
   };
 }
-async function runQueryToFile(sql, outPath, json2, dataDir, columnCheck = true) {
+async function runQueryToFile(sql, outPath, json3, dataDir, columnCheck = true) {
   const sink = createCsvFileSink(outPath);
   const report = progressReporter(sink);
   let streamed;
@@ -86773,21 +86809,21 @@ async function runQueryToFile(sql, outPath, json2, dataDir, columnCheck = true) 
     const message = err instanceof Error ? err.message : String(err);
     emitQueryFailure(
       { kind: "unknown", friendly: `Write failed: ${message}` },
-      json2,
+      json3,
       partial2
     );
     return;
   }
   if (!streamed.ok) {
     const partial2 = await sink.finalizePartial();
-    emitQueryFailure(streamed.failure, json2, partial2);
+    emitQueryFailure(streamed.failure, json3, partial2);
     return;
   }
   if (!sink.opened()) await sink.ensureFile();
   await sink.close();
   const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
   const boundaryNote = streamed.boundaryTiesMayVary ? " This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging)." : "";
-  if (json2) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify(
         {
@@ -86813,7 +86849,7 @@ async function runQueryToFile(sql, outPath, json2, dataDir, columnCheck = true) 
     );
   }
 }
-async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnCheck = true) {
+async function runQueryInlineOrTemp(sql, json3, dataDir, ceiling = {}, columnCheck = true) {
   const bufferFirst = [];
   const state = { sink: null, tempPath: "" };
   let report = () => {
@@ -86849,14 +86885,14 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnChe
     const message = err instanceof Error ? err.message : String(err);
     emitQueryFailure(
       { kind: "unknown", friendly: `Write failed: ${message}` },
-      json2,
+      json3,
       state.sink ? partial2 : void 0
     );
     return;
   }
   if (!streamed.ok) {
     const partial2 = state.sink ? await state.sink.finalizePartial() : null;
-    emitQueryFailure(streamed.failure, json2, state.sink ? partial2 : void 0);
+    emitQueryFailure(streamed.failure, json3, state.sink ? partial2 : void 0);
     return;
   }
   if (streamed.paginated) {
@@ -86869,7 +86905,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnChe
     await s.close();
     const orderNote = streamed.outputOrderPositional ? " Rows are ordered by column position (the query ORDER BY could not be preserved across pages); the row SET is complete and correct." : "";
     const boundaryNote = streamed.boundaryTiesMayVary ? " This query uses ORDER BY with a LIMIT; rows tied exactly at the LIMIT boundary can differ between runs (that is inherent to ORDER BY with LIMIT, not the paging)." : "";
-    if (json2) {
+    if (json3) {
       process.stdout.write(
         JSON.stringify(
           {
@@ -86900,7 +86936,7 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnChe
   }
   const plan = planInlineDelivery(bufferFirst, ceiling);
   if (plan.mode === "inline") {
-    if (json2) {
+    if (json3) {
       process.stdout.write(
         JSON.stringify(
           { status: "ok", row_count: streamed.rowCount, duration_ms: streamed.durationMs, rows: bufferFirst },
@@ -86923,11 +86959,11 @@ async function runQueryInlineOrTemp(sql, json2, dataDir, ceiling = {}, columnChe
   } catch (err) {
     const partial2 = await sink.finalizePartial();
     const message = err instanceof Error ? err.message : String(err);
-    emitQueryFailure({ kind: "unknown", friendly: `Write failed: ${message}` }, json2, partial2);
+    emitQueryFailure({ kind: "unknown", friendly: `Write failed: ${message}` }, json3, partial2);
     return;
   }
   const reasonNote = plan.reason === "byte_ceiling" ? `the result is wide/heavy (over ${Math.round(INLINE_BYTE_CEILING / 1024)} KB serialized)` : `the result has more than ${plan.rowCeiling} rows`;
-  if (json2) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify(
         {
@@ -86963,9 +86999,9 @@ function handleAccessDeniedExit(kind) {
   if (kind === "access_denied_table") return 4;
   return 1;
 }
-function emitError6(err, json2) {
+function emitError6(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
     );
@@ -89298,10 +89334,10 @@ function humanizeFieldId(id) {
 function stripContextPrefix(seedPath) {
   return seedPath.replace(/^context\./, "");
 }
-function getByPath4(obj, path2) {
-  if (obj === null || obj === void 0) return void 0;
+function getByPath4(obj2, path2) {
+  if (obj2 === null || obj2 === void 0) return void 0;
   const parts = path2.split(".");
-  let cur = obj;
+  let cur = obj2;
   for (const p of parts) {
     if (cur === null || cur === void 0 || typeof cur !== "object") {
       return void 0;
@@ -89404,10 +89440,10 @@ function renderCaptureNudge(candidates, brandName) {
   return lines.join("\n");
 }
 function renderFieldLine2(entry, labelWidth) {
-  const num2 = entryIndex(entry).toString().padStart(2, " ");
+  const num4 = entryIndex(entry).toString().padStart(2, " ");
   const label = humanLabel2(entry.field).padEnd(labelWidth);
   const value = entry.display;
-  return `  ${num2}. ${label}  ${value}`;
+  return `  ${num4}. ${label}  ${value}`;
 }
 function renderSourceHint2(entry) {
   switch (entry.source) {
@@ -89978,9 +90014,9 @@ async function readJsonIfExists(path2) {
     throw err;
   }
 }
-function extractRows(obj) {
-  if (obj === null || typeof obj !== "object") return [];
-  const rows = obj.rows;
+function extractRows(obj2) {
+  if (obj2 === null || typeof obj2 !== "object") return [];
+  const rows = obj2.rows;
   if (!Array.isArray(rows)) return [];
   return rows.filter(
     (r) => r !== null && typeof r === "object" && !Array.isArray(r)
@@ -90002,8 +90038,8 @@ function stableRowId(row) {
   }
   return null;
 }
-function emitError8(json2, message) {
-  if (json2) {
+function emitError8(json3, message) {
+  if (json3) {
     process.stdout.write(
       JSON.stringify({ status: "error", message }, null, 2) + "\n"
     );
@@ -90067,6 +90103,28 @@ function exitCodeForKind(kind) {
     case "bad_request":
       return 12;
     // Amazon rejected the request itself — terminal, fix and resend
+    case "proposal_not_found":
+    case "proposal_expired":
+    case "proposal_not_approved":
+    case "proposal_hash_mismatch":
+    case "proposal_before_state_unavailable":
+      return 16;
+    // the proposal cannot go forward as it stands: read it, or propose again
+    case "proposal_stale":
+      return 17;
+    // live values changed since the proposal: propose again
+    case "proposal_guard_ack_required":
+      return 18;
+    // a flagged money change needs the approver's acknowledgement
+    case "approval_requires_human":
+      return 19;
+    // approve/reject need a signed-in person, not a machine credential
+    case "proposal_limit_reached":
+      return 20;
+    // too many open proposals: approve, reject or let some expire
+    case "invalid_request":
+      return 15;
+    // MixShift refused it before sending; nothing reached Amazon — read `fix`, change the request
     case "host_unreachable":
     case "download_failed":
     // transient download failure — retry the fetch
@@ -90152,9 +90210,9 @@ function mergeSqpDocuments(docs, fullAsinList) {
         `SQP chunk ${i + 1} of ${docs.length} is missing a dataByAsin array -- not a recognizable SQP report document.`
       );
     }
-    const obj = parsed;
-    if (i === 0) base = obj;
-    dataByAsin = dataByAsin.concat(obj.dataByAsin);
+    const obj2 = parsed;
+    if (i === 0) base = obj2;
+    dataByAsin = dataByAsin.concat(obj2.dataByAsin);
   });
   const merged = { ...base };
   merged.dataByAsin = dataByAsin;
@@ -90199,8 +90257,8 @@ async function startReport(input, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  const runId = typeof json2.runId === "string" ? json2.runId : void 0;
+  const json3 = r.json;
+  const runId = typeof json3.runId === "string" ? json3.runId : void 0;
   if (!runId) {
     return {
       ok: false,
@@ -90212,7 +90270,7 @@ async function startReport(input, opts = {}) {
   return {
     ok: true,
     runId,
-    status: typeof json2.status === "string" ? json2.status : void 0
+    status: typeof json3.status === "string" ? json3.status : void 0
   };
 }
 async function pollReport(runId, opts = {}) {
@@ -90221,12 +90279,12 @@ async function pollReport(runId, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
+  const json3 = r.json;
   return {
     ok: true,
-    ready: json2.ready === true,
-    status: typeof json2.status === "string" ? json2.status : "UNKNOWN",
-    reportId: typeof json2.reportId === "string" ? json2.reportId : void 0
+    ready: json3.ready === true,
+    status: typeof json3.status === "string" ? json3.status : "UNKNOWN",
+    reportId: typeof json3.reportId === "string" ? json3.reportId : void 0
   };
 }
 async function getReportDocumentMeta(runId, opts = {}) {
@@ -90239,11 +90297,11 @@ async function getReportDocumentMeta(runId, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  const ready = json2.ready === true;
-  const status = typeof json2.status === "string" ? json2.status : void 0;
-  const timings = parseTimings(json2.timings);
-  const document = parseDocumentMeta(json2.document);
+  const json3 = r.json;
+  const ready = json3.ready === true;
+  const status = typeof json3.status === "string" ? json3.status : void 0;
+  const timings = parseTimings(json3.timings);
+  const document = parseDocumentMeta(json3.document);
   return { ok: true, ready, status, document, timings };
 }
 async function getReportDocument(runId, opts = {}) {
@@ -90593,9 +90651,9 @@ async function amazonRequest(spec, opts) {
       };
     }
   }
-  let json2;
+  let json3;
   try {
-    json2 = await res.json();
+    json3 = await res.json();
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     if (spec.mayChangeState && (res.ok || res.status >= 500)) {
@@ -90608,13 +90666,13 @@ async function amazonRequest(spec, opts) {
     }
     return statusOnlyFailure(res.status, void 0, spec.surface);
   }
-  if (isServerFailureEnvelope(json2)) {
-    return toReportFailure(json2, res.status, spec.surface);
+  if (isServerFailureEnvelope(json3)) {
+    return toReportFailure(json3, res.status, spec.surface);
   }
   if (!res.ok) {
-    return statusOnlyFailure(res.status, safeJsonPreview(json2), spec.surface);
+    return statusOnlyFailure(res.status, safeJsonPreview(json3), spec.surface);
   }
-  return { ok: true, json: json2 };
+  return { ok: true, json: json3 };
 }
 async function resolveBaseAndToken(opts) {
   let apiBase = opts.apiBaseOverride;
@@ -90683,10 +90741,21 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "approval_mismatch",
   "stale_approval",
   "schema_drift",
+  "proposal_not_found",
+  "proposal_expired",
+  "proposal_not_approved",
+  "proposal_hash_mismatch",
+  "proposal_stale",
+  "proposal_guard_ack_required",
+  "proposal_before_state_unavailable",
+  "approval_requires_human",
+  "proposal_limit_reached",
+  // The gateway's pre-Amazon refusal (P2, 2026-10-15; listed here in P5).
+  "invalid_request",
   "unknown"
 ]);
-function isServerFailureEnvelope(json2) {
-  return typeof json2 === "object" && json2 !== null && json2.ok === false;
+function isServerFailureEnvelope(json3) {
+  return typeof json3 === "object" && json3 !== null && json3.ok === false;
 }
 var AMAZON_ERROR_MAX_CHARS = 1e3;
 var NO_REASON_PLACEHOLDER = "amazon processingstatus=fatal";
@@ -90712,6 +90781,78 @@ function cleanAmazonError(v) {
   if (cleaned.length === 0 || cleaned.toLowerCase() === NO_REASON_PLACEHOLDER) return void 0;
   const points = Array.from(cleaned);
   return points.length > AMAZON_ERROR_MAX_CHARS ? points.slice(0, AMAZON_ERROR_MAX_CHARS).join("") + "... [truncated]" : cleaned;
+}
+var CONTRACT_WORD = /^[a-z_]{1,32}$/;
+var SERVER_TEXT_MAX_CHARS = 2e3;
+function cleanServerText(v) {
+  if (typeof v !== "string") return void 0;
+  const cleaned = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ").trim();
+  if (cleaned.length === 0) return void 0;
+  const points = Array.from(cleaned);
+  return points.length > SERVER_TEXT_MAX_CHARS ? points.slice(0, SERVER_TEXT_MAX_CHARS).join("") + "... [truncated]" : cleaned;
+}
+function fixText(v) {
+  if (typeof v === "string" || typeof v !== "object" || v === null) return v;
+  const o = v;
+  const parts = [o.expected, o.example, o.docsUrl].filter(
+    (p) => typeof p === "string" && p.trim() !== ""
+  );
+  return parts.length > 0 ? parts.join(" ") : void 0;
+}
+function safeDocsUrl(v) {
+  const s = cleanServerText(v);
+  return s !== void 0 && /^https:\/\/[^\s]{1,500}$/.test(s) ? s : void 0;
+}
+function parseRouteIssues(v) {
+  if (!Array.isArray(v) || v.length === 0) return void 0;
+  const paths = [];
+  const parts = [];
+  for (const item of v.slice(0, 20)) {
+    if (typeof item !== "object" || item === null) continue;
+    const o = item;
+    const path2 = Array.isArray(o.path) ? o.path.filter((p) => typeof p === "string" || typeof p === "number").join(".") : "";
+    const msg2 = cleanServerText(o.message);
+    if (path2) paths.push(path2);
+    if (msg2) parts.push(path2 ? `${path2}: ${msg2}` : msg2);
+  }
+  const detail = cleanServerText(parts.join("; "));
+  return { paths, ...detail !== void 0 ? { detail } : {} };
+}
+function paramNames(key, v) {
+  if (!Array.isArray(v)) return {};
+  const names = v.filter((n) => typeof n === "string" && n.trim() !== "").slice(0, 50).map((n) => cleanServerText(n)).filter(Boolean);
+  return names.length > 0 ? { [key]: names } : {};
+}
+function failureContractJson(f) {
+  const amazon = f.amazonStatus !== void 0 || f.amazonErrorCode !== void 0 || f.amazonMessage !== void 0 ? { status: f.amazonStatus, code: f.amazonErrorCode, message: f.amazonMessage } : void 0;
+  return {
+    source: f.source,
+    retryable: f.retryable,
+    fix: f.fix,
+    docs_url: f.docsUrl,
+    missing_params: f.missingParams,
+    conflicting_params: f.conflictingParams,
+    invalid_params: f.invalidParams,
+    amazon
+  };
+}
+function failureContractLines(f) {
+  const lines = [];
+  if (f.fix) lines.push(`  fix: ${f.fix}`);
+  if (f.docsUrl && !(f.fix ?? "").includes(f.docsUrl)) lines.push(`  docs: ${f.docsUrl}`);
+  if (f.retryable === false && (f.source === "request" || f.kind === "invalid_request")) {
+    lines.push("  Not retryable as sent: change the request before calling again.");
+  }
+  return lines;
+}
+function failureContractTelemetry(f) {
+  return {
+    // Contract values are short snake_case words; anything else is not one,
+    // and free-form server text does not go to telemetry.
+    ...f.source !== void 0 && CONTRACT_WORD.test(f.source) ? { source: f.source } : {},
+    ...f.retryable !== void 0 ? { retryable: f.retryable } : {},
+    ...f.fix !== void 0 ? { has_fix: true } : {}
+  };
 }
 function classifyAmazonError(text) {
   const t = text.toLowerCase();
@@ -90739,37 +90880,99 @@ function classifyAmazonError(text) {
   }
   return "other";
 }
-function toReportFailure(json2, httpStatus, surface) {
-  const rawKind = typeof json2.kind === "string" ? json2.kind : "";
+function toReportFailure(json3, httpStatus, surface) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
   const recognized = KNOWN_KINDS.has(rawKind);
-  const amazonErrorCode = strOrUndef(json2.amazon_error_code);
-  const amazonError = cleanAmazonError(json2.amazon_error);
-  const kind = recognized ? rawKind : safeKindForStatus(httpStatus, amazonErrorCode);
-  const rawFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
+  const amazon = typeof json3.amazon === "object" && json3.amazon !== null ? json3.amazon : {};
+  const amazonErrorCode = strOrUndef(amazon.code) ?? strOrUndef(json3.amazon_error_code);
+  const amazonStatus = numOrUndef(amazon.status) ?? numOrUndef(json3.status);
+  const amazonMessage = cleanServerText(amazon.message ?? json3.amazon_message);
+  const amazonError = cleanAmazonError(json3.amazon_error);
+  const source = cleanServerText(json3.source);
+  const kind = recognized ? rawKind : safeKindForStatus(httpStatus, amazonErrorCode, source);
+  const fix = cleanServerText(fixText(json3.fix));
+  const docsUrl = safeDocsUrl(json3.docsUrl);
+  const issues = parseRouteIssues(json3.issues);
+  const rawFriendly = typeof json3.friendly === "string" ? json3.friendly : void 0;
   const serverFriendly = kind === "report_fatal" && amazonError === void 0 && rawFriendly !== void 0 ? rawFriendly.replace(/\s*See amazon_error for the reason Amazon gave\.?/, " Check the report type and date range.").trim() : rawFriendly;
-  const message = typeof json2.message === "string" ? json2.message : void 0;
+  const message = typeof json3.message === "string" ? json3.message : issues?.detail;
+  const proposalId = cleanProposalToken(json3.proposalId);
+  const proposalStatus = cleanProposalToken(json3.proposalStatus)?.toUpperCase();
+  const friendly = kind === "proposal_not_approved" && proposalStatus !== void 0 ? proposalNotApprovedText(proposalStatus) : serverFriendly ?? defaultFriendly(kind, surface);
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly(kind, surface),
+    friendly,
     message,
-    amazonSellerId: strOrUndef(json2.amazonSellerId),
-    reportType: strOrUndef(json2.reportType),
-    retryAfterMs: numOrUndef(json2.retryAfterMs),
-    reportId: strOrUndef(json2.reportId),
-    status: strOrUndef(json2.status),
-    candidates: parseCandidates(json2.candidates),
+    amazonSellerId: strOrUndef(json3.amazonSellerId),
+    reportType: strOrUndef(json3.reportType),
+    retryAfterMs: numOrUndef(json3.retryAfterMs),
+    reportId: strOrUndef(json3.reportId),
+    status: strOrUndef(json3.status),
+    candidates: parseCandidates(json3.candidates),
     httpStatus,
+    ...proposalId !== void 0 ? { proposalId } : {},
+    ...proposalStatus !== void 0 ? { proposalStatus } : {},
+    ...parseDrift(json3.drift) !== void 0 ? { drift: parseDrift(json3.drift) } : {},
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     ...amazonErrorCode !== void 0 ? { amazonErrorCode } : {},
-    ...numOrUndef(json2.status) !== void 0 ? { amazonStatus: numOrUndef(json2.status) } : {},
-    ...json2.responsePayload !== void 0 ? { responsePayload: json2.responsePayload } : {},
+    ...amazonStatus !== void 0 ? { amazonStatus } : {},
+    ...amazonMessage !== void 0 ? { amazonMessage } : {},
+    ...source !== void 0 ? { source } : {},
+    ...typeof json3.retryable === "boolean" ? { retryable: json3.retryable } : {},
+    ...fix !== void 0 ? { fix } : {},
+    ...docsUrl !== void 0 ? { docsUrl } : {},
+    ...paramNames("missingParams", json3.missing_params),
+    ...paramNames("conflictingParams", json3.conflicting_params),
+    ...paramNames("invalidParams", json3.invalid_params ?? issues?.paths),
+    ...json3.responsePayload !== void 0 ? { responsePayload: json3.responsePayload } : {},
     ...amazonError !== void 0 ? { amazonError } : {},
-    ...strOrUndef(json2.responseText) !== void 0 ? { responseText: strOrUndef(json2.responseText) } : {},
-    ...strOrUndef(json2.requestOutcome) !== void 0 ? { requestOutcome: strOrUndef(json2.requestOutcome) } : {},
-    ...typeof json2.automaticRetry === "boolean" ? { automaticRetry: json2.automaticRetry } : {},
-    ...json2.concurrencyCap === true ? { concurrencyCap: true } : {}
+    ...strOrUndef(json3.responseText) !== void 0 ? { responseText: strOrUndef(json3.responseText) } : {},
+    ...strOrUndef(json3.requestOutcome) !== void 0 ? { requestOutcome: strOrUndef(json3.requestOutcome) } : {},
+    ...typeof json3.automaticRetry === "boolean" ? { automaticRetry: json3.automaticRetry } : {},
+    ...json3.concurrencyCap === true ? { concurrencyCap: true } : {}
   };
+}
+function cleanProposalToken(v) {
+  if (typeof v !== "string") return void 0;
+  const t = v.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  return t === "" ? void 0 : t;
+}
+function proposalNotApprovedText(status) {
+  switch (status) {
+    case "PROPOSED":
+      return "This proposal is still waiting for approval, so it cannot be committed. Nothing was changed. A person has to approve it first.";
+    case "COMMITTING":
+      return "Another commit of this proposal is in flight right now. Do not send it again: wait, then check its state with `mixshift ads proposals show`. Nothing new was sent.";
+    case "COMMITTED":
+      return "This proposal was already committed, so it was not sent again. Nothing new was changed. See the audit id with `mixshift ads proposals show`.";
+    case "UNCERTAIN":
+      return "An earlier commit of this proposal ended uncertain: Amazon may have applied it. It was not sent again. Re-list the targeted entities and check them first, and do not propose it again until you have.";
+    case "FAILED":
+      return "An earlier commit of this proposal failed (Amazon refused it, nothing was applied), so it cannot be committed again. Propose the change again if it is still wanted.";
+    case "REJECTED":
+      return "This proposal was rejected, so it can never be committed. Nothing was changed. Propose the change again if it is still wanted.";
+    case "EXPIRED":
+      return "This proposal expired before it was approved and committed. Nothing was changed. Propose the change again.";
+    case "STALE":
+      return "This proposal went stale: the live values moved after it was written. Nothing was changed. Propose the change again from the current values.";
+    default:
+      return `This proposal is in state ${status}, not APPROVED, so it cannot be committed. Nothing was changed. Check it with \`mixshift ads proposals show\`.`;
+  }
+}
+function parseDrift(v) {
+  if (!Array.isArray(v)) return void 0;
+  const out2 = [];
+  for (const item of v.slice(0, 50)) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+    const row = {};
+    for (const [k, val] of Object.entries(item).slice(0, 20)) {
+      if (val === null || typeof val === "number" || typeof val === "boolean") row[k] = val;
+      else if (typeof val === "string") row[k] = val.slice(0, 200);
+    }
+    out2.push(row);
+  }
+  return out2.length > 0 ? out2 : void 0;
 }
 function parseCandidates(v) {
   if (!Array.isArray(v)) return void 0;
@@ -90799,8 +91002,9 @@ function statusOnlyFailure(httpStatus, detail, surface) {
     httpStatus
   };
 }
-function safeKindForStatus(httpStatus, amazonErrorCode) {
+function safeKindForStatus(httpStatus, amazonErrorCode, source) {
   if (httpStatus === 400 && amazonErrorCode) return "bad_request";
+  if (httpStatus === 400 && source === "request") return "invalid_request";
   if (httpStatus === 429) return "throttled";
   return "unknown";
 }
@@ -90874,12 +91078,32 @@ function defaultFriendly(kind, surface) {
       return "Amazon says the advertising account this merchant is connected through does not have access to it. The MixShift connection itself is working, so re-authorizing will not change this. Check that the advertising login has access to this advertiser in Amazon Ads, or contact MixShift support so the merchant can be re-mapped. Retrying unchanged will not help.";
     case "bad_request":
       return `${requestLabel(surface)} was rejected by Amazon because of the request itself, not a MixShift or Amazon outage. Retrying it unchanged will not help.`;
+    case "invalid_request":
+      return `${requestLabel(surface)} was refused by MixShift before anything was sent to Amazon: something in the request has to change. Retrying it unchanged will fail the same way.`;
     case "too_many_items":
       return "That is too many items for a single synchronous call. Start it as a background run (--async) and poll it, or send fewer items. Retrying it unchanged will not help.";
     case "restricted_report":
       return surface === "report" ? "Amazon rejected this report as restricted. It requires a Restricted Data Token / PII role that MixShift does not hold. Pull the report in its default (non-PII) form, or choose a different report." : "Amazon denied access to this operation. It may need a role or restricted-data access that MixShift does not hold, or this merchant's authorization may predate that role and need re-authorizing.";
     case "merchant_not_found":
       return "No Amazon merchant matched that selector. Run `mixshift amazon merchants` to see which merchants you can pull for.";
+    case "proposal_not_found":
+      return "No proposal with that id exists for this account. Run `mixshift ads proposals list` to see them.";
+    case "proposal_expired":
+      return "This proposal expired before it was committed. Nothing was changed. Propose the change again.";
+    case "proposal_not_approved":
+      return "This proposal is not in an approved state, so it cannot be committed. Nothing was changed. Check its state with `mixshift ads proposals show`.";
+    case "proposal_hash_mismatch":
+      return "The proposal on file is not the one that was approved. Nothing was changed. Fetch it again with `mixshift ads proposals show` and review it.";
+    case "proposal_stale":
+      return "The live values changed after this proposal was written, so it was not applied. Nothing was changed. Propose the change again from the current values.";
+    case "proposal_guard_ack_required":
+      return "This proposal changes a money value by more than the safety threshold. The person approving it must pass --acknowledge-guard to confirm they saw that.";
+    case "proposal_before_state_unavailable":
+      return "An item in this proposal is missing from the live account snapshot, so the values to check against are unavailable and it cannot be written or committed safely. Re-list the entities to confirm the ids, then propose the change again.";
+    case "approval_requires_human":
+      return "Approval has to come from a person's own sign-in, in a different session from the one that proposed it. Service credentials and scheduled routines cannot approve or reject. Ask the person to approve from their own session or the claude.ai app.";
+    case "proposal_limit_reached":
+      return "This account already has the maximum number of open proposals. Approve, reject or wait for some to expire, then propose again.";
     case "throttled":
       return `Amazon is rate-limiting ${requestPlural(surface)} right now. Wait a moment and retry.`;
     case "report_fatal":
@@ -90894,7 +91118,7 @@ function defaultFriendly(kind, surface) {
       return "Your MixShift session expired. Run `mixshift auth login` to re-authenticate.";
     case "unknown":
     default:
-      return `${requestLabel(surface)} failed unexpectedly. Try again shortly.`;
+      return `${requestLabel(surface)} failed unexpectedly. Try it once more; if it fails again, tell MixShift with \`mixshift feedback\` rather than retrying.`;
   }
 }
 function strOrUndef(v) {
@@ -90903,12 +91127,12 @@ function strOrUndef(v) {
 function numOrUndef(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 }
-function safeJsonPreview(json2) {
+function safeJsonPreview(json3) {
   try {
-    const s = JSON.stringify(json2);
+    const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
   } catch {
-    return String(json2);
+    return String(json3);
   }
 }
 
@@ -91407,7 +91631,9 @@ function registerPollRunCommand(pricing) {
               failure_kind: result.kind,
               ...result.httpStatus ? { http_status: result.httpStatus } : {},
               // Contract drift marker, same as the other surfaces (mx-ops#43).
-              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+              // Gateway contract (mx-ops#144): enums and a flag only.
+              ...failureContractTelemetry(result)
             }
           },
           root.dataDir
@@ -91463,7 +91689,9 @@ function registerGetRunResultCommand(pricing) {
               failure_kind: result.kind,
               ...result.httpStatus ? { http_status: result.httpStatus } : {},
               // Contract drift marker, same as the other surfaces (mx-ops#43).
-              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
+              ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+              // Gateway contract (mx-ops#144): enums and a flag only.
+              ...failureContractTelemetry(result)
             }
           },
           root.dataDir
@@ -91583,27 +91811,36 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
         ...result.httpStatus ? { http_status: result.httpStatus } : {},
         // Contract drift: the service sent a `kind` this build does not know,
         // so the class came from the status, not the wire (mx-ops#43).
-        ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}
+        ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+        // Gateway contract (mx-ops#144): enums and a flag only.
+        ...failureContractTelemetry(result)
       }
     },
     dataDir
   );
 }
-function emitFailure2(failure2, json2) {
-  if (json2) {
-    writeJson({ status: "failed", ...failure2 });
+function emitFailure2(failure2, json3) {
+  if (json3) {
+    writeJson({
+      ...failure2,
+      amazon: failureContractJson(failure2).amazon,
+      status: "failed",
+      ...failure2.status !== void 0 ? { runStatus: failure2.status } : {}
+    });
   } else {
     process.stderr.write(`
 error (${failure2.kind}): ${failure2.friendly}
 `);
     if (failure2.message) process.stderr.write(`detail: ${failure2.message}
 `);
+    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+`);
   }
   process.exitCode = exitCodeForKind(failure2.kind);
 }
-function emitGenericError(err, json2) {
+function emitGenericError(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     writeJson({ status: "failed", kind: "unknown", message });
   } else {
     process.stderr.write(`error: ${message}
@@ -91611,8 +91848,8 @@ function emitGenericError(err, json2) {
   }
   process.exitCode = 1;
 }
-function writeJson(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 
 // src/commands/amazon-spapi.ts
@@ -91667,8 +91904,8 @@ async function spapiCall(input, opts = {}) {
     }
     return r;
   }
-  const json2 = r.json;
-  if (typeof json2.operation !== "string") {
+  const json3 = r.json;
+  if (typeof json3.operation !== "string") {
     return {
       ok: false,
       kind: "unknown",
@@ -91678,11 +91915,11 @@ async function spapiCall(input, opts = {}) {
   }
   return {
     ok: true,
-    operation: json2.operation,
-    amazonSellerId: String(json2.amazonSellerId ?? ""),
-    legacySellerId: Number(json2.legacySellerId ?? 0),
-    marketplaceId: String(json2.marketplaceId ?? ""),
-    payload: json2.payload
+    operation: json3.operation,
+    amazonSellerId: String(json3.amazonSellerId ?? ""),
+    legacySellerId: Number(json3.legacySellerId ?? 0),
+    marketplaceId: String(json3.marketplaceId ?? ""),
+    payload: json3.payload
   };
 }
 
@@ -91800,7 +92037,10 @@ function registerCall(amazon) {
           // keys that are themselves customer data (listing attribute names),
           // which query and path parameters cannot.
           ...input.query && Object.keys(input.query).length > 0 ? { query_keys: Object.keys(input.query).sort() } : {},
-          ...input.pathParams && Object.keys(input.pathParams).length > 0 ? { path_keys: Object.keys(input.pathParams).sort() } : {}
+          ...input.pathParams && Object.keys(input.pathParams).length > 0 ? { path_keys: Object.keys(input.pathParams).sort() } : {},
+          // The gateway contract (mx-ops#144): who acts, and whether the same
+          // call can succeed later. Enums and a flag; never the fix text.
+          ...failureContractTelemetry(result)
         });
         return emitFailure3(result, !!root.json);
       }
@@ -91846,11 +92086,11 @@ async function trackSpApi(eventName, outcome, startedAt, dataDir, payload) {
     dataDir
   );
 }
-function writeJson2(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson2(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure3(failure2, json2) {
-  if (json2) {
+function emitFailure3(failure2, json3) {
+  if (json3) {
     writeJson2({
       status: "error",
       failure_kind: failure2.kind,
@@ -91864,7 +92104,9 @@ function emitFailure3(failure2, json2) {
       amazon_status: failure2.amazonStatus,
       unrecognized_kind: failure2.unrecognizedKind,
       amazon_response: failure2.responsePayload ?? failure2.responseText,
-      candidates: failure2.candidates
+      candidates: failure2.candidates,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure2)
     });
   } else {
     process.stderr.write(`
@@ -91872,12 +92114,14 @@ function emitFailure3(failure2, json2) {
 `);
     if (failure2.message) process.stderr.write(`  ${failure2.message}
 `);
+    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+`);
   }
   process.exitCode = exitCodeForKind(failure2.kind);
 }
-function emitError9(err, json2) {
+function emitError9(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     writeJson2({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
@@ -91891,9 +92135,9 @@ function renderOperations(operations) {
   }
   const byFamily = /* @__PURE__ */ new Map();
   for (const op of operations) {
-    const list = byFamily.get(op.family) ?? [];
-    list.push(op);
-    byFamily.set(op.family, list);
+    const list2 = byFamily.get(op.family) ?? [];
+    list2.push(op);
+    byFamily.set(op.family, list2);
   }
   const blocks = [];
   for (const [family, ops] of byFamily) {
@@ -92255,7 +92499,7 @@ function registerReportGet(report) {
     }
   });
 }
-function emitNotReady(status, startedAt, dataDir, json2) {
+function emitNotReady(status, startedAt, dataDir, json3) {
   void track(
     {
       event_name: EventName.ReportPolled,
@@ -92265,7 +92509,7 @@ function emitNotReady(status, startedAt, dataDir, json2) {
     },
     dataDir
   );
-  if (json2) {
+  if (json3) {
     writeJson3({ status: "ok", ready: false, report_status: status });
   } else {
     process.stdout.write(
@@ -92711,17 +92955,20 @@ async function trackFailure2(eventName, failure2, startedAt, dataDir, reportType
         ...failure2.status !== void 0 ? { report_status: failure2.status } : {},
         // Low-cardinality class of Amazon's stated reason (deprecated,
         // span_exceeds_max, ...). The reason TEXT is never sent to telemetry.
-        ...failure2.amazonError !== void 0 ? { reason_class: classifyAmazonError(failure2.amazonError) } : {}
+        ...failure2.amazonError !== void 0 ? { reason_class: classifyAmazonError(failure2.amazonError) } : {},
+        // The gateway contract (mx-ops#144): who acts, and whether the same
+        // call can succeed later. Enums and a flag; never the fix text.
+        ...failureContractTelemetry(failure2)
       }
     },
     dataDir
   );
 }
-function writeJson3(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson3(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure4(failure2, json2) {
-  if (json2) {
+function emitFailure4(failure2, json3) {
+  if (json3) {
     writeJson3({
       status: "error",
       failure_kind: failure2.kind,
@@ -92735,13 +92982,21 @@ function emitFailure4(failure2, json2) {
       // Amazon's own stated reason on a FATAL report (absent when Amazon gave none).
       amazon_error: failure2.amazonError,
       // Multi-marketplace merchant_not_found: the rows to disambiguate with.
-      candidates: failure2.candidates
+      candidates: failure2.candidates,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure2)
     });
   } else {
     process.stderr.write(`
 \u2717 ${failure2.friendly}
 `);
     if (failure2.amazonError) process.stderr.write(renderAmazonReason(failure2.amazonError));
+    if (failure2.kind === "invalid_request" && failure2.message && failure2.message !== failure2.friendly) {
+      process.stderr.write(`  ${failure2.message}
+`);
+    }
+    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+`);
     if (failure2.candidates && failure2.candidates.length > 0) {
       process.stderr.write(renderCandidates(failure2.candidates));
     }
@@ -92755,8 +93010,8 @@ function renderAmazonReason(text) {
   return `${body}${generic}
 `;
 }
-function emitChunkFailure(failure2, json2, chunk, totalChunks, completedRunIds) {
-  if (json2) {
+function emitChunkFailure(failure2, json3, chunk, totalChunks, completedRunIds) {
+  if (json3) {
     writeJson3({
       status: "error",
       failure_kind: failure2.kind,
@@ -92769,6 +93024,7 @@ function emitChunkFailure(failure2, json2, chunk, totalChunks, completedRunIds) 
       retry_after_ms: failure2.retryAfterMs,
       amazon_error: failure2.amazonError,
       candidates: failure2.candidates,
+      ...failureContractJson(failure2),
       chunk,
       chunks: totalChunks,
       run_ids: completedRunIds
@@ -92778,6 +93034,8 @@ function emitChunkFailure(failure2, json2, chunk, totalChunks, completedRunIds) 
 \u2717 [SQP chunk ${chunk}/${totalChunks}] ${failure2.friendly}
 `);
     if (failure2.amazonError) process.stderr.write(renderAmazonReason(failure2.amazonError));
+    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+`);
     if (completedRunIds.length > 0) {
       process.stderr.write(
         `  ${completedRunIds.length} chunk(s) completed before this failure: ${completedRunIds.join(", ")}
@@ -92790,9 +93048,9 @@ function emitChunkFailure(failure2, json2, chunk, totalChunks, completedRunIds) 
   }
   process.exitCode = exitCodeForKind(failure2.kind);
 }
-function emitChunkTimeout(json2, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
+function emitChunkTimeout(json3, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
   const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at Amazon and its run handle is still valid. Resume it with \`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second copy behind the one you are already waiting on and makes the wait longer. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
-  if (json2) {
+  if (json3) {
     writeJson3({
       status: "error",
       failure_kind: "timeout",
@@ -92810,10 +93068,10 @@ function emitChunkTimeout(json2, chunk, totalChunks, runId, lastStatus, complete
   }
   process.exitCode = EXIT_NOT_READY;
 }
-function emitMergeFailure(err, json2, totalChunks, completedRunIds, outPath) {
+function emitMergeFailure(err, json3, totalChunks, completedRunIds, outPath) {
   const detail = err instanceof Error ? err.message : String(err);
   const msg2 = `All ${totalChunks} SQP chunk(s) pulled, but combining them into ${outPath} failed: ${detail}. The completed pulls are still fetchable individually with \`mixshift amazon report get <run_id> --out <file>\`.`;
-  if (json2) {
+  if (json3) {
     writeJson3({
       status: "error",
       failure_kind: "merge_failed",
@@ -92845,9 +93103,9 @@ function renderCandidates(candidates) {
   lines.push("");
   return lines.join("\n") + "\n";
 }
-function emitError10(err, json2) {
+function emitError10(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     writeJson3({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
@@ -92891,15 +93149,15 @@ function renderReportList(entries) {
   const byGroup = /* @__PURE__ */ new Map();
   for (const e of entries) {
     const g = e.group ?? "Other";
-    const list = byGroup.get(g) ?? [];
-    list.push(e);
-    byGroup.set(g, list);
+    const list2 = byGroup.get(g) ?? [];
+    list2.push(e);
+    byGroup.set(g, list2);
   }
   const lines = [];
-  for (const [group, list] of byGroup) {
+  for (const [group, list2] of byGroup) {
     lines.push("");
     lines.push(`## ${group}`);
-    for (const e of list) {
+    for (const e of list2) {
       const purpose = e.deprecated ? `DEPRECATED BY AMAZON, do not request. ${e.deprecated}` : e.purpose;
       const tags = [
         e.appliesTo !== "both" ? e.appliesTo : "",
@@ -93024,7 +93282,7 @@ async function listAdsOperations(family, opts = {}) {
   const operations = Array.isArray(raw) ? raw : [];
   return { ok: true, operations };
 }
-async function adsCall(input, opts = {}) {
+function buildAdsRequestBody(input) {
   const body = { operation: input.operation };
   if (input.profileId) body.profileId = input.profileId;
   if (input.legacySellerId !== void 0 && input.legacySellerId !== null && input.legacySellerId !== "") {
@@ -93040,14 +93298,18 @@ async function adsCall(input, opts = {}) {
   if (input.body !== void 0) body.body = input.body;
   if (input.contentTypeOverride) body.contentTypeOverride = input.contentTypeOverride;
   if (input.dryRun !== void 0) body.dryRun = input.dryRun;
+  return body;
+}
+async function adsCall(input, opts = {}) {
+  const body = buildAdsRequestBody(input);
   const mayChangeState = input.dryRun === false || /\.create_/.test(input.operation);
   const r = await amazonRequest(
     { method: "POST", path: "/api/amazon/ads/call", body, surface: "ads", mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 9e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  if (typeof json2.operation !== "string") {
+  const json3 = r.json;
+  if (typeof json3.operation !== "string") {
     return {
       ok: false,
       kind: "unknown",
@@ -93057,17 +93319,272 @@ async function adsCall(input, opts = {}) {
   }
   return {
     ok: true,
-    operation: json2.operation,
-    profileId: String(json2.profileId ?? ""),
-    legacySellerId: Number(json2.legacySellerId ?? 0),
-    marketplaceId: json2.marketplaceId == null ? null : String(json2.marketplaceId),
-    payload: json2.payload,
-    ...typeof json2.dryRun === "boolean" ? { dryRun: json2.dryRun } : {},
-    ...typeof json2.itemsCount === "number" ? { itemsCount: json2.itemsCount } : {},
-    ...typeof json2.auditId === "string" ? { auditId: json2.auditId } : {},
-    ...json2.beforeState !== void 0 ? { beforeState: json2.beforeState } : {},
-    ...json2.preview !== void 0 ? { preview: json2.preview } : {}
+    operation: json3.operation,
+    profileId: String(json3.profileId ?? ""),
+    legacySellerId: Number(json3.legacySellerId ?? 0),
+    marketplaceId: json3.marketplaceId == null ? null : String(json3.marketplaceId),
+    payload: json3.payload,
+    ...typeof json3.dryRun === "boolean" ? { dryRun: json3.dryRun } : {},
+    ...typeof json3.itemsCount === "number" ? { itemsCount: json3.itemsCount } : {},
+    ...typeof json3.auditId === "string" ? { auditId: json3.auditId } : {},
+    ...json3.beforeState !== void 0 ? { beforeState: json3.beforeState } : {},
+    ...json3.preview !== void 0 ? { preview: json3.preview } : {}
   };
+}
+
+// src/lib/ads/proposals.ts
+var SHORT_TIMEOUT_MS = 3e4;
+var COMMIT_TIMEOUT_MS = 9e4;
+function pathFor(id, action) {
+  const base = `/api/amazon/ads/proposals/${encodeURIComponent(id)}`;
+  return action ? `${base}/${action}` : base;
+}
+function parseProposal(json3) {
+  const p = json3?.proposal;
+  if (typeof p !== "object" || p === null) return void 0;
+  const v = p;
+  if (typeof v.id !== "string" || typeof v.payloadHash !== "string") return void 0;
+  const guard = p.guard;
+  return {
+    ...v,
+    status: String(v.status ?? ""),
+    operation: String(v.operation ?? ""),
+    ...guard ? {
+      guard: {
+        ...typeof guard.thresholdPct === "number" ? { thresholdPct: guard.thresholdPct } : {},
+        ...guard.evaluated === true ? { evaluated: true } : {},
+        flagged: Array.isArray(guard.flagged) ? guard.flagged : []
+      }
+    } : {}
+  };
+}
+function malformed(what) {
+  return {
+    ok: false,
+    kind: "unknown",
+    friendly: "The service accepted the call but returned an unrecognized shape. Try again, or contact MixShift ops if it persists.",
+    message: `proposals ${what} response missing a valid proposal`
+  };
+}
+async function createProposal(input, opts = {}) {
+  const body = buildAdsRequestBody({ ...input.call, dryRun: void 0 });
+  if (input.title) body.title = input.title;
+  if (input.rationale) body.rationale = input.rationale;
+  if (input.evidence !== void 0) body.evidence = input.evidence;
+  if (input.expiresInHours !== void 0) body.expiresInHours = input.expiresInHours;
+  const r = await amazonRequest(
+    { method: "POST", path: "/api/amazon/ads/proposals", body, surface: "ads", mayChangeState: true },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 9e4 }
+  );
+  if (!r.ok) return r;
+  const proposal = parseProposal(r.json);
+  return proposal ? { ok: true, proposal } : malformed("create");
+}
+async function listProposals(input = {}, opts = {}) {
+  const qs = new URLSearchParams();
+  if (input.status) qs.set("status", input.status);
+  if (input.limit !== void 0) qs.set("limit", String(input.limit));
+  const q = qs.toString();
+  const r = await amazonRequest(
+    { method: "GET", path: `/api/amazon/ads/proposals${q ? `?${q}` : ""}`, surface: "ads" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? SHORT_TIMEOUT_MS }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.proposals;
+  const proposals = Array.isArray(raw) ? raw.map((p) => parseProposal({ proposal: p })).filter((p) => !!p) : [];
+  return { ok: true, proposals };
+}
+async function getProposal(id, opts = {}) {
+  const r = await amazonRequest(
+    { method: "GET", path: pathFor(id), surface: "ads" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? SHORT_TIMEOUT_MS }
+  );
+  if (!r.ok) return r;
+  const proposal = parseProposal(r.json);
+  return proposal ? { ok: true, proposal } : malformed("show");
+}
+async function approveProposal(input, opts = {}) {
+  const body = { payloadHash: input.payloadHash };
+  if (input.acknowledgeGuard) body.acknowledgeGuard = true;
+  if (input.note) body.note = input.note;
+  const r = await amazonRequest(
+    { method: "POST", path: pathFor(input.id, "approve"), body, surface: "ads" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? SHORT_TIMEOUT_MS }
+  );
+  if (!r.ok) return r;
+  const proposal = parseProposal(r.json);
+  return proposal ? { ok: true, proposal } : malformed("approve");
+}
+async function rejectProposal(id, reason, opts = {}) {
+  const body = reason ? { reason } : {};
+  const r = await amazonRequest(
+    { method: "POST", path: pathFor(id, "reject"), body, surface: "ads" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? SHORT_TIMEOUT_MS }
+  );
+  if (!r.ok) return r;
+  const proposal = parseProposal(r.json);
+  return proposal ? { ok: true, proposal } : malformed("reject");
+}
+async function commitProposal(id, payloadHash, opts = {}) {
+  const r = await amazonRequest(
+    {
+      method: "POST",
+      path: pathFor(id, "commit"),
+      body: { payloadHash },
+      surface: "ads",
+      mayChangeState: true
+    },
+    { ...opts, timeoutMs: opts.timeoutMs ?? COMMIT_TIMEOUT_MS }
+  );
+  if (!r.ok) return r;
+  const proposal = parseProposal(r.json);
+  if (!proposal) return malformed("commit");
+  const commit = r.json?.commit;
+  if (commit && typeof commit === "object") {
+    if (!proposal.commitAuditId && typeof commit.auditId === "string") {
+      proposal.commitAuditId = commit.auditId;
+    }
+    if (proposal.itemsCount === void 0 && typeof commit.itemsCount === "number") {
+      proposal.itemsCount = commit.itemsCount;
+    }
+  }
+  return { ok: true, proposal };
+}
+
+// src/lib/ads/proposals-render.ts
+var MAX_ITEM_LINES = 25;
+var MAX_ITEM_CHARS = 240;
+var MONEY_FIELDS2 = [
+  "budget",
+  "bid",
+  "defaultBid",
+  "budgetCaps",
+  "flights",
+  "budgetAmount",
+  "dynamicBidding"
+];
+var CONTROL_RE2 = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g;
+function cleanText(v) {
+  return String(v ?? "").replace(CONTROL_RE2, " ").replace(/ {2,}/g, " ").trim();
+}
+function cell(s) {
+  return cleanText(s).replaceAll("|", "\\|");
+}
+function json2(v) {
+  return cleanText(JSON.stringify(v) ?? "");
+}
+function oneLine(v, max = MAX_ITEM_CHARS) {
+  const s = json2(v);
+  return s.length > max ? `${s.slice(0, max - 3)}...` : s;
+}
+function renderItem(it, index) {
+  const n = `${index + 1}.`;
+  if (typeof it !== "object" || it === null || Array.isArray(it)) return `${n} ${json2(it)}`;
+  const o = it;
+  const money3 = MONEY_FIELDS2.filter((k) => k in o).map((k) => `${k}=${json2(o[k])}`);
+  const rest = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (!MONEY_FIELDS2.includes(k)) rest[k] = v;
+  }
+  const parts = [];
+  if (money3.length > 0) parts.push(money3.join(" "));
+  if (Object.keys(rest).length > 0) parts.push(`${money3.length > 0 ? "other: " : ""}${json2(rest)}`);
+  return `${n} ${parts.join(" | ") || "{}"}`;
+}
+function proposalItems(p) {
+  const body = p.request?.body;
+  if (Array.isArray(body)) return body;
+  if (typeof body === "object" && body !== null) {
+    for (const v of Object.values(body)) {
+      if (Array.isArray(v)) return v;
+    }
+  }
+  return [];
+}
+function fmtVal(v) {
+  return v === null || v === void 0 ? "none" : cleanText(v);
+}
+function renderGuard(p, full = false) {
+  const flagged = p.guard?.flagged ?? [];
+  if (flagged.length === 0) {
+    return p.guard?.evaluated === true ? ["  guard: no money change above the threshold"] : ["  guard: not evaluated for this operation"];
+  }
+  const cap2 = full ? flagged.length : MAX_ITEM_LINES;
+  const pct2 = p.guard?.thresholdPct !== void 0 ? ` ${cleanText(p.guard.thresholdPct)}%` : "";
+  const lines = [
+    `  guard: ${flagged.length} money change(s) above the${pct2} threshold` + (p.guardAcknowledged ? " (acknowledged)" : " (approval needs --acknowledge-guard)")
+  ];
+  for (const f of flagged.slice(0, cap2)) {
+    const change = typeof f.pctChange === "number" ? ` (${f.pctChange > 0 ? "+" : ""}${f.pctChange}%)` : typeof f.pointsChange === "number" ? ` (${f.pointsChange > 0 ? "+" : ""}${f.pointsChange} points)` : "";
+    lines.push(
+      `    - ${fmtVal(f.id)} ${fmtVal(f.field)}: ${fmtVal(f.from)} -> ${fmtVal(f.to)}${change}`
+    );
+  }
+  if (flagged.length > cap2) {
+    lines.push(`    ... and ${flagged.length - cap2} more flagged change(s) not shown`);
+  }
+  return lines;
+}
+function renderProposalSummary(p, withItems = false) {
+  const full = withItems === "full";
+  const lines = [
+    `  id: ${cleanText(p.id)}`,
+    `  status: ${cleanText(p.status)}`,
+    `  operation: ${cleanText(p.operation)}${p.profileId ? ` (profile ${cleanText(p.profileId)})` : ""}`,
+    `  items: ${cleanText(p.itemsCount ?? "?")}`
+  ];
+  if (p.title) lines.push(`  title: ${cleanText(p.title)}`);
+  if (p.rationale) lines.push(`  rationale: ${cleanText(p.rationale)}`);
+  if (p.expiresAt) lines.push(`  expires: ${cleanText(p.expiresAt)}`);
+  if (p.proposedBy) lines.push(`  proposed by: ${cleanText(p.proposedBy)}`);
+  if (p.approvedBy) {
+    lines.push(
+      `  approved by: ${cleanText(p.approvedBy)}${p.approvedAt ? ` at ${cleanText(p.approvedAt)}` : ""}`
+    );
+  }
+  if (p.approvalNote) lines.push(`  approval note: ${cleanText(p.approvalNote)}`);
+  if (p.rejectedBy) {
+    lines.push(
+      `  rejected by: ${cleanText(p.rejectedBy)}${p.rejectReason ? ` (${cleanText(p.rejectReason)})` : ""}`
+    );
+  }
+  if (p.commitAuditId) lines.push(`  audit: ${cleanText(p.commitAuditId)}`);
+  lines.push(...renderGuard(p, full));
+  if (withItems) {
+    const items = proposalItems(p);
+    if (items.length > 0) {
+      lines.push("  change set:");
+      const shown = full ? items : items.slice(0, MAX_ITEM_LINES);
+      shown.forEach((it, i) => {
+        const line = renderItem(it, i);
+        const text = full || line.length <= MAX_ITEM_CHARS ? line : `${line.slice(0, MAX_ITEM_CHARS - 3)}...`;
+        lines.push(`    ${text}`);
+      });
+      if (shown.length < items.length) {
+        lines.push(
+          `    ... ${items.length - shown.length} more item(s) omitted from this view (the full list is in the JSON below)`
+        );
+      }
+    }
+  }
+  return lines;
+}
+function renderProposalTable(proposals) {
+  if (proposals.length === 0) return "_(no proposals match)_";
+  const cols = ["id", "status", "operation", "items", "expires", "title"];
+  const header = "| " + cols.join(" | ") + " |";
+  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const rows = proposals.map(
+    (p) => "| " + [p.id, p.status, p.operation, p.itemsCount ?? "", p.expiresAt ?? "", p.title ?? ""].map(cell).join(" | ") + " |"
+  );
+  return [header, sep, ...rows].join("\n");
+}
+function renderDrift(f) {
+  if (!f.drift || f.drift.length === 0) return [];
+  const lines = ["  changed since the proposal:"];
+  for (const row of f.drift.slice(0, MAX_ITEM_LINES)) lines.push(`    - ${oneLine(row)}`);
+  if (f.drift.length > MAX_ITEM_LINES) lines.push(`    ... and ${f.drift.length - MAX_ITEM_LINES} more`);
+  return lines;
 }
 
 // src/lib/timeline/ads-emit.ts
@@ -93189,13 +93706,13 @@ function buildResultSummary(payload) {
   return out2;
 }
 function truncatedJson(value, maxChars) {
-  let json2;
+  let json3;
   try {
-    json2 = JSON.stringify(value) ?? "null";
+    json3 = JSON.stringify(value) ?? "null";
   } catch {
     return "[unserializable]";
   }
-  return json2.length > maxChars ? `${json2.slice(0, maxChars)}\u2026` : json2;
+  return json3.length > maxChars ? `${json3.slice(0, maxChars)}\u2026` : json3;
 }
 function debugLog4(env, message) {
   if (env.MIXSHIFT_DEBUG) process.stderr.write(`[debug] ${message}
@@ -93206,11 +93723,12 @@ function debugLog4(env, message) {
 init_telemetry();
 function registerAdsCommands(program3) {
   const ads = program3.command("ads").description(
-    "Call the Amazon Ads API: reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations, and audited writes (bids, negatives, campaign creation; dry-run by default, --commit to apply)."
+    "Call the Amazon Ads API: reporting v3, entity exports, campaign/keyword/target lists with current bids, intraday budget usage, live bid and keyword recommendations, and audited writes (bids, negatives, campaign creation; dry-run by default, --commit to apply; --propose and `ads proposals` to have a person approve a change later)."
   );
   registerProfiles(ads);
   registerOperations2(ads);
   registerCall2(ads);
+  registerProposals(ads);
 }
 function registerProfiles(ads) {
   ads.command("profiles").description("List the Ads profiles you can call for (one per advertiser account + marketplace).").option(
@@ -93329,6 +93847,15 @@ function registerCall2(ads) {
   ).option(
     "--proposal-id <id>",
     "WRITE operations, with --commit: the dry-run audit id (printed by the preview) so the brand-timeline event links preview \u2192 commit. When omitted, the commit audit id is used. Set MIXSHIFT_SKILL_ID / MIXSHIFT_MODEL_ID env vars to attribute the change to the driving skill/model. The same MIXSHIFT_SKILL_ID (or MIXSHIFT_INTENT to override it) also rides every request to MixShift as the x-mixshift-intent header, for usage attribution only."
+  ).option(
+    "--propose",
+    "WRITE operations: store this change set as a PROPOSAL for a signed-in person to approve later (`ads proposals approve <id>`), instead of previewing or committing. Mutates nothing. Cannot be combined with --commit. This is the mode for scheduled routines and propose-only credentials."
+  ).option("--title <text>", "with --propose: short title shown to the approver").option("--rationale <text>", "with --propose: why this change, shown to the approver").option(
+    "--evidence-file <file>",
+    "with --propose: JSON file of supporting evidence (numbers the change rests on)"
+  ).option(
+    "--expires-hours <n>",
+    "with --propose: hours the proposal stays open (1-168, default 72)"
   ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
@@ -93340,6 +93867,43 @@ function registerCall2(ads) {
           ),
           !!root.json
         );
+      }
+      const proposeOnly = [
+        ["--title", opts.title],
+        ["--rationale", opts.rationale],
+        ["--evidence-file", opts.evidenceFile],
+        ["--expires-hours", opts.expiresHours]
+      ];
+      if (opts.propose) {
+        if (opts.commit) {
+          return emitError11(
+            new Error(
+              "--propose and --commit cannot be combined: a proposal never commits. Propose now; after a person approves it, run `ads proposals commit <id>`."
+            ),
+            !!root.json
+          );
+        }
+        if (opts.proposalId !== void 0) {
+          return emitError11(
+            new Error("--proposal-id belongs to --commit and cannot be used with --propose."),
+            !!root.json
+          );
+        }
+      } else {
+        const stray = proposeOnly.find(([, v]) => v !== void 0);
+        if (stray) {
+          return emitError11(new Error(`${stray[0]} only applies with --propose.`), !!root.json);
+        }
+      }
+      let expiresInHours;
+      if (opts.expiresHours !== void 0) {
+        expiresInHours = Number(opts.expiresHours);
+        if (!Number.isInteger(expiresInHours) || expiresInHours < 1 || expiresInHours > 168) {
+          return emitError11(
+            new Error("--expires-hours must be a whole number from 1 to 168."),
+            !!root.json
+          );
+        }
       }
       let body;
       if (opts.bodyFile && opts.body) {
@@ -93364,6 +93928,53 @@ function registerCall2(ads) {
         // dry-run default is the contract (and reads ignore it entirely).
         ...opts.commit ? { dryRun: false } : {}
       };
+      if (opts.propose) {
+        let evidence;
+        if (opts.evidenceFile) {
+          evidence = JSON.parse(await readFile43(opts.evidenceFile, "utf8"));
+        }
+        const created = await createProposal(
+          {
+            call: input,
+            ...opts.title ? { title: opts.title } : {},
+            ...opts.rationale ? { rationale: opts.rationale } : {},
+            ...evidence !== void 0 ? { evidence } : {},
+            ...expiresInHours !== void 0 ? { expiresInHours } : {}
+          },
+          { dataDirOverride: root.dataDir }
+        );
+        if (isReportFailure(created)) {
+          return proposalFailed(created, "propose", startedAt, root, void 0, operation);
+        }
+        const p = created.proposal;
+        await trackAds(EventName.AdsProposalCreated, "ok", startedAt, root.dataDir, {
+          proposal_id: p.id,
+          operation: p.operation || operation,
+          ...typeof p.itemsCount === "number" ? { items_count: p.itemsCount } : {},
+          guard_flagged: p.guard?.flagged.length ?? 0,
+          has_evidence: evidence !== void 0
+        });
+        if (root.json) {
+          writeJson4({ status: "ok", proposal: p });
+        } else {
+          process.stderr.write(
+            `
+PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, nothing applied.
+` + renderProposalSummary(p).join("\n") + `
+  A signed-in person approves it with \`mixshift ads proposals approve ${p.id}\`, then it is committed with \`mixshift ads proposals commit ${p.id}\`.
+
+`
+          );
+          process.stdout.write(
+            JSON.stringify(
+              { id: p.id, status: p.status, expiresAt: p.expiresAt, payloadHash: p.payloadHash },
+              null,
+              2
+            ) + "\n"
+          );
+        }
+        return;
+      }
       const result = await adsCall(input, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
         await trackAds(EventName.AdsCalled, "failed", startedAt, root.dataDir, {
@@ -93400,7 +94011,10 @@ function registerCall2(ads) {
           // on report creates, or by this client on its own deadline): how
           // often users land here, per `operation`, decides whether report
           // creation needs real dedup. One word, no identifiers.
-          ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {}
+          ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {},
+          // The gateway contract (mx-ops#144): who acts, and whether the same
+          // call can succeed later. Enums and a flag; never the fix text.
+          ...failureContractTelemetry(result)
         });
         return emitFailure5(result, !!root.json);
       }
@@ -93477,6 +94091,229 @@ function registerCall2(ads) {
     }
   });
 }
+async function proposalFailed(failure2, action, startedAt, root, proposalId, operation) {
+  await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
+    action,
+    kind: failure2.kind,
+    ...proposalId ? { proposal_id: proposalId } : {},
+    ...operation ? { operation } : {},
+    ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
+    ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {},
+    ...failure2.requestOutcome ? { request_outcome: failure2.requestOutcome } : {},
+    ...failure2.drift ? { drift_count: failure2.drift.length } : {},
+    ...failure2.proposalStatus ? { proposal_status: failure2.proposalStatus } : {},
+    ...failureContractTelemetry(failure2)
+  });
+  const next = action === "commit" ? commitOutcomeHint(failure2) : void 0;
+  emitFailure5(failure2, !!root.json, next);
+  if (!root.json) {
+    for (const line of renderDrift(failure2)) process.stderr.write(`${line}
+`);
+  }
+}
+function commitOutcomeHint(failure2) {
+  if (failure2.proposalStatus === "UNCERTAIN") {
+    return "Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first.";
+  }
+  if (failure2.proposalStatus === "FAILED") {
+    return "Amazon refused it and nothing was applied. Propose the change again if it is still wanted.";
+  }
+  return void 0;
+}
+function registerProposals(ads) {
+  const proposals = ads.command("proposals").description(
+    "Proposals: change sets written now, approved later by a signed-in person, committed only after approval. Create one with `ads call <write-op> --propose`."
+  );
+  proposals.command("list").description("List proposals for this account, newest first.").option(
+    "--status <s>",
+    "filter: PROPOSED, APPROVED, REJECTED, COMMITTED, FAILED, UNCERTAIN, STALE, EXPIRED"
+  ).option("--limit <n>", "how many to return (default 50)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      let limit;
+      if (opts.limit !== void 0) {
+        limit = Number(opts.limit);
+        if (!Number.isInteger(limit) || limit < 1) {
+          return emitError11(new Error("--limit must be a positive whole number."), !!root.json);
+        }
+      }
+      const r = await listProposals(
+        {
+          ...opts.status ? { status: opts.status.toUpperCase() } : {},
+          ...limit ? { limit } : {}
+        },
+        { dataDirOverride: root.dataDir }
+      );
+      if (isReportFailure(r)) return proposalFailed(r, "list", startedAt, root);
+      if (root.json) {
+        writeJson4({ status: "ok", count: r.proposals.length, proposals: r.proposals });
+      } else {
+        process.stderr.write(`
+${r.proposals.length} proposal(s)
+
+`);
+        process.stdout.write(renderProposalTable(r.proposals) + "\n");
+      }
+    } catch (err) {
+      emitError11(err, !!root.json);
+    }
+  });
+  proposals.command("show <id>").description("Show one proposal in full: operation, items, guard flags, expiry, state.").action(async (id, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const r = await getProposal(id, { dataDirOverride: root.dataDir });
+      if (isReportFailure(r)) return proposalFailed(r, "show", startedAt, root, id);
+      if (root.json) {
+        writeJson4({ status: "ok", proposal: r.proposal });
+      } else {
+        process.stderr.write(
+          `
+proposal ${r.proposal.id}
+${renderProposalSummary(r.proposal, "compact").join("\n")}
+
+`
+        );
+        process.stdout.write(JSON.stringify(r.proposal, null, 2) + "\n");
+      }
+    } catch (err) {
+      emitError11(err, !!root.json);
+    }
+  });
+  proposals.command("approve <id>").description(
+    "Approve a proposal. A HUMAN act: it needs a signed-in person (machine credentials are refused). Fetches the proposal, prints what is being approved, then approves exactly that version. Run it ONLY after the person has seen the proposal and said yes."
+  ).option(
+    "--acknowledge-guard",
+    "confirm you saw the money changes flagged above the safety threshold (required when any are flagged)"
+  ).option("--note <text>", "a note kept with the approval").action(
+    async (id, opts, cmd) => {
+      const root = cmd.optsWithGlobals();
+      const startedAt = Date.now();
+      try {
+        const fetched = await getProposal(id, { dataDirOverride: root.dataDir });
+        if (isReportFailure(fetched)) {
+          return proposalFailed(fetched, "approve", startedAt, root, id);
+        }
+        const p = fetched.proposal;
+        process.stderr.write(
+          `
+Approving this proposal (the version fetched just now, hash ${p.payloadHash.slice(0, 12)}):
+` + renderProposalSummary(p, "full").join("\n") + "\n\n"
+        );
+        const r = await approveProposal(
+          {
+            id,
+            payloadHash: p.payloadHash,
+            ...opts.acknowledgeGuard ? { acknowledgeGuard: true } : {},
+            ...opts.note ? { note: opts.note } : {}
+          },
+          { dataDirOverride: root.dataDir }
+        );
+        if (isReportFailure(r)) {
+          return proposalFailed(r, "approve", startedAt, root, id, p.operation);
+        }
+        await trackAds(EventName.AdsProposalApproved, "ok", startedAt, root.dataDir, {
+          proposal_id: id,
+          operation: p.operation,
+          ...typeof p.itemsCount === "number" ? { items_count: p.itemsCount } : {},
+          guard_flagged: p.guard?.flagged.length ?? 0,
+          acknowledged_guard: opts.acknowledgeGuard === true
+        });
+        printProposalResult(
+          r.proposal,
+          !!root.json,
+          "APPROVED",
+          `Commit it with \`mixshift ads proposals commit ${id}\`.`
+        );
+      } catch (err) {
+        emitError11(err, !!root.json);
+      }
+    }
+  );
+  proposals.command("reject <id>").description("Reject a proposal so it can never be committed. A human act, like approve.").option("--reason <text>", "why it was rejected").action(async (id, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const r = await rejectProposal(id, opts.reason, { dataDirOverride: root.dataDir });
+      if (isReportFailure(r)) return proposalFailed(r, "reject", startedAt, root, id);
+      await trackAds(EventName.AdsProposalRejected, "ok", startedAt, root.dataDir, {
+        proposal_id: id,
+        operation: r.proposal.operation,
+        has_reason: !!opts.reason
+      });
+      printProposalResult(r.proposal, !!root.json, "REJECTED");
+    } catch (err) {
+      emitError11(err, !!root.json);
+    }
+  });
+  proposals.command("commit <id>").description(
+    "Commit an APPROVED proposal to Amazon. Fetches it and sends its hash; the service refuses an unapproved, expired or changed proposal, and one whose live values moved since it was written. Works with a machine credential that holds ads:write."
+  ).action(async (id, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const fetched = await getProposal(id, { dataDirOverride: root.dataDir });
+      if (isReportFailure(fetched)) return proposalFailed(fetched, "commit", startedAt, root, id);
+      const p = fetched.proposal;
+      const r = await commitProposal(id, p.payloadHash, { dataDirOverride: root.dataDir });
+      if (isReportFailure(r)) return proposalFailed(r, "commit", startedAt, root, id, p.operation);
+      const done = r.proposal;
+      const base = {
+        proposal_id: id,
+        operation: done.operation || p.operation,
+        status: done.status,
+        ...typeof done.itemsCount === "number" ? { items_count: done.itemsCount } : {},
+        ...done.commitAuditId ? { audit_id: done.commitAuditId } : {}
+      };
+      if (done.status === "FAILED" || done.status === "UNCERTAIN") {
+        await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
+          action: "commit",
+          kind: done.status === "UNCERTAIN" ? "commit_uncertain" : "commit_failed",
+          ...base
+        });
+        printProposalResult(
+          done,
+          !!root.json,
+          done.status,
+          done.status === "UNCERTAIN" ? "Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first." : "Amazon refused it before applying anything. Propose the change again if it is still wanted."
+        );
+        process.exitCode = 1;
+        return;
+      }
+      await trackAds(EventName.AdsProposalCommitted, "ok", startedAt, root.dataDir, base);
+      printProposalResult(
+        done,
+        !!root.json,
+        done.status || "COMMITTED",
+        "Amazon answers per item: read the response below for any item that errored.",
+        true
+      );
+    } catch (err) {
+      emitError11(err, !!root.json);
+    }
+  });
+}
+function printProposalResult(p, json3, label, hint, withResponse = false) {
+  if (json3) {
+    writeJson4({ status: "ok", proposal: p });
+    return;
+  }
+  process.stderr.write(
+    `
+${label} proposal ${p.id}
+${renderProposalSummary(p).join("\n")}
+` + (hint ? `  ${hint}
+` : "") + "\n"
+  );
+  process.stdout.write(
+    JSON.stringify(
+      withResponse && p.response !== void 0 ? { response: p.response } : { id: p.id, status: p.status },
+      null,
+      2
+    ) + "\n"
+  );
+}
 async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
   await track(
     {
@@ -93489,11 +94326,11 @@ async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
     dataDir
   );
 }
-function writeJson4(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson4(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure5(failure2, json2) {
-  if (json2) {
+function emitFailure5(failure2, json3, nextStep) {
+  if (json3) {
     writeJson4({
       status: "error",
       failure_kind: failure2.kind,
@@ -93512,10 +94349,18 @@ function emitFailure5(failure2, json2) {
       // check before resending. Dropped until now, so --json callers could not
       // tell a lost answer from a refusal.
       request_outcome: failure2.requestOutcome,
+      // proposal_stale: which live values moved since the proposal was written.
+      drift: failure2.drift,
+      // A failed commit names the proposal and its state (FAILED, UNCERTAIN).
+      proposal_id: failure2.proposalId,
+      proposal_status: failure2.proposalStatus,
+      next_step: nextStep,
       automatic_retry: failure2.automaticRetry,
       concurrency_cap: failure2.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
-      retry_after_ms: failure2.retryAfterMs
+      retry_after_ms: failure2.retryAfterMs,
+      // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
+      ...failureContractJson(failure2)
     });
   } else {
     process.stderr.write(`
@@ -93523,12 +94368,22 @@ function emitFailure5(failure2, json2) {
 `);
     if (failure2.message) process.stderr.write(`  ${failure2.message}
 `);
+    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+`);
+    if (failure2.proposalId) {
+      process.stderr.write(
+        `  proposal: ${failure2.proposalId}${failure2.proposalStatus ? ` (${failure2.proposalStatus})` : ""}
+`
+      );
+    }
+    if (nextStep) process.stderr.write(`  ${nextStep}
+`);
   }
   process.exitCode = exitCodeForKind(failure2.kind);
 }
-function emitError11(err, json2) {
+function emitError11(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     writeJson4({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
@@ -93562,9 +94417,9 @@ function renderOperations2(operations) {
   }
   const byFamily = /* @__PURE__ */ new Map();
   for (const op of operations) {
-    const list = byFamily.get(op.family) ?? [];
-    list.push(op);
-    byFamily.set(op.family, list);
+    const list2 = byFamily.get(op.family) ?? [];
+    list2.push(op);
+    byFamily.set(op.family, list2);
   }
   const blocks = [];
   for (const [family, ops] of byFamily) {
@@ -93615,6 +94470,9 @@ function exitCodeForWalmartKind(kind) {
     case "bad_request":
       return 12;
     // terminal: fix the request, do not resend as-is
+    case "invalid_request":
+      return 15;
+    // MixShift refused it before sending: change the request (same code as the Amazon surfaces)
     case "upstream_auth":
       return 14;
     // Walmart denies this advertiser to MixShift
@@ -93662,8 +94520,8 @@ async function walmartAdsCall(input, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 9e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  if (typeof json2.operation !== "string") {
+  const json3 = r.json;
+  if (typeof json3.operation !== "string") {
     return {
       ok: false,
       kind: "unknown",
@@ -93673,11 +94531,11 @@ async function walmartAdsCall(input, opts = {}) {
     };
   }
   return {
-    ...json2,
+    ...json3,
     ok: true,
-    operation: json2.operation,
-    environment: String(json2.environment ?? ""),
-    advertiserId: String(json2.advertiserId ?? input.advertiserId)
+    operation: json3.operation,
+    environment: String(json3.environment ?? ""),
+    advertiserId: String(json3.advertiserId ?? input.advertiserId)
   };
 }
 async function walmartRequest(spec, opts) {
@@ -93743,9 +94601,9 @@ async function walmartRequest(spec, opts) {
       };
     }
   }
-  let json2;
+  let json3;
   try {
-    json2 = await res.json();
+    json3 = await res.json();
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     if (spec.mayChangeState && (res.ok || res.status >= 500)) {
@@ -93758,9 +94616,9 @@ async function walmartRequest(spec, opts) {
     }
     return statusOnlyFailure2(res.status);
   }
-  if (isServerFailureEnvelope2(json2)) return toWalmartFailure(json2, res.status);
-  if (!res.ok) return statusOnlyFailure2(res.status, safeJsonPreview2(json2));
-  return { ok: true, json: json2, httpStatus: res.status };
+  if (isServerFailureEnvelope2(json3)) return toWalmartFailure(json3, res.status);
+  if (!res.ok) return statusOnlyFailure2(res.status, safeJsonPreview2(json3));
+  return { ok: true, json: json3, httpStatus: res.status };
 }
 async function resolveBaseAndToken2(opts) {
   let apiBase = opts.apiBaseOverride;
@@ -93786,22 +94644,26 @@ var KNOWN_KINDS2 = /* @__PURE__ */ new Set([
   "advertiser_not_allowed",
   "insufficient_scope",
   "bad_request",
+  "invalid_request",
   "not_found",
   "upstream_auth",
   "throttled",
   "upstream_unavailable",
   "unknown"
 ]);
-function isServerFailureEnvelope2(json2) {
-  return typeof json2 === "object" && json2 !== null && json2.ok === false;
+function isServerFailureEnvelope2(json3) {
+  return typeof json3 === "object" && json3 !== null && json3.ok === false;
 }
-function toWalmartFailure(json2, httpStatus) {
-  const rawKind = typeof json2.kind === "string" ? json2.kind : "";
+function toWalmartFailure(json3, httpStatus) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
   const recognized = KNOWN_KINDS2.has(rawKind);
-  const kind = recognized ? rawKind : kindForStatus(httpStatus);
-  const friendly = typeof json2.friendly === "string" && json2.friendly ? json2.friendly : defaultFriendly2(kind);
-  const message = typeof json2.message === "string" ? json2.message : void 0;
-  const advertiserId = typeof json2.advertiserId === "string" || typeof json2.advertiserId === "number" ? String(json2.advertiserId) : void 0;
+  const source = cleanServerText(json3.source);
+  const kind = recognized ? rawKind : kindForStatus(httpStatus, source);
+  const friendly = typeof json3.friendly === "string" && json3.friendly ? json3.friendly : defaultFriendly2(kind);
+  const issues = parseRouteIssues(json3.issues);
+  const message = typeof json3.message === "string" ? json3.message : issues?.detail;
+  const advertiserId = typeof json3.advertiserId === "string" || typeof json3.advertiserId === "number" ? String(json3.advertiserId) : void 0;
+  const fix = cleanServerText(json3.fix);
   return {
     ok: false,
     kind,
@@ -93809,13 +94671,24 @@ function toWalmartFailure(json2, httpStatus) {
     httpStatus,
     ...message !== void 0 ? { message } : {},
     ...advertiserId !== void 0 ? { advertiserId } : {},
-    ...typeof json2.required === "string" ? { requiredScope: json2.required } : {},
-    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" }
+    ...typeof json3.required === "string" ? { requiredScope: json3.required } : {},
+    // An UNCERTAIN write failure (the service could not confirm the outcome)
+    // carries requestOutcome:'unknown', automaticRetry:false and the change-log
+    // id of the write; a fail-closed refusal carries none of them.
+    ...json3.requestOutcome === "unknown" ? { requestOutcome: "unknown" } : {},
+    ...typeof json3.automaticRetry === "boolean" ? { automaticRetry: json3.automaticRetry } : {},
+    ...typeof json3.auditId === "string" && json3.auditId ? { auditId: json3.auditId } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...source !== void 0 ? { source } : {},
+    ...typeof json3.retryable === "boolean" ? { retryable: json3.retryable } : {},
+    ...fix !== void 0 ? { fix } : {},
+    ...issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {},
+    ...json3.walmart !== void 0 ? { walmartResponse: json3.walmart } : {}
   };
 }
-function kindForStatus(httpStatus) {
+function kindForStatus(httpStatus, source) {
   if (httpStatus === 429) return "throttled";
-  if (httpStatus === 400) return "bad_request";
+  if (httpStatus === 400) return source === "request" ? "invalid_request" : "bad_request";
   return "unknown";
 }
 function statusOnlyFailure2(httpStatus, detail) {
@@ -93840,6 +94713,8 @@ function defaultFriendly2(kind) {
       return "This Walmart operation changes campaigns and needs the ads:write scope.";
     case "bad_request":
       return "Walmart rejected the request. Check the operation notes for the required parameters.";
+    case "invalid_request":
+      return "MixShift refused this request before sending anything to Walmart: something in the request has to change. Run `mixshift walmart ads operations` for the operation list and its parameters.";
     case "not_found":
       return "Walmart has no record matching that request.";
     case "upstream_auth":
@@ -93877,12 +94752,12 @@ function sessionFailureFromError2(err) {
     message
   };
 }
-function safeJsonPreview2(json2) {
+function safeJsonPreview2(json3) {
   try {
-    const s = JSON.stringify(json2);
+    const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
   } catch {
-    return String(json2);
+    return String(json3);
   }
 }
 
@@ -94025,7 +94900,11 @@ function registerCall3(ads) {
           ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {},
           ...opts.commit ? { committed: true } : {},
           // Parameter NAMES only, never values (same rule as amazon call).
-          ...Object.keys(opts.query).length > 0 ? { query_keys: Object.keys(opts.query).sort() } : {}
+          ...Object.keys(opts.query).length > 0 ? { query_keys: Object.keys(opts.query).sort() } : {},
+          // Gateway contract (mx-ops#144): enums and a flag; never the fix text.
+          ...result.source !== void 0 && CONTRACT_WORD.test(result.source) ? { source: result.source } : {},
+          ...result.retryable !== void 0 ? { retryable: result.retryable } : {},
+          ...result.fix !== void 0 ? { has_fix: true } : {}
         });
         return emitFailure6(result, !!root.json);
       }
@@ -94045,9 +94924,10 @@ function registerCall3(ads) {
         return;
       }
       if (result.dryRun === true) {
+        const previewAudit = safeAuditId(result.auditId) ? ` Change id ${result.auditId}.` : "";
         process.stderr.write(
           `
-\u2713 PREVIEW ONLY: ${result.operation} (advertiser ${result.advertiserId}, ${result.environment}). Nothing was sent to Walmart.
+\u2713 PREVIEW ONLY: ${result.operation} (advertiser ${result.advertiserId}, ${result.environment}). Nothing was sent to Walmart.${previewAudit}
   Re-run with --commit AFTER the user confirms this change.
 
 `
@@ -94066,7 +94946,7 @@ function registerCall3(ads) {
       }
       process.stderr.write(
         `
-\u2713 ${result.operation} (advertiser ${result.advertiserId}, ${result.environment})${opts.commit ? " COMMITTED" : ""}
+\u2713 ${result.operation} (advertiser ${result.advertiserId}, ${result.environment})${opts.commit ? " COMMITTED" : ""}${safeAuditId(result.auditId) ? ` (change id ${result.auditId})` : ""}
 
 `
       );
@@ -94090,11 +94970,14 @@ async function trackWalmart(eventName, outcome, startedAt, dataDir, payload) {
     dataDir
   );
 }
-function writeJson5(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function safeAuditId(value) {
+  return typeof value === "string" && /^[0-9a-fA-F-]{8,64}$/.test(value);
 }
-function emitFailure6(failure2, json2) {
-  if (json2) {
+function writeJson5(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
+}
+function emitFailure6(failure2, json3) {
+  if (json3) {
     writeJson5({
       status: "error",
       failure_kind: failure2.kind,
@@ -94104,7 +94987,16 @@ function emitFailure6(failure2, json2) {
       advertiser_id: failure2.advertiserId,
       required_scope: failure2.requiredScope,
       request_outcome: failure2.requestOutcome,
-      unrecognized_kind: failure2.unrecognizedKind
+      automatic_retry: failure2.automaticRetry,
+      audit_id: failure2.auditId,
+      unrecognized_kind: failure2.unrecognizedKind,
+      // Gateway contract (mx-ops#144 P5).
+      source: failure2.source,
+      retryable: failure2.retryable,
+      fix: failure2.fix,
+      invalid_params: failure2.invalidParams,
+      // Walmart's own answer on a Walmart rejection (the gateway's `walmart`).
+      walmart_response: failure2.walmartResponse
     });
   } else {
     process.stderr.write(`
@@ -94112,12 +95004,26 @@ function emitFailure6(failure2, json2) {
 `);
     if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
 `);
+    if (failure2.fix) process.stderr.write(`  fix: ${failure2.fix}
+`);
+    if (failure2.walmartResponse !== void 0) {
+      const said = cleanServerText(
+        typeof failure2.walmartResponse === "string" ? failure2.walmartResponse : JSON.stringify(failure2.walmartResponse)
+      );
+      if (said) process.stderr.write(`  Walmart said: ${said.length > 500 ? `${said.slice(0, 500)}...` : said}
+`);
+    }
+    if (failure2.retryable === false && failure2.source === "request") {
+      process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
+    }
+    if (safeAuditId(failure2.auditId)) process.stderr.write(`  change id: ${failure2.auditId} (MixShift change log)
+`);
   }
   process.exitCode = exitCodeForWalmartKind(failure2.kind);
 }
-function emitError12(err, json2) {
+function emitError12(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
+  if (json3) {
     writeJson5({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
@@ -94143,9 +95049,9 @@ function renderOperations3(operations, families = []) {
   }
   const byFamily = /* @__PURE__ */ new Map();
   for (const op of operations) {
-    const list = byFamily.get(op.family) ?? [];
-    list.push(op);
-    byFamily.set(op.family, list);
+    const list2 = byFamily.get(op.family) ?? [];
+    list2.push(op);
+    byFamily.set(op.family, list2);
   }
   const blocks = [];
   for (const [family, ops] of byFamily) {
@@ -94168,9 +95074,1356 @@ function renderOperations3(operations, families = []) {
   return blocks.join("\n").trimEnd();
 }
 
+// src/lib/shelf/client.ts
+init_credentials();
+init_intent();
+var SHELF_COUNTRIES = ["us", "ca", "uk", "de", "fr", "it", "es", "in"];
+var SHELF_SURFACES = ["desktop", "mobile"];
+function isShelfFailure(x) {
+  return x.ok === false;
+}
+function exitCodeForShelfKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    // sign in again
+    case "shelf_not_configured":
+    case "shelf_not_enabled":
+    case "shelf_not_enrolled":
+      return 6;
+    // shelf data is not enabled (service-wide, or for this organization)
+    case "not_found":
+      return 7;
+    case "throttled":
+      return 8;
+    case "shelf_allowance_exhausted":
+      return 10;
+    // the month's included requests are used; resets next month
+    case "insufficient_scope":
+      return 11;
+    case "bad_request":
+    case "zip_unavailable":
+      return 12;
+    // terminal as sent: fix the request
+    case "invalid_request":
+      return 15;
+    // MixShift refused it before sending: change the request
+    case "upstream_unavailable":
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
+var DATA_TIMEOUT_MS = 12e4;
+var FREE_TIMEOUT_MS = 3e4;
+async function shelfBuybox(input, opts = {}) {
+  return dataCall("/api/shelf/buybox", { asin: input.asin.trim().toUpperCase(), zip: input.zip, ...commonBody(input) }, opts);
+}
+async function shelfOffers(input, opts = {}) {
+  return dataCall("/api/shelf/offers", { asin: input.asin.trim().toUpperCase(), zip: input.zip, ...commonBody(input) }, opts);
+}
+async function shelfSearch(input, opts = {}) {
+  return dataCall(
+    "/api/shelf/search",
+    { query: input.query.trim(), surface: input.surface, page: input.page, zip: input.zip, ...commonBody(input) },
+    opts
+  );
+}
+async function shelfProduct(input, opts = {}) {
+  return dataCall("/api/shelf/product", { asin: input.asin.trim().toUpperCase(), zip: input.zip, ...commonBody(input) }, opts);
+}
+async function shelfSeller(input, opts = {}) {
+  return dataCall("/api/shelf/seller", { seller_id: input.sellerId.trim().toUpperCase(), ...commonBody(input) }, opts);
+}
+async function shelfZips(country = "us", opts = {}) {
+  const r = await shelfRequest({ method: "GET", path: `/api/shelf/zips?country=${encodeURIComponent(country)}` }, { ...opts, timeoutMs: opts.timeoutMs ?? FREE_TIMEOUT_MS });
+  if (!r.ok) return r;
+  const j = r.json;
+  return { ok: true, retailer: String(j.retailer ?? "amazon"), country: String(j.country ?? country), count: Number(j.count ?? 0), zips: Array.isArray(j.zips) ? j.zips.map(String) : [] };
+}
+async function shelfUsage(opts = {}) {
+  const r = await shelfRequest({ method: "GET", path: "/api/shelf/usage" }, { ...opts, timeoutMs: opts.timeoutMs ?? FREE_TIMEOUT_MS });
+  if (!r.ok) return r;
+  const j = r.json;
+  if (typeof j.period !== "string" || typeof j.allowance !== "number") return unrecognizedShape(r.httpStatus, "usage");
+  return {
+    ok: true,
+    period: j.period,
+    allowance: j.allowance,
+    used: Number(j.used ?? 0),
+    remaining: Number(j.remaining ?? Math.max(0, j.allowance - Number(j.used ?? 0))),
+    resets_at: String(j.resets_at ?? ""),
+    source: String(j.source ?? "")
+  };
+}
+function commonBody(input) {
+  return {
+    ...input.country ? { country: input.country } : {},
+    ...input.fresh ? { fresh: true } : {},
+    ...input.origin ? { origin: input.origin } : {}
+  };
+}
+async function dataCall(path2, body, opts) {
+  const clean = {};
+  for (const [k, v] of Object.entries(body)) if (v !== void 0 && v !== null && v !== "") clean[k] = v;
+  const r = await shelfRequest({ method: "POST", path: path2, body: clean }, { ...opts, timeoutMs: opts.timeoutMs ?? DATA_TIMEOUT_MS });
+  if (!r.ok) return r;
+  const j = r.json;
+  if (j.ok !== true || typeof j.kind !== "string" || typeof j.observed_at !== "string" || j.data === void 0) {
+    return unrecognizedShape(r.httpStatus, "answer");
+  }
+  return j;
+}
+function unrecognizedShape(httpStatus, what) {
+  return {
+    ok: false,
+    kind: "unknown",
+    friendly: "MixShift answered the shelf request but returned an unrecognized shape. Try again, or contact MixShift if it persists.",
+    message: `shelf ${what} response missing its envelope fields`,
+    httpStatus
+  };
+}
+async function shelfRequest(spec, opts) {
+  const resolved = await resolveBaseAndToken3(opts);
+  if ("ok" in resolved) return resolved;
+  const { apiBase, tokenProvider } = resolved;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? FREE_TIMEOUT_MS;
+  const doFetch = async (bearer) => {
+    try {
+      const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
+        method: spec.method,
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          ...spec.body ? { "Content-Type": "application/json" } : {},
+          ...intentHeader()
+        },
+        body: spec.body ? JSON.stringify(spec.body) : void 0,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return { res: res2 };
+    } catch (err) {
+      return { networkError: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  const networkFailure = (a) => ({
+    ok: false,
+    kind: "host_unreachable",
+    friendly: "The MixShift service did not answer in time. Check your network or try again in a minute.",
+    message: a.networkError
+  });
+  let token;
+  try {
+    token = await tokenProvider(false);
+  } catch (err) {
+    return sessionFailureFromError3(err);
+  }
+  let attempt = await doFetch(token);
+  if ("networkError" in attempt) return networkFailure(attempt);
+  let res = attempt.res;
+  if (res.status === 401) {
+    try {
+      token = await tokenProvider(true);
+    } catch (err) {
+      return sessionFailureFromError3(err);
+    }
+    attempt = await doFetch(token);
+    if ("networkError" in attempt) return networkFailure(attempt);
+    res = attempt.res;
+    if (res.status === 401) {
+      return {
+        ok: false,
+        kind: "session_expired",
+        friendly: "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate.",
+        httpStatus: 401
+      };
+    }
+  }
+  let json3;
+  try {
+    json3 = await res.json();
+  } catch {
+    return statusOnlyFailure3(res.status);
+  }
+  if (isServerFailureEnvelope3(json3)) return toShelfFailure(json3, res.status);
+  if (!res.ok) return statusOnlyFailure3(res.status, safeJsonPreview3(json3));
+  return { ok: true, json: json3, httpStatus: res.status };
+}
+async function resolveBaseAndToken3(opts) {
+  let apiBase = opts.apiBaseOverride;
+  if (!apiBase) {
+    const { credentials } = await loadCredentials(opts.dataDirOverride);
+    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base) {
+      return {
+        ok: false,
+        kind: "not_authenticated",
+        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) first.'
+      };
+    }
+    apiBase = base;
+  }
+  const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
+  return { apiBase, tokenProvider };
+}
+var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
+  // Keep in step with ShelfErrorKind in mx-gateway src/shelf/errors.ts (+ route kinds).
+  "shelf_not_configured",
+  "shelf_not_enabled",
+  "shelf_not_enrolled",
+  "shelf_allowance_exhausted",
+  "zip_unavailable",
+  "bad_request",
+  "invalid_request",
+  "throttled",
+  "upstream_unavailable",
+  "insufficient_scope",
+  "not_found",
+  "unknown"
+]);
+function isServerFailureEnvelope3(json3) {
+  return typeof json3 === "object" && json3 !== null && json3.ok === false;
+}
+var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
+var str = (v) => typeof v === "string" && v ? v : void 0;
+function toShelfFailure(json3, httpStatus) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
+  const recognized = KNOWN_KINDS3.has(rawKind);
+  const source = cleanServerText(json3.source);
+  const kind = recognized ? rawKind : kindForStatus2(httpStatus, source);
+  const friendly = typeof json3.friendly === "string" && json3.friendly ? json3.friendly : defaultFriendly3(kind);
+  const issues = parseRouteIssues(json3.issues);
+  const message = typeof json3.message === "string" ? json3.message : issues?.detail;
+  return {
+    ok: false,
+    kind,
+    friendly,
+    httpStatus,
+    ...message !== void 0 ? { message } : {},
+    ...str(json3.period) !== void 0 ? { period: str(json3.period) } : {},
+    ...num(json3.allowance) !== void 0 ? { allowance: num(json3.allowance) } : {},
+    ...num(json3.used) !== void 0 ? { used: num(json3.used) } : {},
+    ...str(json3.resets_at) !== void 0 ? { resetsAt: str(json3.resets_at) } : {},
+    ...str(json3.request_more) !== void 0 ? { requestMore: str(json3.request_more) } : {},
+    ...num(json3.available_count) !== void 0 ? { availableCount: num(json3.available_count) } : {},
+    ...num(json3.retryAfterMs) !== void 0 ? { retryAfterMs: num(json3.retryAfterMs) } : {},
+    ...typeof json3.required === "string" ? { requiredScope: json3.required } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...source !== void 0 ? { source } : {},
+    ...typeof json3.retryable === "boolean" ? { retryable: json3.retryable } : {},
+    ...issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {}
+  };
+}
+function kindForStatus2(httpStatus, source) {
+  if (httpStatus === 429) return "throttled";
+  if (httpStatus === 402) return "shelf_allowance_exhausted";
+  if (httpStatus === 400) return source === "request" ? "invalid_request" : "bad_request";
+  return "unknown";
+}
+function statusOnlyFailure3(httpStatus, detail) {
+  const kind = kindForStatus2(httpStatus);
+  return {
+    ok: false,
+    kind,
+    friendly: defaultFriendly3(kind),
+    message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
+    httpStatus
+  };
+}
+function defaultFriendly3(kind) {
+  switch (kind) {
+    case "shelf_not_configured":
+      return "Shelf data is not set up on the MixShift service yet. Contact MixShift.";
+    case "shelf_not_enabled":
+      return "Shelf data is switched off for your organization. Ask MixShift to turn it back on.";
+    case "shelf_not_enrolled":
+      return "Your MixShift account is not set up for shelf data yet. Ask MixShift to enroll your organization.";
+    case "shelf_allowance_exhausted":
+      return `Your organization's included shelf requests for this month are used. They reset next month, or say "request more shelf requests" to ask MixShift for more now.`;
+    case "zip_unavailable":
+      return "That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.";
+    case "bad_request":
+      return "The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.";
+    case "invalid_request":
+      return "MixShift refused this request before sending anything: something in the request has to change. Run `mixshift shelf catalog` for the inputs each call takes.";
+    case "throttled":
+      return "Shelf data is busy right now. Wait a moment, then try again.";
+    case "upstream_unavailable":
+      return "Shelf data is temporarily unavailable. Try again in a minute.";
+    case "insufficient_scope":
+      return "This credential lacks the shelf:read scope. Sign in again, or mint a service credential that includes it.";
+    case "not_found":
+      return "MixShift has no such shelf endpoint. Update the plugin.";
+    case "host_unreachable":
+      return "The MixShift service is unreachable. Check your network or try again in a minute.";
+    case "not_authenticated":
+      return "You're not signed in to MixShift. Run `mixshift auth login` first.";
+    case "session_expired":
+      return "Your MixShift session expired. Run `mixshift auth login` to re-authenticate.";
+    default:
+      return "The shelf request failed unexpectedly. Try again shortly.";
+  }
+}
+function sessionFailureFromError3(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const expired = /expired|refresh/i.test(message);
+  return {
+    ok: false,
+    kind: expired ? "session_expired" : "not_authenticated",
+    friendly: defaultFriendly3(expired ? "session_expired" : "not_authenticated"),
+    message
+  };
+}
+function safeJsonPreview3(json3) {
+  try {
+    const s = JSON.stringify(json3);
+    return s.length > 300 ? s.slice(0, 300) + "..." : s;
+  } catch {
+    return String(json3);
+  }
+}
+
+// src/lib/shelf/catalog.ts
+var SHELF_CATALOG = [
+  {
+    id: "buybox",
+    tool: "shelf_get_buybox",
+    what: "The Buy Box (featured offer) a shopper at a zip sees for an ASIN right now.",
+    explain: "The Buy Box is the offer Amazon puts behind the Add to Cart button. It can differ by where the shopper is: a seller with a faster delivery promise to that zip can win there and lose elsewhere. This shows who won it at one zip, at what price, shipped from where, Prime or not, how much stock, and the delivery promise as text and as days.",
+    inputs: "an ASIN; optional --zip (a shopper location from `shelf zips`), --country (us default), --fresh",
+    returns: "price, sold_by, seller_id, ships_from, prime, in_stock, stock, free_delivery, fastest_delivery, promise_days_free, promise_days_fastest, observed_at",
+    cost: "counts 1",
+    say: "who has the Buy Box for B0055QS6AK in Dallas?",
+    example: "mixshift shelf buybox B0055QS6AK --zip 75201 --json"
+  },
+  {
+    id: "offers",
+    tool: "shelf_get_offers",
+    what: 'Every offer a shopper at a zip sees on an ASIN: the "other sellers" list.',
+    explain: "One listing can carry many sellers. This is the whole list as the shopper sees it: each seller's price, whether Amazon ships it (FBA) or the seller does, the condition, and each seller's delivery promise. It is how you see a price war, a reseller undercutting MAP, or an unauthorized seller on your listing, and the seller ids to look up with `shelf seller`.",
+    inputs: "an ASIN; optional --zip, --country, --fresh",
+    returns: "product (the featured offer with title, rating, reviews), offers[] (price_num, sold_by, seller_id, fba, conditions, promise days), offer_count",
+    cost: "counts 1",
+    say: "list every seller on B0055QS6AK and their prices",
+    example: "mixshift shelf offers B0055QS6AK --zip 10001 --json"
+  },
+  {
+    id: "search",
+    tool: "shelf_search",
+    what: "The Amazon search results page for a keyword as a shopper at a zip sees it: organic and sponsored rank.",
+    explain: `Type a keyword into Amazon and this is the page that comes back, position by position: which ASINs rank where, which are sponsored, prices, ratings, review counts, "bought in past month", badges (Amazon's Choice, Best Seller, Overall Pick), coupons, stock warnings and delivery promises, plus the sponsored-brand banners at the top. Desktop shows 60 positions a page, mobile 15 (and no review counts). Each page is one answer; absolute_rank counts across pages.`,
+    inputs: "a keyword; optional --view desktop|mobile, --page 1..5, --zip, --country, --fresh",
+    returns: "products[] (asin, rank, absolute_rank, is_sponsored, price_num, rating, reviews, monthly_sales, badges, coupon, stock_level), banners[], sponsored_count, total_results, related_keywords",
+    cost: "counts 1",
+    say: 'where do we rank for "backpacking meals" in New York?',
+    example: 'mixshift shelf search "backpacking meals" --zip 10001 --json'
+  },
+  {
+    id: "product",
+    tool: "shelf_get_product",
+    what: "The product page for an ASIN as a shopper at a zip sees it (beta).",
+    explain: `The listing itself, parsed: title, bullet points, the product details table, images, best-seller ranks by category, rating and review count, "bought in past month", the badge, the Buy Box block, and Amazon's "customers say" summary. Use it to check what the page shows today, or to compare a competitor's page with yours. Beta: the page layout changes, so a field can be missing on some listings; the answer says beta: true.`,
+    inputs: "an ASIN; optional --zip, --country, --fresh",
+    returns: "title, bullet_points[], details{}, media, bsr[], rating, reviews, monthly_sales, badge_text, buybox, customer_say",
+    cost: "counts 1",
+    say: "what does the product page for B07BDBDT21 show right now?",
+    example: "mixshift shelf product B07BDBDT21 --json"
+  },
+  {
+    id: "seller",
+    tool: "shelf_get_seller",
+    what: "Who a third-party seller is: the storefront details behind a seller id.",
+    explain: 'An offer carries a seller id. This looks the seller up: storefront name, rating and count, the storefront text, and the business name and address Amazon shows for the seller where it shows them. It is the "who is this reseller" step after `shelf offers`. Amazon\'s own retail offers have no seller id and no storefront to look up.',
+    inputs: "a seller id (from a buybox, offers or search answer); optional --country, --fresh",
+    returns: "name, rating, rating_count, description, details[] (business name and address lines), logo_url",
+    cost: "counts 1",
+    say: "who is seller A1EXAMPLESELLER?",
+    example: "mixshift shelf seller A1EXAMPLESELLER --json"
+  },
+  {
+    id: "zips",
+    tool: "shelf_list_zips",
+    what: "The shopper locations (zip or postal codes) shelf data can be observed from, per country.",
+    explain: "Shelf answers are taken as a shopper at a location. The locations are a fixed list per country (about 300 US zips covering the metros, 20 to 30 elsewhere); a zip off the list is refused before anything is spent. Pick the zips that matter to you, for example the eight big metros, or the zip Amazon reports as a segment's sample location.",
+    inputs: "optional --country (us, ca, uk, de, fr, it, es, in)",
+    returns: "count, zips[]",
+    cost: "free",
+    say: "which zips can shelf data observe from?",
+    example: "mixshift shelf zips --country us --json"
+  },
+  {
+    id: "usage",
+    tool: "shelf_get_usage",
+    what: "Your organization's shelf allowance for this month: allowance, used, remaining, reset date.",
+    explain: "Every shelf answer counts one, whether MixShift observed the shelf for it or already had a recent observation; the zip list and this read are free. Unused requests do not roll over. The first month carries a larger discovery allowance; after that a monthly one, and more can be tracked on request.",
+    inputs: "none",
+    returns: "period, allowance, used, remaining, resets_at",
+    cost: "free",
+    say: "how many shelf requests do we have left this month?",
+    example: "mixshift shelf usage --json"
+  }
+];
+function renderShelfCatalogChat(entries = SHELF_CATALOG) {
+  const L = [];
+  L.push("**Shelf data: what a shopper sees on Amazon, by location**");
+  L.push("");
+  L.push(
+    "Public shelf observations from a licensed third-party provider on MixShift's own key: nothing here uses your Amazon credentials or touches your account data. Every data answer carries `observed_at` (when the shelf looked like this) and counts one against your organization's monthly shelf allowance; `--fresh` asks for the shelf as of now at the same cost."
+  );
+  L.push("");
+  for (const e of entries) {
+    L.push(`### ${e.id} (${e.cost})`);
+    L.push(e.what);
+    L.push("");
+    L.push(e.explain);
+    L.push("");
+    L.push(`- inputs: ${e.inputs}`);
+    L.push(`- returns: ${e.returns}`);
+    L.push(`- say: "${e.say}"`);
+    L.push(`- example: \`${e.example}\``);
+    L.push("");
+  }
+  L.push('Say "demo Amazon shelf" to see these on your own ASIN and keyword.');
+  L.push("");
+  return L.join("\n");
+}
+
+// src/commands/shelf-featured-offer-check.ts
+import { promises as fs } from "node:fs";
+import { join as join26, resolve as resolvePath3 } from "node:path";
+
+// src/lib/shelf/featured-offer-check.ts
+var HELD_SHARE_FLOOR = 0.99;
+var num2 = (v) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+var str2 = (v) => typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+var list = (v) => Array.isArray(v) ? v.map(obj).filter((x) => x !== null) : [];
+function landedPrice(offer) {
+  const lp = num2(obj(offer.listingPrice)?.amount);
+  if (lp === null) return null;
+  const ship = list(offer.shippingOptions)[0];
+  const sp = ship ? num2(obj(ship.price)?.amount) ?? 0 : 0;
+  return Math.round((lp + sp) * 100) / 100;
+}
+function summarizeItem(item, ourSellerId) {
+  const body = item.body ?? {};
+  const asin = String(body.asin ?? "").toUpperCase();
+  const base = { asin, status: "error", ourShare: 0, totalWeight: 0, segments: [], competitors: [], lostZips: [], ourPrice: null, error: null };
+  const code = item.status?.statusCode ?? 0;
+  const errors = [...item.errors ?? [], ...body.errors ?? []];
+  if (code < 200 || code >= 300 || errors.length > 0) {
+    base.error = errors.map((e) => e.message || e.code).filter(Boolean).join("; ") || `HTTP ${code}`;
+    return base;
+  }
+  const segments = [];
+  for (const option of list(body.featuredBuyingOptions)) {
+    for (const offer of list(option.segmentedFeaturedOffers)) {
+      const sellerId = str2(offer.sellerId);
+      const price = landedPrice(offer);
+      const fulfillment = str2(offer.fulfillmentType);
+      for (const seg of list(offer.featuredOfferSegments)) {
+        const details = obj(seg.segmentDetails);
+        const postal = obj(obj(details?.sampleLocation)?.postalCode);
+        segments.push({
+          sellerId,
+          membership: str2(seg.customerMembership) ?? "UNKNOWN",
+          weight: num2(details?.glanceViewWeightPercentage) ?? 0,
+          zip: str2(postal?.value),
+          price,
+          fulfillment
+        });
+      }
+    }
+  }
+  const totalWeight = segments.reduce((a, s) => a + s.weight, 0);
+  const ours = segments.filter((s) => s.sellerId === ourSellerId);
+  const ourWeight = ours.reduce((a, s) => a + s.weight, 0);
+  const ourShare = totalWeight > 0 ? ourWeight / totalWeight : 0;
+  const byCompetitor = /* @__PURE__ */ new Map();
+  for (const s of segments) {
+    if (!s.sellerId || s.sellerId === ourSellerId) continue;
+    const c = byCompetitor.get(s.sellerId) ?? { sellerId: s.sellerId, weight: 0, price: s.price, fulfillment: s.fulfillment };
+    c.weight += s.weight;
+    byCompetitor.set(s.sellerId, c);
+  }
+  const competitors = [...byCompetitor.values()].sort((a, b) => b.weight - a.weight);
+  const lostZips = [];
+  for (const s of [...segments].sort((a, b) => b.weight - a.weight)) {
+    if (s.sellerId !== ourSellerId && s.zip && !lostZips.includes(s.zip)) lostZips.push(s.zip);
+  }
+  const status = segments.length === 0 ? "no_featured_offer" : ourShare >= HELD_SHARE_FLOOR ? "held" : ourShare > 0 ? "partial" : "lost";
+  return {
+    ...base,
+    status,
+    ourShare: Math.round(ourShare * 1e4) / 1e4,
+    totalWeight: Math.round(totalWeight * 100) / 100,
+    segments,
+    competitors,
+    lostZips,
+    ourPrice: ours.find((s) => s.price !== null)?.price ?? null
+  };
+}
+function summarizeCompetitiveSummary(responses, ourSellerId) {
+  return responses.map((r) => summarizeItem(r, ourSellerId)).filter((s) => s.asin !== "");
+}
+var DEFAULT_METRO_ZIPS = ["10001", "60601", "75201", "90001"];
+var MAX_ZIPS_PER_ASIN = 4;
+function planShelfCalls(summaries, opts) {
+  const maxZips = opts.maxZipsPerAsin ?? MAX_ZIPS_PER_ASIN;
+  const metros = (opts.metros ?? DEFAULT_METRO_ZIPS).filter((z2) => opts.zipList.has(z2));
+  const calls = [];
+  const skippedZips = {};
+  for (const s of summaries) {
+    if (s.status === "error") continue;
+    if (s.status === "held" && !opts.includeHeld) continue;
+    const zips = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const z2 of s.lostZips) {
+      if (!opts.zipList.has(z2)) {
+        (skippedZips[s.asin] ??= []).push(z2);
+        continue;
+      }
+      if (!seen.has(z2) && zips.length < maxZips) {
+        seen.add(z2);
+        zips.push({ asin: s.asin, kind: "buybox", zip: z2, why: "segment" });
+      }
+    }
+    for (const z2 of metros) {
+      if (!seen.has(z2) && zips.length < maxZips) {
+        seen.add(z2);
+        zips.push({ asin: s.asin, kind: "buybox", zip: z2, why: "metro" });
+      }
+    }
+    calls.push(...zips);
+    const offersZip = zips[0]?.zip ?? metros[0];
+    if (offersZip) calls.push({ asin: s.asin, kind: "offers", zip: offersZip, why: zips[0]?.why ?? "metro" });
+  }
+  return { calls, skippedZips };
+}
+var money = (n) => typeof n === "number" ? `$${n.toFixed(2)}` : "n/a";
+function diagnose(summary, buyboxes, offers, ourSellerId) {
+  const zips = buyboxes.map((b) => ({
+    zip: b.zip,
+    why: b.why,
+    winner: b.data.sold_by,
+    winnerId: b.data.seller_id,
+    ours: b.data.seller_id === ourSellerId,
+    price: b.data.price,
+    promiseDays: b.data.promise_days_fastest,
+    observedAt: b.observedAt
+  }));
+  const offerList = offers?.data.offers ?? [];
+  const ourOffer = offerList.find((o) => o.seller_id === ourSellerId) ?? (offers?.data.product && offers.data.product.seller_id === ourSellerId ? offers.data.product : null);
+  const others = offerList.filter((o) => o.seller_id !== ourSellerId && o.price_num !== null).sort((a, b) => (a.price_num ?? 0) - (b.price_num ?? 0));
+  const lowestOther = others[0] ?? null;
+  const ourPrice = ourOffer?.price_num ?? summary.ourPrice;
+  const undercutters = ourPrice === null ? [] : others.filter((o) => (o.price_num ?? Infinity) < ourPrice);
+  const base = { asin: summary.asin, zips, ourOffer, lowestOther, undercutters, offerCount: offers ? offers.data.offer_count : null };
+  if (summary.status === "held" && zips.every((z2) => z2.ours || z2.winner === null)) {
+    return { ...base, reason: "held", detail: `Amazon and the shelf agree: we hold the featured offer (${Math.round(summary.ourShare * 100)}% of views).` };
+  }
+  const lostZips = zips.filter((z2) => !z2.ours);
+  if (zips.length > 0 && lostZips.length === 0) {
+    return { ...base, reason: "lost_elsewhere", detail: `We win the Buy Box at every observed location, but Amazon reports ${Math.round((1 - summary.ourShare) * 100)}% of views going to ${summary.competitors[0]?.sellerId ?? "another seller"}; the losing segments could not be observed (their sample zips are not observation points).` };
+  }
+  const noBox = lostZips.filter((z2) => z2.winner === null);
+  if (lostZips.length > 0 && noBox.length === lostZips.length && (offers === null || offers.data.offer_count === 0)) {
+    return { ...base, reason: "no_featured_offer", detail: `No featured offer and no offers at all at ${noBox.map((z2) => z2.zip).join(", ")}: the listing is not buyable there (out of stock everywhere, or suppressed).` };
+  }
+  if (offers && !ourOffer) {
+    return { ...base, reason: "not_on_listing", detail: `Our offer is not in the offer list at ${offers.zip} (${offers.data.offer_count} other offers): out of stock or not buyable there.` };
+  }
+  if (lostZips.length > 0 && noBox.length === lostZips.length) {
+    return { ...base, reason: "no_featured_offer", detail: `No featured offer is shown at ${noBox.map((z2) => z2.zip).join(", ")}: the Buy Box is suppressed for everyone there, usually a lower price off Amazon or a listing issue.` };
+  }
+  const won = lostZips.filter((z2) => z2.winner !== null);
+  const cheaper = won.filter((z2) => ourPrice !== null && z2.price !== null && z2.price < ourPrice);
+  if (cheaper.length > 0) {
+    const w = cheaper[0];
+    return { ...base, reason: "price_undercut", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} against our ${money(ourPrice)}${undercutters.length > 0 ? `; ${undercutters.length} offer(s) on the listing are below our price` : ""}.` };
+  }
+  if (won.length > 0) {
+    const w = won[0];
+    const ourDays = ourOffer?.promise_days_fastest ?? null;
+    const gap = w.promiseDays !== null && ourDays !== null ? ` (${w.promiseDays} d vs our ${ourDays} d)` : w.promiseDays !== null ? ` (${w.promiseDays} d)` : "";
+    return { ...base, reason: "promise_loss", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} with a faster delivery promise${gap}; our price is ${money(ourPrice)}.` };
+  }
+  return { ...base, reason: "unresolved", detail: summary.status === "no_featured_offer" ? "Amazon reports no featured offer for this ASIN and the shelf could not be observed." : "Amazon reports a loss; the shelf had no answer for this ASIN." };
+}
+function reportCounts(report) {
+  const counts = { total: report.asins.length, held: 0, flagged: 0, errors: 0 };
+  for (const a of report.asins) {
+    if (a.summary.status === "error") counts.errors += 1;
+    else if (a.summary.status === "held") counts.held += 1;
+    else counts.flagged += 1;
+    const r = a.diagnosis?.reason;
+    if (r) counts[r] = (counts[r] ?? 0) + 1;
+  }
+  return counts;
+}
+var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var pct = (n) => `${Math.round(n * 100)}%`;
+var REASON_LABEL = {
+  held: "held",
+  promise_loss: "lost on delivery promise",
+  price_undercut: "lost on price",
+  no_featured_offer: "no featured offer",
+  not_on_listing: "our offer missing",
+  lost_elsewhere: "lost in unobserved segments",
+  unresolved: "unresolved"
+};
+var STATUS_LABEL = { held: "held", partial: "partially lost", lost: "lost", no_featured_offer: "no featured offer", error: "error" };
+function renderReportMarkdown(report) {
+  const c = reportCounts(report);
+  const L = [];
+  L.push(`# Featured offer check: ${report.merchant.name ?? report.merchant.amazonSellerId} (${report.merchant.marketplace.toUpperCase()})`, "");
+  L.push(`Generated ${report.generatedAt}. Amazon's answer${report.summaryObservedAt ? ` as of ${report.summaryObservedAt}` : ""}; shelf observations dated per row. ${c.total} ASINs: ${c.held} held, ${c.flagged} flagged, ${c.errors} errors. Shelf answers spent: ${report.shelfAnswersSpent}.`, "");
+  L.push("| ASIN | Amazon says | our view share | top competitor | shelf says | detail |", "|---|---|---|---|---|---|");
+  for (const a of report.asins) {
+    const s = a.summary;
+    const comp = s.competitors[0] ? `${s.competitors[0].sellerId} (${pct(s.totalWeight > 0 ? s.competitors[0].weight / s.totalWeight : 0)})` : "-";
+    L.push(`| ${s.asin} | ${s.error ? `error: ${s.error}` : STATUS_LABEL[s.status]} | ${s.error ? "-" : pct(s.ourShare)} | ${comp} | ${a.diagnosis ? REASON_LABEL[a.diagnosis.reason] : s.status === "held" ? "not observed (held)" : "-"} | ${a.diagnosis?.detail ?? ""} |`);
+  }
+  for (const a of report.asins) {
+    if (!a.diagnosis) continue;
+    const s = a.summary;
+    const d = a.diagnosis;
+    L.push("", `## ${s.asin}: ${REASON_LABEL[d.reason]}`, "", d.detail, "");
+    L.push("Amazon segments:", "", "| segment | views | featured seller | price | sample zip |", "|---|---|---|---|---|");
+    for (const seg of s.segments) L.push(`| ${seg.membership} | ${pct(s.totalWeight > 0 ? seg.weight / s.totalWeight : 0)} | ${seg.sellerId === report.merchant.amazonSellerId ? "us" : seg.sellerId ?? "none"} | ${money(seg.price)} | ${seg.zip ?? "-"} |`);
+    if (d.zips.length > 0) {
+      L.push("", "Shelf, Buy Box by location:", "", "| zip | why | winner | price | fastest promise | observed |", "|---|---|---|---|---|---|");
+      for (const z2 of d.zips) L.push(`| ${z2.zip} | ${z2.why} | ${z2.ours ? "us" : z2.winner ?? "no featured offer"} | ${money(z2.price)} | ${z2.promiseDays ?? "-"} d | ${z2.observedAt} |`);
+    }
+    if (d.offerCount !== null) {
+      L.push("", `Offers (${d.offerCount}): ours ${d.ourOffer ? `${d.ourOffer.price ?? money(d.ourOffer.price_num)} (${d.ourOffer.promise_days_fastest ?? "-"} d)` : "not on the listing"}; lowest other ${d.lowestOther ? `${d.lowestOther.price ?? money(d.lowestOther.price_num)} by ${d.lowestOther.sold_by} (${d.lowestOther.seller_id ?? "-"})` : "none"}; ${d.undercutters.length} below our price.`);
+    }
+    const skipped = report.skippedZips[s.asin];
+    if (skipped?.length) L.push("", `Sample zips not observable: ${skipped.join(", ")}.`);
+  }
+  return L.join("\n") + "\n";
+}
+function renderReportHtml(report) {
+  const c = reportCounts(report);
+  const rows = report.asins.map((a) => {
+    const s = a.summary;
+    const comp = s.competitors[0] ? `${esc2(s.competitors[0].sellerId)} (${pct(s.totalWeight > 0 ? s.competitors[0].weight / s.totalWeight : 0)})` : "-";
+    const reason = a.diagnosis ? REASON_LABEL[a.diagnosis.reason] : s.status === "held" ? "not observed (held)" : "-";
+    const cls = a.diagnosis ? a.diagnosis.reason : s.status;
+    return `<tr class="${esc2(cls)}"><td><a href="#${esc2(s.asin)}">${esc2(s.asin)}</a></td><td>${esc2(s.error ? `error: ${s.error}` : STATUS_LABEL[s.status])}</td><td class="num">${s.error ? "-" : pct(s.ourShare)}</td><td>${comp}</td><td>${esc2(reason)}</td><td>${esc2(a.diagnosis?.detail ?? "")}</td></tr>`;
+  }).join("\n");
+  const sections = report.asins.filter((a) => a.diagnosis).map((a) => {
+    const s = a.summary;
+    const d = a.diagnosis;
+    const segs = s.segments.map((seg) => `<tr><td>${esc2(seg.membership)}</td><td class="num">${pct(s.totalWeight > 0 ? seg.weight / s.totalWeight : 0)}</td><td>${seg.sellerId === report.merchant.amazonSellerId ? "us" : esc2(seg.sellerId ?? "none")}</td><td class="num">${esc2(money(seg.price))}</td><td>${esc2(seg.zip ?? "-")}</td></tr>`).join("");
+    const zips = d.zips.map((z2) => `<tr class="${z2.ours ? "ours" : "theirs"}"><td>${esc2(z2.zip)}</td><td>${esc2(z2.why)}</td><td>${z2.ours ? "us" : esc2(z2.winner ?? "no featured offer")}</td><td class="num">${esc2(money(z2.price))}</td><td class="num">${z2.promiseDays ?? "-"} d</td><td class="muted">${esc2(z2.observedAt)}</td></tr>`).join("");
+    const offers = d.offerCount === null ? "" : `<p><strong>Offers (${d.offerCount}).</strong> Ours: ${d.ourOffer ? `${esc2(d.ourOffer.price ?? money(d.ourOffer.price_num))} (${d.ourOffer.promise_days_fastest ?? "-"} d)` : "not on the listing"}. Lowest other: ${d.lowestOther ? `${esc2(d.lowestOther.price ?? money(d.lowestOther.price_num))} by ${esc2(d.lowestOther.sold_by)} (${esc2(d.lowestOther.seller_id ?? "-")})` : "none"}. ${d.undercutters.length} below our price.</p>`;
+    const skipped = report.skippedZips[s.asin];
+    return `<section id="${esc2(s.asin)}"><h2>${esc2(s.asin)} <span class="tag ${esc2(d.reason)}">${esc2(REASON_LABEL[d.reason])}</span></h2><p>${esc2(d.detail)}</p>
+<h3>Amazon: featured offer by shopper segment</h3><div class="tbl"><table><tr><th>segment</th><th>views</th><th>featured seller</th><th>price</th><th>sample zip</th></tr>${segs}</table></div>
+${d.zips.length ? `<h3>Shelf: the Buy Box by location</h3><div class="tbl"><table><tr><th>zip</th><th>why</th><th>winner</th><th>price</th><th>fastest promise</th><th>observed</th></tr>${zips}</table></div>` : ""}
+${offers}${skipped?.length ? `<p class="muted">Sample zips not observable: ${esc2(skipped.join(", "))}.</p>` : ""}</section>`;
+  }).join("\n");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Featured offer check ${esc2(report.merchant.name ?? report.merchant.amazonSellerId)}</title>
+<style>
+:root{--bg:#f6f8f7;--fg:#0f1b20;--muted:#5b6b6f;--line:#d3dcd7;--card:#fff;--accent:#15b95c;--warn:#b45309;--bad:#b91c1c}
+body{margin:0;padding:24px max(16px,4vw);background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+h1{font-size:1.6rem;margin:0 0 4px}h2{font-size:1.2rem;margin:28px 0 6px}h3{font-size:.95rem;margin:16px 0 4px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.lead{color:var(--muted);margin:0 0 18px}.kpis{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 20px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:120px}.kpi b{display:block;font-size:1.4rem}
+.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;background:var(--card)}th,td{text-align:left;vertical-align:top;padding:7px 10px;border-bottom:1px solid var(--line);font-size:.92rem}th{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}.num{text-align:right;font-variant-numeric:tabular-nums}.muted{color:var(--muted)}
+tr.held td:first-child{border-left:3px solid var(--accent)}tr.promise_loss td:first-child,tr.lost_elsewhere td:first-child{border-left:3px solid var(--warn)}tr.price_undercut td:first-child,tr.no_featured_offer td:first-child,tr.not_on_listing td:first-child{border-left:3px solid var(--bad)}
+.tag{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;background:#e9efec;color:var(--muted);vertical-align:middle}.tag.held{background:#dff5e8;color:#0b7a3b}.tag.promise_loss,.tag.lost_elsewhere{background:#fdebd3;color:var(--warn)}.tag.price_undercut,.tag.no_featured_offer,.tag.not_on_listing{background:#fde2e2;color:var(--bad)}
+tr.ours td{background:#f2fbf6}section{max-width:1100px}footer{margin-top:28px;color:var(--muted);font-size:.85rem}
+</style></head><body>
+<h1>Featured offer check: ${esc2(report.merchant.name ?? report.merchant.amazonSellerId)} <span class="muted">(${esc2(report.merchant.marketplace.toUpperCase())})</span></h1>
+<p class="lead">Generated ${esc2(report.generatedAt)}. Amazon's answer${report.summaryObservedAt ? ` as of ${esc2(report.summaryObservedAt)}` : ""}; each shelf observation carries its own date. Shelf answers spent: ${report.shelfAnswersSpent}.</p>
+<div class="kpis"><div class="kpi"><b>${c.total}</b>ASINs checked</div><div class="kpi"><b>${c.held}</b>held</div><div class="kpi"><b>${c.flagged}</b>flagged</div><div class="kpi"><b>${c.price_undercut ?? 0}</b>lost on price</div><div class="kpi"><b>${c.promise_loss ?? 0}</b>lost on promise</div><div class="kpi"><b>${(c.no_featured_offer ?? 0) + (c.not_on_listing ?? 0)}</b>no offer / missing</div></div>
+<div class="tbl"><table><tr><th>ASIN</th><th>Amazon says</th><th>our view share</th><th>top competitor</th><th>shelf says</th><th>detail</th></tr>${rows}</table></div>
+${sections}
+<footer>Amazon's featured-offer segments come from your account's Product Pricing data (the retail surface). The shelf rows are public observations through MixShift, never your Amazon credentials; every shelf answer counted one against your organization's monthly allowance.</footer>
+</body></html>`;
+}
+
+// src/commands/shelf-featured-offer-check.ts
+init_resolve();
+init_telemetry();
+var SYNC_ASIN_CAP = 20;
+var DEFAULT_BUDGET = 12;
+var COUNTRY_TO_SHELF = { US: "us", CA: "ca", GB: "uk", UK: "uk", DE: "de", FR: "fr", IT: "it", ES: "es", IN: "in" };
+function registerFeaturedOfferCheck(shelf) {
+  const foc = shelf.command("featured-offer-check").description(
+    "The on-demand featured-offer check: Amazon's featured offer per shopper segment for your ASINs, the shelf for the ones you lose (Buy Box by location, the offer list), one page. Runs in resumable phases."
+  );
+  foc.command("start").description("Start a check: resolve the merchant, fetch the Competitive Summary, plan and begin the shelf fan-out.").option("--legacy-seller-id <id>", "MixShift seller id (preferred; from `mixshift amazon merchants`)").option("--amazon-seller-id <id>", "Amazon merchant token (with --marketplace when the token trades in several)").option("--marketplace <code>", "marketplace country code, e.g. US").option("--asins <list>", "comma-separated ASINs (up to 100; more than 20 runs the summary async)").option("--asins-file <file>", "one ASIN per line (# comments allowed)").option("--zips <list>", "comma-separated metro zips to observe besides the lost segments' sample zips (default: 10001,60601,75201,90001)").option("--include-held", "also observe the shelf for ASINs Amazon says you hold (costs allowance; default off)").option("--budget <n>", `shelf calls to make in this invocation (default ${DEFAULT_BUDGET})`).option("--out <dir>", "output directory (default ~/.mixshift/output/featured-offer-check/<seller>-<date>)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      await start(opts, root, startedAt);
+    } catch (err) {
+      emitError13(err, !!root.json);
+    }
+  });
+  foc.command("resume").description("Continue a check: poll the summary if pending, make the next round of shelf calls, render when done.").option("--out <dir>", "the check's output directory (default: the most recent one)").option("--budget <n>", `shelf calls to make in this invocation (default ${DEFAULT_BUDGET})`).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const dir = await resolveOutDir(opts.out, root.dataDir);
+      const state = await readState(dir);
+      await advance(state, dir, parseBudget(opts.budget), root, startedAt);
+    } catch (err) {
+      emitError13(err, !!root.json);
+    }
+  });
+  foc.command("status").description("Where a check stands, without making any call.").option("--out <dir>", "the check's output directory (default: the most recent one)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    try {
+      const dir = await resolveOutDir(opts.out, root.dataDir);
+      const state = await readState(dir);
+      emitState(state, dir, !!root.json);
+    } catch (err) {
+      emitError13(err, !!root.json);
+    }
+  });
+}
+async function start(opts, root, startedAt) {
+  const json3 = !!root.json;
+  const asins = await readAsins(opts);
+  if (asins.length === 0) throw new Error("Give the ASINs to check: --asins B0...,B0... or --asins-file <file>.");
+  if (asins.length > 100) throw new Error(`${asins.length} ASINs is more than one check takes (100). Split the list.`);
+  if (!opts.legacySellerId && !opts.amazonSellerId) throw new Error("Name the merchant: --legacy-seller-id <id> (from `mixshift amazon merchants`) or --amazon-seller-id <id>.");
+  const merchants = await listMerchants({ dataDirOverride: root.dataDir });
+  if (isReportFailure(merchants)) return emitReportFailure(merchants, json3);
+  const merchant = pickMerchant(merchants.merchants, opts);
+  if (!merchant) throw new Error("No merchant you can act for matches that id. Run `mixshift amazon merchants --json` and pass its legacySellerId.");
+  const country = COUNTRY_TO_SHELF[(merchant.countryCode ?? "US").toUpperCase()];
+  if (!country) throw new Error(`Shelf data does not cover marketplace ${merchant.countryCode ?? "unknown"} yet (us, ca, uk, de, fr, it, es, in).`);
+  const dir = opts.out ? resolvePath3(opts.out) : join26(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
+  await fs.mkdir(dir, { recursive: true });
+  const state = {
+    version: 1,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    merchant: {
+      legacySellerId: merchant.legacySellerId !== void 0 && merchant.legacySellerId !== null ? String(merchant.legacySellerId) : null,
+      amazonSellerId: merchant.amazonSellerId,
+      name: merchant.name ?? null,
+      marketplace: merchant.countryCode ?? "US",
+      shelfCountry: country
+    },
+    asins,
+    metros: opts.zips ? opts.zips.split(",").map((z2) => z2.trim()).filter(Boolean) : null,
+    includeHeld: !!opts.includeHeld,
+    phase: "summary_pending",
+    runId: null,
+    summaryObservedAt: null,
+    summaries: null,
+    plan: [],
+    skippedZips: {},
+    results: [],
+    blocked: null,
+    report: null
+  };
+  const selection = state.merchant.legacySellerId ? { legacySellerId: state.merchant.legacySellerId, marketplace: state.merchant.marketplace } : { sellerId: state.merchant.amazonSellerId, marketplace: state.merchant.marketplace };
+  if (asins.length <= SYNC_ASIN_CAP) {
+    const r = await getCompetitiveSummaryBatch({ ...selection, asins, includedData: ["featuredBuyingOptions"] }, { dataDirOverride: root.dataDir });
+    if (isReportFailure(r)) return emitReportFailure(r, json3);
+    await applySummary(state, r.responses, root);
+  } else {
+    const r = await startCompetitiveSummaryBatch({ ...selection, asins, includedData: ["featuredBuyingOptions"] }, { dataDirOverride: root.dataDir });
+    if (isReportFailure(r)) return emitReportFailure(r, json3);
+    state.runId = r.runId;
+  }
+  await writeState(dir, state);
+  await advance(state, dir, parseBudget(opts.budget), root, startedAt);
+}
+function pickMerchant(rows, opts) {
+  const want = (opts.marketplace ?? "").toUpperCase();
+  let candidates = rows;
+  if (opts.legacySellerId) candidates = rows.filter((m) => String(m.legacySellerId ?? "") === String(opts.legacySellerId));
+  else if (opts.amazonSellerId) candidates = rows.filter((m) => m.amazonSellerId === opts.amazonSellerId);
+  if (want) candidates = candidates.filter((m) => (m.countryCode ?? "").toUpperCase() === want || (m.marketplaceId ?? "") === want);
+  return candidates.find((m) => (m.countryCode ?? "").toUpperCase() === "US") ?? candidates[0] ?? null;
+}
+async function readAsins(opts) {
+  const raw = [];
+  if (opts.asins) raw.push(...opts.asins.split(","));
+  if (opts.asinsFile) {
+    const text = await fs.readFile(opts.asinsFile, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const t = line.replace(/#.*$/, "").trim();
+      if (t) raw.push(t);
+    }
+  }
+  const out2 = [];
+  for (const a of raw) {
+    const t = a.trim().toUpperCase();
+    if (!/^[A-Z0-9]{10}$/.test(t)) throw new Error(`"${a.trim()}" is not a 10-character ASIN.`);
+    if (!out2.includes(t)) out2.push(t);
+  }
+  return out2;
+}
+async function applySummary(state, responses, root) {
+  state.summaries = summarizeCompetitiveSummary(responses, state.merchant.amazonSellerId);
+  state.summaryObservedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const zips = await shelfZips(state.merchant.shelfCountry, { dataDirOverride: root.dataDir });
+  const zipList = new Set(isShelfFailure(zips) ? [] : zips.zips);
+  if (isShelfFailure(zips)) {
+    state.blocked = { kind: zips.kind, friendly: zips.friendly, ...zips.requestMore ? { requestMore: zips.requestMore } : {} };
+  }
+  const planned = planShelfCalls(state.summaries, { zipList, metros: state.metros ?? void 0, includeHeld: state.includeHeld });
+  state.plan = planned.calls;
+  state.skippedZips = planned.skippedZips;
+  state.phase = "shelf";
+}
+async function advance(state, dir, budget, root, startedAt) {
+  const json3 = !!root.json;
+  if (state.phase === "summary_pending" && state.runId && !state.summaries) {
+    const status = await pollPricingRun(state.runId, { dataDirOverride: root.dataDir });
+    if (isReportFailure(status)) return emitReportFailure(status, json3);
+    if (status.status === "FATAL" || status.status === "CANCELLED") {
+      throw new Error(`The Competitive Summary run ended ${status.status}${status.errorDetail ? `: ${status.errorDetail}` : ""}.`);
+    }
+    if (status.status !== "DONE") {
+      await writeState(dir, state);
+      await trackCheck("summary_pending", state, startedAt, root.dataDir);
+      emitState(state, dir, json3, { run: status });
+      return;
+    }
+    const result = await getPricingRunResult(state.runId, { dataDirOverride: root.dataDir });
+    if (isReportFailure(result)) return emitReportFailure(result, json3);
+    await applySummary(state, result.responses, root);
+    await writeState(dir, state);
+  }
+  if (state.phase === "shelf") {
+    state.blocked = state.blocked && state.blocked.kind !== "shelf_allowance_exhausted" ? state.blocked : null;
+    let made = 0;
+    while (state.results.length < state.plan.length && made < budget) {
+      const call = state.plan[state.results.length];
+      const common2 = { country: state.merchant.shelfCountry, origin: "featured_offer_check" };
+      const r = call.kind === "buybox" ? await shelfBuybox({ asin: call.asin, zip: call.zip, ...common2 }, { dataDirOverride: root.dataDir }) : await shelfOffers({ asin: call.asin, zip: call.zip, ...common2 }, { dataDirOverride: root.dataDir });
+      made += 1;
+      if (isShelfFailure(r)) {
+        if (r.kind === "shelf_allowance_exhausted" || r.kind === "shelf_not_enabled" || r.kind === "shelf_not_enrolled" || r.kind === "shelf_not_configured" || r.kind === "not_authenticated" || r.kind === "session_expired") {
+          state.blocked = { kind: r.kind, friendly: r.friendly, ...r.requestMore ? { requestMore: r.requestMore } : {} };
+          await writeState(dir, state);
+          await trackCheck("shelf", state, startedAt, root.dataDir, { blocked: r.kind });
+          emitState(state, dir, json3);
+          process.exitCode = exitCodeForShelfKind(r.kind);
+          return;
+        }
+        state.results.push({ call, ok: false, observedAt: null, kind: r.kind, data: null });
+        continue;
+      }
+      state.results.push({ call, ok: true, observedAt: r.observed_at, kind: r.kind, data: r.data });
+    }
+    state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    if (state.results.length < state.plan.length) {
+      await writeState(dir, state);
+      await trackCheck("shelf", state, startedAt, root.dataDir);
+      emitState(state, dir, json3);
+      return;
+    }
+    const report = buildReport(state);
+    const html = join26(dir, "report.html");
+    const md = join26(dir, "report.md");
+    const js = join26(dir, "report.json");
+    await fs.writeFile(html, renderReportHtml(report), "utf8");
+    await fs.writeFile(md, renderReportMarkdown(report), "utf8");
+    await fs.writeFile(js, JSON.stringify(report, null, 2), "utf8");
+    state.report = { html, md, json: js };
+    state.phase = "done";
+    await writeState(dir, state);
+    await trackCheck("done", state, startedAt, root.dataDir, { reasons: reportCounts(report) });
+    emitState(state, dir, json3);
+    return;
+  }
+  if (state.phase === "done") {
+    emitState(state, dir, json3);
+  }
+}
+function buildReport(state) {
+  const byAsin = /* @__PURE__ */ new Map();
+  for (const r of state.results) {
+    if (!r.ok || !r.data || !r.observedAt) continue;
+    const slot = byAsin.get(r.call.asin) ?? { buyboxes: [], offers: null };
+    if (r.call.kind === "buybox") slot.buyboxes.push({ zip: r.call.zip, why: r.call.why, observedAt: r.observedAt, data: r.data });
+    else slot.offers = { zip: r.call.zip, observedAt: r.observedAt, data: r.data };
+    byAsin.set(r.call.asin, slot);
+  }
+  const planned = new Set(state.plan.map((c) => c.asin));
+  return {
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    merchant: { legacySellerId: state.merchant.legacySellerId, amazonSellerId: state.merchant.amazonSellerId, name: state.merchant.name, marketplace: state.merchant.marketplace },
+    summaryObservedAt: state.summaryObservedAt,
+    asins: (state.summaries ?? []).map((summary) => {
+      const obs = byAsin.get(summary.asin);
+      const diagnosis = planned.has(summary.asin) ? diagnose(summary, obs?.buyboxes ?? [], obs?.offers ?? null, state.merchant.amazonSellerId) : null;
+      return { summary, diagnosis };
+    }),
+    shelfAnswersSpent: state.results.filter((r) => r.ok).length,
+    skippedZips: state.skippedZips
+  };
+}
+async function writeState(dir, state) {
+  state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  await fs.writeFile(join26(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
+}
+async function readState(dir) {
+  let raw;
+  try {
+    raw = await fs.readFile(join26(dir, "state.json"), "utf8");
+  } catch {
+    throw new Error(`No check found at ${dir} (no state.json). Start one with \`mixshift shelf featured-offer-check start\`.`);
+  }
+  const state = JSON.parse(raw);
+  if (state.version !== 1) throw new Error(`Unknown check state version ${String(state.version)} at ${dir}.`);
+  return state;
+}
+async function resolveOutDir(out2, dataDir) {
+  if (out2) return resolvePath3(out2);
+  const base = join26(outputDir(dataDir), "featured-offer-check");
+  let entries;
+  try {
+    entries = (await fs.readdir(base, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
+  }
+  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join26(base, name))).mtimeMs })));
+  stamped.sort((a, b) => b.mtime - a.mtime);
+  if (!stamped[0]) throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
+  return join26(base, stamped[0].name);
+}
+function parseBudget(raw) {
+  if (raw === void 0) return DEFAULT_BUDGET;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 200) throw new Error("--budget must be a whole number from 0 to 200.");
+  return n;
+}
+function progressOf(state) {
+  const flagged = (state.summaries ?? []).filter((s) => s.status !== "held" && s.status !== "error").length;
+  return {
+    phase: state.phase,
+    asins: state.asins.length,
+    summarized: state.summaries ? state.summaries.length : 0,
+    flagged,
+    shelf_calls_total: state.plan.length,
+    shelf_calls_done: state.results.length,
+    shelf_answers_spent: state.results.filter((r) => r.ok).length,
+    shelf_calls_failed: state.results.filter((r) => !r.ok).length
+  };
+}
+function nextOf(state) {
+  if (state.phase === "done") return null;
+  if (state.blocked && state.blocked.kind !== "zip_unavailable") return null;
+  return "resume";
+}
+function emitState(state, dir, json3, extra = {}) {
+  const progress = progressOf(state);
+  const next = nextOf(state);
+  const counts = state.report ? reportCounts(JSON.parse(JSON.stringify(buildReport(state)))) : void 0;
+  if (json3) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: "ok",
+          out_dir: dir,
+          run_id: state.runId,
+          merchant: { legacy_seller_id: state.merchant.legacySellerId, amazon_seller_id: state.merchant.amazonSellerId, name: state.merchant.name, marketplace: state.merchant.marketplace },
+          progress,
+          next,
+          blocked: state.blocked,
+          report: state.report ? { html: state.report.html, md: state.report.md, json: state.report.json, counts } : null,
+          ...extra
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  const lines = [];
+  lines.push(`Featured offer check for ${state.merchant.name ?? state.merchant.amazonSellerId} (${state.merchant.marketplace}): phase ${state.phase}.`);
+  lines.push(`  ASINs ${progress.asins}, summarized ${progress.summarized}, flagged ${progress.flagged}; shelf calls ${progress.shelf_calls_done}/${progress.shelf_calls_total} (${progress.shelf_answers_spent} answers spent).`);
+  if (state.blocked) lines.push(`  BLOCKED: ${state.blocked.friendly}${state.blocked.requestMore ? ` ${state.blocked.requestMore}` : ""}`);
+  if (state.report) lines.push(`  Report: ${state.report.md} (markdown), ${state.report.html} (page).`);
+  if (next) lines.push(`  Next: mixshift shelf featured-offer-check resume --out "${dir}"`);
+  process.stdout.write(lines.join("\n") + "\n");
+}
+async function trackCheck(phase, state, startedAt, dataDir, extra = {}) {
+  const p = progressOf(state);
+  await track(
+    {
+      event_name: EventName.ShelfFeaturedOfferCheck,
+      outcome: state.blocked ? "failed" : "ok",
+      duration_ms: Date.now() - startedAt,
+      ...state.blocked ? { error_class: state.blocked.kind } : {},
+      payload: {
+        phase,
+        asins: p.asins,
+        flagged: p.flagged,
+        shelf_calls_total: p.shelf_calls_total,
+        shelf_calls_done: p.shelf_calls_done,
+        shelf_answers_spent: p.shelf_answers_spent,
+        include_held: state.includeHeld,
+        marketplace: state.merchant.marketplace,
+        ...extra
+      }
+    },
+    dataDir
+  );
+}
+function emitReportFailure(failure2, json3) {
+  if (json3) {
+    process.stdout.write(JSON.stringify({ status: "error", failure_kind: failure2.kind, message: failure2.friendly, detail: failure2.message, http_status: failure2.httpStatus }, null, 2) + "\n");
+  } else {
+    process.stderr.write(`
+\u2717 ${failure2.friendly}
+`);
+    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+`);
+  }
+  process.exitCode = exitCodeForKind(failure2.kind);
+}
+function emitError13(err, json3) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
+}
+
+// src/commands/shelf.ts
+init_telemetry();
+var ORIGINS = /* @__PURE__ */ new Set(["on_demand", "featured_offer_check", "demo", "subscription"]);
+function registerShelfCommands(program3) {
+  const shelf = program3.command("shelf").description(
+    "Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, search rank, product page, seller), through the MixShift service. Reads only; each data answer counts one against your organization's monthly shelf allowance."
+  );
+  shelf.command("catalog").description("Every shelf call, with a plain explanation of what it answers, what it takes and what it costs.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    if (root.json) writeJson6({ status: "ok", count: SHELF_CATALOG.length, catalog: SHELF_CATALOG });
+    else process.stdout.write(renderShelfCatalogChat());
+    await track({ event_name: EventName.ShelfCatalogListed, payload: { count: SHELF_CATALOG.length } }, root.dataDir);
+  });
+  shelf.command("zips").description("The shopper locations (zip/postal codes) shelf data can be observed from. Free.").option("--country <code>", "marketplace country: us (default), ca, uk, de, fr, it, es, in").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const country = parseCountry(opts.country);
+    if (!country) return emitError14(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
+    const result = await shelfZips(country, { dataDirOverride: root.dataDir });
+    if (isShelfFailure(result)) {
+      await trackShelf(EventName.ShelfZipsListed, "failed", startedAt, root.dataDir, failurePayload(result, { country }));
+      return emitFailure7(result, !!root.json);
+    }
+    await trackShelf(EventName.ShelfZipsListed, "ok", startedAt, root.dataDir, { country, count: result.count });
+    if (root.json) writeJson6({ status: "ok", ...result });
+    else {
+      process.stderr.write(`
+\u2713 ${result.count} shopper location(s) for ${result.country}
+
+`);
+      process.stdout.write(result.zips.join(" ") + "\n");
+    }
+  });
+  shelf.command("usage").description("Your organization's shelf allowance for the current month. Free.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const result = await shelfUsage({ dataDirOverride: root.dataDir });
+    if (isShelfFailure(result)) {
+      await trackShelf(EventName.ShelfUsageRead, "failed", startedAt, root.dataDir, failurePayload(result, {}));
+      return emitFailure7(result, !!root.json);
+    }
+    await trackShelf(EventName.ShelfUsageRead, "ok", startedAt, root.dataDir, {
+      allowance: result.allowance,
+      used: result.used,
+      source: result.source
+    });
+    if (root.json) writeJson6({ status: "ok", ...result });
+    else process.stdout.write(renderUsage(result) + "\n");
+  });
+  registerData(shelf, "buybox", "<asin>", "The Buy Box (featured offer) a shopper at a zip sees for an ASIN: price, seller, delivery promise.", true);
+  registerData(shelf, "offers", "<asin>", "Every offer a shopper at a zip sees on an ASIN (the other-sellers list), with promise days per offer.", true);
+  registerData(shelf, "search", "<query>", "The search results page for a keyword as a shopper at a zip sees it: organic and sponsored rank, badges, prices.", true);
+  registerData(shelf, "product", "<asin>", "The product page for an ASIN as a shopper at a zip sees it: title, bullets, details, images, best-seller ranks (beta).", true);
+  registerData(shelf, "seller", "<seller-id>", "Who a third-party seller is: storefront name, rating, business details. No zip.", false);
+  registerFeaturedOfferCheck(shelf);
+}
+function registerData(shelf, kind, arg, description, takesZip) {
+  const c = shelf.command(`${kind} ${arg}`).description(description + " Counts one against the shelf allowance.");
+  if (takesZip) c.option("--zip <zip>", "shopper location from `shelf zips`; omit for the default location");
+  c.option("--country <code>", "marketplace country: us (default), ca, uk, de, fr, it, es, in");
+  c.option("--fresh", "observe the shelf right now instead of serving a recent observation (same cost)");
+  c.option("--origin <origin>", "which workflow is asking (attribution only): on_demand, featured_offer_check, demo, subscription");
+  if (kind === "search") {
+    c.option("--view <view>", "desktop (default, 60 positions a page) or mobile (15 a page)");
+    c.option("--page <n>", "results page, 1 (default) to 5");
+  }
+  c.action(async (subject, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const country = parseCountry(opts.country);
+      if (!country) return emitError14(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
+      if (opts.origin !== void 0 && !ORIGINS.has(opts.origin)) {
+        return emitError14(new Error(`--origin must be one of ${[...ORIGINS].join(", ")}.`), !!root.json);
+      }
+      const origin = opts.origin;
+      const common2 = { country, fresh: !!opts.fresh, ...origin ? { origin } : {} };
+      const zip = takesZip && opts.zip ? opts.zip.trim() : void 0;
+      let surface;
+      let page;
+      if (kind === "search") {
+        if (opts.view !== void 0) {
+          if (!SHELF_SURFACES.includes(opts.view)) {
+            return emitError14(new Error(`--view must be ${SHELF_SURFACES.join(" or ")}.`), !!root.json);
+          }
+          surface = opts.view;
+        }
+        if (opts.page !== void 0) {
+          page = Number(opts.page);
+          if (!Number.isInteger(page) || page < 1 || page > 5) return emitError14(new Error("--page must be a whole number from 1 to 5."), !!root.json);
+        }
+      }
+      const telemetry = {
+        kind: kind === "search" ? `search_${surface ?? "desktop"}` : kind,
+        country,
+        has_zip: !!zip,
+        fresh: !!opts.fresh,
+        ...origin ? { origin } : {},
+        ...kind === "search" ? { page: page ?? 1 } : {}
+      };
+      const clientOpts = { dataDirOverride: root.dataDir };
+      const result = kind === "buybox" ? await shelfBuybox({ asin: subject, zip, ...common2 }, clientOpts) : kind === "offers" ? await shelfOffers({ asin: subject, zip, ...common2 }, clientOpts) : kind === "search" ? await shelfSearch({ query: subject, surface, page, zip, ...common2 }, clientOpts) : kind === "product" ? await shelfProduct({ asin: subject, zip, ...common2 }, clientOpts) : await shelfSeller({ sellerId: subject, ...common2 }, clientOpts);
+      if (isShelfFailure(result)) {
+        await trackShelf(EventName.ShelfCalled, "failed", startedAt, root.dataDir, failurePayload(result, telemetry));
+        return emitFailure7(result, !!root.json);
+      }
+      await trackShelf(EventName.ShelfCalled, "ok", startedAt, root.dataDir, {
+        ...telemetry,
+        observed_age_s: ageSeconds(result.observed_at, startedAt),
+        ...result.beta ? { beta: true } : {},
+        ...kind === "search" ? { positions: result.data.products.length } : {},
+        ...kind === "offers" ? { offer_count: result.data.offer_count } : {}
+      });
+      if (root.json) {
+        writeJson6({ status: "ok", ...result });
+        return;
+      }
+      process.stderr.write(`
+\u2713 ${result.kind} ${result.subject}${result.zip ? ` at ${result.zip}` : ""} (${result.country}), observed ${result.observed_at}${result.beta ? " [beta]" : ""}
+
+`);
+      process.stdout.write(renderAnswer(kind, result) + "\n");
+    } catch (err) {
+      emitError14(err, !!root.json);
+    }
+  });
+}
+function parseCountry(raw) {
+  if (raw === void 0 || raw === "") return "us";
+  const v = raw.trim().toLowerCase();
+  return SHELF_COUNTRIES.includes(v) ? v : null;
+}
+function ageSeconds(observedAt, now) {
+  const t = Date.parse(observedAt);
+  return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1e3)) : null;
+}
+function failurePayload(failure2, base) {
+  return {
+    ...base,
+    kind_failed: failure2.kind,
+    ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
+    ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {},
+    // Gateway contract (mx-ops#144): enums and a flag; never the friendly text.
+    ...failure2.source !== void 0 && CONTRACT_WORD.test(failure2.source) ? { source: failure2.source } : {},
+    ...failure2.retryable !== void 0 ? { retryable: failure2.retryable } : {}
+  };
+}
+async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind_failed === "string" ? { error_class: payload.kind_failed } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson6(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
+}
+function emitFailure7(failure2, json3) {
+  if (json3) {
+    writeJson6({
+      status: "error",
+      failure_kind: failure2.kind,
+      message: failure2.friendly,
+      detail: failure2.message,
+      http_status: failure2.httpStatus,
+      period: failure2.period,
+      allowance: failure2.allowance,
+      used: failure2.used,
+      resets_at: failure2.resetsAt,
+      request_more: failure2.requestMore,
+      available_count: failure2.availableCount,
+      retry_after_ms: failure2.retryAfterMs,
+      required_scope: failure2.requiredScope,
+      unrecognized_kind: failure2.unrecognizedKind,
+      source: failure2.source,
+      retryable: failure2.retryable,
+      invalid_params: failure2.invalidParams
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure2.friendly}
+`);
+    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+`);
+    if (failure2.kind === "shelf_allowance_exhausted") {
+      if (failure2.resetsAt) process.stderr.write(`  used ${failure2.used ?? "?"} of ${failure2.allowance ?? "?"} for ${failure2.period ?? "this month"}; resets ${failure2.resetsAt}
+`);
+      process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
+    }
+    if (failure2.retryable === false && failure2.source === "request") {
+      process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
+    }
+  }
+  process.exitCode = exitCodeForShelfKind(failure2.kind);
+}
+function emitError14(err, json3) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json3) writeJson6({ status: "error", message });
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
+}
+var money2 = (n) => typeof n === "number" ? n.toFixed(2) : "-";
+var days = (n) => typeof n === "number" ? `${n} d` : "-";
+var yes = (b) => b === true ? "yes" : b === false ? "no" : "-";
+var cell2 = (s) => s ? s.replace(/\|/g, "/") : "-";
+function renderUsage(u) {
+  return [
+    `**Shelf allowance for ${u.period}**`,
+    "",
+    `- used: ${u.used} of ${u.allowance} (${u.remaining} left)`,
+    `- resets: ${u.resets_at}`,
+    `- source: ${u.source === "discovery_first_month" ? "first-month discovery allowance" : u.source === "discovery" ? "monthly discovery allowance" : u.source === "entitlement" ? "your shelf package" : u.source}`,
+    "",
+    "Every data answer counts one; `shelf zips` and `shelf usage` are free. Unused requests do not roll over."
+  ].join("\n");
+}
+function renderAnswer(kind, a) {
+  switch (kind) {
+    case "buybox":
+      return renderBuybox(a.data);
+    case "offers":
+      return renderOffers(a.data);
+    case "search":
+      return renderSearch(a.data);
+    case "product":
+      return renderProduct(a.data);
+    case "seller":
+      return renderSeller(a.data);
+    default:
+      return JSON.stringify(a.data, null, 2);
+  }
+}
+function renderBuybox(b) {
+  if (!b.in_stock && b.price === null) return `_(no Buy Box: the listing shows no featured offer at this location${b.delivery_to ? `, ${b.delivery_to}` : ""})_`;
+  return [
+    "| field | value |",
+    "|---|---|",
+    `| price | ${cell2(b.currency)}${money2(b.price)} |`,
+    `| sold by | ${cell2(b.sold_by)}${b.seller_id ? ` (${b.seller_id})` : ""} |`,
+    `| ships from | ${cell2(b.ships_from)} |`,
+    `| Prime | ${yes(b.prime)} |`,
+    `| in stock | ${yes(b.in_stock)}${typeof b.stock === "number" ? ` (${b.stock})` : ""} |`,
+    `| free delivery | ${cell2(b.free_delivery)} (${days(b.promise_days_free)}) |`,
+    `| fastest delivery | ${cell2(b.fastest_delivery)} (${days(b.promise_days_fastest)}) |`,
+    `| order within | ${cell2(b.order_within)} |`,
+    `| delivering to | ${cell2(b.delivery_to)} |`
+  ].join("\n");
+}
+function renderOffers(o) {
+  const L = [];
+  if (o.product) {
+    L.push(`**Featured offer:** ${cell2(o.product.sold_by)} at ${cell2(o.product.price)}${o.product.fba ? ", FBA" : ""}; fastest ${cell2(o.product.fastest_delivery)} (${days(o.product.promise_days_fastest)})`);
+    if (o.product.title) L.push(`_${o.product.title}_${typeof o.product.rating === "number" ? ` (${o.product.rating} stars, ${o.product.reviews ?? "-"} reviews)` : ""}`);
+    L.push("");
+  }
+  if (o.offers.length === 0) {
+    L.push("_(no other offers)_");
+    return L.join("\n");
+  }
+  L.push(`**${o.offer_count} offer(s)**`, "", "| # | price | sold by | seller id | FBA | condition | fastest delivery |", "|---|---|---|---|---|---|---|");
+  o.offers.forEach((x, i) => {
+    L.push(`| ${i + 1} | ${cell2(x.price)} | ${cell2(x.sold_by)} | ${cell2(x.seller_id)} | ${yes(x.fba)} | ${cell2(x.conditions)} | ${cell2(x.fastest_delivery)} (${days(x.promise_days_fastest)}) |`);
+  });
+  return L.join("\n");
+}
+function badgeOf(p) {
+  if (p.badge_text) return p.badge_text;
+  if (p.is_amazon_choice) return "Amazon's Choice";
+  if (p.is_best_seller) return "Best Seller";
+  if (p.is_overall_pick) return "Overall Pick";
+  return "-";
+}
+function renderSearch(s) {
+  const L = [];
+  L.push(`**${s.surface} page ${s.page}: ${s.products.length} positions, ${s.sponsored_count} sponsored${typeof s.total_results === "number" ? `, ${s.total_results} results in all` : ""}${s.delivery_to ? `, delivering to ${s.delivery_to}` : ""}**`);
+  if (s.banners.length > 0) {
+    L.push("");
+    L.push("Sponsored-brand banners: " + s.banners.map((b) => `${cell2(b.brand)} ("${cell2(b.headline)}")`).join("; "));
+  }
+  L.push("", "| rank | asin | spons. | price | rating | reviews | bought/mo | badge | coupon | stock | title |", "|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const p of s.products) {
+    L.push(
+      `| ${p.absolute_rank} | ${p.asin} | ${p.is_sponsored ? "yes" : ""} | ${cell2(p.price)} | ${p.rating ?? "-"} | ${p.reviews ?? "-"} | ${p.monthly_sales ?? "-"} | ${badgeOf(p)} | ${cell2(p.coupon)} | ${cell2(p.stock_level)} | ${cell2(p.title ? p.title.slice(0, 60) : null)} |`
+    );
+  }
+  if (s.related_keywords.length > 0) L.push("", "Related keywords: " + s.related_keywords.join(", "));
+  if (s.has_more) L.push("", `More positions: \`--page ${s.page + 1}\` (one answer per page).`);
+  return L.join("\n");
+}
+function renderProduct(p) {
+  const L = [];
+  L.push(`**${cell2(p.title)}**${p.landing_asin ? ` (${p.landing_asin})` : ""}`);
+  L.push("");
+  L.push(`- rating: ${p.rating ?? "-"} (${p.reviews ?? "-"} reviews); bought in past month: ${p.monthly_sales ?? "-"}${p.badge_text ? `; badge: ${p.badge_text}` : ""}`);
+  if (p.bsr.length > 0) L.push(`- best-seller rank: ${p.bsr.map((b) => `#${b.rank} in ${b.category}`).join("; ")}`);
+  if (p.buybox) L.push(`- Buy Box: ${cell2(p.buybox.sold_by)} at ${cell2(p.buybox.currency)}${money2(p.buybox.price)}, in stock ${yes(p.buybox.in_stock)}, fastest ${cell2(p.buybox.fastest_delivery)} (${days(p.buybox.promise_days_fastest)})`);
+  L.push(`- images: ${p.media.images.length}${p.media.primary_image ? ` (primary ${p.media.primary_image})` : ""}; videos: ${p.media.videos.length}`);
+  if (p.bullet_points.length > 0) {
+    L.push("", "**Bullet points**");
+    for (const b of p.bullet_points) L.push(`- ${b}`);
+  }
+  const details = Object.entries(p.details);
+  if (details.length > 0) {
+    L.push("", "**Details**", "", "| field | value |", "|---|---|");
+    for (const [k, v] of details) L.push(`| ${cell2(k)} | ${cell2(v)} |`);
+  }
+  if (p.customer_say) L.push("", `**Customers say:** ${p.customer_say}`);
+  L.push("", "_Beta: the product page is parsed from a changing layout; a field can be missing on some listings._");
+  return L.join("\n");
+}
+function renderSeller(s) {
+  const L = [];
+  L.push(`**${cell2(s.name)}**${typeof s.rating === "number" ? ` (${s.rating} stars, ${s.rating_count ?? "-"} ratings)` : ""}`);
+  if (s.description) L.push("", s.description);
+  if (s.details.length > 0) {
+    L.push("", "**Business details**");
+    for (const d of s.details) L.push(`- ${d}`);
+  }
+  return L.join("\n");
+}
+
 // src/commands/intelligence.ts
 import { readFile as readFile46, mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
-import { resolve as resolvePath3, dirname as dirname38 } from "node:path";
+import { resolve as resolvePath4, dirname as dirname38 } from "node:path";
 
 // src/lib/intelligence/client.ts
 init_credentials();
@@ -94243,13 +96496,13 @@ async function run(input, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  if (json2.accepted === true && typeof json2.runId === "string") {
+  const json3 = r.json;
+  if (json3.accepted === true && typeof json3.runId === "string") {
     return {
       ok: true,
       accepted: true,
-      runId: json2.runId,
-      status: typeof json2.status === "string" ? json2.status : "PENDING"
+      runId: json3.runId,
+      status: typeof json3.status === "string" ? json3.status : "PENDING"
     };
   }
   return r.json;
@@ -94260,8 +96513,8 @@ async function pollRun(runId, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  const status = typeof json2.status === "string" ? json2.status : "DONE";
+  const json3 = r.json;
+  const status = typeof json3.status === "string" ? json3.status : "DONE";
   return { ok: true, ready: status === "DONE", status };
 }
 async function getRunResult(runId, opts = {}) {
@@ -94270,17 +96523,17 @@ async function getRunResult(runId, opts = {}) {
     { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
   );
   if (!r.ok) return r;
-  const json2 = r.json;
-  const status = typeof json2.status === "string" ? json2.status : "UNKNOWN";
+  const json3 = r.json;
+  const status = typeof json3.status === "string" ? json3.status : "UNKNOWN";
   if (status !== "DONE") {
     return {
       ok: false,
       kind: "not_ready",
-      friendly: defaultFriendly3("not_ready"),
+      friendly: defaultFriendly4("not_ready"),
       runId
     };
   }
-  const rawResult = json2.result;
+  const rawResult = json3.result;
   const resultObj = rawResult && typeof rawResult === "object" && !Array.isArray(rawResult) ? rawResult : {};
   if (resultObj.ok === false) {
     return toIntelligenceFailure(resultObj, r.httpStatus);
@@ -94291,7 +96544,7 @@ async function getRunResult(runId, opts = {}) {
   };
 }
 async function intelligenceRequest(spec, opts) {
-  const resolved = await resolveBaseAndToken3(opts);
+  const resolved = await resolveBaseAndToken4(opts);
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -94317,7 +96570,7 @@ async function intelligenceRequest(spec, opts) {
   try {
     token = await tokenProvider(false);
   } catch (err) {
-    return sessionFailureFromError3(err);
+    return sessionFailureFromError4(err);
   }
   let attempt = await doFetch(token);
   if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -94326,7 +96579,7 @@ async function intelligenceRequest(spec, opts) {
     try {
       token = await tokenProvider(true);
     } catch (err) {
-      return sessionFailureFromError3(err);
+      return sessionFailureFromError4(err);
     }
     attempt = await doFetch(token);
     if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -94340,21 +96593,21 @@ async function intelligenceRequest(spec, opts) {
       };
     }
   }
-  let json2;
+  let json3;
   try {
-    json2 = await res.json();
+    json3 = await res.json();
   } catch {
-    return statusOnlyFailure3(res.status);
+    return statusOnlyFailure4(res.status);
   }
-  if (isServerFailureEnvelope3(json2)) {
-    return toIntelligenceFailure(json2, res.status);
+  if (isServerFailureEnvelope4(json3)) {
+    return toIntelligenceFailure(json3, res.status);
   }
   if (!res.ok) {
-    return statusOnlyFailure3(res.status, safeJsonPreview3(json2));
+    return statusOnlyFailure4(res.status, safeJsonPreview4(json3));
   }
-  return { ok: true, json: json2, httpStatus: res.status };
+  return { ok: true, json: json3, httpStatus: res.status };
 }
-async function resolveBaseAndToken3(opts) {
+async function resolveBaseAndToken4(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -94371,7 +96624,7 @@ async function resolveBaseAndToken3(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
-var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
+var KNOWN_KINDS4 = /* @__PURE__ */ new Set([
   "not_enrolled",
   "unknown_insight",
   "bad_params",
@@ -94392,33 +96645,33 @@ var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
   "host_unreachable",
   "unknown"
 ]);
-function isServerFailureEnvelope3(json2) {
-  return typeof json2 === "object" && json2 !== null && json2.ok === false;
+function isServerFailureEnvelope4(json3) {
+  return typeof json3 === "object" && json3 !== null && json3.ok === false;
 }
-function toIntelligenceFailure(json2, httpStatus) {
-  const rawKind = typeof json2.kind === "string" ? json2.kind : "";
-  const recognized = KNOWN_KINDS3.has(rawKind);
+function toIntelligenceFailure(json3, httpStatus) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
+  const recognized = KNOWN_KINDS4.has(rawKind);
   const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
-  const serverFriendly = typeof json2.friendly === "string" ? json2.friendly : void 0;
-  const message = typeof json2.message === "string" ? json2.message : void 0;
+  const serverFriendly = typeof json3.friendly === "string" ? json3.friendly : void 0;
+  const message = typeof json3.message === "string" ? json3.message : void 0;
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly3(kind),
+    friendly: serverFriendly ?? defaultFriendly4(kind),
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
-    runId: strOrUndef2(json2.runId),
-    insightId: strOrUndef2(json2.insightId),
-    reason: strOrUndef2(json2.reason)
+    runId: strOrUndef2(json3.runId),
+    insightId: strOrUndef2(json3.insightId),
+    reason: strOrUndef2(json3.reason)
   };
 }
-function statusOnlyFailure3(httpStatus, detail) {
+function statusOnlyFailure4(httpStatus, detail) {
   const kind = statusToKind2(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly3(kind),
+    friendly: defaultFriendly4(kind),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
@@ -94460,7 +96713,7 @@ function hostUnreachable2(message) {
     message
   };
 }
-function sessionFailureFromError3(err) {
+function sessionFailureFromError4(err) {
   const message = err instanceof Error ? err.message : String(err);
   const expired = /expired|refresh/i.test(message);
   return {
@@ -94470,7 +96723,7 @@ function sessionFailureFromError3(err) {
     message
   };
 }
-function defaultFriendly3(kind) {
+function defaultFriendly4(kind) {
   switch (kind) {
     case "not_enrolled":
       return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
@@ -94506,12 +96759,12 @@ function defaultFriendly3(kind) {
 function strOrUndef2(v) {
   return typeof v === "string" ? v : void 0;
 }
-function safeJsonPreview3(json2) {
+function safeJsonPreview4(json3) {
   try {
-    const s = JSON.stringify(json2);
+    const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
   } catch {
-    return String(json2);
+    return String(json3);
   }
 }
 
@@ -94710,8 +96963,8 @@ function vintagePhrase(s) {
   if (s.vintage === void 0) return "";
   let phrase = `, vintage ${s.vintage}`;
   if (s.vintageAgeDays !== void 0) {
-    const days = Math.floor(s.vintageAgeDays);
-    phrase += days === 0 ? ", under a day old" : `, ${days} day${days === 1 ? "" : "s"} old`;
+    const days2 = Math.floor(s.vintageAgeDays);
+    phrase += days2 === 0 ? ", under a day old" : `, ${days2} day${days2 === 1 ? "" : "s"} old`;
   }
   return phrase;
 }
@@ -94774,8 +97027,8 @@ var CANDIDATE_TOTALS = [
     ]
   }
 ];
-function getPath(obj, path2) {
-  let cur = obj;
+function getPath(obj2, path2) {
+  let cur = obj2;
   for (const key of path2) {
     if (typeof cur !== "object" || cur === null) return void 0;
     cur = cur[key];
@@ -94870,7 +97123,7 @@ function registerCatalogCommand(intelligence) {
       const result = await catalog({ dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("catalog", void 0, result, startedAt, root.dataDir);
-        return emitFailure7(result, !!root.json);
+        return emitFailure8(result, !!root.json);
       }
       await track(
         {
@@ -94882,7 +97135,7 @@ function registerCatalogCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson6({ ok: true, entries: result.entries });
+        writeJson7({ ok: true, entries: result.entries });
       } else {
         process.stdout.write(`
 \u2713 ${result.entries.length} insight(s)
@@ -94891,7 +97144,7 @@ function registerCatalogCommand(intelligence) {
         process.stdout.write(renderCatalog(result.entries) + "\n");
       }
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -94919,7 +97172,7 @@ function registerRunCommand(intelligence) {
       if (isIntelligenceFailure(result)) {
         await trackFailure3("run", id, result, startedAt, root.dataDir);
         const hint = result.kind === "bad_params" && !result.reason ? await paramsHint(id, root.dataDir) : void 0;
-        return emitFailure7(result, !!root.json, hint);
+        return emitFailure8(result, !!root.json, hint);
       }
       if (isAccepted(result)) {
         await recordIntelligenceRun(
@@ -94946,7 +97199,7 @@ function registerRunCommand(intelligence) {
           root.dataDir
         );
         if (root.json) {
-          writeJson6(result);
+          writeJson7(result);
         } else {
           process.stdout.write(
             `
@@ -94963,7 +97216,7 @@ Handle saved to intelligence-runs.json; any later call can list it: mixshift int
       }
       await emitInsightResult(id, result, opts.out, startedAt, root, brandSlugFromParams(params));
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -94978,7 +97231,7 @@ function registerPollCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("poll", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure7(result, !!root.json);
+        return emitFailure8(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, result.status, root.dataDir);
       await track(
@@ -94991,7 +97244,7 @@ function registerPollCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson6(result);
+        writeJson7(result);
       } else {
         process.stdout.write(
           `${result.ready ? "\u2713 done" : "\u2026 still running"}  status=${result.status}
@@ -95001,7 +97254,7 @@ function registerPollCommand(intelligence) {
         );
       }
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -95016,7 +97269,7 @@ function registerGetCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("get", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure7(result, !!root.json);
+        return emitFailure8(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, "DONE", root.dataDir);
       const handle = await ledgerHandleForRunId(runId, root.dataDir);
@@ -95032,7 +97285,7 @@ function registerGetCommand(intelligence) {
         runId
       );
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -95046,7 +97299,7 @@ function registerRunsCommand2(intelligence) {
       const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
       const shown = runs.slice(0, limit);
       if (root.json) {
-        writeJson6({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
+        writeJson7({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
         return;
       }
       if (shown.length === 0) {
@@ -95070,7 +97323,7 @@ Statuses are last-seen on THIS machine; poll refreshes from the server.
 `
       );
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -95120,14 +97373,14 @@ async function paramsHint(id, dataDir) {
 }
 async function describeInsight(id, cmd, root) {
   if (!id) {
-    if (root.json) writeJson6({ ok: true, usage: cmd.helpInformation() });
+    if (root.json) writeJson7({ ok: true, usage: cmd.helpInformation() });
     else process.stdout.write(cmd.helpInformation());
     return;
   }
   const lookup = await catalogEntry(id, root.dataDir);
   if ("entry" in lookup) {
     if (root.json) {
-      writeJson6({ ok: true, id, entry: lookup.entry });
+      writeJson7({ ok: true, id, entry: lookup.entry });
       return;
     }
     process.stdout.write(cmd.helpInformation());
@@ -95142,7 +97395,7 @@ ${renderCatalog([lookup.entry])}
   const failure2 = "failure" in lookup ? lookup.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
   const hint = "failure" in lookup ? hintForKind(failure2.kind) : "Ids: mixshift intelligence catalog";
   if (root.json) {
-    writeJson6({ ok: false, id, kind: failure2.kind, message: failure2.friendly, detail: failure2.message, ...hint ? { hint } : {} });
+    writeJson7({ ok: false, id, kind: failure2.kind, message: failure2.friendly, detail: failure2.message, ...hint ? { hint } : {} });
   } else {
     process.stdout.write(cmd.helpInformation());
     process.stderr.write(`
@@ -95183,7 +97436,7 @@ async function ledgerHandleForRunId(runId, dataDir) {
 }
 async function emitInsightResult(id, result, outOverride, startedAt, root, brandSlug, runIdForTracking) {
   const headline = extractRunHeadline(result, id);
-  const artifactPath = outOverride ? resolvePath3(outOverride) : intelligenceOutputPath(
+  const artifactPath = outOverride ? resolvePath4(outOverride) : intelligenceOutputPath(
     sanitizeForFilename2(id ?? "insight"),
     fsSafeTimestamp(),
     brandSlug,
@@ -95209,7 +97462,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir
   );
   if (root.json) {
-    writeJson6({ ...result, artifact_path: artifactPath });
+    writeJson7({ ...result, artifact_path: artifactPath });
     return;
   }
   process.stdout.write("\n" + renderHeadline(headline) + "\n");
@@ -95263,10 +97516,10 @@ async function trackFailure3(op, insightId, failure2, startedAt, dataDir, runId)
     dataDir
   );
 }
-function emitFailure7(failure2, json2, hintOverride) {
+function emitFailure8(failure2, json3, hintOverride) {
   const hint = hintOverride ?? hintForKind(failure2.kind);
-  if (json2) {
-    writeJson6({
+  if (json3) {
+    writeJson7({
       ok: false,
       kind: failure2.kind,
       ...failure2.reason ? { reason: failure2.reason } : {},
@@ -95287,18 +97540,18 @@ function emitFailure7(failure2, json2, hintOverride) {
   }
   process.exitCode = exitCodeForKind2(failure2.kind);
 }
-function emitError13(err, json2) {
+function emitError15(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) {
-    writeJson6({ ok: false, kind: "unknown", message });
+  if (json3) {
+    writeJson7({ ok: false, kind: "unknown", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
   }
   process.exitCode = 1;
 }
-function writeJson6(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson7(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 function wrapIndented(text, width, indent) {
   const lines = [];
@@ -95604,18 +97857,18 @@ async function request(method, path2, body, opts) {
     response = sent.res;
     if (response.status === 401) return failure("session_expired", { httpStatus: 401 });
   }
-  let json2;
+  let json3;
   try {
-    json2 = await response.json();
+    json3 = await response.json();
   } catch {
     return failure(response.status === 429 ? "throttled" : "unknown", { httpStatus: response.status });
   }
-  const obj = json2 && typeof json2 === "object" ? json2 : {};
-  if (obj.ok === false || !response.ok) {
-    const raw = typeof obj.kind === "string" ? obj.kind : "";
+  const obj2 = json3 && typeof json3 === "object" ? json3 : {};
+  if (obj2.ok === false || !response.ok) {
+    const raw = typeof obj2.kind === "string" ? obj2.kind : "";
     const known = KNOWN.has(raw);
     const kind = known ? raw : response.status === 429 ? "throttled" : "unknown";
-    const serverFriendly = typeof obj.friendly === "string" ? obj.friendly : void 0;
+    const serverFriendly = typeof obj2.friendly === "string" ? obj2.friendly : void 0;
     return {
       ok: false,
       kind,
@@ -95625,7 +97878,7 @@ async function request(method, path2, body, opts) {
       ...known ? {} : { unrecognizedKind: raw || "(absent)" }
     };
   }
-  return { ok: true, json: obj };
+  return { ok: true, json: obj2 };
 }
 async function readMonthRows(scopeId, opts = {}) {
   const rows = /* @__PURE__ */ new Map();
@@ -95678,6 +97931,74 @@ async function applyBudgetPlan(scopeId, plan, opts = {}) {
 
 // src/commands/forecast.ts
 init_telemetry();
+
+// src/lib/forecast/settings.ts
+var SETTING_NAMES = ["includeDspSpend", "treatMissingAdSpendAsZero"];
+var SETTINGS_REASON = "Forecast setting changed with the MixShift plugin";
+function accountKey(scopeId) {
+  return `fb:account:${scopeId}`;
+}
+function parseOnOff(raw, flag) {
+  const v = raw.trim().toLowerCase();
+  if (["on", "true", "yes", "1"].includes(v)) return true;
+  if (["off", "false", "no", "0"].includes(v)) return false;
+  throw new Error(`${flag} takes on or off (got "${raw}").`);
+}
+function settingsOf(doc) {
+  const out2 = {};
+  const settings = doc?.settings;
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return out2;
+  for (const name of SETTING_NAMES) {
+    const v = settings[name];
+    if (typeof v === "boolean") out2[name] = v;
+  }
+  return out2;
+}
+async function readAccountSettings(scopeId, opts = {}) {
+  const key = accountKey(scopeId);
+  const q = new URLSearchParams({ prefix: key, limit: "50" });
+  const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q.toString()}`, void 0, opts);
+  if (!r.ok) return r;
+  const docs = Array.isArray(r.json.docs) ? r.json.docs : [];
+  const row = docs.find((d) => d && d.key === key);
+  if (!row) return { ok: true, account: { version: 0, settings: {}, exists: false } };
+  const version2 = typeof row.version === "number" && Number.isInteger(row.version) && row.version >= 0 ? row.version : 0;
+  return { ok: true, account: { version: version2, settings: settingsOf(row.doc), exists: true } };
+}
+function planSettings(scopeId, account, patch) {
+  const changed = [];
+  const unchanged = [];
+  const settings = {};
+  for (const name of SETTING_NAMES) {
+    const want = patch[name];
+    if (want === void 0) continue;
+    if (account.settings[name] === want) unchanged.push(name);
+    else {
+      changed.push(name);
+      settings[name] = want;
+    }
+  }
+  return { changed, unchanged, writes: changed.length === 0 ? [] : [{ key: accountKey(scopeId), expected_version: account.version, doc: { settings } }] };
+}
+async function applySettings(scopeId, patch, opts = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const read = await readAccountSettings(scopeId, opts);
+    if (!read.ok) return read;
+    const plan = planSettings(scopeId, read.account, patch);
+    const after = { ...read.account.settings, ...patch };
+    if (opts.dryRun || plan.writes.length === 0) {
+      return { ok: true, before: read.account.settings, after, changed: plan.changed, unchanged: plan.unchanged, version: read.account.version, written: false };
+    }
+    const w = await appStateRequest("POST", "/api/app-state/forecasting/batch", { writes: plan.writes, reason: SETTINGS_REASON }, opts);
+    if (w.ok) {
+      const results = Array.isArray(w.json.results) ? w.json.results : [];
+      const v = results.find((x) => x && x.key === accountKey(scopeId))?.version;
+      return { ok: true, before: read.account.settings, after, changed: plan.changed, unchanged: plan.unchanged, version: typeof v === "number" ? v : read.account.version + 1, written: true };
+    }
+    if (w.kind !== "conflict" || attempt === 1) return w;
+  }
+  return { ok: false, kind: "conflict", friendly: "The forecast settings changed while this was being saved; nothing was written. Run the command again." };
+}
 
 // src/lib/forecast/sub-brand.ts
 var MAX_LABELS = 100;
@@ -95818,8 +98139,9 @@ function collect(value, previous = []) {
   return [...previous, value];
 }
 function registerForecastCommands(program3) {
-  const forecast = program3.command("forecast").description("Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on, and the sub-brands a forecast can be run for.");
+  const forecast = program3.command("forecast").description("Forecasting inputs you own: the monthly sponsored-ads budget a forecast stands on, the settings it stands on (the DSP switch), and the sub-brands a forecast can be run for.");
   registerSubBrandCommands(forecast);
+  registerSettingsCommands(forecast);
   const budget = forecast.command("budget").description(
     "Show, set or clear the monthly sponsored-ads budget of an account's forecast, or of a sub-brand's. The scope is the scope_id of a forecast answer (FCT-BASELINE-01)."
   );
@@ -95835,7 +98157,7 @@ function registerForecastCommands(program3) {
       { event_name: EventName.ForecastBudgetShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, months: rows.length } },
       root.dataDir
     );
-    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, budgets: rows });
+    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, budgets: rows });
     if (rows.length === 0) {
       process.stdout.write(`
 No budget entered for ${scopeId}: the forecast estimates spend from ${isSubBrandScope(scopeId) ? "the sub-brand's" : "the account's"} history.
@@ -95889,7 +98211,7 @@ Sponsored-ads budgets for ${scopeId}:
     if (!r.ok) return fail2("set", scopeId, r, startedAt, root, entries.length);
     if (opts.dryRun) {
       const changes = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null, to: w.doc?.adBudget?.value ?? null }));
-      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
+      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -95913,7 +98235,7 @@ Already holding that budget: ${r.plan.unchanged.join(", ")}
       root.dataDir
     );
     if (root.json) {
-      return writeJson7({
+      return writeJson8({
         ok: true,
         scope_id: scopeId,
         written: r.written,
@@ -95948,7 +98270,7 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
     if (!r.ok) return fail2("clear", scopeId, r, startedAt, root, months.length);
     if (opts.dryRun) {
       const clearing = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null }));
-      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
+      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
       process.stdout.write(`
 Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} (${formatAmount(c.from ?? 0)})`).join(", ") || "nothing"}
 `);
@@ -95963,23 +98285,128 @@ Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} 
       },
       root.dataDir
     );
-    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
+    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
     process.stdout.write(
       `
 \u2713 ${r.written} month(s) cleared for ${scopeId}` + (r.plan.notSet.length ? `; no budget was entered for ${r.plan.notSet.join(", ")}` : "") + ".\n"
     );
   });
 }
-function scopeOrFail(raw, json2) {
+function scopeOrFail(raw, json3) {
   const scopeId = canonicalScopeId(raw);
   if (scopeId) return scopeId;
   badInput(
     new Error(
       isSubBrandScope(raw) ? `"${raw}" is not a sub-brand scope this service keeps: the key after :scope: is 4 to 32 lowercase letters and digits. Use the scope_id from the forecast answer or from \`mixshift forecast sub-brand list\`.` : `"${raw}" is not a forecast scope. Use the scope_id from the forecast answer, e.g. src:<database>:<seller id> (or ...:scope:<key> for a sub-brand).`
     ),
-    json2
+    json3
   );
   return null;
+}
+var SETTING_LABEL = {
+  includeDspSpend: "DSP spend counts in the forecast (includeDspSpend)",
+  treatMissingAdSpendAsZero: "a month with no ad rows trains as zero spend (treatMissingAdSpendAsZero)"
+};
+function registerSettingsCommands(forecast) {
+  const settings = forecast.command("settings").description(
+    "Show or set the settings a computed forecast stands on: whether the account's DSP spend joins sponsored spend in the fit (includeDspSpend; the answer then reads spend_basis ads_plus_dsp), and whether a month with sales and no ad rows trains as zero spend (treatMissingAdSpendAsZero). The scope is the scope_id of a forecast answer (FCT-BASELINE-01)."
+  );
+  settings.command("show").description("Show the settings stored for a scope (a setting never set reads as off).").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const scopeId = scopeOrFail(opts.scope, !!root.json);
+    if (!scopeId) return;
+    const read = await readAccountSettings(scopeId, { dataDirOverride: root.dataDir });
+    if (!read.ok) return failSettings("show", scopeId, read, startedAt, root);
+    await track(
+      { event_name: EventName.ForecastSettingsShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, exists: read.account.exists } },
+      root.dataDir
+    );
+    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
+    process.stdout.write(`
+Forecast settings for ${scopeId}${read.account.exists ? "" : " (nothing stored yet; every setting reads as off)"}:
+
+`);
+    for (const name of SETTING_NAMES) process.stdout.write(`  ${read.account.settings[name] === true ? "on " : "off"}  ${SETTING_LABEL[name]}
+`);
+  });
+  settings.command("set").description("Set one or both settings (one save: all or nothing). The next computed forecast stands on them.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").option("--include-dsp <on|off>", "count the account's DSP spend (the warehouse's DSP months, or a DSP figure typed into the app) in the spend the forecast stands on").option("--missing-ad-spend-as-zero <on|off>", "train a month that has sales but no ad rows as zero spend, instead of leaving it out").option("--dry-run", "show what would change, without saving").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const scopeId = scopeOrFail(opts.scope, !!root.json);
+    if (!scopeId) return;
+    const patch = {};
+    try {
+      if (opts.includeDsp !== void 0) patch.includeDspSpend = parseOnOff(opts.includeDsp, "--include-dsp");
+      if (opts.missingAdSpendAsZero !== void 0) patch.treatMissingAdSpendAsZero = parseOnOff(opts.missingAdSpendAsZero, "--missing-ad-spend-as-zero");
+    } catch (err) {
+      return badInput(err, !!root.json);
+    }
+    if (Object.keys(patch).length === 0) return badInput(new Error("Nothing to set: pass --include-dsp on|off and/or --missing-ad-spend-as-zero on|off."), !!root.json);
+    const r = await applySettings(scopeId, patch, { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
+    if (!r.ok) return failSettings("set", scopeId, r, startedAt, root, Object.keys(patch));
+    const line = (name) => `  ${r.before[name] === void 0 ? "unset" : r.before[name] ? "on" : "off"} -> ${r.after[name] ? "on" : "off"}  ${SETTING_LABEL[name]}`;
+    if (opts.dryRun) {
+      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
+      process.stdout.write(`
+Would save for ${scopeId} (nothing saved):
+
+`);
+      for (const name of r.changed) process.stdout.write(line(name) + "\n");
+      if (r.unchanged.length) process.stdout.write(`
+Already holding that value: ${r.unchanged.join(", ")}
+`);
+      return;
+    }
+    await track(
+      {
+        event_name: EventName.ForecastSettingsSet,
+        outcome: "ok",
+        duration_ms: Date.now() - startedAt,
+        payload: { scope_id: scopeId, changed: r.changed, unchanged: r.unchanged.length, written: r.written }
+      },
+      root.dataDir
+    );
+    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
+    if (r.changed.length === 0) {
+      process.stdout.write(`
+Nothing changed for ${scopeId}: ${r.unchanged.join(", ")} already held that value.
+`);
+      return;
+    }
+    process.stdout.write(`
+\u2713 Settings saved for ${scopeId}${r.unchanged.length ? ` (${r.unchanged.join(", ")} already held that value)` : ""}:
+
+`);
+    for (const name of r.changed) process.stdout.write(line(name) + "\n");
+    process.stdout.write(
+      patch.includeDspSpend === true ? "\nThe next computed forecast (FCT-BASELINE-01) adds the account's DSP spend by month to sponsored spend and reads spend_basis ads_plus_dsp; a budget entered with `mixshift forecast budget` stays sponsored only.\n" : "\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is one more metered request, not a cache hit.\n"
+    );
+  });
+}
+async function failSettings(op, scopeId, f, startedAt, root, names) {
+  await track(
+    {
+      event_name: EventName.ForecastSettingsFailed,
+      outcome: "failed",
+      duration_ms: Date.now() - startedAt,
+      error_class: f.kind,
+      payload: {
+        op,
+        scope_id: scopeId,
+        ...names ? { names } : {},
+        failure_kind: f.kind,
+        ...f.httpStatus ? { http_status: f.httpStatus } : {},
+        ...f.unrecognizedKind ? { unrecognized_kind: f.unrecognizedKind } : {}
+      }
+    },
+    root.dataDir
+  );
+  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  else process.stderr.write(`
+\u2717 (${f.kind}) ${f.friendly}
+`);
+  process.exitCode = exitCodeFor4(f);
 }
 function registerSubBrandCommands(forecast) {
   const sub = forecast.command("sub-brand").description(
@@ -95996,7 +98423,7 @@ function registerSubBrandCommands(forecast) {
       { event_name: EventName.ForecastSubBrandListed, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { seller, count: r.subBrands.length, skipped: r.skipped } },
       root.dataDir
     );
-    if (root.json) return writeJson7({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
+    if (root.json) return writeJson8({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
     if (r.subBrands.length === 0) {
       process.stdout.write(`
 No sub-brands defined${seller === null ? "" : ` for seller ${seller}`}.
@@ -96036,7 +98463,7 @@ ${r.skipped} stored definition(s) could not be read and are not listed.
     if (!r.ok) return subBrandFail("add", null, seller, r, startedAt, root);
     const noAds = campaignValues.length === 0 ? "It names no campaign label, so it has no ad spend and a forecast cannot train on it." : null;
     if (opts.dryRun && r.subBrand === null) {
-      if (root.json) return writeJson7({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
+      if (root.json) return writeJson8({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
       process.stdout.write(`
 Would define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}
 `);
@@ -96057,7 +98484,7 @@ ${noAds}
         root.dataDir
       );
     }
-    if (root.json) return writeJson7({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
+    if (root.json) return writeJson8({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
     process.stdout.write(
       r.created ? `
 \u2713 Defined ${s.name}: ${s.scopeId}
@@ -96085,7 +98512,7 @@ Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-0
     const p = planned.plan;
     const what = { definition: p.definition, months: p.months, settings: p.settings };
     if (!opts.apply) {
-      if (root.json) return writeJson7({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
+      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
       if (p.writes.length === 0) {
         process.stdout.write(`
 Nothing is stored under ${scopeId}.
@@ -96104,7 +98531,7 @@ Would remove ${scopeId} (nothing removed): ${p.definition ? "its definition" : "
       { event_name: EventName.ForecastSubBrandRemoved, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, deleted: r.deleted, months: p.months } },
       root.dataDir
     );
-    if (root.json) return writeJson7({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
+    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
     process.stdout.write(r.deleted === 0 ? `
 Nothing was stored under ${scopeId}.
 ` : `
@@ -96120,10 +98547,10 @@ function describeLabels(s) {
   const what = s.kind === "item_group" ? "item group" : "brand";
   return `products with ${what} label ${s.itemValues.map((v) => `"${v}"`).join(" or ") || "(none)"}; campaigns with ${what} label ${s.campaignValues.map((v) => `"${v}"`).join(" or ") || "(none)"}`;
 }
-function sellerOrFail(raw, json2) {
+function sellerOrFail(raw, json3) {
   const n = Number(raw);
   if (Number.isInteger(n) && n > 0 && /^\d+$/.test(raw.trim())) return n;
-  badInput(new Error(`--seller: "${raw}" is not a seller id (the account's legacy seller id, a whole number).`), json2);
+  badInput(new Error(`--seller: "${raw}" is not a seller id (the account's legacy seller id, a whole number).`), json3);
   return void 0;
 }
 async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
@@ -96136,7 +98563,7 @@ async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
     },
     root.dataDir
   );
-  if (root.json) writeJson7({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
+  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
@@ -96145,9 +98572,9 @@ async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
 function formatAmount(n) {
   return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
-function badInput(err, json2) {
+function badInput(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json2) writeJson7({ ok: false, kind: "bad_input", message });
+  if (json3) writeJson8({ ok: false, kind: "bad_input", message });
   else process.stderr.write(`
 \u2717 ${message}
 `);
@@ -96194,19 +98621,19 @@ async function fail2(op, scopeId, f, startedAt, root, months) {
     },
     root.dataDir
   );
-  if (root.json) writeJson7({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
   process.exitCode = exitCodeFor4(f);
 }
-function writeJson7(obj) {
-  process.stdout.write(JSON.stringify(obj, null, 2) + "\n");
+function writeJson8(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 
 // src/commands/report.ts
 import { readFile as readFile47, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir6 } from "node:fs/promises";
-import { dirname as dirname39, join as join27, resolve as resolve2 } from "node:path";
+import { dirname as dirname39, join as join28, resolve as resolve2 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -96762,6 +99189,7 @@ function changeUnitOf(levelUnit) {
 }
 var SERVED_FORMAT_MIN = [0, 2, 0];
 var SERVED_PAIR_FORMATS_MIN = [0, 3, 0];
+var SERVED_CARD_IDS_MIN = [0, 5, 0];
 var DISPLAY_UNIT = {
   currency: "currency",
   "currency-2dp": "currency-2dp",
@@ -97008,7 +99436,7 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
 }
 var SERVED_KIND_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 function extractEvidence(whole, selection) {
-  const none = { statements: [], evidenceVersion: null };
+  const none = { statements: [], evidenceVersion: null, notes: [] };
   let block;
   if (selection) {
     if (!selection.endsWith(".ops")) return none;
@@ -97020,6 +99448,7 @@ function extractEvidence(whole, selection) {
   const statements = asRecord(block?.statements);
   if (!statements) return none;
   const evidenceVersion = typeof block?.evidenceVersion === "string" && block.evidenceVersion.trim().length > 0 ? block.evidenceVersion : null;
+  const stampedBuild = engineAtLeast(parseEngineVersion(evidenceVersion), SERVED_CARD_IDS_MIN);
   const prefix = selection ? `${selection.split(".")[0]}.evidence` : "evidence";
   const out2 = [];
   const used = /* @__PURE__ */ new Set();
@@ -97051,11 +99480,23 @@ function extractEvidence(whole, selection) {
         head,
         ...typeof g.tone === "string" ? { tone: g.tone } : {},
         statements: lines,
-        source_path: selection ? `${selection.split(".")[0]}.evidence.statements.${metric}[${i}]` : `evidence.statements.${metric}[${i}]`
+        source_path: selection ? `${selection.split(".")[0]}.evidence.statements.${metric}[${i}]` : `evidence.statements.${metric}[${i}]`,
+        ...stampedBuild && kind === null && parentKind === null ? { id_fallback: "head_slug" } : {}
       });
     });
   }
-  return { statements: collapseRepeatedCards(out2), evidenceVersion };
+  const statementsOut = collapseRepeatedCards(out2);
+  const versionLabel = parseEngineVersion(evidenceVersion)?.join(".") ?? "unknown";
+  const notes = statementsOut.filter((e) => e.id_fallback === "head_slug").map((e) => ({
+    code: "citation_id_fallback",
+    subject: e.id,
+    detail: `card "${boundedProse(e.head, 120)}" under ${boundedProse(e.metric, 64)} carries no served id on evidence ${versionLabel}; its citation id is a slug of its head and moves if the head is reworded.`
+  }));
+  return { statements: statementsOut, evidenceVersion, notes };
+}
+function boundedProse(raw, max) {
+  const cleaned = raw.replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/g, " ").trim();
+  return cleaned.length > max ? `${cleaned.slice(0, max)}...` : cleaned;
 }
 function collapseRepeatedCards(entries) {
   const kept = [];
@@ -97389,7 +99830,8 @@ function extractFiguresUnprefixed(response, selection) {
     figures: figures2,
     ...evidence.statements.length ? {
       evidence: evidence.statements,
-      ...evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {}
+      ...evidence.evidenceVersion ? { evidence_version: evidence.evidenceVersion } : {},
+      ...evidence.notes.length ? { notes: evidence.notes } : {}
     } : {}
   };
 }
@@ -97615,8 +100057,8 @@ function roleOfClaim(id) {
   return null;
 }
 var CLIENT_ROLES = /* @__PURE__ */ new Set(["actual", "projection", "forecast", "outlook"]);
-var str = (v) => typeof v === "string" ? v : null;
-var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+var str3 = (v) => typeof v === "string" ? v : null;
+var num3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
 var strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 function extractForecast(response, opts = {}) {
   if (!isForecastTrackResponse(response)) {
@@ -97624,22 +100066,22 @@ function extractForecast(response, opts = {}) {
   }
   const r = response;
   const metric = r.metric === "units" ? "units" : "revenue";
-  const month = str(r.month) ?? "";
+  const month = str3(r.month) ?? "";
   if (opts.expectMonth !== void 0 && opts.expectMonth !== month) {
     throw new ForecastMonthMismatchError(opts.expectMonth, month);
   }
   let state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
-  let reason = str(r.reason);
+  let reason = str3(r.reason);
   const pub = isRec2(r.published) ? r.published : null;
-  const published = pub && num(pub.gateway_revision) !== null ? {
-    at: str(pub.at) ?? "",
-    by: str(pub.by) ?? "",
-    producer: str(pub.producer) ?? "app",
-    gateway_revision: num(pub.gateway_revision),
-    published_run_id: str(pub.published_run_id) ?? "",
-    age_days: num(pub.age_days) ?? 0,
-    document_version: num(pub.document_version),
-    overlay_revisions: num(pub.overlay_revisions)
+  const published = pub && num3(pub.gateway_revision) !== null ? {
+    at: str3(pub.at) ?? "",
+    by: str3(pub.by) ?? "",
+    producer: str3(pub.producer) ?? "app",
+    gateway_revision: num3(pub.gateway_revision),
+    published_run_id: str3(pub.published_run_id) ?? "",
+    age_days: num3(pub.age_days) ?? 0,
+    document_version: num3(pub.document_version),
+    overlay_revisions: num3(pub.overlay_revisions)
   } : null;
   const spendBasis = r.spend_basis === "ads_plus_dsp" ? "ads_plus_dsp" : r.spend_basis === "ads_only" ? "ads_only" : null;
   const doc = {
@@ -97649,10 +100091,10 @@ function extractForecast(response, opts = {}) {
       insight: "FCT-TRACK-01",
       metric,
       month,
-      scope_id: str(r.scope_id),
+      scope_id: str3(r.scope_id),
       forecast_state: state,
       reason,
-      friendly: str(r.friendly),
+      friendly: str3(r.friendly),
       spend_basis: spendBasis,
       ytd_runs_past_report_month: r.ytd_runs_past_report_month === true,
       unrecognised: [],
@@ -97675,21 +100117,21 @@ function extractForecast(response, opts = {}) {
     const figures2 = [];
     for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
       if (!isRec2(f)) continue;
-      const id = str(f.id) ?? "";
+      const id = str3(f.id) ?? "";
       const role = roleOfId(id);
       const caveats = strs(f.caveats);
       figures2.push({
         id,
-        label: str(f.label) ?? "",
+        label: str3(f.label) ?? "",
         value: f.value,
-        unit: str(f.unit) ?? "",
-        basis: str(f.basis) ?? "",
-        source_path: str(f.source_path) ?? "",
+        unit: str3(f.unit) ?? "",
+        basis: str3(f.basis) ?? "",
+        source_path: str3(f.source_path) ?? "",
         caveats,
         confidence: "published",
         forecast_role: role ?? "unclassified",
         client_safe: role !== null && CLIENT_ROLES.has(role) && !blocking(caveats),
-        ...num(f.precision) !== null ? { precision: num(f.precision) } : {},
+        ...num3(f.precision) !== null ? { precision: num3(f.precision) } : {},
         ...f.population !== void 0 ? { population: f.population } : {}
       });
     }
@@ -97708,17 +100150,17 @@ function extractForecast(response, opts = {}) {
     const derived = [];
     for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
       if (!isRec2(d)) continue;
-      const id = str(d.id) ?? "";
+      const id = str3(d.id) ?? "";
       const role = roleOfId(id);
       const inputs = strs(d.inputs);
       derived.push({
         id,
-        label: str(d.label) ?? "",
+        label: str3(d.label) ?? "",
         value: d.value,
-        unit: str(d.unit) ?? "",
-        basis: str(d.basis) ?? "",
+        unit: str3(d.unit) ?? "",
+        basis: str3(d.basis) ?? "",
         inputs,
-        why_not_published: str(d.why_not_published) ?? "",
+        why_not_published: str3(d.why_not_published) ?? "",
         forecast_role: role ?? "unclassified",
         client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe.get(i) === true)
       });
@@ -97726,14 +100168,14 @@ function extractForecast(response, opts = {}) {
     const claims = [];
     for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
       if (!isRec2(c)) continue;
-      const id = str(c.id) ?? "";
+      const id = str3(c.id) ?? "";
       claims.push({
         id,
-        kind: str(c.kind) ?? "",
-        text: str(c.text) ?? "",
+        kind: str3(c.kind) ?? "",
+        text: str3(c.text) ?? "",
         figure_refs: strs(c.figure_refs),
         forecast_role: roleOfClaim(id) ?? "unclassified",
-        ...str(c.comparison_basis) ? { comparison_basis: str(c.comparison_basis) } : {}
+        ...str3(c.comparison_basis) ? { comparison_basis: str3(c.comparison_basis) } : {}
       });
     }
     const unrecognised = [...figures2, ...derived, ...claims].filter((x) => x.forecast_role === "unclassified").map((x) => x.id);
@@ -97742,7 +100184,7 @@ function extractForecast(response, opts = {}) {
       reason = "unrecognised_figures";
       doc.source.unrecognised = unrecognised;
     } else {
-      doc.currency = str(rd.currency);
+      doc.currency = str3(rd.currency);
       doc.caveat_registry = registry2;
       doc.figures = figures2;
       doc.derived = derived;
@@ -97750,13 +100192,13 @@ function extractForecast(response, opts = {}) {
       for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
         if (!isRec2(s)) continue;
         doc.sections.push({
-          id: str(s.id) ?? "",
+          id: str3(s.id) ?? "",
           kind: "forecast",
           audience: "internal",
           figure_refs: strs(s.figure_refs),
           claim_refs: strs(s.claim_refs),
           caveats_rendered: strs(s.caveats_rendered),
-          display_text: str(s.display_text) ?? ""
+          display_text: str3(s.display_text) ?? ""
         });
       }
       doc.limitations = strs(r.limitations);
@@ -97990,7 +100432,7 @@ init_telemetry();
 
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join26 } from "node:path";
+import { join as join27 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -98216,7 +100658,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join26(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync2(join27(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -98484,7 +100926,7 @@ async function assertFiguresReadable(explicit) {
   }
 }
 async function loadServedContract(docPath, explicit, noFigures) {
-  const none = { sources: [], conflicts: [] };
+  const none = { sources: [], conflicts: [], notes: [] };
   if (noFigures) return { ...none, index: { suppressAll: true } };
   let candidates;
   if (explicit && explicit.length > 0) {
@@ -98493,7 +100935,7 @@ async function loadServedContract(docPath, explicit, noFigures) {
     const dir = dirname39(resolve2(docPath));
     try {
       const entries = await readdir6(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join27(dir, e));
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join28(dir, e));
     } catch {
       return none;
     }
@@ -98501,6 +100943,7 @@ async function loadServedContract(docPath, explicit, noFigures) {
   const units = {};
   const origin = {};
   const conflicts = /* @__PURE__ */ new Set();
+  const notes = [];
   for (const path2 of candidates) {
     let raw;
     try {
@@ -98522,6 +100965,23 @@ async function loadServedContract(docPath, explicit, noFigures) {
     }
     const figures2 = parsed?.figures;
     if (!Array.isArray(figures2)) continue;
+    const fileNotes = parsed?.notes;
+    if (Array.isArray(fileNotes)) {
+      let kept = 0;
+      for (const n of fileNotes) {
+        const note = n;
+        if (note?.code !== "citation_id_fallback" || typeof note.subject !== "string" || typeof note.detail !== "string") continue;
+        if (kept === NOTES_PER_FILE_MAX) {
+          notes.push({
+            file: path2,
+            note: { code: "citation_id_fallback", subject: "(more)", detail: `${fileNotes.length - kept} further note(s) in this file not shown.` }
+          });
+          break;
+        }
+        notes.push({ file: path2, note: { code: "citation_id_fallback", subject: boundedProse(note.subject, 200), detail: boundedProse(note.detail, 400) } });
+        kept += 1;
+      }
+    }
     for (const f of figures2) {
       const id = f?.id;
       const servedUnit = f?.served_unit;
@@ -98540,7 +101000,14 @@ async function loadServedContract(docPath, explicit, noFigures) {
   }
   const contributing = [...new Set(Object.values(origin))].sort();
   const index = Object.keys(units).length > 0 || conflicts.size > 0 ? { units, origin, suppressed: [...conflicts] } : void 0;
-  return { index, sources: contributing, conflicts: [...conflicts] };
+  return { index, sources: contributing, conflicts: [...conflicts], notes };
+}
+var NOTES_PER_FILE_MAX = 50;
+function noteWarning(note, file2) {
+  return `  warn [CITATION-ID] ${file2 ? `${file2}: ` : ""}${note.subject} -- ${note.detail}`;
+}
+function notesPayload(notes) {
+  return notes.length > 0 ? { notes: notes.map((n) => ({ file: n.file, ...n.note })) } : {};
 }
 async function writeReportOutput(out2, body) {
   try {
@@ -98553,11 +101020,11 @@ async function writeReportOutput(out2, body) {
     );
   }
 }
-async function withReportErrorHandling(json2, fn) {
+async function withReportErrorHandling(json3, fn) {
   try {
     await fn();
   } catch (err) {
-    if (!json2) throw err;
+    if (!json3) throw err;
     const isUserFacing = err instanceof UserFacingError;
     console.log(
       JSON.stringify(
@@ -98591,6 +101058,7 @@ function registerReportCommands(program3) {
       await assertFiguresReadable(figuresOpt(opts.figures));
       const results = [];
       let anyUnreadable = false;
+      const notesPrinted = /* @__PURE__ */ new Set();
       for (const file2 of files) {
         try {
           const doc = await readJson(file2);
@@ -98600,10 +101068,17 @@ function registerReportCommands(program3) {
               `  warn [UNIT-2] ${file2}: ${id} -- two figures files disagree on this figure's served unit; their evidence is discarded for it (a served_unit on the figure itself still applies). Remove the stale file.`
             );
           }
+          for (const n of served.notes) {
+            const key = `${n.file}\0${n.note.subject}`;
+            if (notesPrinted.has(key)) continue;
+            notesPrinted.add(key);
+            if (!root.json) console.error(noteWarning(n.note, n.file));
+          }
           results.push({
             file: file2,
             findings: validateReportData(doc, served.index),
-            ...served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}
+            ...served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {},
+            ...notesPayload(served.notes)
           });
         } catch (err) {
           if (err instanceof UserFacingError && err.errorClass === "figures_unreadable") throw err;
@@ -98745,10 +101220,17 @@ forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.
       if (opts.out) {
         await writeReportOutput(opts.out, body + "\n");
       }
+      const notes = doc.notes ?? [];
       if (root.json) {
         console.log(
           JSON.stringify(
-            { ok: findings.length === 0, figures: doc.figures.length, out: opts.out ?? null, findings },
+            {
+              ok: findings.length === 0,
+              figures: doc.figures.length,
+              out: opts.out ?? null,
+              findings,
+              ...notes.length > 0 ? { notes } : {}
+            },
             null,
             2
           )
@@ -98760,6 +101242,7 @@ forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.
 ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
         );
         for (const f of findings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+        for (const n of notes) console.error(noteWarning(n));
         if (opts.check) console.log(findings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${findings.length})`);
       }
       process.exitCode = findings.length === 0 ? 0 : 1;
@@ -98785,6 +101268,7 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
             `  warn [UNIT-2] ${id} -- two figures files disagree on this figure's served unit; their evidence is discarded for it (a served_unit on the figure itself still applies). Remove the stale file.`
           );
         }
+        if (!root.json) for (const n of served.notes) console.error(noteWarning(n.note, n.file));
         const findings = validateReportData(doc, served.index);
         const blocking = blockingFindings(findings);
         for (const f of findings) {
@@ -98822,7 +101306,8 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
                 out: opts.out,
                 bytes: html.length,
                 findings,
-                ...served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {}
+                ...served.conflicts.length > 0 ? { served_unit_conflicts: served.conflicts } : {},
+                ...notesPayload(served.notes)
               },
               null,
               2
@@ -99163,7 +101648,7 @@ function missingAccounts(requested, doc) {
   return requested.filter((id) => !returned.has(id));
 }
 function batterySummary(out2, doc, requested = []) {
-  const money = (v) => {
+  const money3 = (v) => {
     if (v === null || v === void 0 || v === "") return "n/a";
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "n/a";
@@ -99192,7 +101677,7 @@ function batterySummary(out2, doc, requested = []) {
     if (!a.document) continue;
     const rec = a.document.reconciliation ?? {};
     lines.push(
-      `account ${a.seller_id}: reconciliation account ${money(rec.account_ops)} vs SKU sum ${money(rec.sku_sum)} (${rec.gap_pct ?? "n/a"}%)`
+      `account ${a.seller_id}: reconciliation account ${money3(rec.account_ops)} vs SKU sum ${money3(rec.sku_sum)} (${rec.gap_pct ?? "n/a"}%)`
     );
     const failed = a.document.sections_failed ?? {};
     for (const [name, why] of Object.entries(failed)) {
@@ -99202,12 +101687,12 @@ function batterySummary(out2, doc, requested = []) {
     const dayCount = dayCountOf(a);
     for (const [k, v] of Object.entries(dark)) {
       if (!v || !Array.isArray(v.zero_spend_days) || v.zero_spend_days.length === 0) continue;
-      const days = v.zero_spend_days;
-      if (dayCount !== null && days.length >= dayCount) {
+      const days2 = v.zero_spend_days;
+      if (dayCount !== null && days2.length >= dayCount) {
         lines.push(`no ad spend in ${a.seller_id}/${k}: every day of the window is dark, so nothing to normalize; the brief treats this account as not advertising in the window`);
         continue;
       }
-      const shown = days.length > 8 ? `${days.slice(0, 8).join(", ")} and ${days.length - 8} more` : days.join(", ");
+      const shown = days2.length > 8 ? `${days2.slice(0, 8).join(", ")} and ${days2.length - 8} more` : days2.join(", ");
       lines.push(`dark ad days in ${a.seller_id}/${k}: ${shown} (normalize by ${v.normalization_factor ?? "n/a"})`);
     }
   }
@@ -99741,19 +102226,19 @@ function renderNetwork(r) {
 // src/commands/help.ts
 init_credentials();
 init_telemetry();
-import { promises as fs2 } from "node:fs";
+import { promises as fs3 } from "node:fs";
 import { fileURLToPath as fileURLToPath8 } from "node:url";
-import { dirname as dirname40, join as join29 } from "node:path";
+import { dirname as dirname40, join as join30 } from "node:path";
 
 // src/lib/demos.ts
 var import_yaml25 = __toESM(require_dist(), 1);
-import { promises as fs } from "node:fs";
-import { join as join28 } from "node:path";
+import { promises as fs2 } from "node:fs";
+import { join as join29 } from "node:path";
 async function loadDemos(skillsDir) {
   if (!skillsDir) return [];
   let entries;
   try {
-    entries = (await fs.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name).sort();
+    entries = (await fs2.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name).sort();
   } catch {
     return [];
   }
@@ -99761,7 +102246,7 @@ async function loadDemos(skillsDir) {
   for (const skillId of entries) {
     let raw;
     try {
-      raw = await fs.readFile(join28(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+      raw = await fs2.readFile(join29(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
     } catch {
       continue;
     }
@@ -99857,7 +102342,9 @@ var CATALOG = [
       { id: "mx-portfolio-quick-scan", say: "run a portfolio quick scan", what: "one green/yellow/red card per brand" },
       { id: "mx-daily-health-check", say: "run a daily health check on <brand>", what: "what needs attention today" },
       { id: "mx-runaway-spend-check", say: "check for runaway spend on <brand>", what: "acute keyword overspend" },
-      { id: "mx-keyword-bid-health", say: "run a bid health review on <brand>", what: "weekly bid pullbacks and scale-ups" }
+      { id: "mx-featured-offer-check", say: "check my featured offer", what: "who holds your Buy Box per shopper segment, and why you lose it, from the shelf (beta)" },
+      { id: "mx-keyword-bid-health", say: "run a bid health review on <brand>", what: "weekly bid pullbacks and scale-ups" },
+      { id: "mx-budget-balance", say: "run a budget balance on <brand>", what: "weekly budget raises for capped winners, cuts for poor performers" }
     ]
   },
   {
@@ -99876,7 +102363,8 @@ var CATALOG = [
     skills: [
       { id: "mx-amazon-ads", say: "show my campaigns", what: "read live Ads state, or make audited changes" },
       { id: "mx-amazon-amc", say: "run an AMC query", what: "Marketing Cloud SQL analytics" },
-      { id: "mx-amazon-dsp", say: "pull a DSP report", what: "Demand-Side Platform reporting" }
+      { id: "mx-amazon-dsp", say: "pull a DSP report", what: "Demand-Side Platform reporting" },
+      { id: "mx-amazon-shelf", say: "what does the shelf look like for <asin>", what: "the shopper's view at a zip: Buy Box, offers, keyword rank, product page (beta)" }
     ]
   },
   {
@@ -99973,7 +102461,7 @@ async function collectUncatalogued() {
   const skillsDir = await findSkillsDir();
   if (!skillsDir) return [];
   try {
-    const entries = await fs2.readdir(skillsDir, { withFileTypes: true });
+    const entries = await fs3.readdir(skillsDir, { withFileTypes: true });
     return entries.filter(
       (e) => e.isDirectory() && e.name.startsWith("mx-") && !known.has(e.name)
     ).map((e) => e.name).sort();
@@ -99983,13 +102471,13 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join29(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join30(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
   let dir = dirname40(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join29(dir, "skills");
-      const stat7 = await fs2.stat(candidate);
+      const candidate = join30(dir, "skills");
+      const stat7 = await fs3.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
     }
@@ -100122,7 +102610,7 @@ function renderDemoSectionChat(demos) {
 
 // src/commands/demo.ts
 init_telemetry();
-import { promises as fs3 } from "node:fs";
+import { promises as fs4 } from "node:fs";
 function registerDemoCommand(program3) {
   program3.command("demo").argument("[skill]", 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart ads")').description(
     `Guided skill demos. With no skill: list every skill that has a demo. With a skill: print the opener the agent shows before walking the steps in that skill's SKILL.md "## Demo" section. Output is chat markdown; --json for the structured form.`
@@ -100185,7 +102673,7 @@ function brief(d) {
 async function listSkillIds(skillsDir) {
   if (!skillsDir) return [];
   try {
-    return (await fs3.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name);
+    return (await fs4.readdir(skillsDir, { withFileTypes: true })).filter((e) => e.isDirectory() && e.name.startsWith("mx-")).map((e) => e.name);
   } catch {
     return [];
   }
@@ -100208,8 +102696,8 @@ init_credentials();
 init_surface();
 init_plugin_version();
 init_telemetry();
-import { promises as fs4 } from "node:fs";
-import { resolve as resolve3, join as join30, relative, basename as basename4 } from "node:path";
+import { promises as fs5 } from "node:fs";
+import { resolve as resolve3, join as join31, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -100493,7 +102981,7 @@ function registerShareSkillCommand(program3) {
   );
 }
 async function collectBundle(path2) {
-  const stat7 = await fs4.stat(path2).catch(() => null);
+  const stat7 = await fs5.stat(path2).catch(() => null);
   if (!stat7) throw new Error(`Path not found: ${path2}`);
   const files = [];
   const skipped = [];
@@ -100505,7 +102993,7 @@ async function collectBundle(path2) {
       skipped.push(relPath);
       return;
     }
-    const st = await fs4.stat(absFile).catch(() => null);
+    const st = await fs5.stat(absFile).catch(() => null);
     if (!st || !st.isFile()) return;
     if (st.size > MAX_FILE_BYTES) {
       skipped.push(`${relPath} (too large)`);
@@ -100518,7 +103006,7 @@ async function collectBundle(path2) {
       skipped.push(`${relPath} (not text)`);
       return;
     }
-    const content = await fs4.readFile(absFile, "utf8").catch(() => null);
+    const content = await fs5.readFile(absFile, "utf8").catch(() => null);
     if (content === null) {
       skipped.push(`${relPath} (unreadable)`);
       return;
@@ -100536,13 +103024,13 @@ async function collectBundle(path2) {
     await addFile(path2, basename4(path2));
   } else {
     const walk = async (dir) => {
-      const entries = await fs4.readdir(dir, { withFileTypes: true }).catch(() => []);
+      const entries = await fs5.readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const e of entries) {
         if (files.length >= MAX_FILES || totalBytes >= MAX_TOTAL_BYTES) {
           truncated = true;
           return;
         }
-        const abs = join30(dir, e.name);
+        const abs = join31(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -100595,7 +103083,7 @@ function registerContextCommands(program3) {
       for (const brand of brands) {
         const r = await computeStatus(brand, engineOptions);
         if (!r.ok) {
-          emitError14(r.message, root);
+          emitError16(r.message, root);
           return;
         }
         results.push(r);
@@ -100674,7 +103162,7 @@ function registerContextCommands(program3) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError16(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -100710,7 +103198,7 @@ function registerContextCommands(program3) {
     const t0 = Date.now();
     try {
       if (opts.brand && !await brandDirExists(opts.brand, root.dataDir)) {
-        emitError14(
+        emitError16(
           `brand '${opts.brand}' has no local directory under ~/.mixshift/clients/ \u2014 migrate seeds the org store from local brand dirs`,
           root
         );
@@ -100727,7 +103215,7 @@ function registerContextCommands(program3) {
         client: createContextSyncClient({ dataDirOverride: root.dataDir })
       });
       if (!result.ok) {
-        emitError14(result.message, root);
+        emitError16(result.message, root);
         return;
       }
       const stakeRuns = [];
@@ -100786,7 +103274,7 @@ function registerContextCommands(program3) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError16(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -100815,7 +103303,7 @@ function registerActionSubcommand(context, spec) {
     const t0 = Date.now();
     try {
       if (spec.hasForce && opts.force && !opts.brand) {
-        emitError14(
+        emitError16(
           `--force requires --brand <slug>: forced ${spec.name} resolution is scoped to one brand at a time.`,
           root
         );
@@ -100831,7 +103319,7 @@ function registerActionSubcommand(context, spec) {
           ...spec.hasForce ? { force: opts.force ?? false } : {}
         });
         if (!r.ok) {
-          emitError14(r.message, root);
+          emitError16(r.message, root);
           return;
         }
         results.push({ brand: r.brand, reports: r.reports });
@@ -100903,7 +103391,7 @@ function registerActionSubcommand(context, spec) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError16(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -100995,7 +103483,7 @@ function registerAutosyncSubcommand(context) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError14(err instanceof Error ? err.message : String(err), root);
+      emitError16(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -101009,7 +103497,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
   const manifest = await client.fetchManifest({ lifecycle: "all" });
   if (!manifest.ok) {
-    emitError14(manifest.friendly, root);
+    emitError16(manifest.friendly, root);
     return null;
   }
   let brands = localOrExplicit;
@@ -101026,7 +103514,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
     const knownLocally = await brandDirExists(brandOpt, root.dataDir);
     const knownOnServer = manifest.brands.some((b) => b.brand_slug === brandOpt);
     if (!knownLocally && !knownOnServer) {
-      emitError14(
+      emitError16(
         `brand '${brandOpt}' not found locally or in the org store \u2014 check the slug (run \`mixshift context status\` for the known brands)`,
         root
       );
@@ -101106,7 +103594,7 @@ function emitNoBrands(root) {
     );
   }
 }
-function emitError14(message, root) {
+function emitError16(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -101202,7 +103690,7 @@ function registerList(timeline) {
       if (opts.since) {
         const since = parseSince(opts.since);
         if (!since.ok) {
-          emitError15(since.message, root);
+          emitError17(since.message, root);
           return;
         }
         query.since = since.iso;
@@ -101210,7 +103698,7 @@ function registerList(timeline) {
       if (opts.until) {
         const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
         if (!until.ok) {
-          emitError15(until.message, root);
+          emitError17(until.message, root);
           return;
         }
         query.until = until.iso;
@@ -101218,7 +103706,7 @@ function registerList(timeline) {
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
         if (!Number.isInteger(n) || n <= 0) {
-          emitError15(`--limit must be a positive integer, got '${opts.limit}'`, root);
+          emitError17(`--limit must be a positive integer, got '${opts.limit}'`, root);
           return;
         }
         query.limit = n;
@@ -101244,7 +103732,7 @@ function registerList(timeline) {
           },
           root.dataDir
         );
-        emitError15(result.friendly, root);
+        emitError17(result.friendly, root);
         return;
       }
       await track(
@@ -101288,7 +103776,7 @@ function registerList(timeline) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError15(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -101308,14 +103796,14 @@ function registerAdd(timeline) {
     try {
       const family = familyForKind(opts.kind);
       if (family === null) {
-        emitError15(
+        emitError17(
           `--kind must be 'comment' or 'structural.<what>' (got '${opts.kind}'). knowledge.* events are emitted by the context service and action.* events by instrumented write paths; neither can be added by hand.`,
           root
         );
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_NOTE_CHARS) {
-        emitError15(
+        emitError17(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_NOTE_CHARS}). Trim it, or store the full text as a corpus doc and reference it with --target.`,
           root
         );
@@ -101324,42 +103812,42 @@ function registerAdd(timeline) {
       const isStake = opts.category !== void 0;
       if (isStake) {
         if (!STAKE_CATEGORIES.includes(opts.category)) {
-          emitError15(
+          emitError17(
             `--category must be one of: ${STAKE_CATEGORIES.join(", ")} (got '${opts.category}').`,
             root
           );
           return;
         }
         if (family !== "structural") {
-          emitError15(
+          emitError17(
             `a --category stake requires a 'structural.<what>' --kind (got '${opts.kind}').`,
             root
           );
           return;
         }
         if (opts.interpretation === void 0 || opts.interpretation.length === 0) {
-          emitError15(
+          emitError17(
             "--interpretation is required when --category is given (a stake records what the org read into the event).",
             root
           );
           return;
         }
         if (opts.interpretation.length > MAX_INTERPRETATION_CHARS3) {
-          emitError15(
+          emitError17(
             `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS3}).`,
             root
           );
           return;
         }
         if (opts.source !== void 0 && !STAKE_SOURCES.includes(opts.source)) {
-          emitError15(
+          emitError17(
             `--source must be one of: ${STAKE_SOURCES.join(", ")} (got '${opts.source}').`,
             root
           );
           return;
         }
       } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || (opts.tag?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
-        emitError15(
+        emitError17(
           "--end / --affects / --tag / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
         );
@@ -101369,7 +103857,7 @@ function registerAdd(timeline) {
       if (opts.intensity !== void 0) {
         intensity = Number(opts.intensity);
         if (!Number.isFinite(intensity)) {
-          emitError15(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
+          emitError17(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
           return;
         }
       }
@@ -101378,7 +103866,7 @@ function registerAdd(timeline) {
         ["--end", opts.end]
       ]) {
         if (value !== void 0 && Number.isNaN(Date.parse(value))) {
-          emitError15(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
+          emitError17(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
           return;
         }
       }
@@ -101386,7 +103874,7 @@ function registerAdd(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError15(parsed.message, root);
+          emitError17(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -101437,7 +103925,7 @@ function registerAdd(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError15(result.friendly, root);
+        emitError17(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -101462,7 +103950,7 @@ function registerAdd(timeline) {
       }
       return;
     } catch (err) {
-      emitError15(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -101479,25 +103967,25 @@ function registerCorroborate(timeline) {
     const t0 = Date.now();
     try {
       if (opts.status === void 0 && opts.end === void 0 && opts.evidence === void 0) {
-        emitError15(
+        emitError17(
           "a corroboration needs at least one of --status, --end, or --evidence (a --note alone is not a corroboration).",
           root
         );
         return;
       }
       if (opts.status !== void 0 && !STAKE_STATUSES.includes(opts.status)) {
-        emitError15(
+        emitError17(
           `--status must be one of: ${STAKE_STATUSES.join(", ")} (got '${opts.status}').`,
           root
         );
         return;
       }
       if (opts.end !== void 0 && Number.isNaN(Date.parse(opts.end))) {
-        emitError15(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
+        emitError17(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_CORROBORATE_NOTE_CHARS) {
-        emitError15(
+        emitError17(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_CORROBORATE_NOTE_CHARS}).`,
           root
         );
@@ -101507,7 +103995,7 @@ function registerCorroborate(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError15(parsed.message, root);
+          emitError17(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -101537,7 +104025,7 @@ function registerCorroborate(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError15(result.friendly, root);
+        emitError17(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -101562,7 +104050,7 @@ function registerCorroborate(timeline) {
       }
       return;
     } catch (err) {
-      emitError15(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -101615,7 +104103,7 @@ function registerSync(timeline) {
         root.dataDir
       );
       if (opts.brand !== void 0 && results[0].error !== void 0) {
-        emitError15(results[0].error, root);
+        emitError17(results[0].error, root);
         return;
       }
       if (root.json) {
@@ -101658,7 +104146,7 @@ function registerSync(timeline) {
       process.stdout.write((lines.length > 0 ? lines.join("\n") + "\n" : "") + summary + "\n");
       return;
     } catch (err) {
-      emitError15(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -101775,7 +104263,7 @@ function filtersPayload(query, all) {
     all
   };
 }
-function emitError15(message, root) {
+function emitError17(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -101793,7 +104281,7 @@ init_resolve();
 init_service_attribution_cache();
 init_telemetry();
 import { readdir as readdir7, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname41, join as join31 } from "node:path";
+import { basename as basename5, dirname as dirname41, join as join32 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -101849,14 +104337,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join31(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join32(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
     if (basename5(dir) !== "auth" || basename5(dirname41(dir)) !== ".mixshift") continue;
-    found.push(join31(dir, entry.name));
+    found.push(join32(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -101939,7 +104427,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join31(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join32(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -102504,11 +104992,11 @@ function usageHint(code, message, argv, program3) {
     const alias = COMMAND_ALIASES[key];
     if (alias) {
       const targets = alias.targets.filter((t) => commandExists(program3, t)).map((t) => `\`mixshift ${t}\``);
-      const list = targets.length > 1 ? `${targets.slice(0, -1).join(", ")} or ${targets.at(-1)}` : targets[0];
+      const list2 = targets.length > 1 ? `${targets.slice(0, -1).join(", ")} or ${targets.at(-1)}` : targets[0];
       if (targets.length) {
         return {
           id: "command_alias",
-          text: `${alias.note ? `${alias.note}. ` : ""}Try ${list}${alias.then ? ` (then ${alias.then})` : ""}.`
+          text: `${alias.note ? `${alias.note}. ` : ""}Try ${list2}${alias.then ? ` (then ${alias.then})` : ""}.`
         };
       }
     }
@@ -102639,6 +105127,7 @@ registerSkillCommands(program2);
 registerAmazonCommands(program2);
 registerAdsCommands(program2);
 registerWalmartCommands(program2);
+registerShelfCommands(program2);
 registerIntelligenceCommands(program2);
 registerForecastCommands(program2);
 registerReportCommands(program2);
