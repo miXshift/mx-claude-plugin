@@ -26,11 +26,15 @@ The file contains the bullet itself, in the voice the changelog already uses
 them — never the mechanism):
 
 ```markdown
-- **A report waiting in Amazon's queue is no longer checked flat out.** Some
-  report types can sit in Amazon's queue for hours. The plugin used to re-check
+- **A report waiting in the queue at Amazon is no longer checked flat out.** Some
+  report types can sit in the queue at Amazon for hours. The plugin used to re-check
   at the same rate for as long as you were willing to wait, which does not make
   it arrive sooner.
 ```
+
+Write fragments in American English, with no em dashes, and never use "Amazon's"
+as a possessive on a MixShift feature or on data (not "Amazon's suggested budget";
+write "the budget Amazon suggests"), so Amazon reads as the external source.
 
 One change per file. A PR that ships two unrelated user-visible things adds two
 files.

@@ -168,7 +168,7 @@ For security-sensitive issues, do not open a public issue. Email security@mixshi
 
 ## Style
 
-- Match the existing prose voice in `SKILL.md` files. It is deliberately direct, low-hedge, no em dashes.
+- Match the existing prose voice in `SKILL.md` files. It is deliberately direct, low-hedge, no em dashes. Customer-facing copy (including `CHANGELOG.md` and `changelog.d/` fragments) never uses "Amazon's" as a possessive on our offering or on data and features; recast it prepositionally ("the budget Amazon suggests", not "Amazon's suggested budget").
 - SQL files declare their purpose, parameters, and consumers in a header comment.
 - Manifests are valid against the schema in `shared/skill-manifest.schema.yaml` — bad manifests will not load.
 - No emojis in skill output. The skill format conventions are part of the product.
