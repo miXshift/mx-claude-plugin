@@ -15,7 +15,7 @@ description: >
   the user's own account (demo Walmart ads). Uses the MixShift plugin sign-in,
   so no separate connector is needed. Does not require brand setup.
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - walmart campaigns
@@ -101,11 +101,36 @@ Route elsewhere:
 | State | How to check | What to do if missing |
 |---|---|---|
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
-| Walmart enabled for the MixShift account | `mixshift walmart ads advertisers` succeeds | `tenant_not_allowed` (exit 6) means no Walmart advertiser is connected to this MixShift account yet. Tell the user to contact MixShift to connect one. |
-| The advertiser connected | It appears in `walmart ads advertisers` | An id that is not listed fails `advertiser_not_allowed` (exit 7). MixShift connects advertisers; the user cannot do it from chat. |
+| Walmart enabled for the MixShift account | `mixshift walmart ads advertisers` succeeds | `tenant_not_allowed` (exit 6) means no Walmart advertiser is connected to this MixShift account yet. Walk the user through [Connecting a Walmart advertiser](#connecting-a-walmart-advertiser). |
+| The advertiser connected | It appears in `walmart ads advertisers` | An id that is not listed fails `advertiser_not_allowed` (exit 7). An advertiser the user expected but does not see has not been connected yet: [Connecting a Walmart advertiser](#connecting-a-walmart-advertiser). It cannot be done from chat. |
 | Write capability (writes only) | The advertiser's `access` is `owner`, and the credential holds `ads:write` | `read` access can preview but not commit. Signed-in user sessions hold `ads:write`; a machine credential without it fails `insufficient_scope` (exit 11). |
 
 Brand setup is **not required.** A signed-in session is enough.
+
+## Connecting a Walmart advertiser
+
+Walmart approved MixShift's Walmart Connect integration for production, so the
+advertiser connects itself; nobody waits on Walmart. When `tenant_not_allowed`
+or a missing advertiser says one is not connected yet, walk the user through it
+in plain words (no commands; these are steps in Walmart's site and an email):
+
+1. Someone who is a super admin, org admin or account admin on the Walmart ad
+   account opens Walmart Connect Ad Center, clicks the Account icon at the top
+   right, and chooses **Manage profile and account**.
+2. On the **Access** page, they open the **Partners** tab and click
+   **+ Add Partner**.
+3. They select **MixShift** as the partner (it may show as MixShift.io) and pick
+   the ad accounts to connect.
+4. They set Campaign management to **Edit** (changes from Claude need it),
+   Reporting to **Edit** and Creative to **None**, then click **Add partner**.
+5. They email the advertiser ID to support@mixshift.io and say which MixShift
+   account should use it. MixShift links it and tells them when it is live.
+
+Walmart's own guide is "Account access as an admin user":
+https://advertisinghelp.walmart.com/s/guides?language=en_US&article=000012444.
+If MixShift is missing from the partner list, they tell support@mixshift.io.
+Nothing changes in the plugin: no update, no new sign-in. Never say an
+advertiser is connected until `walmart ads advertisers` lists it.
 
 ## Step 1: pick the advertiser
 
@@ -287,9 +312,10 @@ can make changes there (`owner`) or only read (`read`).
 - A Display-only advertiser: run step 2 with `display.list_campaigns
   --body '{}'`, say the rest of the demo covers Sponsored Search, and close.
 - `tenant_not_allowed` (exit 6): no Walmart advertiser is connected to this
-  MixShift account yet. Say so, and that MixShift connects them (the user
-  sends MixShift the advertiser ID from Walmart Ad Center). Then describe steps
-  2 to 5 in one sentence each, with no numbers, and close.
+  MixShift account yet. Say so, give the steps in Connecting a Walmart
+  advertiser (the Ad Center partner grant, then the advertiser ID to
+  support@mixshift.io), then describe steps 2 to 5 in one sentence each, with
+  no numbers, and close.
 
 Next time, just say: *"list my Walmart advertisers"*.
 
@@ -446,7 +472,7 @@ change log: quote it when asking MixShift about the change.
 |---|---|---|
 | `not_authenticated` | 2 | Not signed in. Run `mixshift auth login`. |
 | `session_expired` | 2 | The session could not be refreshed. Run `mixshift auth login` again. |
-| `tenant_not_allowed` | 6 | No Walmart advertiser is connected to this MixShift account. Contact MixShift to connect one. Stop. |
+| `tenant_not_allowed` | 6 | No Walmart advertiser is connected to this MixShift account yet. Give the steps in [Connecting a Walmart advertiser](#connecting-a-walmart-advertiser). Stop. |
 | `walmart_not_configured` | 6 | Walmart is not set up on MixShift's service. Contact MixShift. Stop. |
 | `advertiser_not_allowed` | 7 | Read `message`: the advertiser is not connected to this account (re-run `walmart ads advertisers` and use a listed id), MixShift's access is read-only (no commits), the report covers every advertiser and is not available, or an id belongs to a different advertiser (re-list). |
 | `not_found` | 7 | Walmart has no such record. Re-list the ids and try again. |
@@ -454,7 +480,7 @@ change log: quote it when asking MixShift about the change.
 | `insufficient_scope` | 11 | This credential cannot make changes (needs `ads:write`). Hand the user the change list. Do not retry. |
 | `invalid_request` | 15 | MixShift refused the request before sending anything to Walmart: an unknown operation, a missing parameter, a wrong body shape. The message (and `detail`) says what; `invalid_params` names the fields when a request field was malformed. Re-run `walmart ads operations` (or read the operation's notes) and fix it; never resend it unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
 | `bad_request` | 12 | Walmart rejected the request as sent. `walmart_response` carries Walmart's own answer. Fix the request from the notes and that answer, then resend; never retry unchanged. If the catalog notes led you to it, suggest `mixshift feedback`. |
-| `upstream_auth` | 14 | Walmart refused MixShift's access for this advertiser. Nothing the user can fix in chat: tell them to contact MixShift. Do not retry. |
+| `upstream_auth` | 14 | Walmart refused MixShift's access for this advertiser, usually because the Ad Center partner grant was removed or never finished. Ask the user to check the Partners tab in Ad Center (MixShift listed, Campaign management Edit); if it is there, tell them to contact support@mixshift.io. Do not retry. |
 | `upstream_unavailable` | 1 | Walmart's side failed. Retry a read later. A commit with `request_outcome: "unknown"` may or may not have applied: re-list the entity to check before resending; its `audit_id` names the change-log record. |
 | `host_unreachable` | 1 | MixShift's service did not answer. Check `request_outcome`; otherwise retry shortly. |
 | `unknown` | 1 | Unexpected, on MixShift's side. Check `request_outcome`; otherwise retry at most once and relay the message. Never loop on it. |

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-walmart-ads
 display_name: Walmart Ads (Walmart Connect live account state + previewed changes)
-version: "0.1.1"
+version: "0.1.2"
 description: >
   Read and manage Walmart ads (Walmart Connect Sponsored Search, plus Display
   where the account has it) for the Walmart advertisers connected to the

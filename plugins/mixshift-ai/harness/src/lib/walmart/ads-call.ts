@@ -528,7 +528,10 @@ function defaultFriendly(kind: WalmartFailureKind): string {
     case 'walmart_not_configured':
       return 'Walmart Connect is not set up on the MixShift service yet. Contact MixShift.';
     case 'tenant_not_allowed':
-      return 'Walmart Connect is not enabled for this MixShift account yet. Contact MixShift to join the beta.';
+      return (
+        'No Walmart Connect advertiser is connected to this MixShift account yet. An admin on the Walmart ad account ' +
+        'adds MixShift as a partner in Ad Center (Access > Partners), then emails the advertiser ID to support@mixshift.io.'
+      );
     case 'advertiser_not_allowed':
       return 'That Walmart advertiser is not connected to this MixShift account.';
     case 'insufficient_scope':

@@ -47,14 +47,15 @@ describe('listWalmartAdvertisers', () => {
       jsonResponse(403, {
         ok: false,
         kind: 'tenant_not_allowed',
-        friendly: 'Walmart Connect is not enabled for this MixShift account yet. Contact MixShift to join the beta.',
+        friendly:
+          'No Walmart Connect advertiser is connected to this MixShift account yet. To connect one, an admin on the Walmart ad account adds MixShift as a partner in Walmart Connect Ad Center (Account icon > Manage profile and account > Access > Partners > + Add Partner), then emails the advertiser ID to support@mixshift.io.',
       }),
     );
     const r = await listWalmartAdvertisers(injected(fetchImpl));
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.kind).toBe('tenant_not_allowed');
-      expect(r.friendly).toMatch(/not enabled for this MixShift account/);
+      expect(r.friendly).toMatch(/Access > Partners > \+ Add Partner/);
       expect(r.unrecognizedKind).toBeUndefined();
       expect(exitCodeForWalmartKind(r.kind)).toBe(6);
     }
