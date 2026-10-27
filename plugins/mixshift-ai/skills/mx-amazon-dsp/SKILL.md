@@ -1,22 +1,22 @@
 ---
 name: mx-amazon-dsp
 description: >
-  Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon.
-  REPORTING: use it whenever someone asks how DSP did last year, for DSP
-  history older than 90 days, a year-over-year DSP comparison, monthly
-  history, or a DSP export the console gives one year at a time. CAMPAIGN AND
-  CREATIVE READS answer what is set up now: which campaigns, line items and
-  creatives exist, which creatives are attached to which line items and
-  whether they are live or paused, whether a placement was approved or
-  rejected and why, and which creatives are eligible for a line item. Use it
-  to audit a DSP account, explain why a creative is not delivering, or find a
-  creative or line item id. Also owns finding which DSP advertiser a login
-  can reach, the step most DSP work gets stuck on. CHANGES: campaign budget,
-  flights and state, line item budget, dates, bids and pacing, previewed and
-  applied only on confirmation; creating or attaching creatives is NOT
-  available yet. No brand setup needed, only sign-in.
+  Read and build an Amazon DSP (Demand-Side Platform) advertiser straight
+  from Amazon. REPORTING: how DSP did last year, history older than 90 days,
+  year-over-year or monthly history. ACCOUNT READS answer what is set up now:
+  campaigns, line items, creatives, which creatives sit on which line items
+  and whether they are live, approval or rejection reasons, eligible
+  creatives, and which audiences a line item targets. Use it to audit a DSP
+  account, explain why a creative is not delivering, or find an id. Also
+  finds which DSP advertiser a login can reach, where most DSP work gets
+  stuck. BUILDS: create campaigns (orders) and line items in bulk from a
+  launch plan, always paused, add audiences and other targeting, and attach
+  existing creatives. EDITS: campaign budget, flights and state; line item
+  budget, dates, bids, pacing, and turning them on. Builds and edits are
+  previewed and applied only on confirmation. Creating creatives is
+  console-only. No brand setup needed, only sign-in.
 metadata:
-  version: "0.3.2"
+  version: "0.4.0"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -45,9 +45,17 @@ trigger_phrases:
   - dsp monthly report
   - dsp data before <date>
   - how far back can we pull dsp
+  - create a dsp campaign
+  - build dsp line items
+  - launch a dsp campaign
+  - bulk create dsp orders
+  - build a dsp launch plan
+  - add audiences to a dsp line item
+  - attach creatives to dsp line items
+  - what audiences is this line item targeting
 ---
 
-# Amazon DSP: reporting and account reads
+# Amazon DSP: reporting, account reads, edits and builds
 
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
@@ -117,15 +125,23 @@ Trigger for either half of the surface.
 - "Can this creative run on that line item?"
 - "Audit our DSP account"
 - "What is our DSP advertiser id?"
+- "Which audiences is this line item targeting?"
+
+**A DSP change or build** (edit what exists, or build new):
+
+- "Raise the budget on these three line items" / "Turn the new campaign on"
+- "Build this launch plan in DSP: two orders, six line items, these audiences"
+- "Create the line items for the Q4 test, paused, so I can check them"
+- "Attach these creatives to the new line items"
 
 The core user story: *"I want to know what my DSP advertiser is doing, either as
-performance I can analyze or as the live setup I can act on, without opening the
-DSP console."*
+performance I can analyze or as the live setup I can act on, and to make or
+build the changes, without opening the DSP console."*
 
-The two halves answer different questions and are addressed differently, so
-decide which one the user is asking for before picking an operation. "How did it
-do" is a report; "what is on it" or "why is it not delivering" is an account
-read.
+Decide which one the user is asking for before picking an operation. "How did
+it do" is a report; "what is on it" or "why is it not delivering" is an account
+read; "change it" or "build it" is a write (see "Changing DSP campaigns and ad
+groups" and "Building DSP campaigns and line items").
 
 **Do NOT use this skill** for:
 
@@ -215,12 +231,21 @@ the notes before calling. The operations, used in the order below:
 | `dsp.list_eligible_creatives` | Which creatives may attach to given line items. |
 | `dsp.update_campaigns` | **Write.** Edit up to 5 campaigns: state, budget caps, flights, name. See "Changing DSP campaigns and ad groups". |
 | `dsp.update_ad_groups` | **Write.** Edit up to 20 ad groups: state, budget, dates, bid, pacing, name. See "Changing DSP campaigns and ad groups". |
+| `dsp.create_campaigns` | **Write.** Create up to 5 campaigns (orders) per call, always paused. See "Building DSP campaigns and line items". |
+| `dsp.create_ad_groups` | **Write.** Create up to 20 ad groups (line items) per call in existing campaigns, always paused. |
+| `dsp.create_targets` | **Write.** Add audiences, locations, domains and other targeting to ad groups. |
+| `dsp.delete_targets` | **Write.** Remove targets by id (up to 100), to change a default or swap an audience. |
+| `dsp.create_ad_associations` | **Write.** Attach existing creatives to ad groups, up to 20 per call. |
+| `dsp.query_campaigns` / `dsp.query_ad_groups` | Read campaigns and ad groups in the shape the creates write; check names before creating. |
+| `dsp.query_targets` | Read the targeting on ad groups, including **which audiences each line item targets**. |
 
 **The two DSP families are addressed differently, and mixing them up is the
 usual first failure.** The report operations take the advertiser as
 `--path accountId=<id>`. The account-read operations take it as
 `--path advertiserId=<id>`. Same value, two parameter names, because Amazon
-names it differently on each surface.
+names it differently on each surface. The edit, build and query operations
+(`dsp.update_*`, `dsp.create_*`, `dsp.delete_targets`, `dsp.query_*`) take it as
+`--path advertiserId=<id>` too.
 
 ## Discovery: find the DSP advertiser id
 
@@ -428,12 +453,14 @@ does not exist.
 
 ### What is NOT available
 
-Creating a DSP creative, attaching one to a line item, and pausing or removing a
-placement are **not** in the catalog. There is no workaround through this
-surface. If the user wants to place a creative, say plainly that MixShift can
-show them the account and tell them exactly what to change, and that the change
-itself is made in the Amazon DSP console for now. Campaign and ad group edits
-are different: those are available, see "Changing DSP campaigns and ad groups".
+Creating a DSP creative, and pausing or removing a creative's placement on a
+line item, are **not** in the catalog. There is no workaround through this
+surface: say plainly that MixShift can show the account and tell them exactly
+what to change, and that the change itself is made in the Amazon DSP console for
+now. Amazon also has **no delete for DSP campaigns or line items**: a wrong one
+is left paused (and can be renamed). Edits and builds are available: see
+"Changing DSP campaigns and ad groups" and "Building DSP campaigns and line
+items", which also covers attaching an existing creative to a line item.
 
 ## Changing DSP campaigns and ad groups
 
@@ -502,11 +529,104 @@ is propose-only, or a teammate should approve: add `--propose` (see
 only afterward. Money changes over 25% are flagged and need the approver's
 `--acknowledge-guard`.
 
-**Still console-only.** Creating a creative, attaching a creative to a line
-item, and pausing or removing a placement are **not** in the catalog. Say so
+**Still console-only.** Creating a creative, and pausing or removing a
+creative's placement on a line item, are **not** in the catalog. Say so
 plainly: MixShift can show the account and tell them exactly what to change,
 and that change is made in the Amazon DSP console. Do not improvise it through
 another operation.
+
+**Turning a new build on** is this section's job: once a build from "Building
+DSP campaigns and line items" is checked, `dsp.update_campaigns` and
+`dsp.update_ad_groups` with `state: "ACTIVE"` start delivery, through the same
+preview and confirmation.
+
+## Building DSP campaigns and line items
+
+The user story: *"I have a DSP launch plan (orders, line items, audiences,
+creatives) and I want it built in the account in one pass, not clicked in one
+line item at a time, and I want to check it before anything spends."*
+
+Five write operations build new structure, on Amazon's Campaign Management API.
+They follow the same write contract as edits (preview, the user confirms in a
+separate turn, then `--commit`), and **nothing they create can spend**: Amazon
+creates DSP campaigns and line items **paused only**, MixShift refuses any
+other state before the call, and only a separate `dsp.update_*` change to
+`ACTIVE` starts delivery.
+
+| Operation | Creates | Cap per call |
+|---|---|---|
+| `dsp.create_campaigns` | Campaigns (orders): name, flights with budgets, goal KPI, bid strategy, budget allocation, frequency caps, budget caps, agency fee, PO number | **5** |
+| `dsp.create_ad_groups` | Line items in existing campaigns: inventory type, dates, budget, bid, pacing, creative rotation, targeting settings (viewability, audience match type) | **20** |
+| `dsp.create_targets` | Targeting on line items: audiences, locations, domains, devices, apps, day parts, content and inventory targets; `negative: true` excludes | 200 |
+| `dsp.delete_targets` | Removes targets by id (a DSP target has no paused state); keeps a snapshot of each in the audit row | **100** |
+| `dsp.create_ad_associations` | Attaches EXISTING creatives to line items (creative id as `adId`) | **20** |
+
+**These use a different field model from the `dsp.list_*` and `dsp.update_*`
+operations.** Build bodies from each operation's notes (`mixshift ads operations
+--family DSP`), never from a `dsp.list_campaigns` row: here every item carries
+`"adProduct": "AMAZON_DSP"`, state is `PAUSED` / `ENABLED`, budgets nest as
+`budget.budgetValue.monetaryBudgetValue.monetaryBudget.value`, and dates are
+RFC 3339 UTC. Read what you built back with `dsp.query_campaigns`,
+`dsp.query_ad_groups` and `dsp.query_targets` (each needs
+`"adProductFilter": {"include": ["AMAZON_DSP"]}`).
+
+**New to MixShift (October 2026).** The account header and the id match between
+these operations and the `dsp.list_*` reads are taken from Amazon's spec and
+are being proven on live accounts. If a first call fails with an account or id
+error, report Amazon's answer as it came, do not retry with another id, and
+offer to send it to MixShift (`mx-feedback`).
+
+### The build, step by step
+
+1. **Confirm the advertiser** (see "Discovery") and echo the id back.
+2. **Write the launch plan before any call**, as a table the user can check:
+   every campaign (name, flight dates, budget, goal KPI) and under it every line
+   item (name, inventory type, dates, budget, base bid, pacing), its audiences
+   (by DSP audience id and name) and other targeting, and its creatives (by
+   creative id). Ask, do not assume, the things that change cost:
+   - **Audience match type** (`targetingSettings.defaultAudienceTargetingMatchType`):
+     `EXACT` serves only the audiences named; `SIMILAR` lets Amazon expand to
+     similar shoppers. On retargeting and loyalty lines the expansion can cost
+     many times more per purchase, so ask which they want per line.
+   - **Budget allocation** (`MANUAL` vs `AUTO`) and the goal KPI.
+   - Where the audience ids come from: an AMC audience's DSP id is on the
+     audience itself (`mx-amazon-amc`, or the AMC app); Amazon's own audiences
+     are picked in the DSP console for now, so ask the user for those ids.
+   Get the user's yes on the plan.
+3. **Check for duplicates.** `dsp.query_campaigns` with a `nameFilter`
+   (`EXACT_MATCH`) on the planned names. A build that already exists, or a
+   half-finished earlier run, is continued, never created twice.
+4. **Build in dependency order, one step at a time**, each step previewed and
+   confirmed as one change set (all of its calls within the caps):
+   1. campaigns, then read each new `campaignId` from `success[].campaign`;
+   2. line items with those ids, then read each `adGroupId`;
+   3. targeting on those line items. Amazon adds **default targets** to every
+      new line item (devices, inventory, day parts, the advertiser domain list,
+      video ad format): read them with `dsp.query_targets` and show them. To
+      change one, remove it with `dsp.delete_targets` and add the replacement;
+   4. creatives: check each pairing with `dsp.list_eligible_creatives` first
+      (a creative whose type does not fit the line item's inventory is refused),
+      then attach with `dsp.create_ad_associations`.
+   Later steps differ from the confirmed plan only by the ids Amazon assigned.
+   If the user wants to change anything else mid-build, preview it again.
+5. **Read the 207 per item.** Each response can carry three lists, each entry
+   with its `index`: `success` (created), `partialSuccess` (**created**, with
+   some fields refused: the entity exists, so fix it with an update, never
+   create it again) and `error` (not created, with Amazon's message). A list is
+   left out when empty. Report the counts and each refusal in plain words.
+6. **An unknown outcome is not a failure.** A commit that ends with
+   `request_outcome: "unknown"` (a 5xx or a lost answer) may have created the
+   entities. Query by name or id before sending anything again; a blind retry
+   makes duplicates, and Amazon cannot delete DSP campaigns or line items.
+7. **Hand back a build sheet**: every campaign and line item with its new id,
+   all **paused**, the targets and creatives attached, and what is left before
+   it can spend: creatives still to build or approve in the console, the
+   advertiser's payment profile in the console, and turning it on (offer to do
+   that with `dsp.update_*` once they have checked it).
+
+Builds cannot be proposed for later approval yet; they need a signed-in person
+to confirm. For many rows at once, Amazon's own bulk upload (DSP console, Bulk
+operations) is the other route, and the user can mix the two.
 
 ## Which reporting surface: the 90-day rule
 
@@ -844,13 +964,17 @@ Four DSP-specific cases that need their own handling:
 
 These supersede other instructions:
 
-- **Reports and reads are safe; edits are gated.** Generating a DSP report or
-  reading the account mutates nothing. A DSP write (`dsp.update_campaigns`,
-  `dsp.update_ad_groups`) NEVER reaches Amazon without a preview the user saw
-  and explicit confirmation of that exact change set in a SEPARATE turn, then
-  `--commit`. A flights list is a full replacement: omitting a flight deletes
-  it. Creative, attach and placement changes are console-only: do not improvise
-  them.
+- **Reports and reads are safe; edits and builds are gated.** Generating a DSP
+  report or reading the account mutates nothing. A DSP write (`dsp.update_*`,
+  `dsp.create_*`, `dsp.delete_targets`) NEVER reaches Amazon without a preview
+  the user saw and explicit confirmation of that exact change set in a SEPARATE
+  turn, then `--commit`. A flights list is a full replacement: omitting a flight
+  deletes it. Creating creatives and changing a creative's placement are
+  console-only: do not improvise them.
+- **A build never starts spend.** Campaigns and line items are created
+  `PAUSED`; turning them on is a separate, confirmed `dsp.update_*` change.
+  Never retry a create whose outcome is unknown without querying first: Amazon
+  cannot delete a duplicate DSP campaign or line item.
 - **Pick the surface from the DATE RANGE, before anything else.** Older than 90
   days means `reporting_v1.*`. A `REQUEST_BODY_FIELD_REPORT_DATE_OLD` 422 from
   `dsp.create_report` is the v3 wall, not an access problem: switch surfaces
