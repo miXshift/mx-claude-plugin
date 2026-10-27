@@ -570,9 +570,11 @@ RFC 3339 UTC. Read what you built back with `dsp.query_campaigns`,
 `dsp.query_ad_groups` and `dsp.query_targets` (each needs
 `"adProductFilter": {"include": ["AMAZON_DSP"]}`).
 
-**New to MixShift (October 2026).** The account header and the id match between
-these operations and the `dsp.list_*` reads are taken from Amazon's spec and
-are being proven on live accounts. If a first call fails with an account or id
+**Same ids on both APIs** (verified on live accounts, October 2026). These
+operations take the same DSP advertiser id as the reads, and the campaigns,
+line items and creatives they create show up in `dsp.list_campaigns`,
+`dsp.list_ad_groups` and `dsp.list_creative_associations` under the same ids
+(`PAUSED` here reads as `INACTIVE` there). If a call fails with an account or id
 error, report Amazon's answer as it came, do not retry with another id, and
 offer to send it to MixShift (`mx-feedback`).
 
@@ -602,18 +604,24 @@ offer to send it to MixShift (`mx-feedback`).
    2. line items with those ids, then read each `adGroupId`;
    3. targeting on those line items. Amazon adds **default targets** to every
       new line item (devices, inventory, day parts, the advertiser domain list,
-      video ad format): read them with `dsp.query_targets` and show them. To
-      change one, remove it with `dsp.delete_targets` and add the replacement;
+      video ad format; a new display line item carried more than 100, mostly
+      inventory sources and day parts, so page with `nextToken`): read them with
+      `dsp.query_targets` and summarize them by type. To change one, remove it
+      with `dsp.delete_targets` and add the replacement;
    4. creatives: check each pairing with `dsp.list_eligible_creatives` first
       (a creative whose type does not fit the line item's inventory is refused),
-      then attach with `dsp.create_ad_associations`.
+      then attach with `dsp.create_ad_associations` (`adId` is the creative's
+      `adCreativeId`). A new attachment starts with Amazon's moderation
+      `PENDING`: check `dsp.list_association_moderations` before turning the
+      line item on.
    Later steps differ from the confirmed plan only by the ids Amazon assigned.
    If the user wants to change anything else mid-build, preview it again.
 5. **Read the 207 per item.** Each response can carry three lists, each entry
    with its `index`: `success` (created), `partialSuccess` (**created**, with
    some fields refused: the entity exists, so fix it with an update, never
-   create it again) and `error` (not created, with Amazon's message). A list is
-   left out when empty. Report the counts and each refusal in plain words.
+   create it again) and `error` (not created, with Amazon's message). An empty
+   list can come back as `[]` or not at all, depending on the operation. Report
+   the counts and each refusal in plain words.
 6. **An unknown outcome is not a failure.** A commit that ends with
    `request_outcome: "unknown"` (a 5xx or a lost answer) may have created the
    entities. Query by name or id before sending anything again; a blind retry
