@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.3.2"
+version: "0.4.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -19,12 +19,16 @@ description: >
   campaign budget caps, flights and state, and line item budget, dates, bids and
   pacing, through the audited Ads write path (dry run first, commit only after the
   user confirms the exact change set; write scope required). Reports and reads
-  mutate nothing. Creating or attaching a DSP creative is NOT available. Routes through the bundled harness
+  mutate nothing. BUILDS are write-gated the same way: campaigns and line items
+  created paused (Amazon's rule for DSP, checked before the call), targeting
+  including audiences, and existing creatives attached to line items, on Amazon's
+  Campaign Management API; turning a build on is a separate confirmed edit.
+  Creating a DSP creative is NOT available. Routes through the bundled harness
   CLI. Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 
-# Tier 3 since DSP writes (dsp.update_campaigns, dsp.update_ad_groups) joined
-# the skill: they change a live advertiser, so they are write-gated exactly like
+# Tier 3 since DSP writes (dsp.update_campaigns, dsp.update_ad_groups, and the
+# 0.4.0 builds dsp.create_*, dsp.delete_targets) joined the skill: they change a live advertiser, so they are write-gated exactly like
 # mx-amazon-ads (dry run default, user-confirmed --commit, ads:write). Reports
 # and reads still mutate nothing advertiser-facing. Modeled as per_account
 # because every call targets a specific merchant login
@@ -33,7 +37,7 @@ run_kind: per_account
 cadence: on_demand
 risk_tier: 3
 allowed_tools: [file_read, file_write, ads_write]
-side_effect_policy: write_gated   # DSP writes via `mixshift ads call dsp.update_campaigns|dsp.update_ad_groups --commit`; reports still save JSON to ~/.mixshift/reports/
+side_effect_policy: write_gated   # DSP writes via `mixshift ads call dsp.update_*|dsp.create_*|dsp.delete_targets --commit`; reports still save JSON to ~/.mixshift/reports/
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
@@ -57,6 +61,16 @@ harness_commands:
   - mixshift ads call dsp.list_association_moderations --path advertiserId= --body <json>
   - mixshift ads call dsp.get_ad_creative_validation --path advertiserId= --path adCreativeId=
   - mixshift ads call dsp.list_eligible_creatives --path advertiserId= --body <json>
+  - mixshift ads call dsp.update_campaigns --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.update_ad_groups --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_campaigns --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_ad_groups --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_targets --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.delete_targets --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_ad_associations --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.query_campaigns --path advertiserId= --body <json>
+  - mixshift ads call dsp.query_ad_groups --path advertiserId= --body <json>
+  - mixshift ads call dsp.query_targets --path advertiserId= --body <json>
 
 required_context_fields: []
 optional_context_fields: []
@@ -85,6 +99,14 @@ trigger_phrases:
   - is this creative eligible for dsp
   - audit dsp account
   - find my dsp advertiser id
+  - create a dsp campaign
+  - build dsp line items
+  - launch a dsp campaign
+  - bulk create dsp orders
+  - build a dsp launch plan
+  - add audiences to a dsp line item
+  - attach creatives to dsp line items
+  - what audiences is this line item targeting
 notes: >
   Auth model: DSP rides the Amazon Ads API, whose tokens are PER ADVERTISING
   LOGIN (not per seller). The service reads the tenant's stored advertising
@@ -126,8 +148,9 @@ notes: >
 
   The /dsp/v1 account reads (campaigns, ad groups, creatives, creative
   associations, moderations, creative validation, eligible creatives) were
-  validated live 2026-08-28. Read-only; there is no create/attach path for DSP
-  creatives, and the skill says so rather than improvising one. Three traps the
+  validated live 2026-08-28. Creating DSP creatives has no path, and the skill
+  says so rather than improvising one; attaching existing creatives does
+  (dsp.create_ad_associations, 0.4.0). Three traps the
   skill body covers because each yields a confident wrong answer: a creative
   carries NO state (live-vs-paused belongs to its ASSOCIATION to a line item);
   ad-group inventoryType, creative adCreativeFormatType and creative
