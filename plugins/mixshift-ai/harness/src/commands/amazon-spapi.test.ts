@@ -234,3 +234,100 @@ describe('amazon call: guarded inbound writes (--commit)', () => {
     expect(process.exitCode).toBe(1);
   });
 });
+
+describe('amazon call: commit safety and honest outcomes', () => {
+  const commitArgs = [
+    'call',
+    'fulfillment_inbound.confirm_placement_option',
+    '--commit',
+    '--preview-id',
+    'p-1',
+    '--approved-quote-hash',
+    'h-1',
+  ];
+  const answer = (outcome: string) => ({
+    ok: true as const,
+    operation: 'fulfillment_inbound.confirm_placement_option',
+    amazonSellerId: 'A1',
+    legacySellerId: 71,
+    marketplaceId: 'ATVPDKIKX0DER',
+    payload: undefined,
+    write: { dryRun: false, outcome, operationId: 'op-1' },
+  });
+
+  it('refuses --commit without an idempotency key, before anything is sent', async () => {
+    await runAmazon('--json', ...commitArgs);
+    expect(vi.mocked(spapiCall)).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('--idempotency-key');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses an idempotency key without --commit', async () => {
+    await runAmazon('--json', 'call', 'fulfillment_inbound.confirm_placement_option', '--idempotency-key', REPLAY_TOKEN);
+    expect(vi.mocked(spapiCall)).not.toHaveBeenCalled();
+    expect(lastJsonOut()).toMatchObject({ status: 'error' });
+  });
+
+  it('a FAILED commit is a failure: status, exit code and telemetry', async () => {
+    vi.mocked(spapiCall).mockResolvedValue(answer('FAILED') as never);
+    await runAmazon('--json', ...commitArgs, '--idempotency-key', REPLAY_TOKEN);
+    expect(lastJsonOut()).toMatchObject({ status: 'failed', write: { outcome: 'FAILED' } });
+    expect(process.exitCode).toBe(1);
+    expect(lastFailurePayload()).toMatchObject({ kind: 'commit_failed' });
+  });
+
+  it('an UNCERTAIN or PENDING commit is not success: status uncertain, exit 21', async () => {
+    for (const outcome of ['UNCERTAIN', 'PENDING']) {
+      process.exitCode = undefined;
+      vi.mocked(spapiCall).mockResolvedValue(answer(outcome) as never);
+      await runAmazon('--json', ...commitArgs, '--idempotency-key', REPLAY_TOKEN);
+      expect(lastJsonOut()).toMatchObject({ status: 'uncertain' });
+      expect(process.exitCode).toBe(21);
+      expect(lastFailurePayload()).toMatchObject({ kind: 'commit_uncertain' });
+    }
+  });
+
+  it('a DONE commit is still ok and exits clean', async () => {
+    process.exitCode = undefined;
+    vi.mocked(spapiCall).mockResolvedValue(answer('DONE') as never);
+    await runAmazon('--json', ...commitArgs, '--idempotency-key', REPLAY_TOKEN);
+    expect(lastJsonOut()).toMatchObject({ status: 'ok', write: { outcome: 'DONE' } });
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('an unknown-outcome failure shows requestOutcome in the --json output', async () => {
+    vi.mocked(spapiCall).mockResolvedValue({
+      ok: false,
+      kind: 'host_unreachable',
+      friendly: 'No answer came back.',
+      requestOutcome: 'unknown',
+    } as never);
+    await runAmazon('--json', ...commitArgs, '--idempotency-key', REPLAY_TOKEN);
+    expect(lastJsonOut()).toMatchObject({ status: 'error', request_outcome: 'unknown' });
+    expect(lastFailurePayload()).toMatchObject({ request_outcome: 'unknown' });
+  });
+
+  it('a plain read prints exactly what it did before: payload only, no write key', async () => {
+    vi.mocked(spapiCall).mockResolvedValue({
+      ok: true,
+      operation: 'fulfillment_inbound.list_inbound_plans',
+      amazonSellerId: 'A1',
+      legacySellerId: 71,
+      marketplaceId: 'ATVPDKIKX0DER',
+      payload: { inboundPlans: [] },
+    } as never);
+    await runAmazon('--json', 'call', 'fulfillment_inbound.list_inbound_plans');
+    expect(lastJsonOut()).toEqual({
+      status: 'ok',
+      operation: 'fulfillment_inbound.list_inbound_plans',
+      amazon_seller_id: 'A1',
+      legacy_seller_id: 71,
+      marketplace_id: 'ATVPDKIKX0DER',
+      payload: { inboundPlans: [] },
+    });
+    const input = vi.mocked(spapiCall).mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(input).not.toHaveProperty('previewId');
+    expect(input).not.toHaveProperty('idempotencyKey');
+    expect(input).not.toHaveProperty('dryRun');
+  });
+});

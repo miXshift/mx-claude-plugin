@@ -218,8 +218,13 @@ export async function spapiCall(
 
   // 60s: Data Kiosk getDocument and orders searches can be slow under load,
   // and unlike report documents the payload comes back inline.
+  // A commit (dryRun:false) changes state at Amazon. A lost answer on one is an
+  // UNKNOWN outcome, not an unreachable service: the caller must resend with the
+  // same idempotencyKey or read the plan, never retry as a new request. Reads
+  // and dry runs change nothing and keep the old wording.
+  const mayChangeState = input.dryRun === false;
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi' },
+    { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi', mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );
   if (!r.ok) {

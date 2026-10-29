@@ -330,3 +330,37 @@ describe('spapiCall: guarded inbound writes', () => {
     }
   });
 });
+
+describe('spapiCall: a lost answer on a commit is an unknown outcome', () => {
+  const timeout = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+  it('a timeout on a commit says the outcome is unknown, not "try again"', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(timeout());
+    const r = await spapiCall(
+      { operation: 'fulfillment_inbound.confirm_placement_option', dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.requestOutcome).toBe('unknown');
+      expect(r.friendly).toContain('before sending it again');
+    }
+  });
+
+  it('a 502 page from the edge mid-commit is also unknown', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 502 }));
+    const r = await spapiCall(
+      { operation: 'fulfillment_inbound.confirm_placement_option', dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(!r.ok && r.requestOutcome).toBe('unknown');
+  });
+
+  it('a timeout on a read or a dry run keeps the plain unreachable wording', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(timeout());
+    const read = await spapiCall({ operation: 'fulfillment_inbound.list_inbound_plans' }, injected(fetchImpl));
+    const dry = await spapiCall({ operation: 'fulfillment_inbound.confirm_placement_option' }, injected(fetchImpl));
+    expect(!read.ok && read.requestOutcome).toBeUndefined();
+    expect(!dry.ok && dry.requestOutcome).toBeUndefined();
+  });
+});

@@ -167,6 +167,14 @@ function registerCall(amazon: Command): void {
           body = JSON.parse(opts.body);
         }
 
+        if (opts.commit && !opts.idempotencyKey) {
+          return emitError(
+            new Error(
+              '--commit needs --idempotency-key <key> (8-128 letters, digits, . : - _), so a resend of a lost answer replays the first commit instead of sending it twice. Nothing was sent.',
+            ),
+            !!root.json,
+          );
+        }
         if (
           !opts.commit &&
           (opts.previewId || opts.approvedQuoteHash || opts.idempotencyKey)
@@ -239,8 +247,41 @@ function registerCall(amazon: Command): void {
             // The gateway contract (mx-ops#144): who acts, and whether the same
             // call can succeed later. Enums and a flag; never the fix text.
             ...failureContractTelemetry(result),
+            ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
           });
           return emitFailure(result, !!root.json);
+        }
+        // A commit the service answered 200 can still have ended FAILED,
+        // UNCERTAIN or PENDING. Only DONE (and a still-running ACCEPTED /
+        // IN_PROGRESS) is a success; never log or exit the others as one.
+        const commitOutcome =
+          opts.commit && result.write ? String(result.write.outcome ?? '') : '';
+        if (commitOutcome === 'FAILED' || commitOutcome === 'UNCERTAIN' || commitOutcome === 'PENDING') {
+          const uncertain = commitOutcome !== 'FAILED';
+          await trackSpApi(EventName.AmazonSpApiCalled, 'failed', startedAt, root.dataDir, {
+            operation,
+            kind: uncertain ? 'commit_uncertain' : 'commit_failed',
+            write_outcome: commitOutcome,
+          });
+          if (root.json) {
+            writeJson({
+              status: uncertain ? 'uncertain' : 'failed',
+              operation: result.operation,
+              amazon_seller_id: result.amazonSellerId,
+              legacy_seller_id: result.legacySellerId,
+              marketplace_id: result.marketplaceId,
+              write: result.write,
+            });
+          } else {
+            process.stderr.write(
+              uncertain
+                ? `\n? ${result.operation}: the outcome is unknown (${commitOutcome}). Do not send it as a new request: resend the same command with the same --idempotency-key, or read the plan.\n\n`
+                : `\n✗ ${result.operation}: Amazon did not apply it (FAILED).\n\n`,
+            );
+            process.stdout.write(JSON.stringify(result.write, null, 2) + '\n');
+          }
+          process.exitCode = uncertain ? 21 : 1;
+          return;
         }
         // Beta richness (feedback #10): stamp the resolved merchant/marketplace
         // identifiers so SP-API usage can be sliced by seller/marketplace, not
@@ -321,6 +362,10 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
       unrecognized_kind: failure.unrecognizedKind,
+      // 'unknown' = the request may have been applied: resend with the SAME
+      // idempotency key or read the plan, never retry as a new request.
+      request_outcome: failure.requestOutcome,
+      automatic_retry: failure.automaticRetry,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
       // source / retryable / fix / *_params / amazon (mx-ops#144 P5).

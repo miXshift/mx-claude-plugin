@@ -83,7 +83,16 @@ Run:
 mixshift auth status --json
 ```
 
-Read `credential`:
+**Look for the shipping credential folder first.** A normal sign-in and a
+shipping service credential live side by side, and a plain `auth status` only
+shows the normal one (it wins). So before you conclude from `credential: human`
+that the user has no write access, check whether `.mixshift-shipping` exists in
+the working folder or the user's home folder, and if it holds `auth/credentials`,
+run `MIXSHIFT_DATA_DIR=<that folder> mixshift auth status --json` as well. If
+that says `service`, use that folder for every Part B command (see below) and
+treat the user as having a service credential.
+
+Then read `credential` (from the folder that applies):
 
 - **`human`** (a normal plugin sign-in). Part A works. Part B does not: Amazon
   shipment writes need a service credential that carries shipment write access,
@@ -107,6 +116,12 @@ Read `credential`:
   MIXSHIFT_DATA_DIR="<a folder you created for this, e.g. <workspace>/.mixshift-shipping>" \
     mixshift auth service-setup --setup-code <the code> --json
   ```
+
+  Name the folder `.mixshift-shipping` so the next session can find it. It holds
+  a secret: **keep it out of version control.** If you create it inside a
+  workspace that is a git repository, add `.mixshift-shipping/` to that repo's
+  `.gitignore` (or put the folder in the user's home folder instead), and tell
+  the user why in one sentence.
 
   Then run every Part B command (and `auth status`) with the same
   `MIXSHIFT_DATA_DIR=` prefix. Confirm `auth status` now says `service`. Keep
@@ -168,6 +183,8 @@ mixshift amazon call <operation> --path inboundPlanId=<wf...> [--body-file <file
 A repeated commit with the same key is answered from the first one and never
 reaches Amazon twice. So:
 
+0. `--commit` is refused by the CLI without `--idempotency-key`, so the key is
+   not optional.
 1. Make a fresh key for each intended commit, before you send it, and keep it in
    the conversation: `<short-plan-label>-<step>-<8 random characters>`, for
    example `reorder-placement-k3x9q2ab`. For the create, there is no plan id
@@ -204,11 +221,17 @@ or `UNCERTAIN`. Only `DONE` means the step happened.
   Amazon's expected minimum volume. Report it as a warning, ask whether the
   box dimensions are right, and carry on only if the user says so. It is not a
   failure.
-- `UNCERTAIN` / `PENDING`, or a failure that says `requestOutcome: unknown`:
+- A commit the CLI reports as `status: uncertain` (exit code 21) is an
+  `UNCERTAIN` / `PENDING` outcome; `status: failed` is `FAILED`. Neither is
+  success. A failed call whose `--json` shows `request_outcome: unknown` (a
+  timeout, a dropped connection or a gateway error during a commit) means the
+  same thing as `UNCERTAIN`, even though the failure kind may read
+  `host_unreachable`. Do not tell the user to "try again in a minute".
+- `UNCERTAIN` / `PENDING`, or a failure that says `request_outcome: unknown`:
   Amazon may or may not have applied it. **Do not send it again as a new
   request.** Resend with the same key (rule 2), or read the plan first
-  (`get_inbound_plan`). For a create whose answer was lost, list ACTIVE plans
-  and look for the name token (see step 1) before creating again.
+  (`get_inbound_plan`). For a create whose answer was lost, see step 1: replay
+  with the same key first.
 
 ---
 
@@ -305,7 +328,7 @@ Do Step 0 first. The shape of every step:
 |---|---|---|
 | **Fee-committing** | confirm packing option, **confirm placement option**, **confirm transportation (a partnered carrier commits its charge)**, **cancel plan** | Dry run for the preview. Show every fee line exactly as returned. Get an explicit yes **in a separate message from the one that asked for the step**. Commit only that preview. |
 | **Creates or changes data** | create plan, set packing information, add tracking | Dry run, show the content being sent, ask "send this?", commit on a yes. |
-| **Free "ask Amazon" steps** | generate packing / placement / transportation / delivery-window options | The user starting the walk covers these. Dry run is optional. Commit, check the outcome. |
+| **Free "ask Amazon" steps** | generate packing / placement / transportation / delivery-window options; confirm delivery window (no fee in Amazon's model) | The user starting the walk covers these; for the delivery-window confirm, name the window you are about to pick. Dry run is optional. Commit, check the outcome. |
 
 An upfront instruction ("go ahead and do the whole shipment") authorizes the
 dry runs. It does **not** authorize a fee-committing commit: that needs a yes
@@ -334,9 +357,17 @@ about the fees you showed.
      dry run again, show the NEW fees, and ask again from scratch.
    - `option_not_offered`: the option is gone or expired. Generate options again
      and let the user choose.
-   - `preview_expired`, `preview_already_used`, `preview_mismatch`,
-     `preview_not_found`: nothing was committed; run the dry run again and ask
-     again, with a new key.
+   - `preview_already_used`: **the outcome is UNKNOWN, not "nothing happened".**
+     A preview is used up by the first commit that took it, so this usually
+     means an earlier commit of the same preview already went through (the
+     typical case is a lost answer that was resent without the original key).
+     Do not tell the user the fee was not committed, and do not run a new
+     preview and commit. Resend the commit with the ORIGINAL idempotency key
+     (check your key note), which replays the first result; or read what
+     happened (`get_inbound_plan`, `list_placement_options` or
+     `list_transportation_options`, whichever step it was) and report that.
+   - `preview_expired`, `preview_mismatch`, `preview_not_found`: nothing was
+     committed; run the dry run again and ask again, with a new key.
    - `preview_required`: you left the preview off the commit; nothing was sent.
 
 ### 1. Create the plan
@@ -383,10 +414,13 @@ mixshift amazon call fulfillment_inbound.create_inbound_plan --body-file create.
 - MixShift adds a short token to the plan name (for example `Reorder Nov
   mx-1a2b3c4d`; names are cut to 28 characters). The result returns
   `inboundPlanId` (`wf...`) and `nameToken`. **Keep the plan id.**
-- If the create's answer is lost, **do not create again**. Look for the token:
-  `list_inbound_plans --query pageSize=30` (ACTIVE plans) and find the name that
-  ends with it; if found, the plan exists. Only if it is not there, resend with
-  the same key.
+- If the create's answer is lost, **do not create again with a new key**.
+  First resend the IDENTICAL command with the SAME key: the answer is replayed
+  from the first send and carries the plan id and name token (`replayed:
+  true`). Only if that cannot answer (no replay, or still `UNCERTAIN`), search by
+  the name token as the fallback: `list_inbound_plans --query pageSize=30`
+  (ACTIVE plans) and find the name that ends with it. Never create a second plan
+  to find out.
 
 ### 2. Packing
 
@@ -445,8 +479,10 @@ mixshift amazon call fulfillment_inbound.create_inbound_plan --body-file create.
 
 ### 3. Placement (this commits the placement fee)
 
-1. Generate options (free): `generate_placement_options --path
-   inboundPlanId=<wf...> --body '{}'` with `--commit --idempotency-key <key>`,
+1. Generate options (free): write `{}` to `placement-generate.json` with your
+   file-writing tool, then `generate_placement_options --path
+   inboundPlanId=<wf...> --body-file placement-generate.json` with `--commit
+   --idempotency-key <key>`,
    wait for `SUCCESS` (about 11 seconds). Then `list_placement_options --path
    inboundPlanId=<wf...>`.
 2. Show each option with status, how many shipments it makes, its fee and
@@ -562,10 +598,11 @@ the same preview and confirm rule.
 | `shipping_write_disabled` / `shipping_write_not_enabled` | Building shipments is switched off (for everyone, or for this account). Tell the user, do not retry, suggest contacting MixShift. |
 | `invalid_request` | MixShift refused the request before sending it. Read `fix`/`message` (missing phone number, `MANUAL_PROCESS`, a wrong id length, a bad key). Change the request; never resend unchanged. |
 | `bad_request` | Amazon rejected the request. Show its reason in plain words, fix the body, preview again if it was a fee step. |
-| `quote_changed`, `option_not_offered`, `preview_*` | See "The fee-committing rule", item 6. Nothing was committed. |
+| `quote_changed`, `option_not_offered`, `preview_expired`, `preview_mismatch`, `preview_not_found`, `preview_required` | See "The fee-committing rule", item 6. Nothing was committed. |
+| `preview_already_used` | The outcome is UNKNOWN: an earlier commit probably took the preview. Resend with the ORIGINAL idempotency key or read the plan; never say the fee was not committed. |
 | `idempotency_key_conflict` | That key was used for a different request. Make a new key for the new request. |
 | `throttled` | Wait `retry_after_ms`, run it again. |
-| `host_unreachable`, `upstream_unavailable`, `unknown` on a commit | The outcome may be unknown. Do NOT start a new request: resend the identical commit with the same key, or read the plan. |
+| `host_unreachable`, `upstream_unavailable`, `unknown` on a commit (or `request_outcome: unknown`) | The outcome may be unknown. Do NOT start a new request: resend the identical commit with the same key, or read the plan. |
 | `not_authenticated`, `session_expired` | Sign in again (`mx-auth-login`); for a service credential, redo the setup. |
 | `merchant_not_found` | Re-run `amazon merchants` and pass `--legacy-seller-id`. |
 
