@@ -73,6 +73,7 @@ tables:
       - "There is no `SalesAmount` here; that is a business_reports_dpst_date column. Ad sales is `Sales`, spend is `Cost`."
       - "There is no `OrderQuantity`. Order counts live in the attribution columns (`AttributedConversions*`, `attributedOrders*`), which are windowed."
       - "There is no `Spend` (spend is `Cost`) and no `AttributedConversions7d`. The classic windowed columns are spelled `AttributedConversions7day` and `AttributedSales7day` (also 1day, 14day, 30day), with `day`, not `d`. The newer view, new-to-brand, branded-search and detail-page-view columns end in `14d`."
+      - "Full-Funnel campaigns (sponsored ads bought in Campaign Manager) are reportedly available only through Amazon's unified reporting (Ads reporting v1), so their spend may be missing from this table. They are reported to appear in the `reporting_v1.create_report` operation family (an Ads API operation, not a warehouse table); verify before relying on it. Which accounts run them is unknown, so a pacing or spend total read from `campaignmetric` alone can understate sponsored spend; say so when it matters."
 
   adgroupmetric:
     description: "Ad-group-level daily ad metrics. Same fields as campaignmetric, one level deeper. Joins to adgroup for DefaultBid + naming."
