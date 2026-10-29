@@ -24,15 +24,39 @@ import { z } from 'zod';
 // Sub-shapes
 // -----------------------------------------------------------------------
 
-// A DSP advertiser id as the server reads it from context.yaml: an opaque token
-// (a numeric dspAdvertiserId or an ENTITY... id), 1-64 of A-Z a-z 0-9 _ -. Quote
-// it in YAML ("1234567890"): an unquoted long number loses digits when parsed.
-// Same format the MixShift server accepts, so a value this accepts is one the
-// server can match to this brand.
-const dspAdvertiserIdSchema = z
-  .string()
-  .regex(/^[A-Za-z0-9_-]{1,64}$/, 'a DSP advertiser id is 1-64 letters, digits, "_" or "-" (quote it in YAML)')
-  .refine((v) => !/^(null|none)$/i.test(v), 'not a DSP advertiser id');
+// A DSP advertiser id as the MixShift server reads it from context.yaml: a
+// QUOTED string of digits (an unquoted ~18-digit id loses precision in YAML
+// parsers, so the server ignores one). Declaring it wrongly must never cost a
+// brand its whole context, since a schema violation stops the loader and sync:
+// a bad value is DROPPED with a warning naming the expected form instead.
+const DSP_ID_FORM = 'dsp_advertiser_id: "123456789012345678"';
+const warnedDspShapes = new Set<string>();
+function warnDspShapeOnce(key: string): void {
+  if (warnedDspShapes.has(key)) return;
+  warnedDspShapes.add(key);
+  process.stderr.write(
+    `[warn] context.yaml: ignoring an invalid ${key}. Write the DSP advertiser id as a quoted string of digits, e.g. ${DSP_ID_FORM} (or dsp_advertiser_ids: ["123456789012345678"]).\n`,
+  );
+}
+const isDspId = (v: unknown): v is string => typeof v === 'string' && /^\d{1,64}$/.test(v);
+
+const dspAdvertiserIdSchema = z.unknown().transform((v): string | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (isDspId(v)) return v;
+  warnDspShapeOnce('dsp_advertiser_id');
+  return undefined;
+});
+
+const dspAdvertiserIdsSchema = z.unknown().transform((v): string[] | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) {
+    warnDspShapeOnce('dsp_advertiser_ids');
+    return undefined;
+  }
+  const kept = v.filter(isDspId);
+  if (kept.length !== v.length) warnDspShapeOnce('dsp_advertiser_ids');
+  return kept;
+});
 
 const accountSchema = z.object({
   seller_id: z.number().int().positive(),
@@ -54,7 +78,7 @@ const accountSchema = z.object({
   // brand that declares its advertiser (and on none when two brands claim it),
   // so until one is declared a brand's DSP changes stay unassigned.
   dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
-  dsp_advertiser_ids: z.array(dspAdvertiserIdSchema).optional(),
+  dsp_advertiser_ids: dspAdvertiserIdsSchema.optional(),
 });
 
 const sourcesSchema = z.object({
