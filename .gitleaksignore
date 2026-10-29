@@ -18,3 +18,9 @@
 # the full-history scan flags that commit. No secret to rotate.
 7c3214b939854b66ba1f3055887d6199758dac23:plugins/mixshift-ai/harness/src/lib/telemetry/redact.test.ts:stripe-access-token:51
 7c3214b939854b66ba1f3055887d6199758dac23:plugins/mixshift-ai/harness/src/lib/telemetry/redact.test.ts:generic-api-key:36
+
+# Idempotency-key test fixtures (fake, low-stakes strings) in the FBA inbound tests added at 7a9c825;
+# the full-history scan flags that commit. Not credentials, nothing to rotate. Later commits build the value instead.
+7a9c825064d7ea22f83bb44765115b28a233807c:plugins/mixshift-ai/harness/src/commands/amazon-spapi.test.ts:generic-api-key:223
+7a9c825064d7ea22f83bb44765115b28a233807c:plugins/mixshift-ai/harness/src/lib/amazon/spapi-call.test.ts:generic-api-key:286
+7a9c825064d7ea22f83bb44765115b28a233807c:plugins/mixshift-ai/harness/src/lib/amazon/spapi-call.test.ts:generic-api-key:295

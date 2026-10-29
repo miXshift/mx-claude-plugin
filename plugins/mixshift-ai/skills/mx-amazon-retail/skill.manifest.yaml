@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-retail
 display_name: Amazon Retail Lookups (live SP-API)
-version: "0.5.1"
+version: "0.5.2"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. The retail-operations analogue of mx-amazon-report:

@@ -104,14 +104,19 @@ interface CallCliOptions {
   path: Record<string, string>;
   bodyFile?: string;
   body?: string;
+  commit?: boolean;
+  previewId?: string;
+  approvedQuoteHash?: string;
+  idempotencyKey?: string;
 }
 
 function registerCall(amazon: Command): void {
   amazon
     .command('call <operation>')
     .description(
-      'Execute one cataloged SP-API operation (read-only). Run `amazon operations` ' +
-        'first for the operation id and its parameter notes.',
+      'Execute one cataloged SP-API operation. Run `amazon operations` first for the ' +
+        'operation id and its parameter notes. Guarded write operations (FBA inbound ' +
+        'shipments) preview by default; only --commit sends one to Amazon.',
     )
     .option('--seller-id <id>', 'AmazonSellerID from `amazon merchants`')
     .option(
@@ -133,6 +138,21 @@ function registerCall(amazon: Command): void {
     )
     .option('--body-file <file>', 'JSON request body from a file (body-required operations)')
     .option('--body <json>', 'inline JSON request body (small payloads; prefer --body-file)')
+    .option(
+      '--commit',
+      'guarded write operations only: send it to Amazon. Without it a write is a dry run ' +
+        '(a preview, for a step that commits a fee) and nothing is sent.',
+    )
+    .option('--preview-id <id>', 'with --commit on a fee-committing step: the preview id from its dry run')
+    .option(
+      '--approved-quote-hash <hash>',
+      'with --commit on a fee-committing step: the quoteHash from that same preview',
+    )
+    .option(
+      '--idempotency-key <key>',
+      'with --commit: your own key (8-128 letters, digits, . : - _). A resend with the same key ' +
+        'replays the first commit and is never sent to Amazon twice.',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -147,6 +167,26 @@ function registerCall(amazon: Command): void {
           body = JSON.parse(opts.body);
         }
 
+        if (opts.commit && !opts.idempotencyKey) {
+          return emitError(
+            new Error(
+              '--commit needs --idempotency-key <key> (8-128 letters, digits, . : - _), so a resend of a lost answer replays the first commit instead of sending it twice. Nothing was sent.',
+            ),
+            !!root.json,
+          );
+        }
+        if (
+          !opts.commit &&
+          (opts.previewId || opts.approvedQuoteHash || opts.idempotencyKey)
+        ) {
+          return emitError(
+            new Error(
+              '--preview-id, --approved-quote-hash and --idempotency-key belong on a commit: add --commit, or drop them for a dry run. Nothing was sent.',
+            ),
+            !!root.json,
+          );
+        }
+
         const input: SpApiCallInput = {
           operation,
           amazonSellerId: opts.sellerId,
@@ -155,6 +195,10 @@ function registerCall(amazon: Command): void {
           pathParams: opts.path,
           query: opts.query as Record<string, SpApiQueryValue>,
           ...(body !== undefined ? { body } : {}),
+          ...(opts.commit ? { dryRun: false as const } : {}),
+          ...(opts.previewId ? { previewId: opts.previewId } : {}),
+          ...(opts.approvedQuoteHash ? { approvedQuoteHash: opts.approvedQuoteHash } : {}),
+          ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
         };
         const result = await spapiCall(input, { dataDirOverride: root.dataDir });
         if (isReportFailure(result)) {
@@ -203,8 +247,41 @@ function registerCall(amazon: Command): void {
             // The gateway contract (mx-ops#144): who acts, and whether the same
             // call can succeed later. Enums and a flag; never the fix text.
             ...failureContractTelemetry(result),
+            ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
           });
           return emitFailure(result, !!root.json);
+        }
+        // A commit the service answered 200 can still have ended FAILED,
+        // UNCERTAIN or PENDING. Only DONE (and a still-running ACCEPTED /
+        // IN_PROGRESS) is a success; never log or exit the others as one.
+        const commitOutcome =
+          opts.commit && result.write ? String(result.write.outcome ?? '') : '';
+        if (commitOutcome === 'FAILED' || commitOutcome === 'UNCERTAIN' || commitOutcome === 'PENDING') {
+          const uncertain = commitOutcome !== 'FAILED';
+          await trackSpApi(EventName.AmazonSpApiCalled, 'failed', startedAt, root.dataDir, {
+            operation,
+            kind: uncertain ? 'commit_uncertain' : 'commit_failed',
+            write_outcome: commitOutcome,
+          });
+          if (root.json) {
+            writeJson({
+              status: uncertain ? 'uncertain' : 'failed',
+              operation: result.operation,
+              amazon_seller_id: result.amazonSellerId,
+              legacy_seller_id: result.legacySellerId,
+              marketplace_id: result.marketplaceId,
+              write: result.write,
+            });
+          } else {
+            process.stderr.write(
+              uncertain
+                ? `\n? ${result.operation}: the outcome is unknown (${commitOutcome}). Do not send it as a new request: resend the same command with the same --idempotency-key, or read the plan.\n\n`
+                : `\n✗ ${result.operation}: Amazon did not apply it (FAILED).\n\n`,
+            );
+            process.stdout.write(JSON.stringify(result.write, null, 2) + '\n');
+          }
+          process.exitCode = uncertain ? 21 : 1;
+          return;
         }
         // Beta richness (feedback #10): stamp the resolved merchant/marketplace
         // identifiers so SP-API usage can be sliced by seller/marketplace, not
@@ -215,6 +292,7 @@ function registerCall(amazon: Command): void {
           ...(result.amazonSellerId ? { amazon_seller_id: result.amazonSellerId } : {}),
           ...(result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {}),
           ...(result.marketplaceId ? { marketplace_id: result.marketplaceId } : {}),
+          ...(result.write ? { write_mode: opts.commit ? 'commit' : 'dry_run' } : {}),
         });
         if (root.json) {
           writeJson({
@@ -224,12 +302,15 @@ function registerCall(amazon: Command): void {
             legacy_seller_id: result.legacySellerId,
             marketplace_id: result.marketplaceId,
             payload: result.payload,
+            ...(result.write ? { write: result.write } : {}),
           });
         } else {
           process.stderr.write(
             `\n✓ ${result.operation} (${result.amazonSellerId} / ${result.marketplaceId})\n\n`,
           );
-          process.stdout.write(JSON.stringify(result.payload, null, 2) + '\n');
+          process.stdout.write(
+            JSON.stringify(result.write ?? result.payload, null, 2) + '\n',
+          );
         }
         return;
       } catch (err) {
@@ -281,6 +362,10 @@ function emitFailure(failure: ReportFailure, json: boolean): void {
       amazon_error_code: failure.amazonErrorCode,
       amazon_status: failure.amazonStatus,
       unrecognized_kind: failure.unrecognizedKind,
+      // 'unknown' = the request may have been applied: resend with the SAME
+      // idempotency key or read the plan, never retry as a new request.
+      request_outcome: failure.requestOutcome,
+      automatic_retry: failure.automaticRetry,
       amazon_response: failure.responsePayload ?? failure.responseText,
       candidates: failure.candidates,
       // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
