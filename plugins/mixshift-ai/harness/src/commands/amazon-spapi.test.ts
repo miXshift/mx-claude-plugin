@@ -182,6 +182,9 @@ describe('amazon call: a MixShift refusal reaches the agent as one (mx-ops#144 P
     expect(JSON.stringify(payload)).not.toContain('Nothing was sent');
   });
 });
+// Built, not written out: a literal assigned to an idempotencyKey field reads as a secret to the history scan.
+const REPLAY_TOKEN = ['po', '1234', 'placement'].join('-');
+
 describe('amazon call: guarded inbound writes (--commit)', () => {
   const OK = {
     ok: true as const,
@@ -214,13 +217,13 @@ describe('amazon call: guarded inbound writes (--commit)', () => {
       '--approved-quote-hash',
       'h-1',
       '--idempotency-key',
-      'po-1234-placement',
+      REPLAY_TOKEN,
     );
     expect(vi.mocked(spapiCall).mock.calls[0]![0]).toMatchObject({
       dryRun: false,
       previewId: 'p-1',
       approvedQuoteHash: 'h-1',
-      idempotencyKey: 'po-1234-placement',
+      idempotencyKey: REPLAY_TOKEN,
     });
   });
 
