@@ -177,13 +177,13 @@ describe('emitAdsCommitEvent', () => {
     async (operation) => {
       // The selected seller maps to exactly one brand, which is precisely the
       // case that used to file a DSP change on that brand's timeline.
-      await writeRegistry([{ slug: 'acme', sellerIds: [574] }]);
+      await writeRegistry([{ slug: 'acme', sellerIds: [1001] }]);
       const { client, posts } = capturingClient();
 
       const result = await emitAdsCommitEvent(
         {
           operation,
-          legacySellerId: 574,
+          legacySellerId: 1001,
           auditId: 'audit_dsp_1',
           itemsCount: 1,
           requestBody: { campaigns: [{ name: 'Example' }] },
@@ -198,11 +198,11 @@ describe('emitAdsCommitEvent', () => {
   );
 
   it('still emits for the sponsored families (sp, sb, sd) exactly as before', async () => {
-    await writeRegistry([{ slug: 'acme', sellerIds: [574] }]);
+    await writeRegistry([{ slug: 'acme', sellerIds: [1001] }]);
     for (const operation of ['sp.create_campaigns', 'sb.update_keywords', 'sd.update_targets']) {
       const { client, posts } = capturingClient();
       const result = await emitAdsCommitEvent(
-        { operation, legacySellerId: 574, auditId: 'audit_x' },
+        { operation, legacySellerId: 1001, auditId: 'audit_x' },
         { dataDirOverride: testDir, client, env: {} },
       );
       expect(result).toEqual({ posted: true, id: 'evt_9', brand_slug: 'acme' });

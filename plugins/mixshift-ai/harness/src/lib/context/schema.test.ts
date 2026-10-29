@@ -168,7 +168,7 @@ describe('contextSchema — basic shape', () => {
         return true;
       }) as typeof process.stderr.write);
       try {
-        for (const bad of ['', 'has space', 'a'.repeat(65), 'null', 'ENTITY1ABC', 1234567890, 582078786929931632, true]) {
+        for (const bad of ['', 'has space', 'a'.repeat(65), 'null', 'ENTITY1ABC', 1234567890, 100000000000000001, true]) {
           const r = contextSchema.safeParse(withAccount({ dsp_advertiser_id: bad }));
           expect(r.success).toBe(true);
           if (r.success) expect(r.data.accounts[0]!.dsp_advertiser_id).toBeUndefined();
