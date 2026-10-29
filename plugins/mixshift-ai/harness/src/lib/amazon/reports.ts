@@ -178,6 +178,17 @@ export type ReportFailureKind =
   | 'proposal_before_state_unavailable' // 409 - no snapshot to compare; propose again
   | 'approval_requires_human' // 403 - approve/reject need a person in a different session
   | 'proposal_limit_reached' // 429 - too many open proposals for this tenant
+  // --- FBA inbound shipment writes (shipping:write; gateway PR #279) ---
+  | 'shipping_write_disabled' // 503 - inbound writes switched off service-wide. Do not retry
+  | 'shipping_write_not_enabled' // 403 - inbound writes not enabled for this account
+  | 'preview_required' // 400 - a fee-committing step needs previewId + approvedQuoteHash
+  | 'preview_not_found' // 404 - no such preview for this account
+  | 'preview_expired' // 409 - the preview aged out; run the dry run again
+  | 'preview_already_used' // 409 - a preview is good for one commit
+  | 'preview_mismatch' // 409 - the commit is not the previewed request
+  | 'quote_changed' // 409 - the live fee moved since the preview; nothing confirmed
+  | 'option_not_offered' // 409 - Amazon no longer offers that option; nothing confirmed
+  | 'idempotency_key_conflict' // 409 - the key was used for a different request
   // --- local-only (this module) ---
   | 'not_authenticated' // no datahub creds on disk; run `mixshift auth login`
   | 'session_expired' // 401 even after a forced refresh
@@ -1650,6 +1661,16 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ReportFailureKind>([
   'proposal_before_state_unavailable',
   'approval_requires_human',
   'proposal_limit_reached',
+  'shipping_write_disabled',
+  'shipping_write_not_enabled',
+  'preview_required',
+  'preview_not_found',
+  'preview_expired',
+  'preview_already_used',
+  'preview_mismatch',
+  'quote_changed',
+  'option_not_offered',
+  'idempotency_key_conflict',
   // The gateway's pre-Amazon refusal (P2, 2026-10-15; listed here in P5).
   'invalid_request',
   'unknown',
