@@ -278,7 +278,24 @@ export function failureFrom(json: Json, httpStatus: number): LedgerFailure {
       },
     };
   }
-  if (json.kind === 'insufficient_scope' || httpStatus === 403) return failure('insufficient_scope', friendly, httpStatus);
+  if (json.kind === 'insufficient_scope' || httpStatus === 403) {
+    // A service that predates the ledger route gates the unknown path on its full read
+    // set, so a scoped credential gets a 403 there instead of a 404. Only the ledger
+    // route's own gate names context:read alone; anything else is an older service.
+    const required = json.required_scopes;
+    if (
+      httpStatus === 403 &&
+      Array.isArray(required) &&
+      !(required.length === 1 && required[0] === 'context:read')
+    ) {
+      return failure(
+        'unsupported',
+        'This MixShift service does not have the run ledger yet, so the local ledger is used.',
+        httpStatus,
+      );
+    }
+    return failure('insufficient_scope', friendly, httpStatus);
+  }
   if (json.kind === 'too_large') return failure('too_large', friendly, httpStatus);
   if (json.kind === 'bad_params') return failure('bad_params', friendly, httpStatus);
   return failure('unknown', friendly, httpStatus);

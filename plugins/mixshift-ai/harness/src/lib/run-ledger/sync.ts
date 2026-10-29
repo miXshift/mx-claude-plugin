@@ -14,7 +14,7 @@
  * alone unless the caller passes force (service wins, the local copy is kept aside).
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { LedgerFailure, RunLedgerClient, WireLedger } from './client.js';
 import {
@@ -23,6 +23,7 @@ import {
   deleteLedgerFile,
   isSafeLedgerPath,
   ledgerDir,
+  localPathFor,
   MAX_LEDGER_BYTES,
   MAX_LEDGER_FILES,
   readLocalLedger,
@@ -187,13 +188,8 @@ export async function pullLedger(opts: SyncOptions): Promise<SyncResult<PullStat
   }
 
   if (got.ledger === null) {
-    if (local.files.size === 0) {
-      return {
-        ...base(opts, dir, 'absent', 'No run ledger for this brand on the MixShift service or on this computer.'),
-        revision: 0,
-        skipped: local.skipped,
-      };
-    }
+    // Checked first: a cache that synced before is a sign of prior runs even when its
+    // files are gone, so it must never read as a quiet `absent`.
     if (state && state.revision > 0) {
       return {
         ...base(
@@ -205,6 +201,21 @@ export async function pullLedger(opts: SyncOptions): Promise<SyncResult<PullStat
         ),
         revision: 0,
         local_files: local.files.size,
+        skipped: local.skipped,
+      };
+    }
+    if (local.files.size === 0) {
+      // A revision-0 sync point, so the push after this run's first publish creates the
+      // service ledger (base 0) instead of asking for a pull.
+      await writeSyncState(
+        opts.brand,
+        opts.skill,
+        { revision: 0, files: {}, tenant: got.tenant, synced_at: (opts.now ?? (() => new Date()))().toISOString() },
+        opts.dataDirOverride,
+      );
+      return {
+        ...base(opts, dir, 'absent', 'No run ledger for this brand on the MixShift service or on this computer.'),
+        revision: 0,
         skipped: local.skipped,
       };
     }
@@ -318,7 +329,9 @@ async function applyServer(
   // SECURITY: a server-controlled name becomes a local path below. Refuse the whole
   // pull, before anything is written, if any name is unsafe.
   const unsafe = ledger.files.map((f) => f.path).filter((p) => !isSafeLedgerPath(p));
-  if (unsafe.length > 0) {
+  // Two names that differ only in case are one file on a macOS or Windows cache.
+  const folded = new Set(ledger.files.map((f) => f.path.toLowerCase()));
+  if (unsafe.length > 0 || folded.size !== ledger.files.length) {
     return {
       ...base(
         opts,
@@ -337,10 +350,17 @@ async function applyServer(
   const writes: Array<{ path: string; content: string | null; change: FileChange['change'] }> = [];
   const localEdits: string[] = [];
   const diverged: string[] = [];
+  // Local files the cache holds but cannot read as ledger text (binary, too large):
+  // never overwritten unseen. One the service also has is a divergence.
+  const unreadable = new Set(local.skipped.filter((k) => !k.path.endsWith('/')).map((k) => k.path));
 
   for (const path of [...paths].sort()) {
     const s = server.get(path);
     const l = local.files.get(path);
+    if (unreadable.has(path)) {
+      if (s) diverged.push(path);
+      continue;
+    }
     const sHash = s?.content_hash;
     const lHash = l?.hash;
     if (sHash === lHash) continue; // same on both sides (or absent on both)
@@ -353,7 +373,16 @@ async function applyServer(
       }
       writes.push({ path, content: s ? (s.content as string) : null, change: !s ? 'deleted' : l ? 'updated' : 'added' });
     } else if (!serverChanged) {
-      localEdits.push(path); // newer here than on the service: a push will carry it
+      if (!l && s) {
+        // Gone here, unchanged on the service. Deletes reach the service only with
+        // push --prune, so a missing file is restored rather than left missing.
+        if (typeof s.content !== 'string') {
+          return { ...base(opts, dir, 'error', 'The MixShift service sent a ledger file without its content.'), revision: null };
+        }
+        writes.push({ path, content: s.content, change: 'added' });
+      } else {
+        localEdits.push(path); // newer here than on the service: a push will carry it
+      }
     } else {
       diverged.push(path);
     }
@@ -383,11 +412,11 @@ async function applyServer(
     const stamp = (opts.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-');
     keptAside = conflictsDir(opts.brand, opts.skill, stamp, opts.dataDirOverride);
     for (const path of diverged) {
-      const l = local.files.get(path);
-      if (l) {
-        const aside = join(keptAside, ...path.split('/'));
+      const aside = join(keptAside, ...path.split('/'));
+      if (local.files.has(path) || unreadable.has(path)) {
         await mkdir(dirname(aside), { recursive: true });
-        await writeFile(aside, l.content, 'utf8');
+        // Byte for byte, so a binary or oversized local file is kept exactly.
+        await copyFile(localPathFor(dir, path), aside);
       }
       const s = server.get(path);
       if (s && typeof s.content !== 'string') {
@@ -465,20 +494,9 @@ export async function pushLedger(opts: SyncOptions): Promise<SyncResult<PushStat
   const tooBig = overCaps(local);
   if (tooBig) return { ...base(opts, dir, 'error', tooBig), local_files: local.files.size, skipped: local.skipped };
 
-  // No sync point: only a first upload is safe, and only if the service has none.
-  // A pull decides that (and handles the migration), so ask for one.
-  if (!prior) {
-    return {
-      ...base(
-        opts,
-        dir,
-        'pull_first',
-        'This computer has not synced this run ledger with the MixShift service yet. Run `mixshift report ledger pull` first.',
-      ),
-      local_files: local.files.size,
-      skipped: local.skipped,
-    };
-  }
+  // No sync point (the run started while the service was unavailable, or never
+  // pulled): a first upload is safe only if the service has no ledger, so ask it.
+  if (!prior) return firstPush(opts, dir, local);
 
   if (otherAccount(prior, await opts.client.tenant())) {
     return {
@@ -592,6 +610,63 @@ export async function pushLedger(opts: SyncOptions): Promise<SyncResult<PushStat
     local_files: local.files.size,
     skipped: local.skipped,
     ...missing,
+  };
+}
+
+/** Push with no sync point: create the service ledger, but only if it has none. */
+async function firstPush(opts: SyncOptions, dir: string, local: LocalLedger): Promise<SyncResult<PushState>> {
+  const got = await opts.client.get(opts.brand, opts.skill);
+  if (!got.ok) {
+    const unavailable = UNAVAILABLE.has(got.kind);
+    return {
+      ...base(
+        opts,
+        dir,
+        unavailable ? 'gateway_unavailable' : 'error',
+        unavailable
+          ? 'The MixShift service run ledger is not available, so the ledger was saved on this computer only.'
+          : got.friendly,
+      ),
+      local_files: local.files.size,
+      skipped: local.skipped,
+      failure: failureOf(got),
+    };
+  }
+  if (got.ledger !== null) {
+    return {
+      ...base(
+        opts,
+        dir,
+        'pull_first',
+        'The MixShift service already has a run ledger for this brand that this computer has not pulled. ' +
+          'Run `mixshift report ledger pull`, reconcile, then push.',
+      ),
+      local_files: local.files.size,
+      skipped: local.skipped,
+      server: serverSummary(got.ledger),
+    };
+  }
+  if (local.files.size === 0) {
+    return {
+      ...base(opts, dir, 'up_to_date', 'Nothing to push: there is no run ledger on this computer.'),
+      revision: 0,
+      skipped: local.skipped,
+    };
+  }
+  const first = await migrate(opts, dir, local, got.tenant);
+  const state: PushState =
+    first.state === 'migrated'
+      ? 'pushed'
+      : first.state === 'local_corrupt' || first.state === 'gateway_unavailable'
+        ? first.state
+        : 'error';
+  return {
+    ...first,
+    state,
+    message:
+      first.state === 'migrated'
+        ? `Saved this run ledger to the MixShift service as its first revision (${local.files.size} files).`
+        : first.message,
   };
 }
 

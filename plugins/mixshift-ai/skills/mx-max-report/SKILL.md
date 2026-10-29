@@ -214,7 +214,11 @@ mixshift report ledger pull --brand <brand-slug> --json
   before Step 8 publishes anything.
 - `gateway_unavailable`: the MixShift service predates the ledger or cannot be reached.
   Use the local ledger in `local_dir` if there is one. If there is none, run "Find the
-  hub". Say once that this run's ledger is saved on this computer only.
+  hub". Say once that this run's ledger is saved on this computer only. When
+  `failure.kind` is `host_unreachable` (a network failure, not an older service), the
+  local copy may be behind a session elsewhere: try the pull once more, and before
+  republishing from the local copy, ask the user to confirm no one has published this
+  brand since.
 - `diverged`: a ledger file changed both here and on the service. Show the user the two
   versions of each file in `diverged` and ask which is right. Take the service copy with
   `pull --force` only on their word (the local copies are kept aside). Never pick one
@@ -1529,12 +1533,20 @@ write the files there, and sync with the service at both ends of the run.
   once, then proceeds.
 - **After publishing**, once the approved write-backs and this period's fragments are in
   the folder: `mixshift report ledger push --brand <brand-slug> --json`. `pushed` or
-  `up_to_date` means it is saved. `conflict` means another session saved the ledger since
-  this run pulled it: pull again (the files this run changed are kept), check that both
-  runs' entries are present, then push again. Never delete the other run's entries to
-  make the push go through. `gateway_unavailable` means it is saved on this computer only:
-  say so in the handover, because a session elsewhere will not see it. Run
+  `up_to_date` means it is saved. `gateway_unavailable` means it is saved on this computer
+  only: say so in the handover, because a session elsewhere will not see it. Run
   `mixshift report ledger push` after any later edit to the ledger too.
+- **When the push says `conflict` or `pull_first`**, another session saved this brand's
+  ledger since this run read it. Never delete or overwrite the other run's entries to make
+  the push go through. Pull again:
+  - Files only one side changed merge on their own (yours stay as local edits).
+  - When both runs changed the same file (usually `publish-registry.json`), the pull says
+    `diverged`. Run `pull --force`: the service copy lands in the folder and this run's
+    copy is kept aside at `kept_aside`. Then merge this run's entries (its period, its
+    fragment paths, its commitments) from the kept-aside copy into the pulled file,
+    keeping every entry of both runs.
+  - Push again. If both runs published the same period, ask the user which brief stands
+    before merging.
 - **When the ledger is missing** (no service copy and no local copy), the run still
   works. The commitments come from Step 1's other sources, every prior claim is
   unverified, and there is no baseline to diff. The one thing it must not do is publish

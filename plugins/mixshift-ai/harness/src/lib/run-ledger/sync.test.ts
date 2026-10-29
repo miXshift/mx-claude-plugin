@@ -299,6 +299,58 @@ describe('pull', () => {
     expect(r.skipped.map((s) => s.reason).sort()).toEqual(['not_text', 'too_deep']);
   });
 
+  it('a file deleted here but unchanged on the service is restored, not reported as up to date', async () => {
+    const svc = new FakeService();
+    svc.ledger = { revision: 1, files: new Map([['publish-registry.json', REGISTRY]]), updated_by: 'x' };
+    await pullLedger(opts(svc));
+    await rm(join(dir(), 'publish-registry.json'));
+    const r = await pullLedger(opts(svc));
+    expect(r.state).toBe('pulled');
+    expect(r.changes).toEqual([{ path: 'publish-registry.json', change: 'added' }]);
+    expect(await readLocal('publish-registry.json')).toBe(REGISTRY);
+  });
+
+  it('server_missing fires on a synced cache even when its files are gone', async () => {
+    const svc = new FakeService();
+    svc.ledger = { revision: 3, files: new Map([['publish-registry.json', REGISTRY]]), updated_by: 'x' };
+    await pullLedger(opts(svc));
+    await rm(dir(), { recursive: true, force: true });
+    svc.ledger = null;
+    expect((await pullLedger(opts(svc))).state).toBe('server_missing');
+  });
+
+  it('a temp file left by a crash mid-write is never synced', async () => {
+    const svc = new FakeService();
+    await writeLocal('publish-registry.json', REGISTRY);
+    await writeLocal('publish-registry.json.tmp-4242', '{"half":');
+    const r = await pullLedger(opts(svc));
+    expect(r.state).toBe('migrated');
+    expect(svc.puts[0]!.files.map((f) => f.path)).toEqual(['publish-registry.json']);
+  });
+
+  it('service names that differ only in case refuse the whole pull', async () => {
+    const svc = new FakeService();
+    svc.ledger = { revision: 1, files: new Map([['a.json', '{}']]), updated_by: 'x' };
+    svc.extraFiles = [{ path: 'A.json', content: '{"other":1}' }];
+    const r = await pullLedger(opts(svc));
+    expect(r.state).toBe('error');
+    expect(existsSync(join(dir(), 'a.json'))).toBe(false);
+  });
+
+  it('a local file the sync cannot read is never overwritten unseen; --force keeps it byte for byte', async () => {
+    const svc = new FakeService();
+    svc.ledger = { revision: 1, files: new Map([['chart.svg', '<svg/>']]), updated_by: 'x' };
+    const binary = Buffer.from([0x3c, 0x00, 0x01, 0x02]);
+    await writeLocal('chart.svg', binary);
+    const r = await pullLedger(opts(svc));
+    expect(r.state).toBe('diverged');
+    expect(r.diverged).toEqual(['chart.svg']);
+    const f = await pullLedger(opts(svc, { force: true }));
+    expect(f.state).toBe('pulled');
+    expect(await readLocal('chart.svg')).toBe('<svg/>');
+    expect(Buffer.compare(await readFile(join(f.kept_aside!, 'chart.svg')), binary)).toBe(0);
+  });
+
   it('the sync state lives outside the ledger folder', async () => {
     const svc = new FakeService();
     await writeLocal('publish-registry.json', REGISTRY);
@@ -309,11 +361,40 @@ describe('pull', () => {
 });
 
 describe('push', () => {
-  it('without a sync point it asks for a pull first', async () => {
+  it('without a sync point and a service ledger it has not seen, it asks for a pull first', async () => {
     const svc = new FakeService();
-    await writeLocal('publish-registry.json', REGISTRY);
+    svc.ledger = { revision: 2, files: new Map([['publish-registry.json', REGISTRY]]), updated_by: 'x' };
+    await writeLocal('publish-registry.json', '{"client_hub_url":"https://example.test/other"}');
     expect((await pushLedger(opts(svc))).state).toBe('pull_first');
     expect(svc.puts).toHaveLength(0);
+  });
+
+  it('without a sync point and no service ledger (the pull fell back), it creates the first one', async () => {
+    const svc = new FakeService();
+    svc.failWith = { ok: false, kind: 'host_unreachable', friendly: 'down' };
+    expect((await pullLedger(opts(svc))).state).toBe('gateway_unavailable');
+    await writeLocal('publish-registry.json', REGISTRY);
+    svc.failWith = null; // the service is back by publish time
+    const r = await pushLedger(opts(svc));
+    expect(r.state).toBe('pushed');
+    expect(svc.puts.at(-1)!.base_revision).toBe(0);
+    expect(svc.ledger!.files.get('publish-registry.json')).toBe(REGISTRY);
+    expect((await pushLedger(opts(svc))).state).toBe('up_to_date');
+  });
+
+  it('the first run on a brand: absent at start, then the push after publish creates the service ledger', async () => {
+    const svc = new FakeService();
+    expect((await pullLedger(opts(svc))).state).toBe('absent');
+    await writeLocal('publish-registry.json', REGISTRY);
+    await writeLocal('fragments/2026-10-client.html', '<section>Oct</section>');
+    const r = await pushLedger(opts(svc));
+    expect(r.state).toBe('pushed');
+    expect(r.revision).toBe(1);
+    expect(svc.puts[0]!.base_revision).toBe(0);
+    // A fresh container then finds it.
+    await rm(join(dataDir, 'clients'), { recursive: true, force: true });
+    expect((await pullLedger(opts(svc))).state).toBe('pulled');
+    expect(await readLocal('publish-registry.json')).toBe(REGISTRY);
   });
 
   it('carries only the changed files and the revision they were read at', async () => {

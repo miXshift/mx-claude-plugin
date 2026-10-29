@@ -103,6 +103,10 @@ describe('createRunLedgerClient', () => {
     [405, {}, 'unsupported'],
     [503, { ok: false, kind: 'ledger_unavailable' }, 'unavailable'],
     [403, { ok: false, kind: 'insufficient_scope', friendly: 'no' }, 'insufficient_scope'],
+    // The ledger route's own mount gate: a real scope refusal.
+    [403, { ok: false, kind: 'insufficient_scope', friendly: 'no', required_scopes: ['context:read'] }, 'insufficient_scope'],
+    // An older service gating the unknown path on its full read set: no ledger route there.
+    [403, { ok: false, kind: 'insufficient_scope', friendly: 'no', required_scopes: ['ads:read', 'retail:read'] }, 'unsupported'],
     [500, { ok: false, kind: 'internal' }, 'unknown'],
   ])('HTTP %s maps to %s', async (status, body, kind) => {
     const { fetchImpl } = stub(status, body);

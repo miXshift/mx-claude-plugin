@@ -66,9 +66,11 @@ export function checkLedgerArgs(opts: { brand?: string; skill?: string }): strin
   return null;
 }
 
-function printResult(result: SyncResult<string>, json: boolean): void {
+function printResult(result: SyncResult<string>, json: boolean, proceed: boolean): void {
   if (json) {
-    console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+    // `ok` is false for every refusal, so a reader keying on it never mistakes
+    // `diverged` or `error` for success. `state` carries the detail.
+    console.log(JSON.stringify({ ok: proceed, ...result }, null, 2));
     return;
   }
   console.log(`[${result.state}] ${result.message}`);
@@ -116,6 +118,22 @@ function badArgs(message: string, json: boolean): void {
   process.exitCode = 2;
 }
 
+/**
+ * A local file-system failure mid-sync (a locked file, a full disk) is an `error`
+ * state with exit 1, in the same envelope as every other outcome. Pull writes its
+ * sync point only after every file landed, so a failed pull is retried from the old one.
+ */
+async function guarded(json: boolean, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (json) console.log(JSON.stringify({ ok: false, state: 'error', error_class: 'local_io', message }, null, 2));
+    else console.error(message);
+    process.exitCode = 1;
+  }
+}
+
 export function registerReportLedgerCommands(report: Command): void {
   const ledger = report
     .command('ledger')
@@ -147,18 +165,20 @@ export function registerReportLedgerCommands(report: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const bad = checkLedgerArgs(opts);
       if (bad) return badArgs(bad, !!root.json);
-      const t0 = Date.now();
-      const result = await pullLedger({
-        brand: opts.brand,
-        skill: opts.skill,
-        client: clientFactory(root.dataDir),
-        dataDirOverride: root.dataDir,
-        force: !!opts.force,
+      await guarded(!!root.json, async () => {
+        const t0 = Date.now();
+        const result = await pullLedger({
+          brand: opts.brand,
+          skill: opts.skill,
+          client: clientFactory(root.dataDir),
+          dataDirOverride: root.dataDir,
+          force: !!opts.force,
+        });
+        const proceed = PULL_PROCEED.has(result.state);
+        await emit('pull', result, opts.skill, proceed, t0, root.dataDir);
+        printResult(result, !!root.json, proceed);
+        process.exitCode = proceed ? 0 : 1;
       });
-      const proceed = PULL_PROCEED.has(result.state);
-      await emit('pull', result, opts.skill, proceed, t0, root.dataDir);
-      printResult(result, !!root.json);
-      process.exitCode = proceed ? 0 : 1;
     });
 
   ledger
@@ -177,18 +197,20 @@ export function registerReportLedgerCommands(report: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const bad = checkLedgerArgs(opts);
       if (bad) return badArgs(bad, !!root.json);
-      const t0 = Date.now();
-      const result = await pushLedger({
-        brand: opts.brand,
-        skill: opts.skill,
-        client: clientFactory(root.dataDir),
-        dataDirOverride: root.dataDir,
-        prune: !!opts.prune,
+      await guarded(!!root.json, async () => {
+        const t0 = Date.now();
+        const result = await pushLedger({
+          brand: opts.brand,
+          skill: opts.skill,
+          client: clientFactory(root.dataDir),
+          dataDirOverride: root.dataDir,
+          prune: !!opts.prune,
+        });
+        const proceed = PUSH_PROCEED.has(result.state);
+        await emit('push', result, opts.skill, proceed, t0, root.dataDir);
+        printResult(result, !!root.json, proceed);
+        process.exitCode = proceed ? 0 : 1;
       });
-      const proceed = PUSH_PROCEED.has(result.state);
-      await emit('push', result, opts.skill, proceed, t0, root.dataDir);
-      printResult(result, !!root.json);
-      process.exitCode = proceed ? 0 : 1;
     });
 
   ledger
@@ -200,34 +222,36 @@ export function registerReportLedgerCommands(report: Command): void {
       const root = cmd.optsWithGlobals<RootOptions>();
       const bad = checkLedgerArgs(opts);
       if (bad) return badArgs(bad, !!root.json);
-      const t0 = Date.now();
-      const status = await ledgerStatus({
-        brand: opts.brand,
-        skill: opts.skill,
-        client: clientFactory(root.dataDir),
-        dataDirOverride: root.dataDir,
+      await guarded(!!root.json, async () => {
+        const t0 = Date.now();
+        const status = await ledgerStatus({
+          brand: opts.brand,
+          skill: opts.skill,
+          client: clientFactory(root.dataDir),
+          dataDirOverride: root.dataDir,
+        });
+        await emit(
+          'status',
+          { state: status.service.available ? 'ok' : 'gateway_unavailable', local_files: status.local_files },
+          opts.skill,
+          true,
+          t0,
+          root.dataDir,
+        );
+        if (root.json) {
+          console.log(JSON.stringify({ ok: true, ...status }, null, 2));
+          return;
+        }
+        console.log(`local ledger: ${status.local_dir} (${status.local_files} files)`);
+        console.log(`last synced revision: ${status.synced_revision ?? 'never'}`);
+        if (status.other_account) console.log('synced under a different MixShift sign-in');
+        console.log(
+          status.service.available
+            ? `service: revision ${status.service.revision ?? 'none (no ledger yet)'}, ${status.service.file_count} files`
+            : `service: not available (${status.service.reason})`,
+        );
+        for (const p of status.local_edits) console.log(`  changed here since the last sync: ${p}`);
+        for (const s of status.skipped) console.log(`  not synced (${s.reason}): ${s.path}`);
       });
-      await emit(
-        'status',
-        { state: status.service.available ? 'ok' : 'gateway_unavailable', local_files: status.local_files },
-        opts.skill,
-        true,
-        t0,
-        root.dataDir,
-      );
-      if (root.json) {
-        console.log(JSON.stringify({ ok: true, ...status }, null, 2));
-        return;
-      }
-      console.log(`local ledger: ${status.local_dir} (${status.local_files} files)`);
-      console.log(`last synced revision: ${status.synced_revision ?? 'never'}`);
-      if (status.other_account) console.log('synced under a different MixShift sign-in');
-      console.log(
-        status.service.available
-          ? `service: revision ${status.service.revision ?? 'none (no ledger yet)'}, ${status.service.file_count} files`
-          : `service: not available (${status.service.reason})`,
-      );
-      for (const p of status.local_edits) console.log(`  changed here since the last sync: ${p}`);
-      for (const s of status.skipped) console.log(`  not synced (${s.reason}): ${s.path}`);
     });
 }

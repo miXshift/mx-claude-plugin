@@ -90,11 +90,42 @@ describe('report ledger', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('push without a prior pull: pull_first, exit 1', async () => {
+  it('push without a prior pull, the service holding a ledger: pull_first, ok false, exit 1', async () => {
+    const ledger = join(dir, 'clients', 'acme-goods', 'runs', 'mx-monthly-report-max');
+    await mkdir(ledger, { recursive: true });
+    await writeFile(join(ledger, 'publish-registry.json'), '{}');
+    setRunLedgerClientFactoryForTests(() =>
+      fakeClient({
+        get: async () => ({
+          ok: true,
+          tenant: '42',
+          ledger: {
+            brand_slug: 'acme-goods',
+            skill_id: 'mx-max-report',
+            revision: 2,
+            file_count: 0,
+            total_bytes: 0,
+            created_at: 'x',
+            updated_at: 'x',
+            updated_by_actor: 'x',
+            files: [],
+          },
+        }),
+      }),
+    );
+    const r = await run('push', '--brand', 'acme-goods');
+    expect(r).toMatchObject({ ok: false, state: 'pull_first' });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('push without a prior pull and no service ledger creates it: pushed, exit 0', async () => {
+    const ledger = join(dir, 'clients', 'acme-goods', 'runs', 'mx-monthly-report-max');
+    await mkdir(ledger, { recursive: true });
+    await writeFile(join(ledger, 'publish-registry.json'), '{}');
     setRunLedgerClientFactoryForTests(() => fakeClient());
     const r = await run('push', '--brand', 'acme-goods');
-    expect(r.state).toBe('pull_first');
-    expect(process.exitCode).toBe(1);
+    expect(r).toMatchObject({ ok: true, state: 'pushed', revision: 1 });
+    expect(process.exitCode).toBe(0);
   });
 
   it('status reports both sides', async () => {

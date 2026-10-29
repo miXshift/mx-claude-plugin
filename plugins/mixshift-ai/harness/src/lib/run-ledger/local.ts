@@ -29,20 +29,23 @@ export const MAX_LEDGER_BYTES = 16_777_216;
 export const MAX_LEDGER_FILES = 500;
 
 const SEGMENT_RE = /^[A-Za-z0-9._-]{1,128}$/;
+/** The temp name writeLedgerFile renames from; a crash can leave one behind. Never synced. */
+const TEMP_FILE_RE = /\.tmp-\d+$/;
 const RESERVED_SEGMENT_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
 /**
  * SECURITY: a ledger path crosses a trust boundary both ways (a local file name going
  * up, a server-controlled name coming down and becoming a local path on pull). Same
  * rule as the service: relative, POSIX separators, one to four segments of portable
- * characters, no '..', no '.' segment, no Windows device name, no ':' (NTFS streams).
+ * characters, no '..', no segment ending in '.' (Windows drops the dot, so two names
+ * would be one file), no Windows device name, no ':' (NTFS streams).
  */
 export function isSafeLedgerPath(path: string): boolean {
   if (typeof path !== 'string' || path.length === 0 || path.length > 256) return false;
   if (path.includes('..')) return false;
   const segments = path.split('/');
   if (segments.length > 4) return false;
-  return segments.every((s) => SEGMENT_RE.test(s) && s !== '.' && !RESERVED_SEGMENT_RE.test(s));
+  return segments.every((s) => SEGMENT_RE.test(s) && !s.endsWith('.') && !RESERVED_SEGMENT_RE.test(s));
 }
 
 /** sha256 hex (lowercase) over the utf8 bytes: the service's content_hash. */
@@ -116,6 +119,7 @@ export async function readLocalLedger(dir: string): Promise<LocalLedger> {
         continue;
       }
       if (!e.isFile()) continue;
+      if (TEMP_FILE_RE.test(e.name)) continue;
       if (!isSafeLedgerPath(relPath)) {
         skipped.push({ path: relPath, reason: 'unsafe_path' });
         continue;
