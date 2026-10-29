@@ -182,3 +182,52 @@ describe('amazon call: a MixShift refusal reaches the agent as one (mx-ops#144 P
     expect(JSON.stringify(payload)).not.toContain('Nothing was sent');
   });
 });
+describe('amazon call: guarded inbound writes (--commit)', () => {
+  const OK = {
+    ok: true as const,
+    operation: 'fulfillment_inbound.confirm_placement_option',
+    amazonSellerId: 'A1',
+    legacySellerId: 71,
+    marketplaceId: 'ATVPDKIKX0DER',
+    payload: undefined,
+    write: { dryRun: true, previewId: 'p-1', quoteHash: 'h-1' },
+  };
+
+  it('without --commit nothing but the operation and its selectors is sent (a dry run)', async () => {
+    vi.mocked(spapiCall).mockResolvedValue(OK as never);
+    await runAmazon('--json', 'call', 'fulfillment_inbound.confirm_placement_option', '--path', 'inboundPlanId=wf1');
+    const input = vi.mocked(spapiCall).mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(input).not.toHaveProperty('dryRun');
+    expect(input).not.toHaveProperty('previewId');
+    expect(input).not.toHaveProperty('idempotencyKey');
+    expect(lastJsonOut()).toMatchObject({ status: 'ok', write: { previewId: 'p-1', quoteHash: 'h-1' } });
+  });
+
+  it('--commit sends dryRun:false with the preview and the key', async () => {
+    vi.mocked(spapiCall).mockResolvedValue(OK as never);
+    await runAmazon(
+      'call',
+      'fulfillment_inbound.confirm_placement_option',
+      '--commit',
+      '--preview-id',
+      'p-1',
+      '--approved-quote-hash',
+      'h-1',
+      '--idempotency-key',
+      'po-1234-placement',
+    );
+    expect(vi.mocked(spapiCall).mock.calls[0]![0]).toMatchObject({
+      dryRun: false,
+      previewId: 'p-1',
+      approvedQuoteHash: 'h-1',
+      idempotencyKey: 'po-1234-placement',
+    });
+  });
+
+  it('refuses a preview id or key without --commit, before anything is sent', async () => {
+    await runAmazon('--json', 'call', 'fulfillment_inbound.confirm_placement_option', '--preview-id', 'p-1');
+    expect(vi.mocked(spapiCall)).not.toHaveBeenCalled();
+    expect(lastJsonOut()).toMatchObject({ status: 'error' });
+    expect(process.exitCode).toBe(1);
+  });
+});

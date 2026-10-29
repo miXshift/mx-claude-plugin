@@ -104,14 +104,19 @@ interface CallCliOptions {
   path: Record<string, string>;
   bodyFile?: string;
   body?: string;
+  commit?: boolean;
+  previewId?: string;
+  approvedQuoteHash?: string;
+  idempotencyKey?: string;
 }
 
 function registerCall(amazon: Command): void {
   amazon
     .command('call <operation>')
     .description(
-      'Execute one cataloged SP-API operation (read-only). Run `amazon operations` ' +
-        'first for the operation id and its parameter notes.',
+      'Execute one cataloged SP-API operation. Run `amazon operations` first for the ' +
+        'operation id and its parameter notes. Guarded write operations (FBA inbound ' +
+        'shipments) preview by default; only --commit sends one to Amazon.',
     )
     .option('--seller-id <id>', 'AmazonSellerID from `amazon merchants`')
     .option(
@@ -133,6 +138,21 @@ function registerCall(amazon: Command): void {
     )
     .option('--body-file <file>', 'JSON request body from a file (body-required operations)')
     .option('--body <json>', 'inline JSON request body (small payloads; prefer --body-file)')
+    .option(
+      '--commit',
+      'guarded write operations only: send it to Amazon. Without it a write is a dry run ' +
+        '(a preview, for a step that commits a fee) and nothing is sent.',
+    )
+    .option('--preview-id <id>', 'with --commit on a fee-committing step: the preview id from its dry run')
+    .option(
+      '--approved-quote-hash <hash>',
+      'with --commit on a fee-committing step: the quoteHash from that same preview',
+    )
+    .option(
+      '--idempotency-key <key>',
+      'with --commit: your own key (8-128 letters, digits, . : - _). A resend with the same key ' +
+        'replays the first commit and is never sent to Amazon twice.',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -147,6 +167,18 @@ function registerCall(amazon: Command): void {
           body = JSON.parse(opts.body);
         }
 
+        if (
+          !opts.commit &&
+          (opts.previewId || opts.approvedQuoteHash || opts.idempotencyKey)
+        ) {
+          return emitError(
+            new Error(
+              '--preview-id, --approved-quote-hash and --idempotency-key belong on a commit: add --commit, or drop them for a dry run. Nothing was sent.',
+            ),
+            !!root.json,
+          );
+        }
+
         const input: SpApiCallInput = {
           operation,
           amazonSellerId: opts.sellerId,
@@ -155,6 +187,10 @@ function registerCall(amazon: Command): void {
           pathParams: opts.path,
           query: opts.query as Record<string, SpApiQueryValue>,
           ...(body !== undefined ? { body } : {}),
+          ...(opts.commit ? { dryRun: false as const } : {}),
+          ...(opts.previewId ? { previewId: opts.previewId } : {}),
+          ...(opts.approvedQuoteHash ? { approvedQuoteHash: opts.approvedQuoteHash } : {}),
+          ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
         };
         const result = await spapiCall(input, { dataDirOverride: root.dataDir });
         if (isReportFailure(result)) {
@@ -215,6 +251,7 @@ function registerCall(amazon: Command): void {
           ...(result.amazonSellerId ? { amazon_seller_id: result.amazonSellerId } : {}),
           ...(result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {}),
           ...(result.marketplaceId ? { marketplace_id: result.marketplaceId } : {}),
+          ...(result.write ? { write_mode: opts.commit ? 'commit' : 'dry_run' } : {}),
         });
         if (root.json) {
           writeJson({
@@ -224,12 +261,15 @@ function registerCall(amazon: Command): void {
             legacy_seller_id: result.legacySellerId,
             marketplace_id: result.marketplaceId,
             payload: result.payload,
+            ...(result.write ? { write: result.write } : {}),
           });
         } else {
           process.stderr.write(
             `\n✓ ${result.operation} (${result.amazonSellerId} / ${result.marketplaceId})\n\n`,
           );
-          process.stdout.write(JSON.stringify(result.payload, null, 2) + '\n');
+          process.stdout.write(
+            JSON.stringify(result.write ?? result.payload, null, 2) + '\n',
+          );
         }
         return;
       } catch (err) {

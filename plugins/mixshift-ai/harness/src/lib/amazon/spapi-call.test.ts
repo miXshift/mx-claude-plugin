@@ -237,3 +237,93 @@ describe('spapiCall', () => {
     });
   });
 });
+describe('spapiCall: guarded inbound writes', () => {
+  const PREVIEW = {
+    ok: true,
+    dryRun: true,
+    operation: 'fulfillment_inbound.confirm_placement_option',
+    amazonSellerId: 'A1',
+    legacySellerId: 71,
+    marketplaceId: 'ATVPDKIKX0DER',
+    previewId: '11111111-1111-4111-8111-111111111111',
+    quoteHash: 'a'.repeat(64),
+    quote: { fees: [{ target: 'Placement Services', amount: 0 }] },
+  };
+
+  it('sends nothing extra on a dry run: no dryRun, no preview fields, no key', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(200, PREVIEW));
+    const r = await spapiCall(
+      {
+        operation: 'fulfillment_inbound.confirm_placement_option',
+        pathParams: { inboundPlanId: 'wf1', placementOptionId: 'pl1' },
+      },
+      injected(fetchImpl),
+    );
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(sent).not.toHaveProperty('dryRun');
+    expect(sent).not.toHaveProperty('previewId');
+    expect(sent).not.toHaveProperty('approvedQuoteHash');
+    expect(sent).not.toHaveProperty('idempotencyKey');
+    // The preview's id and hash survive: a bare Amazon payload would lose them.
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.write).toMatchObject({ previewId: PREVIEW.previewId, quoteHash: PREVIEW.quoteHash });
+      expect(r.write).not.toHaveProperty('ok');
+    }
+  });
+
+  it('a commit sends dryRun:false with the preview, its hash and the key', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ...PREVIEW, dryRun: false, outcome: 'DONE', quote: undefined }),
+    );
+    const r = await spapiCall(
+      {
+        operation: 'fulfillment_inbound.confirm_placement_option',
+        pathParams: { inboundPlanId: 'wf1', placementOptionId: 'pl1' },
+        dryRun: false,
+        previewId: PREVIEW.previewId,
+        approvedQuoteHash: PREVIEW.quoteHash,
+        idempotencyKey: 'po-1234-placement',
+      },
+      injected(fetchImpl),
+    );
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(sent).toMatchObject({
+      dryRun: false,
+      previewId: PREVIEW.previewId,
+      approvedQuoteHash: PREVIEW.quoteHash,
+      idempotencyKey: 'po-1234-placement',
+    });
+    expect(r.ok && r.write?.outcome).toBe('DONE');
+  });
+
+  it('a read answer carries no write block', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        operation: 'fulfillment_inbound.list_inbound_plans',
+        amazonSellerId: 'A1',
+        legacySellerId: 71,
+        marketplaceId: 'ATVPDKIKX0DER',
+        payload: { inboundPlans: [] },
+      }),
+    );
+    const r = await spapiCall({ operation: 'fulfillment_inbound.list_inbound_plans' }, injected(fetchImpl));
+    expect(r.ok && r.write).toBeUndefined();
+  });
+
+  it('keeps the inbound refusal kinds as themselves, not as drift', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(409, { ok: false, kind: 'quote_changed', friendly: 'The fee moved. Nothing was confirmed.' }),
+    );
+    const r = await spapiCall(
+      { operation: 'fulfillment_inbound.confirm_placement_option', dryRun: false },
+      injected(fetchImpl),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('quote_changed');
+      expect(r.unrecognizedKind).toBeUndefined();
+    }
+  });
+});
