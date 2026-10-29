@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.5.6
+version: 2.6.0
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -14,7 +14,7 @@ description: >
   [client]', 'get me ready for the [client] monthly', 'QBR prep', 'what moved this month
   for [brand]', 'anything I should flag before this call'.
 author: Claude
-last_updated: 2026-10-15
+last_updated: 2026-10-29
 dependencies:
   - MixShift Intelligence service (INS-MONTHLY-01 via `mixshift intelligence`; FCT-TRACK-01 for the optional forecast)
   - Warehouse read access via the gateway (`mixshift report battery` for the figure battery,
@@ -23,6 +23,8 @@ dependencies:
     credentials cannot run the battery
   - Brand context (optional; the brief sharpens as context accrues, never requires it)
   - Meeting-notes source (optional; Google Drive or Fireflies MCP when connected)
+  - The run ledger on the MixShift service (`mixshift report ledger pull|push`) holding the hub
+    URLs, commitments, claims, watch items, baseline and fragments; the local folder is a cache
 sample_input: "Get me ready for the Acme Goods monthly call"
 sample_output: |
   August added to both hubs: "Acme Goods Performance Reviews" (the one URL the client
@@ -193,6 +195,63 @@ framing, never a stop. Do not extract numbers from narrative prose. When a usefu
 absent (a target, a nickname, a structural event), the brief runs without it and the run
 record proposes it for next time.
 
+## Step 0: Load the run ledger from the MixShift service
+
+The run ledger (what it holds: "The run record and write-backs" below) lives on the
+MixShift service. The folder on this computer is only a cache, and a fresh cloud
+session starts with an empty one. Pull the ledger before anything else:
+
+```bash
+mixshift report ledger pull --brand <brand-slug> --json
+```
+
+`<brand-slug>` is the slug `mixshift brand list` shows. Read `state`, not only the exit code:
+
+- `pulled` or `up_to_date`: the service ledger is in the cache folder (`local_dir`). Use it.
+- `migrated`: the service had no ledger, so this computer's ledger was uploaded once as
+  the first service copy. Use it, and say so in one line.
+- `absent`: no ledger on the service or on this computer. Run "Find the hub" below
+  before Step 8 publishes anything.
+- `gateway_unavailable`: the MixShift service predates the ledger or cannot be reached.
+  Use the local ledger in `local_dir` if there is one. If there is none, run "Find the
+  hub". Say once that this run's ledger is saved on this computer only.
+- `diverged`: a ledger file changed both here and on the service. Show the user the two
+  versions of each file in `diverged` and ask which is right. Take the service copy with
+  `pull --force` only on their word (the local copies are kept aside). Never pick one
+  silently.
+- `server_missing` or `other_account`: stop before publishing. This computer synced the
+  ledger before but the service has none for this sign-in (`server_missing`), or the
+  cache belongs to a different MixShift sign-in (`other_account`). Ask the user to
+  confirm the account and the two hub URLs.
+- `local_corrupt`: a ledger file does not parse, so nothing was uploaded. Name the files
+  (`corrupt`), use what parses, and if `publish-registry.json` is among them treat the
+  registry as missing.
+- `error`: say what failed (`message`), then treat the ledger as unavailable and run
+  "Find the hub" before publishing.
+
+### Find the hub: an empty registry is not proof there is none
+
+With no publish registry, the run does not know whether the brand already has hubs. This
+happens on `absent`, on `gateway_unavailable` with no local ledger, and when
+`publish-registry.json` is corrupt or missing. Treating "unknown" as "none" publishes a
+second hub, and the client's bookmarked link silently stops being the live one. So before
+Step 8 publishes:
+
+1. Look where the hub URL does not depend on the ledger: this conversation, and the
+   artifact gallery when the surface can list it (published artifacts titled
+   "<Brand> Performance Reviews" and "<Brand> Call Notes (Internal)").
+2. Never take a hub URL from brand timeline events or any other derived record, because
+   their attribution can be wrong. They may show that a prior brief exists. They never
+   say where it lives.
+3. Signs of prior runs with no registry must be loud. Signs include an earlier fragment or
+   run record on this computer, a gallery hit, a timeline entry for a published brief,
+   or the user mentioning last month's brief. Say "The run ledger for <Brand> is missing,
+   so I do not know where last period's hubs are", and ask for both hub URLs before
+   publishing. Never publish on a guess.
+4. Republish a found or supplied hub at that URL and record it in the registry. Create
+   new hubs only when the user confirms the brand has none, and say in the handover that
+   these are new URLs.
+
 ## Step 1: Find out what the last call promised
 
 Do this **before** touching the warehouse. It is what separates a brief from a data dump,
@@ -200,8 +259,9 @@ and it changes which numbers matter.
 
 Sources, in order; take the first that exists and say which one you used:
 
-1. **The prior run's ledger.** This skill records each run's commitments and open questions
-   in its run record (see below). If a prior run exists, its ledger is the primary source.
+1. **The prior run's ledger** (pulled in Step 0). This skill records each run's commitments
+   and open questions in its run record (see below). If a prior run exists, its ledger is
+   the primary source.
 2. **Meeting notes**, when a notes source is connected (Gemini and Fireflies notes usually
    live in Drive under a predictable title: `search_files` with
    `title contains '<account> Monthly'`, document mime type). Read the most recent one and
@@ -1102,7 +1162,8 @@ with `#m-<period>` anchors and a month nav) and republish it AT ITS EXISTING URL
 file path in this conversation, or the registry's stored `url` from any other session.
 Publishing a hub as a new artifact defeats the whole feature; the first run on a brand is
 the only time a hub URL is created, and the handover that one time says which hub is
-shareable. Deep links are anchors on the one URL, so nothing ever needs re-sharing. The internal document keeps its rendered internal banner, and its
+shareable. A first run is established, never assumed: an empty or missing registry is not
+proof the brand has no hub (Step 0, "Find the hub"). Deep links are anchors on the one URL, so nothing ever needs re-sharing. The internal document keeps its rendered internal banner, and its
 title carries "(Internal)": "Acme Goods Call Notes (Internal)", stable across every
 republish per the hub rule. Publish per the
 Publish knob, give the two documents distinct names and favicons so they cannot be
@@ -1224,8 +1285,9 @@ are what need approval, so the review surface is the claims, not the HTML.
    proposed write-backs, so review feeds brand maintenance instead of patching one
    document.
 3. **On approve**: publish both documents, apply the approved write-backs to the run
-   ledger, stamp the run record with who approved and what changed, and only then hand
-   over the URLs. The approval covers the claims; wording tweaks after approval do not
+   ledger, stamp the run record with who approved and what changed, save the ledger to
+   the service (`mixshift report ledger push`, see "The run ledger" below), and only then
+   hand over the URLs. The approval covers the claims; wording tweaks after approval do not
    reopen it, new claims do.
 
 The `reporting.review` knob sets the gate: `full` (default) is the flow above;
@@ -1416,8 +1478,12 @@ The errors that survive casual proofreading:
 - The review packet was presented and approved per the Review knob; the claims register
   is emitted as `.claims.json` and rendered as internal section i05; approved write-backs
   landed in the run ledger and discoveries file.
-- Each hub was republished at its REGISTERED url (never a new artifact); this period's
-  fragments are period-stamped in the run ledger; the client hub contains no internal
+- Each hub was republished at its REGISTERED url (never a new artifact), or at a URL
+  found or supplied per Step 0's "Find the hub". An empty registry never passes this item
+  by default: a new hub needs the user's confirmation that the brand has none. The ledger
+  was pushed after publishing (`state` `pushed` or `up_to_date`), or the handover said it
+  is saved on this computer only. This period's fragments are period-stamped in the run
+  ledger; the client hub contains no internal
   fragment, section, or URL (`prose-lint.py --role client` runs on the assembled client
   hub, not only the fragment); the month nav carries every registered period.
 - In Baseline or Setup mode: no MoM/YoY language anywhere, and every absent comparison is
@@ -1452,12 +1518,32 @@ When unsure between classes, propose it as class 1 and let the reviewer strike i
 over-proposed fact costs one word at the gate, an uncaptured one costs a wrong report
 and a re-ask next month.
 
-**The run ledger** (sidecar in `~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/`),
-written every run, consumed mechanically by the next one. The folder keeps this skill's
-name from before it became `mx-max-report`, on purpose: it holds the publish registry, so
-moving it would lose every brand's registered hub URL and the next run would publish a
-new hub instead of adding to the one the client already has. Read and write it at that
-path; do not create a `runs/mx-max-report/` folder.
+**The run ledger**, written every run and consumed mechanically by the next one, lives on
+the MixShift service, keyed by brand and this skill. That copy is the one true copy, so
+any session on any computer finds last period's ledger. The local folder
+`~/.mixshift/clients/<brand-slug>/runs/mx-monthly-report-max/` is its cache: read and
+write the files there, and sync with the service at both ends of the run.
+
+- **At run start**, `mixshift report ledger pull --brand <brand-slug> --json` (Step 0).
+  When the service has none but this computer does, the pull uploads the local ledger
+  once, then proceeds.
+- **After publishing**, once the approved write-backs and this period's fragments are in
+  the folder: `mixshift report ledger push --brand <brand-slug> --json`. `pushed` or
+  `up_to_date` means it is saved. `conflict` means another session saved the ledger since
+  this run pulled it: pull again (the files this run changed are kept), check that both
+  runs' entries are present, then push again. Never delete the other run's entries to
+  make the push go through. `gateway_unavailable` means it is saved on this computer only:
+  say so in the handover, because a session elsewhere will not see it. Run
+  `mixshift report ledger push` after any later edit to the ledger too.
+- **When the ledger is missing** (no service copy and no local copy), the run still
+  works. The commitments come from Step 1's other sources, every prior claim is
+  unverified, and there is no baseline to diff. The one thing it must not do is publish
+  hubs on a guess: Step 0, "Find the hub".
+
+The folder keeps this skill's name from before it became `mx-max-report`, on purpose:
+every existing ledger is already there. Do not create a `runs/mx-max-report/` folder.
+Keep each file text (JSON, HTML, Markdown) under 1 MB; the service holds 16 MB and 500
+files per brand. A JSON file that does not parse is never uploaded, so write JSON whole.
 
 - The standard inputs: envelope run ids and `engineVersion`, account mode, active
   thresholds and their sources, forecast / attribution / context-freshness states.
@@ -1473,11 +1559,17 @@ path; do not create a `runs/mx-max-report/` folder.
 - **A baseline snapshot** of this run's window figures. Next run diffs its prior-window
   pull against what THIS run published and reports material restatements (over the 0.5%
   tolerance) in the method notes: "July restated +$3.1K since the August brief." Amazon
-  restates; the brief should never look like it disagrees with itself silently.
-- **The publish registry**: the two hub URLs per brand plus the per-period fragment
-  paths. It is what lets any later session republish the SAME hub URL (pass the stored
-  `url`), feeds the month nav, and makes "the client hub carries only client fragments"
-  checkable. The fragments plus this registry are also the substrate for hosting the
+  restates; the brief should never look like it disagrees with itself silently. When
+  there is no snapshot for the prior window (a first run, a missing ledger), the method
+  notes say "restatement baseline unavailable this period". Never write anything that
+  implies nothing restated.
+- **The publish registry** (`publish-registry.json` in the ledger folder): the two hub
+  URLs (`client_hub_url`, `internal_hub_url`), the per-period fragment paths
+  (`fragments`, keyed by period) and the last period published (`last_period`). Keep any
+  other keys an older run wrote. It is what lets any later session republish the SAME
+  hub URL (pass the stored `url`), feeds the month nav, and makes "the client hub carries
+  only client fragments" checkable. An older ledger may hold the registry under another
+  file name: read it, and write `publish-registry.json` from then on. The fragments plus this registry are also the substrate for hosting the
   stack on the MixShift platform later: the hub is just a renderer over them.
 - **Review deltas**: what the reviewer changed, per run. Three zero-edit runs is the
   trust-ramp trigger; recurring edits of the same kind are voice or selection
