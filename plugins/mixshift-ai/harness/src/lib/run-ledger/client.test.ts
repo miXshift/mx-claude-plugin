@@ -102,9 +102,13 @@ describe('createRunLedgerClient', () => {
     [404, '<html>Not Found</html>', 'unsupported'],
     [405, {}, 'unsupported'],
     [503, { ok: false, kind: 'ledger_unavailable' }, 'unavailable'],
+    // Any other 503 (platform, edge, deploy) is an outage, never "store not provisioned".
+    [503, '<html>Service Unavailable</html>', 'host_unreachable'],
+    [503, { ok: false, kind: 'internal' }, 'host_unreachable'],
+    [502, {}, 'host_unreachable'],
     [403, { ok: false, kind: 'insufficient_scope', friendly: 'no' }, 'insufficient_scope'],
-    // The ledger route's own mount gate: a real scope refusal.
-    [403, { ok: false, kind: 'insufficient_scope', friendly: 'no', required_scopes: ['context:read'] }, 'insufficient_scope'],
+    // The ledger route's own gate: a real scope refusal.
+    [403, { ok: false, kind: 'insufficient_scope', friendly: 'no', required_scopes: ['run_ledger:read'] }, 'insufficient_scope'],
     // An older service gating the unknown path on its full read set: no ledger route there.
     [403, { ok: false, kind: 'insufficient_scope', friendly: 'no', required_scopes: ['ads:read', 'retail:read'] }, 'unsupported'],
     [500, { ok: false, kind: 'internal' }, 'unknown'],

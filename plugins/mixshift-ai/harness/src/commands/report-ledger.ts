@@ -41,7 +41,7 @@ const DEFAULT_SKILL = 'mx-max-report';
 /** The service's brand slug rule (the brand context service uses the same one). */
 const SERVICE_BRAND_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-const PULL_PROCEED: ReadonlySet<PullState> = new Set(['pulled', 'up_to_date', 'migrated', 'absent', 'gateway_unavailable']);
+const PULL_PROCEED: ReadonlySet<PullState> = new Set(['pulled', 'up_to_date', 'local_only', 'absent', 'gateway_unavailable']);
 const PUSH_PROCEED: ReadonlySet<PushState> = new Set(['pushed', 'up_to_date', 'gateway_unavailable']);
 
 /** Test seam: the client the commands use. */
@@ -153,10 +153,10 @@ export function registerReportLedgerCommands(report: Command): void {
     .command('pull')
     .description(
       'Bring the service ledger into the local cache. When the service has none but this computer does, ' +
-        'uploads the local ledger once as the first service copy, then proceeds. Never overwrites a file ' +
-        'that changed on both sides (state diverged) unless --force, which keeps your local copies aside. ' +
-        'States: pulled, up_to_date, migrated, absent, gateway_unavailable (exit 0); diverged, server_missing, ' +
-        'local_corrupt, other_account, error (exit 1).',
+        'nothing is uploaded (state local_only): confirm the local ledger with the user, then `push` saves it ' +
+        'as the first service copy. Never overwrites a file that changed on both sides (state diverged) unless ' +
+        '--force, which keeps your local copies aside. States: pulled, up_to_date, local_only, absent, ' +
+        'gateway_unavailable (exit 0); diverged, server_missing, other_account, error (exit 1).',
     )
     .requiredOption(brandOpt, brandHelp)
     .option(skillOpt, skillHelp, DEFAULT_SKILL)

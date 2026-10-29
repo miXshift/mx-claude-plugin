@@ -147,13 +147,19 @@ describe('pull', () => {
     expect((await pullLedger(opts(svc))).state).toBe('up_to_date');
   });
 
-  it('migration: the service has none, the cache has one: uploaded ONCE at base 0, then in sync', async () => {
+  it('migration: the service has none, the cache has one: pull uploads NOTHING (local_only); push after the user confirms saves it once at base 0', async () => {
     const svc = new FakeService();
     await writeLocal('publish-registry.json', REGISTRY);
     await writeLocal('commitments.json', '[{"item":"raise budget","owner":"client"}]');
     const r = await pullLedger(opts(svc));
-    expect(r.state).toBe('migrated');
-    expect(r.revision).toBe(1);
+    expect(r.state).toBe('local_only');
+    expect(r.local_files).toBe(2);
+    expect(svc.puts).toHaveLength(0);
+    expect(await readSyncState(BRAND, SKILL, dataDir)).toBeNull();
+    // The user confirmed the hub URLs: push makes it the service copy.
+    const p = await pushLedger(opts(svc));
+    expect(p.state).toBe('pushed');
+    expect(p.revision).toBe(1);
     expect(svc.puts).toHaveLength(1);
     expect(svc.puts[0]!.base_revision).toBe(0);
     expect(svc.puts[0]!.files.map((f) => f.path).sort()).toEqual(['commitments.json', 'publish-registry.json']);
@@ -169,19 +175,23 @@ describe('pull', () => {
       svc.bump('publish-registry.json', '{"client_hub_url":"https://example.test/theirs"}');
       return realPut(body);
     };
-    const r = await pullLedger(opts(svc));
-    expect(r.state).toBe('error');
+    const r = await pushLedger(opts(svc));
+    // A lost first-upload race is a conflict (pull again), never an error that sends the skill hunting for a hub.
+    expect(r.state).toBe('conflict');
     expect(r.failure?.kind).toBe('revision_conflict');
+    expect(r.message).toMatch(/Pull again/);
     expect(svc.ledger!.files.get('publish-registry.json')).toContain('theirs');
     expect(await readSyncState(BRAND, SKILL, dataDir)).toBeNull();
   });
 
-  it('a corrupt local JSON file is never uploaded', async () => {
+  it('a corrupt local JSON file is named at pull and never uploaded by push', async () => {
     const svc = new FakeService();
     await writeLocal('publish-registry.json', '{"client_hub_url": "https://example.test/hub-cl');
     const r = await pullLedger(opts(svc));
-    expect(r.state).toBe('local_corrupt');
+    expect(r.state).toBe('local_only');
     expect(r.corrupt).toEqual(['publish-registry.json']);
+    const p = await pushLedger(opts(svc));
+    expect(p.state).toBe('local_corrupt');
     expect(svc.puts).toHaveLength(0);
   });
 
@@ -293,8 +303,8 @@ describe('pull', () => {
     await writeLocal('publish-registry.json', REGISTRY);
     await writeLocal('chart.png', Buffer.from([0x89, 0x50, 0x00, 0x01]));
     await writeLocal('a/b/c/d/e.json', '{}');
-    const r = await pullLedger(opts(svc));
-    expect(r.state).toBe('migrated');
+    const r = await pushLedger(opts(svc));
+    expect(r.state).toBe('pushed');
     expect(svc.puts[0]!.files.map((f) => f.path)).toEqual(['publish-registry.json']);
     expect(r.skipped.map((s) => s.reason).sort()).toEqual(['not_text', 'too_deep']);
   });
@@ -323,9 +333,17 @@ describe('pull', () => {
     const svc = new FakeService();
     await writeLocal('publish-registry.json', REGISTRY);
     await writeLocal('publish-registry.json.tmp-4242', '{"half":');
-    const r = await pullLedger(opts(svc));
-    expect(r.state).toBe('migrated');
+    const r = await pushLedger(opts(svc));
+    expect(r.state).toBe('pushed');
     expect(svc.puts[0]!.files.map((f) => f.path)).toEqual(['publish-registry.json']);
+    expect(r.skipped).toEqual([]);
+    // Pull and prune agree: a temp name from the service is refused, and prune never deletes one.
+    svc.extraFiles = [{ path: 'x.json.tmp-9', content: '{}' }];
+    expect((await pullLedger(opts(svc))).state).toBe('error');
+    svc.extraFiles = [];
+    const pr = await pushLedger(opts(svc, { prune: true }));
+    expect(pr.state).toBe('up_to_date');
+    expect(svc.ledger!.files.has('publish-registry.json')).toBe(true);
   });
 
   it('service names that differ only in case refuse the whole pull', async () => {
@@ -354,7 +372,7 @@ describe('pull', () => {
   it('the sync state lives outside the ledger folder', async () => {
     const svc = new FakeService();
     await writeLocal('publish-registry.json', REGISTRY);
-    await pullLedger(opts(svc));
+    await pushLedger(opts(svc));
     expect(statePath(BRAND, dataDir).startsWith(dir())).toBe(false);
     expect(existsSync(statePath(BRAND, dataDir))).toBe(true);
   });

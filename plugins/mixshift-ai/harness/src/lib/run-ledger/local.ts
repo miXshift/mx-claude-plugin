@@ -45,6 +45,9 @@ export function isSafeLedgerPath(path: string): boolean {
   if (path.includes('..')) return false;
   const segments = path.split('/');
   if (segments.length > 4) return false;
+  // A sync temp name is never a ledger file, in either direction (local ignore, pull,
+  // push --prune all agree because none of them ever sees one as a ledger path).
+  if (TEMP_FILE_RE.test(segments[segments.length - 1]!)) return false;
   return segments.every((s) => SEGMENT_RE.test(s) && !s.endsWith('.') && !RESERVED_SEGMENT_RE.test(s));
 }
 

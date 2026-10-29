@@ -264,8 +264,18 @@ export function failureFrom(json: Json, httpStatus: number): LedgerFailure {
       httpStatus,
     );
   }
-  if (httpStatus === 503 || json.kind === 'ledger_unavailable') {
+  // Only the ledger route's own answer means "store not provisioned yet". Any other
+  // 503 (the platform, an edge proxy, a deploy in progress) is an outage: treat it as
+  // unreachable, so the skill asks before publishing from a possibly stale cache.
+  if (json.kind === 'ledger_unavailable') {
     return failure('unavailable', 'The run ledger store is not available on this MixShift service yet, so the local ledger is used.', httpStatus);
+  }
+  if (httpStatus === 503 || httpStatus === 502 || httpStatus === 504) {
+    return failure(
+      'host_unreachable',
+      'The MixShift service did not answer the run ledger request (HTTP ' + httpStatus + '). Try again in a minute.',
+      httpStatus,
+    );
   }
   if (httpStatus === 409 || json.kind === 'revision_conflict') {
     const server = (json.server ?? {}) as Json;
@@ -280,14 +290,10 @@ export function failureFrom(json: Json, httpStatus: number): LedgerFailure {
   }
   if (json.kind === 'insufficient_scope' || httpStatus === 403) {
     // A service that predates the ledger route gates the unknown path on its full read
-    // set, so a scoped credential gets a 403 there instead of a 404. Only the ledger
-    // route's own gate names context:read alone; anything else is an older service.
+    // set, so a scoped credential gets a 403 there instead of a 404. The ledger route's
+    // own gate always names run_ledger:read; a list without it is an older service.
     const required = json.required_scopes;
-    if (
-      httpStatus === 403 &&
-      Array.isArray(required) &&
-      !(required.length === 1 && required[0] === 'context:read')
-    ) {
+    if (httpStatus === 403 && Array.isArray(required) && !required.includes('run_ledger:read')) {
       return failure(
         'unsupported',
         'This MixShift service does not have the run ledger yet, so the local ledger is used.',

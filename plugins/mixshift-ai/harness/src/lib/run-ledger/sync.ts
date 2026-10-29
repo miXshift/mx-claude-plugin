@@ -40,8 +40,12 @@ export type PullState =
   | 'pulled'
   /** The cache already matched the service. */
   | 'up_to_date'
-  /** The service had none; the local ledger was uploaded once as its first revision. */
-  | 'migrated'
+  /**
+   * The service has none but this computer does. Nothing was uploaded: the skill shows
+   * the user what the local ledger holds (its hub URLs) and, on their yes, `push`
+   * saves it as the first service copy. A local ledger never becomes canonical silently.
+   */
+  | 'local_only'
   /** Neither the service nor the cache has a ledger for this brand. */
   | 'absent'
   /** The service has no ledger route or store, or cannot be reached: the cache is all there is. */
@@ -219,7 +223,21 @@ export async function pullLedger(opts: SyncOptions): Promise<SyncResult<PullStat
         skipped: local.skipped,
       };
     }
-    return migrate(opts, dir, local, got.tenant);
+    const corrupt = corruptJsonFiles(local.files);
+    return {
+      ...base(
+        opts,
+        dir,
+        'local_only',
+        `The MixShift service has no run ledger for this brand, but this computer has one (${local.files.size} files). ` +
+          'Nothing was uploaded. Confirm with the user that its hub URLs are the brand\'s, then run ' +
+          '`mixshift report ledger push` to save it as the service copy.',
+      ),
+      revision: 0,
+      corrupt,
+      local_files: local.files.size,
+      skipped: local.skipped,
+    };
   }
 
   return applyServer(opts, dir, local, got.ledger, state, got.tenant);
@@ -231,13 +249,17 @@ function unavailableMessage(local: LocalLedger): string {
     : 'The MixShift service run ledger is not available, and this computer has no local ledger for this brand.';
 }
 
-/** The migration path: the service has no ledger, the cache does. Upload it once. */
-async function migrate(
+/**
+ * The first upload: the service has no ledger, the cache does. Only `push` runs it
+ * (after the user confirmed the local ledger at run start, or after this run's first
+ * publish), always at base revision 0, so it can never overwrite a service ledger.
+ */
+async function uploadFirst(
   opts: SyncOptions,
   dir: string,
   local: LocalLedger,
   tenant: string | null,
-): Promise<SyncResult<PullState>> {
+): Promise<SyncResult<PushState>> {
   const corrupt = corruptJsonFiles(local.files);
   if (corrupt.length > 0) {
     return {
@@ -245,8 +267,8 @@ async function migrate(
         opts,
         dir,
         'local_corrupt',
-        'The local run ledger has JSON files that do not parse, so it was not uploaded to the MixShift service. ' +
-          'Fix or remove them, then pull again.',
+        'The local run ledger has JSON files that do not parse, so it was not saved to the MixShift service. ' +
+          'Fix or remove them, then push again.',
       ),
       revision: 0,
       corrupt,
@@ -266,11 +288,12 @@ async function migrate(
       ...base(
         opts,
         dir,
-        unavailable ? 'gateway_unavailable' : 'error',
+        put.kind === 'revision_conflict' ? 'conflict' : unavailable ? 'gateway_unavailable' : 'error',
         put.kind === 'revision_conflict'
-          ? 'Another session saved this brand\'s run ledger to the MixShift service a moment ago. Pull again.'
+          ? 'Another session saved this brand\'s run ledger to the MixShift service a moment ago. Nothing was ' +
+            'overwritten. Pull again, reconcile, and push.'
           : unavailable
-            ? unavailableMessage(local)
+            ? 'The MixShift service run ledger is not available, so the ledger was saved on this computer only.'
             : put.friendly,
       ),
       revision: 0,
@@ -294,8 +317,8 @@ async function migrate(
     ...base(
       opts,
       dir,
-      'migrated',
-      `Uploaded this computer's run ledger (${local.files.size} files) to the MixShift service as its first revision. ` +
+      'pushed',
+      `Saved this run ledger to the MixShift service as its first revision (${local.files.size} files). ` +
         'From now on the service copy is the one every session reads.',
     ),
     revision: put.revision,
@@ -653,21 +676,7 @@ async function firstPush(opts: SyncOptions, dir: string, local: LocalLedger): Pr
       skipped: local.skipped,
     };
   }
-  const first = await migrate(opts, dir, local, got.tenant);
-  const state: PushState =
-    first.state === 'migrated'
-      ? 'pushed'
-      : first.state === 'local_corrupt' || first.state === 'gateway_unavailable'
-        ? first.state
-        : 'error';
-  return {
-    ...first,
-    state,
-    message:
-      first.state === 'migrated'
-        ? `Saved this run ledger to the MixShift service as its first revision (${local.files.size} files).`
-        : first.message,
-  };
+  return uploadFirst(opts, dir, local, got.tenant);
 }
 
 export interface StatusResult {

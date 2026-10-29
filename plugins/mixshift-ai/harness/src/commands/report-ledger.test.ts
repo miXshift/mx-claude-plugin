@@ -78,15 +78,15 @@ describe('report ledger', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('pull migrates a local ledger once: state migrated, exit 0', async () => {
+  it('pull with only a local ledger uploads nothing: state local_only, exit 0', async () => {
     const ledger = join(dir, 'clients', 'acme-goods', 'runs', 'mx-monthly-report-max');
     await mkdir(ledger, { recursive: true });
     await writeFile(join(ledger, 'publish-registry.json'), '{"client_hub_url":"https://example.test/h"}');
     const put = vi.fn(async () => ({ ok: true as const, status: 'created' as const, revision: 1, tenant: '42' }));
     setRunLedgerClientFactoryForTests(() => fakeClient({ put }));
     const r = await run('pull', '--brand', 'acme-goods');
-    expect(r.state).toBe('migrated');
-    expect(put).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ ok: true, state: 'local_only', local_files: 1 });
+    expect(put).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
   });
 

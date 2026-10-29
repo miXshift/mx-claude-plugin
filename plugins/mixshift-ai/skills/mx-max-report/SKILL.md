@@ -208,17 +208,23 @@ mixshift report ledger pull --brand <brand-slug> --json
 `<brand-slug>` is the slug `mixshift brand list` shows. Read `state`, not only the exit code:
 
 - `pulled` or `up_to_date`: the service ledger is in the cache folder (`local_dir`). Use it.
-- `migrated`: the service had no ledger, so this computer's ledger was uploaded once as
-  the first service copy. Use it, and say so in one line.
+- `local_only`: the service has no ledger, but this computer has one, and nothing was
+  uploaded. Never make it the service copy silently. Show the user the hub URLs it holds
+  (`client_hub_url` and `internal_hub_url` in `publish-registry.json`, or the registry
+  file an older run wrote) and the last period it records, and ask whether those are this
+  brand's hubs. On their yes, run `mixshift report ledger push --brand <brand-slug> --json`
+  (`pushed` means it is now the service copy) and use it. On a no, or if `corrupt` names
+  the registry, run "Find the hub".
 - `absent`: no ledger on the service or on this computer. Run "Find the hub" below
   before Step 8 publishes anything.
-- `gateway_unavailable`: the MixShift service predates the ledger or cannot be reached.
-  Use the local ledger in `local_dir` if there is one. If there is none, run "Find the
-  hub". Say once that this run's ledger is saved on this computer only. When
-  `failure.kind` is `host_unreachable` (a network failure, not an older service), the
-  local copy may be behind a session elsewhere: try the pull once more, and before
-  republishing from the local copy, ask the user to confirm no one has published this
-  brand since.
+- `gateway_unavailable`: read `failure.kind`.
+  - `unsupported` or `unavailable` (the service predates the ledger): use the local
+    ledger in `local_dir` if there is one; if there is none, run "Find the hub". Say once
+    that this run's ledger is saved on this computer only.
+  - `host_unreachable` (the service did not answer): try the pull again in a minute. If it
+    still fails, the local copy may be behind a session elsewhere, so never publish from
+    it on your own: show the user its hub URLs and last period and get their confirmation
+    that no one has published this brand since, or run "Find the hub".
 - `diverged`: a ledger file changed both here and on the service. Show the user the two
   versions of each file in `diverged` and ask which is right. Take the service copy with
   `pull --force` only on their word (the local copies are kept aside). Never pick one
@@ -227,8 +233,8 @@ mixshift report ledger pull --brand <brand-slug> --json
   ledger before but the service has none for this sign-in (`server_missing`), or the
   cache belongs to a different MixShift sign-in (`other_account`). Ask the user to
   confirm the account and the two hub URLs.
-- `local_corrupt`: a ledger file does not parse, so nothing was uploaded. Name the files
-  (`corrupt`), use what parses, and if `publish-registry.json` is among them treat the
+- `corrupt` (on any state) names local JSON files that do not parse; they are never
+  uploaded. Use what parses, and if `publish-registry.json` is among them treat the
   registry as missing.
 - `error`: say what failed (`message`), then treat the ledger as unavailable and run
   "Find the hub" before publishing.
@@ -1529,24 +1535,39 @@ any session on any computer finds last period's ledger. The local folder
 write the files there, and sync with the service at both ends of the run.
 
 - **At run start**, `mixshift report ledger pull --brand <brand-slug> --json` (Step 0).
-  When the service has none but this computer does, the pull uploads the local ledger
-  once, then proceeds.
+  When the service has none but this computer does (`local_only`), nothing is uploaded
+  until the user confirms its hub URLs; then `push` saves it as the service copy.
 - **After publishing**, once the approved write-backs and this period's fragments are in
   the folder: `mixshift report ledger push --brand <brand-slug> --json`. `pushed` or
-  `up_to_date` means it is saved. `gateway_unavailable` means it is saved on this computer
-  only: say so in the handover, because a session elsewhere will not see it. Run
-  `mixshift report ledger push` after any later edit to the ledger too.
+  `up_to_date` means it is saved. Run `mixshift report ledger push` after any later edit
+  to the ledger too. Every other push state means the ledger was NOT saved to the
+  service. Say so in the handover in those words, plus what to do:
+  - `gateway_unavailable`: saved on this computer only, so a session elsewhere will not
+    see it. Push again from this computer when the service answers.
+  - `local_corrupt`: the files in `corrupt` do not parse. Fix them, then push again.
+  - `other_account`: this computer's ledger belongs to a different MixShift sign-in.
+    Sign in to the account that owns this brand, then push.
+  - `error` with `failure.kind` `insufficient_scope`: this sign-in cannot save the run
+    ledger. Sign in with the MixShift plugin, or ask an admin for a credential with run
+    history write.
+  - Any other `error`: quote `message` and push again later.
 - **When the push says `conflict` or `pull_first`**, another session saved this brand's
-  ledger since this run read it. Never delete or overwrite the other run's entries to make
+  ledger since this run read it. A lost first-save race is this case too. It is never a
+  reason to run "Find the hub". Never delete or overwrite the other run's entries to make
   the push go through. Pull again:
   - Files only one side changed merge on their own (yours stay as local edits).
   - When both runs changed the same file (usually `publish-registry.json`), the pull says
-    `diverged`. Run `pull --force`: the service copy lands in the folder and this run's
+    `diverged`. Show the user both versions and ask before anything is replaced. Only on
+    their word, run `pull --force`: the service copy lands in the folder and this run's
     copy is kept aside at `kept_aside`. Then merge this run's entries (its period, its
     fragment paths, its commitments) from the kept-aside copy into the pulled file,
     keeping every entry of both runs.
-  - Push again. If both runs published the same period, ask the user which brief stands
-    before merging.
+  - If the two copies record different `client_hub_url` or `internal_hub_url` values,
+    stop: two hubs exist for this brand. Show the user both URLs and ask which one the
+    client has. Never pick one, and never merge by keeping the newer one.
+  - If both runs published the same period, ask the user which brief stands before
+    merging.
+  - Push again.
 - **When the ledger is missing** (no service copy and no local copy), the run still
   works. The commitments come from Step 1's other sources, every prior claim is
   unverified, and there is no baseline to diff. The one thing it must not do is publish
