@@ -12,6 +12,13 @@
  *   - Never guesses the brand: the committed profile's legacySellerId must
  *     map to exactly ONE brand in the local registry (index.yaml). Zero or
  *     multiple matches → skip emission silently.
+ *   - DSP (`dsp.*`) operations are never emitted from here. They are not
+ *     seller- or profile-scoped (the advertiser rides only in the
+ *     Amazon-Ads-AccountId header), so the selected seller says nothing about
+ *     which brand they belong to; filing them by seller put a DSP change on
+ *     whichever brand happened to be selected. The server already records the
+ *     committed change on the brand that declares the advertiser, so this
+ *     second event is dropped rather than risk one that disagrees with it.
  *
  * DEDUPE NOTE: the server already projects mcp_ads_changes rows into the
  * timeline read path, so this native event is ADDITIVE detail (richer
@@ -69,7 +76,16 @@ export interface AdsEmitOptions {
 
 export type AdsEmitResult =
   | { posted: true; id: string; brand_slug: string }
-  | { posted: false; reason: 'no_brand' | 'post_failed' | 'error'; detail?: string };
+  | {
+      posted: false;
+      reason: 'no_brand' | 'post_failed' | 'error' | 'server_recorded';
+      detail?: string;
+    };
+
+/** DSP operations are advertiser-scoped, not seller-scoped. */
+export function isDspOperation(operation: string): boolean {
+  return operation.startsWith('dsp.');
+}
 
 /**
  * Emit one action.ads_change_committed event for a successful commit.
@@ -82,6 +98,10 @@ export async function emitAdsCommitEvent(
 ): Promise<AdsEmitResult> {
   const env = options.env ?? process.env;
   try {
+    if (isDspOperation(input.operation)) {
+      debugLog(env, `ads-emit: ${input.operation} is advertiser-scoped; the server records it`);
+      return { posted: false, reason: 'server_recorded' };
+    }
     const brandSlug = await resolveBrandSlugForSeller(
       input.legacySellerId,
       options.dataDirOverride,

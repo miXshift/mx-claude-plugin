@@ -166,6 +166,50 @@ describe('emitAdsCommitEvent', () => {
     expect(posts[0]!.model_id).toBe('claude-fable-5');
   });
 
+  it.each([
+    'dsp.create_campaigns',
+    'dsp.create_ad_groups',
+    'dsp.create_targets',
+    'dsp.create_ad_associations',
+    'dsp.update_campaigns',
+  ])(
+    'never emits %s: DSP is advertiser-scoped, so the selected seller must not pick the brand',
+    async (operation) => {
+      // The selected seller maps to exactly one brand, which is precisely the
+      // case that used to file a DSP change on that brand's timeline.
+      await writeRegistry([{ slug: 'acme', sellerIds: [1001] }]);
+      const { client, posts } = capturingClient();
+
+      const result = await emitAdsCommitEvent(
+        {
+          operation,
+          legacySellerId: 1001,
+          auditId: 'audit_dsp_1',
+          itemsCount: 1,
+          requestBody: { campaigns: [{ name: 'Example' }] },
+          responsePayload: { success: [{}], error: [] },
+        },
+        { dataDirOverride: testDir, client, env: {} },
+      );
+
+      expect(result).toEqual({ posted: false, reason: 'server_recorded' });
+      expect(posts).toHaveLength(0);
+    },
+  );
+
+  it('still emits for the sponsored families (sp, sb, sd) exactly as before', async () => {
+    await writeRegistry([{ slug: 'acme', sellerIds: [1001] }]);
+    for (const operation of ['sp.create_campaigns', 'sb.update_keywords', 'sd.update_targets']) {
+      const { client, posts } = capturingClient();
+      const result = await emitAdsCommitEvent(
+        { operation, legacySellerId: 1001, auditId: 'audit_x' },
+        { dataDirOverride: testDir, client, env: {} },
+      );
+      expect(result).toEqual({ posted: true, id: 'evt_9', brand_slug: 'acme' });
+      expect(posts).toHaveLength(1);
+    }
+  });
+
   it('SKIPS silently when the seller maps to no registry brand (never guesses)', async () => {
     await writeRegistry([{ slug: 'acme', sellerIds: [574] }]);
     const { client, posts } = capturingClient();
