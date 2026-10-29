@@ -36,6 +36,10 @@ const allowedToolEnum = z.enum([
   // The user's own forecast inputs (the monthly sponsored budget) via
   // `mixshift forecast budget set`; user-confirmed, pairs with write_gated.
   'forecast_write',
+  // Guarded FBA inbound shipment writes via `mixshift amazon call
+  // fulfillment_inbound.* --commit` (dry-run/preview by default; every
+  // fee-committing commit is user-confirmed against its preview).
+  'shipping_write',
 ]);
 
 const artifactSchema = z.object({

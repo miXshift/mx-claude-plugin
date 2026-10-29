@@ -1,0 +1,91 @@
+schema_version: 1
+skill_id: mx-amazon-inbound
+display_name: FBA inbound shipment walk (look up, build, confirm, label, cancel)
+version: "0.1.0"
+description: >
+  Walk an FBA inbound shipment from start to finish, one confirmed step at a
+  time: create the plan, packing, placement, carrier, labels and tracking, or
+  cancel a plan. Every fee Amazon would charge (placement, a partnered
+  carrier, a late cancel) is shown to you first and committed only after you
+  say yes, and a repeated request never sends the same step twice. Also the
+  look-up side for everyone: plan and shipment status, tracking, past boxes
+  reused as case-pack templates, and prep details. Building or changing a
+  shipment needs a MixShift service credential with shipment write access,
+  which your MixShift admin creates; a normal plugin sign-in gets the look-up
+  side plus a plain explanation of what to ask the admin for.
+
+# Tier 3 + write_gated + review_required: always, the same posture as the other
+# write skills. Modeled per_account because every call targets one merchant
+# (amazonSellerId / legacySellerId). No brand context, no library SQL.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 3
+# shipping_write covers `mixshift amazon call fulfillment_inbound.* --commit`
+# (dry run by default; every fee-committing commit is user-confirmed against its
+# preview). file_read/file_write cover request bodies and the saved label PDF.
+allowed_tools: [file_read, file_write, shipping_write]
+side_effect_policy: write_gated   # inbound writes via --commit only; dry run default, fees user-confirmed against a preview
+review_required: always           # a fee is committed only after the user confirms the exact preview
+sql_ids: []   # no library SQL; the look-up half reads Amazon live
+
+# Harness commands the skill calls
+harness_commands:
+  - mixshift auth status
+  - mixshift auth service-setup
+  - mixshift amazon merchants
+  - mixshift amazon operations --family "Fulfillment Inbound"
+  - mixshift amazon call <operation> [selectors] [--query k=v] [--path k=v] [--body-file <f> | --body <json>] [--commit --preview-id <id> --approved-quote-hash <hash> --idempotency-key <key>]
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: inbound-request-and-labels
+    type: json_artifact   # request bodies written to disk and the saved label file; closest schema type
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: pro
+trigger_phrases:
+  - create an inbound shipment
+  - create an fba shipment
+  - build an fba shipment
+  - send inventory to fba
+  - send inventory to amazon
+  - new inbound plan
+  - create an inbound plan
+  - set packing information
+  - confirm placement
+  - confirm the placement option
+  - confirm the carrier for my shipment
+  - print fba box labels
+  - add tracking to my inbound shipment
+  - cancel an inbound plan
+  - reuse past box contents
+  - case pack from a past shipment
+  - prep details for my skus
+notes: >
+  Guided walk over MixShift's fulfillment_inbound.* operations (Amazon
+  Fulfillment Inbound 2024-03-20). Amazon's inbound plan is the only state.
+
+  Access: the writes need shipment write access, which only an admin-issued
+  service credential can hold. A personal plugin sign-in gets the look-up half
+  (Part A) and a plain explanation; `mixshift auth status --json` says which
+  kind of sign-in is in use (credential: human | service). A personal sign-in
+  on the same machine wins over a service credential, so the service credential
+  is installed in its own MIXSHIFT_DATA_DIR.
+
+  Write contract: a write is a dry run unless --commit is passed. Four steps
+  commit money (confirm packing option, confirm placement option, confirm
+  transportation options with a partnered carrier, cancel plan): their dry run
+  returns a one-time previewId + quoteHash (good for 30 minutes or until the
+  option expires), the commit sends both back, and the service re-reads the live
+  option first and refuses (quote_changed, option_not_offered) rather than
+  commit a fee that moved. Every commit carries an --idempotency-key; a resend
+  with the same key replays the first commit.
+
+  The look-up half reuses the operations toured in mx-amazon-retail; this skill
+  adds the recipes, not a second tour.
+
+  Required state (not modeled in schema fields):
+    - signed in (`mixshift auth login`) for the look-up half
+    - a service credential with shipment write access for the build half
+    - an Amazon seller authorization with the Fulfillment role (same as the reads)

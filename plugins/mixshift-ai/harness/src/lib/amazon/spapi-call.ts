@@ -54,7 +54,7 @@ export interface SpApiOperationView {
   version: string;
   /** Which app role gates it (informational; Amazon enforces). */
   role: string;
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   pathTemplate: string;
   /** Query param the service fills with the resolved marketplaceId. */
   marketplaceParam?: string;
@@ -94,6 +94,17 @@ export interface SpApiCallInput {
   query?: Record<string, SpApiQueryValue>;
   /** JSON body, only when the operation's catalog entry marks body: required. */
   body?: unknown;
+  /** Guarded FBA inbound writes only (shipping:write). `false` COMMITS; omit it
+   *  and the service answers a dry run (a preview, for a fee-committing step).
+   *  Never sent as `true`: leaving it out is how a call stays a dry run. */
+  dryRun?: false;
+  /** Commit of a fee-committing inbound step: the preview's id. */
+  previewId?: string;
+  /** Commit of a fee-committing inbound step: the preview's quoteHash. */
+  approvedQuoteHash?: string;
+  /** Commits only: the caller's own key (8-128 chars). A resend with the same
+   *  key replays the first commit and never reaches Amazon twice. */
+  idempotencyKey?: string;
 }
 
 export interface SpApiCallSuccess {
@@ -104,6 +115,10 @@ export interface SpApiCallSuccess {
   marketplaceId: string;
   /** Amazon's response body, verbatim. Shape per the operation's docsUrl. */
   payload: unknown;
+  /** Guarded inbound writes only: the service's whole answer (a dry run's
+   *  `previewId` / `quoteHash` / `quote`, or a commit's `outcome` / `message` /
+   *  `operationId`). A write answers with these rather than a bare Amazon body. */
+  write?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +179,9 @@ function isAwdOperation(operation: string): boolean {
   return operation === 'awd' || operation.startsWith('awd.');
 }
 
-/** Execute one cataloged SP-API operation. Read-only against Amazon. */
+/** Execute one cataloged SP-API operation. Reads go straight through; the
+ *  guarded inbound writes preview by default and reach Amazon only with
+ *  `dryRun: false`. */
 export async function spapiCall(
   input: SpApiCallInput,
   opts: ReportClientOptions = {},
@@ -192,11 +209,22 @@ export async function spapiCall(
   }
   if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
   if (input.body !== undefined) body.body = input.body;
+  // Guarded inbound writes. Each is sent only when the caller set it, so a call
+  // that sets none stays exactly what it was (a read, or a dry run).
+  if (input.dryRun === false) body.dryRun = false;
+  if (input.previewId) body.previewId = input.previewId;
+  if (input.approvedQuoteHash) body.approvedQuoteHash = input.approvedQuoteHash;
+  if (input.idempotencyKey) body.idempotencyKey = input.idempotencyKey;
 
   // 60s: Data Kiosk getDocument and orders searches can be slow under load,
   // and unlike report documents the payload comes back inline.
+  // A commit (dryRun:false) changes state at Amazon. A lost answer on one is an
+  // UNKNOWN outcome, not an unreachable service: the caller must resend with the
+  // same idempotencyKey or read the plan, never retry as a new request. Reads
+  // and dry runs change nothing and keep the old wording.
+  const mayChangeState = input.dryRun === false;
   const r = await amazonRequest(
-    { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi' },
+    { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi', mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
   );
   if (!r.ok) {
@@ -218,6 +246,14 @@ export async function spapiCall(
       message: `call response missing operation echo`,
     };
   }
+  // A guarded inbound write answers with its own shape (dryRun is a boolean on
+  // it and on nothing else): keep the whole answer so a preview's id and hash
+  // are not lost.
+  const answer = json as Record<string, unknown>;
+  const write =
+    typeof answer.dryRun === 'boolean'
+      ? Object.fromEntries(Object.entries(answer).filter(([k]) => k !== 'ok'))
+      : undefined;
   return {
     ok: true,
     operation: json.operation,
@@ -225,5 +261,6 @@ export async function spapiCall(
     legacySellerId: Number(json.legacySellerId ?? 0),
     marketplaceId: String(json.marketplaceId ?? ''),
     payload: json.payload,
+    ...(write ? { write } : {}),
   };
 }

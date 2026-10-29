@@ -15,7 +15,7 @@ description: >
   seller's live deals, coupons, price discounts, and basket-building offers).
   Read-only. No brand setup needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.5.1"
+  version: "0.5.2"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -510,6 +510,9 @@ Gotchas:
 - **Case packs:** `templateName` on a box names the template it was packed
   with. Amazon has no API to read or apply the templates themselves, and none
   for FBA capacity limits.
+- **To CREATE or change an inbound shipment** (new plan, packing, placement,
+  carrier, labels, tracking, cancel), use `mx-amazon-inbound`. It is a separate
+  guided skill with its own confirm-before-fee contract; nothing here writes.
 
 ### Sales (v1) - units, orders, sales aggregates
 
