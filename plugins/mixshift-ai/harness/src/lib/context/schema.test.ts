@@ -123,6 +123,57 @@ describe('contextSchema — basic shape', () => {
     expect(contextSchema.safeParse(bad('acme-corp')).success).toBe(true);
   });
 
+  describe('DSP advertiser declaration on an account', () => {
+    const withAccount = (extra: Record<string, unknown>) => ({
+      schema_version: 1,
+      brand_slug: 'acme',
+      brand_name: 'Acme',
+      last_updated: '2026-05-13',
+      accounts: [
+        {
+          seller_id: 1,
+          seller_name: 'X',
+          account_type: 'SC',
+          status: 'active',
+          role: 'primary',
+          ...extra,
+        },
+      ],
+      sources: {
+        ad_metrics: 'a',
+        ops_revenue: 'b',
+        ops_revenue_field: 'c',
+        ops_units_field: 'd',
+        ops_date_field: 'e',
+      },
+      management: { primary_metric: 'ACOS', acos_target_pct: 20, attribution_window_days: 14 },
+    });
+
+    it('accepts and KEEPS dsp_advertiser_id and dsp_advertiser_ids (not stripped on parse)', () => {
+      const r = contextSchema.safeParse(
+        withAccount({ dsp_advertiser_id: '1234567890', dsp_advertiser_ids: ['1234567890', 'ENTITY1ABC'] }),
+      );
+      expect(r.success).toBe(true);
+      if (r.success) {
+        expect(r.data.accounts[0]!.dsp_advertiser_id).toBe('1234567890');
+        expect(r.data.accounts[0]!.dsp_advertiser_ids).toEqual(['1234567890', 'ENTITY1ABC']);
+      }
+    });
+
+    it('rejects values the server could not match', () => {
+      for (const bad of ['', 'has space', 'a'.repeat(65), 'null', 'x;y']) {
+        expect(contextSchema.safeParse(withAccount({ dsp_advertiser_id: bad })).success).toBe(false);
+      }
+      expect(contextSchema.safeParse(withAccount({ dsp_advertiser_ids: ['ok', 'not ok'] })).success).toBe(false);
+      // an unquoted YAML number arrives as a number, which is refused rather than coerced
+      expect(contextSchema.safeParse(withAccount({ dsp_advertiser_id: 1234567890 })).success).toBe(false);
+    });
+
+    it('stays optional', () => {
+      expect(contextSchema.safeParse(withAccount({})).success).toBe(true);
+    });
+  });
+
   it('rejects bad account enums', () => {
     const ctx = {
       schema_version: 1,

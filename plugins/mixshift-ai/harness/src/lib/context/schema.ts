@@ -24,6 +24,16 @@ import { z } from 'zod';
 // Sub-shapes
 // -----------------------------------------------------------------------
 
+// A DSP advertiser id as the server reads it from context.yaml: an opaque token
+// (a numeric dspAdvertiserId or an ENTITY... id), 1-64 of A-Z a-z 0-9 _ -. Quote
+// it in YAML ("1234567890"): an unquoted long number loses digits when parsed.
+// Same format the MixShift server accepts, so a value this accepts is one the
+// server can match to this brand.
+const dspAdvertiserIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/, 'a DSP advertiser id is 1-64 letters, digits, "_" or "-" (quote it in YAML)')
+  .refine((v) => !/^(null|none)$/i.test(v), 'not a DSP advertiser id');
+
 const accountSchema = z.object({
   seller_id: z.number().int().positive(),
   seller_name: z.string().min(1),
@@ -40,6 +50,11 @@ const accountSchema = z.object({
   region: z.string().nullable().optional(),
   ads_active: z.boolean().optional(),
   retail_active: z.boolean().optional(),
+  // The DSP advertiser(s) this brand owns. MixShift files a DSP change on the
+  // brand that declares its advertiser (and on none when two brands claim it),
+  // so until one is declared a brand's DSP changes stay unassigned.
+  dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
+  dsp_advertiser_ids: z.array(dspAdvertiserIdSchema).optional(),
 });
 
 const sourcesSchema = z.object({

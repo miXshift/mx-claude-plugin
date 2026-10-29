@@ -47,6 +47,12 @@ shapes:
       account_type: [SC, VC]
       status: [active, wind_down, inactive]
       role: [primary, legacy, secondary]
+    optional: [dsp_advertiser_id, dsp_advertiser_ids]
+    note: |
+      dsp_advertiser_id (string) / dsp_advertiser_ids (list of strings): the DSP
+      advertiser(s) this brand owns, 1-64 of letters, digits, "_" or "-". Quote
+      numeric ids. MixShift files a DSP change on the brand that declares the
+      advertiser; with none (or two brands claiming it) it stays unassigned.
 
   sources:
     required:
