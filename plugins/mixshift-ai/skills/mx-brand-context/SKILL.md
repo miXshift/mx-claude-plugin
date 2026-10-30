@@ -879,12 +879,12 @@ If validation fails:
 
 Do not hand off to downstream skills with a failing validator.
 
+The manifest's `sql_ids` list is the SQL inventory contract. New SQL must be added to `shared/sql-library/catalog.yaml` and the relevant skill manifest before consumption; review changes by comparing that inventory with the prior committed manifest.
+
 ### Step 5 — publish, then declare the DSP advertiser (once validation passes)
 
 1. Publish the finished context: `mixshift context push --brand <brand-slug>` (the same publish setup does anyway). The automatic publish after a write is throttled and may not have run yet, and `assign` refuses while `context.yaml` has unpublished changes, so do this first.
 2. For each advertiser id the user gave in Phase 2 (none, if they said no or skip): run `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json` (a dry run), show the user the lines it would change, and only on their yes run it again with `--commit --expect <plan_hash>` (the hash from the dry run you showed). One advertiser at a time. If it refuses, relay why and let the user decide.
-
-The manifest's `sql_ids` list is the SQL inventory contract. New SQL must be added to `shared/sql-library/catalog.yaml` and the relevant skill manifest before consumption; review changes by comparing that inventory with the prior committed manifest.
 
 ---
 

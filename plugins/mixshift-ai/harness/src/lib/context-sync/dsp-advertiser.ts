@@ -393,7 +393,10 @@ function removePair(t: Text, map: YAMLMap, pair: Pair, pl: PairLines): TextEdit 
   if (!prefix.includes('-')) return { start: pl.start, end: pl.end, text: '' };
   const next = map.items[map.items.indexOf(pair) + 1]?.key as { range?: Range3 } | undefined;
   const nks = next?.range?.[0];
-  return { start: pl.ks, end: nks !== undefined && nks >= pl.end ? nks : pl.end, text: '' };
+  if (nks === undefined || nks < pl.end) return { start: pl.ks, end: pl.end, text: '' };
+  // Keep the lines between the DSP pair and the next key (often a comment about
+  // that key) and move the "- " onto the next key.
+  return { start: pl.start, end: nks, text: t.s.slice(pl.end, t.ls(nks)) + prefix };
 }
 
 const MULTI_LINE_FLOW_MESSAGE =
@@ -552,6 +555,17 @@ function finish(
   const verdict = verifyResult(next, expected);
   if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
   return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
+}
+
+/** Test seam: run the finish-step proofs on an arbitrary edited text, as if a splice made it. */
+export function proveDspEdit(
+  before: string,
+  after: string,
+  ctx: { op: 'assign' | 'unassign'; id: string; targetIdx: number },
+  expected: string[],
+): PlanResult {
+  const edit: PlanEdit = ctx.op === 'assign' ? 'added' : 'removed';
+  return finish(before, [{ start: 0, end: before.length, text: after }], expected, null, edit, ctx);
 }
 
 /**

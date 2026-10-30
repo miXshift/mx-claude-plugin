@@ -20,6 +20,7 @@ import {
   gatewayParseDspAdvertiserIds,
   planDspAssignment,
   planDspUnassignment,
+  proveDspEdit,
 } from '../lib/context-sync/dsp-advertiser.js';
 import { track } from '../lib/telemetry/index.js';
 import type { DspAdvertiserLookupResult, WireManifestDoc } from '../lib/context-sync/types.js';
@@ -999,5 +1000,95 @@ describe('command: expect, telemetry, invalid original (review round 3)', () => 
       expect(c).not.toContain(ID);
       expect(c).not.toContain('acme-goods');
     }
+  });
+});
+
+describe('the finish-step proofs refuse a bad splice (proveDspEdit)', () => {
+  const ID3 = '323456789012345678';
+  const two = (a: string, b: string) => contextYaml(`${a}\n${b}`);
+  const withDsp = (acc: string, line: string) => `${acc}\n    ${line}`;
+  const refuses = (r: ReturnType<typeof proveDspEdit>) => {
+    expect(r).toMatchObject({ ok: false, reason: 'unexpected_change' });
+  };
+
+  describe('assign ID on account 1 (index 0)', () => {
+    const before = two(ACCOUNT_A, ACCOUNT_B);
+    const prove = (after: string) => proveDspEdit(before, after, { op: 'assign', id: ID, targetIdx: 0 }, [ID]);
+    it('accepts the correct edit', () => {
+      expect(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), ACCOUNT_B)).ok).toBe(true);
+    });
+    it('the id under the wrong account', () => {
+      refuses(prove(two(ACCOUNT_A, withDsp(ACCOUNT_B, `dsp_advertiser_id: "${ID}"`))));
+    });
+    it('an account merged into the previous one (its dash lost)', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), ACCOUNT_B.replace('  - seller_id', '    seller_id'))));
+    });
+    it('a non-DSP value changed', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), ACCOUNT_B).replace('role: primary', 'role: legacy')));
+    });
+    it('an extra, unconfirmed id on the target', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_ids: ["${ID}", "${ID3}"]`), ACCOUNT_B)));
+    });
+    it('an extra, unconfirmed id on another account', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), withDsp(ACCOUNT_B, `dsp_advertiser_id: "${ID3}"`))));
+    });
+    it('the account count changed', () => {
+      refuses(prove(contextYaml(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`))));
+      refuses(prove(contextYaml([withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), ACCOUNT_B, ACCOUNT_C].join('\n'))));
+    });
+    it('the id written unquoted, or under a nested key', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: ${ID}`), ACCOUNT_B)));
+      refuses(prove(two(withDsp(ACCOUNT_A, `meta:\n      dsp_advertiser_id: "${ID}"`), ACCOUNT_B)));
+    });
+    it('a comment changed (only the line check sees it)', () => {
+      refuses(prove(two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), ACCOUNT_B).replace('# main account', '# edited')));
+    });
+  });
+
+  describe('first-key DSP line', () => {
+    const FIRST = (dsp: string) =>
+      [`  - ${dsp}`, '    seller_id: 111', '    seller_name: Acme Goods US', '    account_type: SC', '    status: active', '    role: primary'].join('\n');
+    it('assign: a convert that loses the dash', () => {
+      const before = two(ACCOUNT_B, FIRST(`dsp_advertiser_id: "${ID2}"`));
+      const after = two(ACCOUNT_B, FIRST(`dsp_advertiser_ids: ["${ID2}", "${ID}"]`).replace('  - dsp_', '    dsp_'));
+      refuses(proveDspEdit(before, after, { op: 'assign', id: ID, targetIdx: 1 }, [ID2, ID]));
+    });
+    it('unassign: a removal that also drops the dash', () => {
+      const before = two(ACCOUNT_B, FIRST(`dsp_advertiser_id: "${ID}"`));
+      const after = two(ACCOUNT_B, FIRST('x').split('\n').slice(1).join('\n'));
+      refuses(proveDspEdit(before, after, { op: 'unassign', id: ID, targetIdx: -1 }, []));
+    });
+    it('unassign keeps a comment that sits between the DSP line and the next key', () => {
+      const item = [`  - dsp_advertiser_id: "${ID}"`, '    # the storefront finance reconciles', '    seller_id: 111', '    seller_name: Acme Goods US', '    account_type: SC', '    status: active', '    role: primary'].join('\n');
+      const r = planDspUnassignment(two(ACCOUNT_B, item), ID);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.content).toContain('    # the storefront finance reconciles\n  - seller_id: 111\n');
+      expect(r.content).not.toContain(ID);
+      expect(r.removed_lines).not.toContain('    # the storefront finance reconciles');
+    });
+  });
+
+  describe('unassign ID (account 1 holds it, account 2 holds ID2)', () => {
+    const before = two(withDsp(ACCOUNT_A, `dsp_advertiser_id: "${ID}"`), withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}"]`));
+    const prove = (after: string) => proveDspEdit(before, after, { op: 'unassign', id: ID, targetIdx: -1 }, [ID2]);
+    it('accepts the correct edit', () => {
+      expect(prove(two(ACCOUNT_A, withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}"]`))).ok).toBe(true);
+    });
+    it('the id moved to the other account instead of removed', () => {
+      refuses(prove(two(ACCOUNT_A, withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}", "${ID}"]`))));
+    });
+    it("another account's id removed too", () => {
+      refuses(prove(two(ACCOUNT_A, ACCOUNT_B)));
+    });
+    it('a non-DSP value changed', () => {
+      refuses(prove(two(ACCOUNT_A, withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}"]`)).replace('status: active', 'status: inactive')));
+    });
+    it('an account merged into the previous one', () => {
+      refuses(prove(two(ACCOUNT_A, withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}"]`).replace('  - seller_id', '    seller_id'))));
+    });
+    it('the account count changed', () => {
+      refuses(prove(contextYaml(withDsp(ACCOUNT_B, `dsp_advertiser_ids: ["${ID2}"]`))));
+    });
   });
 });
