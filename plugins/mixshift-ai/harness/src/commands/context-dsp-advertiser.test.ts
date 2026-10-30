@@ -204,7 +204,10 @@ beforeEach(async () => {
     stderr.push(String(c));
     return true;
   });
-  vi.mocked(loadCredentials).mockClear();
+  vi.mocked(loadCredentials).mockReset();
+  vi.mocked(loadCredentials).mockImplementation(
+    (await vi.importActual<typeof import('../lib/auth/credentials.js')>('../lib/auth/credentials.js')).loadCredentials,
+  );
   tmpDataDir = await mkdtemp(join(tmpdir(), 'mx-dsp-adv-'));
   h = { lookups: [found()], lookupCalls: [], putDoc: vi.fn(), serverContent: undefined, extraDocs: [] };
   installClient();
@@ -355,14 +358,15 @@ describe('assign', () => {
     expect(h.putDoc).not.toHaveBeenCalled();
   });
 
-  it('refuses several accounts when none is the single primary, and lists them', async () => {
-    const before = await seed(`${ACCOUNT_B}\n${ACCOUNT_C}`);
+  it('uses the first account when none is the single primary (no second question)', async () => {
+    await seed(`${ACCOUNT_B}\n${ACCOUNT_C}`);
+    h.lookups = [found(), found('acme-goods')];
     await assign(ID, '--brand', 'acme-goods', '--commit');
     const out = lastJson();
-    expect(out).toMatchObject({ status: 'refused', reason: 'account_required' });
-    expect(out.accounts).toHaveLength(2);
-    expect(out.message).toContain('seller_id 333');
-    expect(await readCtx()).toBe(before);
+    expect(out).toMatchObject({ status: 'ok', result: 'committed' });
+    expect(out.account.seller_id).toBe(222);
+    const text = await readCtx();
+    expect(text.slice(text.indexOf('seller_id: 222'), text.indexOf('seller_id: 333'))).toContain(`dsp_advertiser_id: "${ID}"`);
   });
 
   it('defaults to the single primary account without a question', async () => {
@@ -554,19 +558,51 @@ describe('assign', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('refuses --commit with a service credential, but allows a dry run', async () => {
+  const SERVICE = { service: { client_id: 'svc', api_base: 'https://api.example.test' } };
+  const HUMAN = { datahub: { user_id: 'u1', email: 'a@example.test', api_base: 'https://api.example.test' } };
+
+  it('refuses --commit with a service-only credential, but a dry run still runs', async () => {
     const before = await seed(ACCOUNT_A);
-    const svc = { credentials: { service: { client_id: 'svc' } }, path: 'x' } as never;
-    vi.mocked(loadCredentials).mockResolvedValueOnce(svc);
+    vi.mocked(loadCredentials).mockResolvedValue({ credentials: SERVICE, path: 'x' } as never);
     await assign(ID, '--brand', 'acme-goods', '--commit');
     expect(lastJson()).toMatchObject({ status: 'refused', reason: 'unattended_credential' });
     expect(h.lookupCalls).toEqual([]);
     expect(await readCtx()).toBe(before);
     stdout = [];
     process.exitCode = undefined;
-    vi.mocked(loadCredentials).mockResolvedValueOnce(svc);
     await unassign(ID, '--brand', 'acme-goods', '--commit');
     expect(lastJson()).toMatchObject({ reason: 'unattended_credential' });
+    stdout = [];
+    process.exitCode = undefined;
+    await assign(ID, '--brand', 'acme-goods');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'dry_run' });
+    expect(await readCtx()).toBe(before);
+  });
+
+  it('lets a session that holds a human sign-in and a service credential commit', async () => {
+    await seed(ACCOUNT_A);
+    vi.mocked(loadCredentials).mockResolvedValue({ credentials: { ...HUMAN, ...SERVICE }, path: 'x' } as never);
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed', verified: true });
+  });
+
+  it('echoes the lines and a plan hash on dry run and commit, and honors --expect', async () => {
+    await seed(ACCOUNT_A);
+    await assign(ID, '--brand', 'acme-goods');
+    const dry = lastJson();
+    expect(dry.plan_hash).toMatch(/^[0-9a-f]{12}$/);
+    stdout = [];
+    await assign(ID, '--brand', 'acme-goods', '--commit', '--expect', '000000000000');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'plan_changed' });
+    expect(h.putDoc).not.toHaveBeenCalled();
+    stdout = [];
+    process.exitCode = undefined;
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit', '--expect', dry.plan_hash);
+    const done = lastJson();
+    expect(done).toMatchObject({ status: 'ok', result: 'committed', plan_hash: dry.plan_hash });
+    expect(done.added_lines).toEqual(dry.added_lines);
   });
 
   it('refuses when an existing advertiser value is unquoted (declares nothing)', async () => {
@@ -600,7 +636,9 @@ describe('dspLookupResultFrom', () => {
     expect(
       dspLookupResultFrom({ ok: true, advertisers: [{ advertiser_id: ID, brands: ['b', 'a'] }] }, 200, ID),
     ).toEqual({ ok: true, advertiser_id: ID, brands: ['a', 'b'] });
-    expect(dspLookupResultFrom({ ok: true, advertisers: [] }, 200, ID)).toMatchObject({ ok: true, brands: [] });
+    expect(dspLookupResultFrom({ ok: true, advertisers: [{ advertiser_id: ID, brands: [] }] }, 200, ID)).toMatchObject({ ok: true, brands: [] });
+    // An answer with no entry for the id is off-contract: unknown, never "no brand".
+    expect(dspLookupResultFrom({ ok: true, advertisers: [] }, 200, ID)).toMatchObject({ ok: false });
   });
 
   it('never reads an unrecognized 200 as "no brand"', () => {
@@ -719,5 +757,72 @@ describe('gatewayParseDspAdvertiserIds parity', () => {
   ];
   it.each(cases)('%s', (_name, text, expected) => {
     expect(gatewayParseDspAdvertiserIds(text)).toEqual(expected);
+  });
+});
+
+
+describe('surgical edit: only the DSP lines change', () => {
+  const insertedLine = `    dsp_advertiser_id: "${ID}"`;
+
+  it('keeps an unquoted long id on another account byte for byte', () => {
+    const text = contextYaml(`${ACCOUNT_A}\n${ACCOUNT_B}\n    legacy_ref: 583038429395722041`);
+    const plan = planDspAssignment(text, ID, '111');
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain('legacy_ref: 583038429395722041');
+    expect(plan.content.replace(`${insertedLine}\n`, '')).toBe(text);
+  });
+
+  it('keeps zip: 01234, 0x1F and 1e3 as written', () => {
+    const text = contextYaml(ACCOUNT_A) + 'zip: 01234\nhex: 0x1F\nexp: 1e3\n';
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content.replace(`${insertedLine}\n`, '')).toBe(text);
+  });
+
+  it('keeps CRLF line endings on every line, including the new one', () => {
+    const text = contextYaml(ACCOUNT_A).replace(/\n/g, '\r\n');
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain(`${insertedLine}\r\n`);
+    expect(plan.content).not.toMatch(/(?<!\r)\n/);
+    expect(plan.content.replace(`${insertedLine}\r\n`, '')).toBe(text);
+  });
+
+  it('keeps non-indented sequences and appends in the same style', () => {
+    const accounts = `${ACCOUNT_A}\n    tags:\n    - a\n    - b\n    dsp_advertiser_ids:\n    - "${ID2}"`;
+    const text = contextYaml(accounts);
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain(`    - "${ID2}"\n    - "${ID}"\n`);
+    expect(plan.content).toContain('    tags:\n    - a\n    - b\n');
+    expect(plan.removed_lines).toEqual([]);
+    expect(gatewayParseDspAdvertiserIds(plan.content)).toEqual([ID2, ID]);
+  });
+
+  it('converts a scalar to a one-line list, appends to a flow list, and removes, touching only DSP lines', () => {
+    const scalar = contextYaml(`${ACCOUNT_A}\n    dsp_advertiser_id: "${ID2}"  # keep me`);
+    const conv = planDspAssignment(scalar, ID);
+    expect(conv.ok && conv.content).toContain(`    dsp_advertiser_ids: ["${ID2}", "${ID}"]  # keep me`);
+    const flow = contextYaml(`${ACCOUNT_A}\n    dsp_advertiser_ids: ["${ID2}"]`);
+    const app = planDspAssignment(flow, ID);
+    expect(app.ok && app.content).toContain(`dsp_advertiser_ids: ["${ID2}", "${ID}"]`);
+    const rem = planDspUnassignment(app.ok ? app.content : '', ID2);
+    expect(rem.ok && rem.content).toContain(`dsp_advertiser_ids: ["${ID}"]`);
+    const gone = planDspUnassignment(scalar, ID2);
+    expect(gone.ok && gone.content).toBe(contextYaml(ACCOUNT_A));
+    for (const r of [conv, app, rem, gone]) {
+      if (!r.ok) throw new Error('plan failed');
+      for (const l of [...r.removed_lines, ...r.added_lines]) expect(l).toMatch(/dsp_advertiser_ids?:/);
+    }
+  });
+
+  it('still plans when the file has no final newline', () => {
+    const text = contextYaml(ACCOUNT_A).replace(/\n$/, '');
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
   });
 });

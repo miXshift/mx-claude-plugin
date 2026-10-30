@@ -419,7 +419,12 @@ export function dspLookupResultFrom(
         a !== null &&
         (a as { advertiser_id?: unknown }).advertiser_id === advertiserId,
     );
-    if (!entry) return { ok: true, advertiser_id: advertiserId, brands: [] };
+    if (!entry) {
+      // The contract answers `brands: []` for an id no brand declares. No entry at all
+      // is an off-contract answer: unknown, never "no brand".
+      const m = 'The MixShift service answered the DSP advertiser lookup without an entry for this advertiser.';
+      return { ok: false, kind: 'unknown', message: m, friendly: m, http_status: httpStatus };
+    }
     if (
       !Array.isArray(entry.brands) ||
       !entry.brands.every((b): b is string => typeof b === 'string' && b.length > 0)

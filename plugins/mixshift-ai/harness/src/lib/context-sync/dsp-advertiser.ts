@@ -10,7 +10,8 @@
  * network; the command does the lookup, pull, write and push.
  */
 
-import { isMap, isScalar, isSeq, parse as parseYaml, parseDocument, YAMLMap, YAMLSeq } from 'yaml';
+import { isMap, isScalar, isSeq, parse as parseYaml, parseDocument } from 'yaml';
+import type { YAMLMap } from 'yaml';
 import type { Document, Pair } from 'yaml';
 import { contextSchema, normalizeLegacyTacosFields } from '../context/schema.js';
 
@@ -83,7 +84,7 @@ export function gatewayParseDspAdvertiserIds(content: string): string[] {
 export type PlanRefusalReason =
   | 'unreadable_yaml'
   | 'no_accounts'
-  | 'account_required'
+  | 'unexpected_change'
   | 'account_not_found'
   | 'flow_style_account'
   | 'existing_value_invalid'
@@ -141,12 +142,6 @@ function accountChoiceOf(map: YAMLMap): AccountChoice {
     ...(typeof json.marketplace === 'string' ? { marketplace: json.marketplace } : {}),
     ...(typeof json.role === 'string' ? { role: json.role } : {}),
   };
-}
-
-function quoted(doc: Document, id: string): unknown {
-  const node = doc.createNode(id) as { type?: string };
-  node.type = 'QUOTE_DOUBLE';
-  return node;
 }
 
 type ValueState = { kind: 'empty' } | { kind: 'ids'; ids: string[] } | { kind: 'invalid' };
@@ -223,9 +218,8 @@ const FLOW_MESSAGE =
 
 /**
  * Pick the account entry: `--account` (seller_id or amazon_seller_id), else
- * the one with role primary, else the only account, else refuse with the
- * list. The service attributes per brand and ignores the account, so a typical
- * brand needs no question.
+ * the single account with role primary, else the first account. The service
+ * attributes per brand and ignores the account, so this is never a question.
  */
 function chooseAccount(
   items: YAMLMap[],
@@ -249,21 +243,9 @@ function chooseAccount(
     }
     return { ok: true, target: items[idx] as YAMLMap };
   }
-  if (items.length === 1) return { ok: true, target: items[0] as YAMLMap };
   const primaries = choices.map((c, i) => (c.role === 'primary' ? i : -1)).filter((i) => i >= 0);
   if (primaries.length === 1) return { ok: true, target: items[primaries[0] as number] as YAMLMap };
-  return {
-    ok: false,
-    result: {
-      ok: false,
-      reason: 'account_required',
-      message:
-        'This brand has several accounts and none is the single primary one. Ask the user which ' +
-        'account the advertiser sits under, then pass --account <seller id>. Accounts:\n' +
-        describeAccounts(choices),
-      accounts: choices,
-    },
-  };
+  return { ok: true, target: items[0] as YAMLMap };
 }
 
 const sameSet = (a: Iterable<string>, b: Iterable<string>): boolean => {
@@ -272,10 +254,149 @@ const sameSet = (a: Iterable<string>, b: Iterable<string>): boolean => {
   return x.size === y.size && [...x].every((v) => y.has(v));
 };
 
+// ---------------------------------------------------------------------------
+// Surgical text edits. The file is never re-serialized: only the DSP line(s)
+// change, every other byte (numbers, quoting, indentation, line endings) stays.
+// ---------------------------------------------------------------------------
+
+interface TextEdit {
+  start: number;
+  end: number;
+  text: string;
+}
+
+class Text {
+  readonly eol: string;
+  constructor(readonly s: string) {
+    this.eol = s.includes('\r\n') ? '\r\n' : '\n';
+  }
+  /** Start offset of the line holding offset `off`. */
+  ls(off: number): number {
+    return this.s.lastIndexOf('\n', off - 1) + 1;
+  }
+  /** Offset just past the line holding `off` (including its terminator). */
+  lend(off: number): number {
+    const i = this.s.indexOf('\n', off);
+    return i < 0 ? this.s.length : i + 1;
+  }
+  /** The line's text without its terminator. */
+  body(lineStart: number): string {
+    const e = this.lend(lineStart);
+    return this.s.slice(lineStart, e).replace(/\r?\n$/, '');
+  }
+  /** The line's terminator ('' on an unterminated last line). */
+  term(lineStart: number): string {
+    return /\r?\n$/.exec(this.s.slice(lineStart, this.lend(lineStart)))?.[0] ?? '';
+  }
+}
+
+function apply(content: string, edits: TextEdit[]): string {
+  let out = content;
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  }
+  return out;
+}
+
+const q = (id: string): string => `"${id}"`;
+
+interface PairLines {
+  /** Offset of the start of the key's line. */
+  start: number;
+  /** Offset just past the last line the pair occupies. */
+  end: number;
+  /** Start offset of the last item line of a block list (when there is one). */
+  lastItemLine: number | null;
+  /** The flow list spans several lines. */
+  multiLineFlow: boolean;
+}
+
+function pairLines(t: Text, pair: Pair): PairLines {
+  const key = pair.key as { range?: [number, number, number] };
+  const keyStart = key.range?.[0] ?? 0;
+  const start = t.ls(keyStart);
+  let end = t.lend(keyStart);
+  let lastItemLine: number | null = null;
+  let multiLineFlow = false;
+  const v = pair.value;
+  if (isSeq(v) && v.range) {
+    if (v.flow) {
+      multiLineFlow = t.ls(v.range[0]) !== t.ls(Math.max(v.range[0], v.range[1] - 1));
+      end = Math.max(end, t.lend(Math.max(v.range[0], v.range[1] - 1)));
+    } else if (v.items.length > 0) {
+      const last = v.items[v.items.length - 1] as { range?: [number, number, number] };
+      if (last.range) {
+        lastItemLine = t.ls(last.range[0]);
+        end = Math.max(end, t.lend(last.range[0]));
+      }
+    }
+  } else if (v && typeof v === 'object' && 'range' in v && (v as { range?: number[] }).range) {
+    const r = (v as { range: [number, number, number] }).range;
+    end = Math.max(end, t.lend(Math.max(keyStart, r[1] - 1)));
+  }
+  return { start, end, lastItemLine, multiLineFlow };
+}
+
+/** The key's own indentation, with any "- " prefix turned into spaces. */
+function keyIndent(t: Text, map: YAMLMap): string {
+  const first = map.items[0]?.key as { range?: [number, number, number] } | undefined;
+  const off = first?.range?.[0] ?? 0;
+  return ' '.repeat(off - t.ls(off));
+}
+
+function findPair(map: YAMLMap, name: string): Pair | undefined {
+  return map.items.find((p: Pair) => isScalar(p.key) && p.key.value === name);
+}
+
+/** The comment (with its leading space) at the end of a line, or ''. */
+function trailingComment(line: string): string {
+  return /(\s+#.*)$/.exec(line)?.[1] ?? '';
+}
+
+function listLine(indent: string, ids: string[], comment: string): string {
+  return `${indent}dsp_advertiser_ids: [${ids.map(q).join(', ')}]${comment}`;
+}
+
+const MULTI_LINE_FLOW_MESSAGE =
+  'The file lists advertisers in a form MixShift does not read (a list split over several lines ' +
+  'inside brackets). Nothing was changed. Rewrite that list as one line or a normal indented ' +
+  'list, then run this again.';
+
+const DSP_LINE = /^\s*-?\s*dsp_advertiser_ids?:/;
+const DSP_ITEM = /^\s*-\s*"\d{1,64}"\s*(#.*)?$/;
+
+/** Every changed line must be a DSP line, or a quoted-digit item under one. */
+function onlyDspLines(removed: string[], added: string[]): boolean {
+  return [...removed, ...added].every((l) => DSP_LINE.test(l) || DSP_ITEM.test(l));
+}
+
+function finish(
+  content: string,
+  edits: TextEdit[],
+  expected: string[],
+  account: AccountChoice | null,
+  edit: PlanEdit,
+): PlanResult {
+  const next = apply(content, edits);
+  const { removed, added } = diffLines(content, next);
+  if (!onlyDspLines(removed, added)) {
+    return {
+      ok: false,
+      reason: 'unexpected_change',
+      message:
+        'The planned edit would change a line that is not a DSP advertiser line. Nothing was ' +
+        'written. Check this brand\'s DSP advertiser lines by hand.',
+    };
+  }
+  const verdict = verifyResult(next, expected);
+  if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
+  return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
+}
+
 /**
- * Plan declaring `advertiserId` on the brand. Proves the new text with the
- * gateway's parser: its ids must equal the old ids plus this one, nothing
- * else turned on or off.
+ * Plan declaring `advertiserId` on the brand, by inserting, replacing or
+ * removing only the DSP line(s) inside the chosen account. Proves the new text
+ * with the gateway's parser: its ids must equal the old ids plus this one.
  */
 export function planDspAssignment(
   content: string,
@@ -284,7 +405,7 @@ export function planDspAssignment(
 ): PlanResult {
   const parsed = parseAccounts(content);
   if (!parsed.ok) return parsed.result;
-  const { doc, items, flow } = parsed;
+  const { items, flow } = parsed;
   if (items.length === 0) {
     return {
       ok: false,
@@ -304,23 +425,15 @@ export function planDspAssignment(
 
   const oldIds = gatewayParseDspAdvertiserIds(content);
   if (oldIds.includes(advertiserId)) {
-    return {
-      ok: true,
-      content,
-      changed: false,
-      account,
-      edit: 'already_in_file',
-      removed_lines: [],
-      added_lines: [],
-    };
+    return { ok: true, content, changed: false, account, edit: 'already_in_file', removed_lines: [], added_lines: [] };
   }
 
-  const hasList = target.has('dsp_advertiser_ids');
-  const hasSingle = target.has('dsp_advertiser_id');
-  const listValue = target.get('dsp_advertiser_ids', true);
-  const singleValue = target.get('dsp_advertiser_id', true);
-  const list: ValueState = hasList ? valueState(listValue, false) : { kind: 'empty' };
-  const single: ValueState = hasSingle ? valueState(singleValue, true) : { kind: 'empty' };
+  const t = new Text(content);
+  const indent = keyIndent(t, target);
+  const singlePair = findPair(target, 'dsp_advertiser_id');
+  const listPair = findPair(target, 'dsp_advertiser_ids');
+  const list: ValueState = listPair ? valueState(listPair.value, false) : { kind: 'empty' };
+  const single: ValueState = singlePair ? valueState(singlePair.value, true) : { kind: 'empty' };
   if (list.kind === 'invalid' || single.kind === 'invalid') {
     return {
       ok: false,
@@ -333,95 +446,122 @@ export function planDspAssignment(
   }
   const yamlIds = [...(list.kind === 'ids' ? list.ids : []), ...(single.kind === 'ids' ? single.ids : [])];
   if (yamlIds.includes(advertiserId)) {
-    return {
-      ok: false,
-      reason: 'result_not_recognized',
-      message:
-        'The file lists this advertiser in a form MixShift does not read (for example a list ' +
-        'split over several lines inside brackets). Nothing was changed. Rewrite that list as ' +
-        'one line or a normal indented list, then run this again.',
-    };
+    return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
   }
 
+  const edits: TextEdit[] = [];
   let edit: PlanEdit;
-  if (list.kind === 'ids' && isSeq(listValue)) {
-    listValue.add(quoted(doc, advertiserId));
-    edit = 'appended';
-  } else if (single.kind === 'ids') {
-    const pair = target.items.find(
-      (p: Pair) => isScalar(p.key) && p.key.value === 'dsp_advertiser_id',
-    );
-    const seq = new YAMLSeq();
-    seq.add(quoted(doc, single.ids[0] as string));
-    seq.add(quoted(doc, advertiserId));
-    seq.flow = true;
-    if (pair && isScalar(pair.key)) {
-      pair.key.value = 'dsp_advertiser_ids';
-      pair.value = seq;
+  const replaceLines = (pl: PairLines, text: string): void => {
+    // Keep the original terminator of the last line the pair occupied.
+    const lastLine = t.ls(pl.end - 1);
+    edits.push({ start: pl.start, end: pl.end, text: text + t.term(lastLine) });
+  };
+
+  if (listPair && list.kind === 'ids' && isSeq(listPair.value)) {
+    const pl = pairLines(t, listPair);
+    if (listPair.value.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
+      replaceLines(pl, listLine(indent, [...list.ids, advertiserId], trailingComment(t.body(pl.start))));
+    } else {
+      const lastLine = pl.lastItemLine as number;
+      const prefix = /^[ \t]*-[ \t]+/.exec(t.body(lastLine))?.[0] ?? `${indent}- `;
+      const at = t.lend(lastLine);
+      const needsEol = t.term(lastLine) === '';
+      edits.push({ start: at, end: at, text: `${needsEol ? t.eol : ''}${prefix}${q(advertiserId)}${needsEol ? '' : t.eol}` });
     }
-    if (hasList) target.delete('dsp_advertiser_ids'); // an empty leftover key
+    edit = 'appended';
+  } else if (singlePair && single.kind === 'ids') {
+    const pl = pairLines(t, singlePair);
+    replaceLines(pl, listLine(indent, [single.ids[0] as string, advertiserId], trailingComment(t.body(pl.start))));
+    if (listPair) {
+      const lp = pairLines(t, listPair);
+      edits.push({ start: lp.start, end: lp.end, text: '' }); // an empty leftover key
+    }
     edit = 'converted';
-  } else if (hasSingle) {
+  } else if (singlePair) {
     // An empty scalar key (null, ~, blank): give it the id in place.
-    target.set('dsp_advertiser_id', quoted(doc, advertiserId));
-    if (hasList) target.delete('dsp_advertiser_ids');
+    const pl = pairLines(t, singlePair);
+    replaceLines(pl, `${indent}dsp_advertiser_id: ${q(advertiserId)}${trailingComment(t.body(pl.start))}`);
+    if (listPair) {
+      const lp = pairLines(t, listPair);
+      edits.push({ start: lp.start, end: lp.end, text: '' });
+    }
     edit = 'replaced_empty';
-  } else if (hasList) {
-    const seq = new YAMLSeq();
-    seq.add(quoted(doc, advertiserId));
-    seq.flow = true;
-    target.set('dsp_advertiser_ids', seq);
+  } else if (listPair) {
+    const pl = pairLines(t, listPair);
+    replaceLines(pl, listLine(indent, [advertiserId], trailingComment(t.body(pl.start))));
     edit = 'replaced_empty';
   } else {
-    target.set('dsp_advertiser_id', quoted(doc, advertiserId));
+    const last = target.items[target.items.length - 1] as Pair;
+    const pl = pairLines(t, last);
+    const at = pl.end;
+    const unterminated = t.term(t.ls(at - 1)) === '';
+    edits.push({
+      start: at,
+      end: at,
+      text: unterminated
+        ? `${t.eol}${indent}dsp_advertiser_id: ${q(advertiserId)}`
+        : `${indent}dsp_advertiser_id: ${q(advertiserId)}${t.eol}`,
+    });
     edit = 'added';
   }
-
-  const next = doc.toString({ lineWidth: 0, flowCollectionPadding: false });
-  const verdict = verifyResult(next, [...oldIds, advertiserId]);
-  if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
-  const { removed, added } = diffLines(content, next);
-  return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
+  return finish(content, edits, [...oldIds, advertiserId], account, edit);
 }
 
 /**
  * Plan removing `advertiserId` from every account of this brand that declares
- * it. A list that keeps ids stays a list. Proved against the gateway's parser:
- * the new ids must equal the old ids minus this one.
+ * it, by removing or rewriting only the DSP line(s). A list that keeps ids
+ * stays a list. Proved against the gateway's parser: new ids = old ids minus
+ * this one.
  */
 export function planDspUnassignment(content: string, advertiserId: string): PlanResult {
   const parsed = parseAccounts(content);
   if (!parsed.ok) return parsed.result;
-  const { doc, items } = parsed;
+  const { items } = parsed;
   const oldIds = gatewayParseDspAdvertiserIds(content);
   if (!oldIds.includes(advertiserId)) {
     return { ok: true, content, changed: false, account: null, edit: 'not_declared', removed_lines: [], added_lines: [] };
   }
+  const t = new Text(content);
+  const edits: TextEdit[] = [];
   let account: AccountChoice | null = null;
   for (const item of items) {
-    const single = item.get('dsp_advertiser_id', true);
-    if (isScalar(single) && single.value === advertiserId) {
-      item.delete('dsp_advertiser_id');
+    const indent = keyIndent(t, item);
+    const singlePair = findPair(item, 'dsp_advertiser_id');
+    if (singlePair && isScalar(singlePair.value) && singlePair.value.value === advertiserId) {
+      const pl = pairLines(t, singlePair);
+      edits.push({ start: pl.start, end: pl.end, text: '' });
       account = accountChoiceOf(item);
     }
-    const list = item.get('dsp_advertiser_ids', true);
-    if (isSeq(list)) {
-      const keep = list.items.filter((n) => !(isScalar(n) && n.value === advertiserId));
-      if (keep.length !== list.items.length) {
-        account = accountChoiceOf(item);
-        if (keep.length === 0) item.delete('dsp_advertiser_ids');
-        else list.items = keep;
+    const listPair = findPair(item, 'dsp_advertiser_ids');
+    if (listPair && isSeq(listPair.value)) {
+      const seq = listPair.value;
+      const keep = seq.items
+        .filter((n) => isScalar(n) && n.value !== advertiserId)
+        .map((n) => (n as { value: string }).value);
+      if (keep.length === seq.items.length) continue;
+      account = accountChoiceOf(item);
+      const pl = pairLines(t, listPair);
+      if (seq.flow) {
+        if (pl.multiLineFlow) return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
+        const line = t.body(pl.start);
+        if (keep.length === 0) edits.push({ start: pl.start, end: pl.end, text: '' });
+        else edits.push({ start: pl.start, end: pl.end, text: listLine(indent, keep, trailingComment(line)) + t.term(pl.start) });
+      } else if (keep.length === 0) {
+        edits.push({ start: pl.start, end: pl.end, text: '' });
+      } else {
+        // Block list: drop just the matching item line(s).
+        for (const n of seq.items) {
+          const node = n as { value?: unknown; range?: [number, number, number] };
+          if (node.value === advertiserId && node.range) {
+            const s = t.ls(node.range[0]);
+            edits.push({ start: s, end: t.lend(node.range[0]), text: '' });
+          }
+        }
       }
     }
   }
-  const next = doc.toString({ lineWidth: 0, flowCollectionPadding: false });
-  const verdict = verifyResult(
-    next,
-    oldIds.filter((v) => v !== advertiserId),
-  );
-  if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
-  const { removed, added } = diffLines(content, next);
-  return { ok: true, content: next, changed: next !== content, account, edit: 'removed', removed_lines: removed, added_lines: added };
+  return finish(content, edits, oldIds.filter((v) => v !== advertiserId), account, 'removed');
 }
 
 /** null when the edited text validates and the gateway reads exactly `expected`. */

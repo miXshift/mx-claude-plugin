@@ -12,6 +12,7 @@
  * object (last stdout line) under --json and exit 0 for every non-error answer.
  */
 
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { Command } from 'commander';
 import { createContextSyncClient } from '../lib/context-sync/client.js';
@@ -50,7 +51,8 @@ export type AssignRefusalReason =
   | 'no_context_file'
   | 'unreadable_yaml'
   | 'no_accounts'
-  | 'account_required'
+  | 'unexpected_change'
+  | 'plan_changed'
   | 'account_not_found'
   | 'flow_style_account'
   | 'existing_value_invalid'
@@ -185,10 +187,11 @@ export function registerDspAdvertiserCommands(
     .requiredOption('--brand <slug>', 'the brand the USER named for this advertiser')
     .option('--account <seller_id>', "which of the brand's accounts (seller id) when it has several")
     .option('--commit', 'write the declaration and publish it (default: dry run)', false)
+    .option('--expect <plan_hash>', 'with --commit: refuse unless the plan still hashes to this (from the dry run)')
     .action(
       async (
         advertiserId: string,
-        opts: { brand: string; account?: string; commit?: boolean },
+        opts: { brand: string; account?: string; commit?: boolean; expect?: string },
         cmd: Command,
       ) => runWrite('assign', advertiserId, opts, cmd, deps),
     );
@@ -203,7 +206,8 @@ export function registerDspAdvertiserCommands(
     .argument('<advertiser_id>', 'the DSP advertiser id (digits)')
     .requiredOption('--brand <slug>', 'the brand the USER named')
     .option('--commit', 'remove the declaration and publish it (default: dry run)', false)
-    .action(async (advertiserId: string, opts: { brand: string; commit?: boolean }, cmd: Command) =>
+    .option('--expect <plan_hash>', 'with --commit: refuse unless the plan still hashes to this (from the dry run)')
+    .action(async (advertiserId: string, opts: { brand: string; commit?: boolean; expect?: string }, cmd: Command) =>
       runWrite('unassign', advertiserId, opts, cmd, deps),
     );
 }
@@ -221,7 +225,7 @@ async function serviceCredentialActive(dataDir: string | undefined): Promise<boo
 async function runWrite(
   op: 'assign' | 'unassign',
   advertiserId: string,
-  opts: { brand: string; account?: string; commit?: boolean },
+  opts: { brand: string; account?: string; commit?: boolean; expect?: string },
   cmd: Command,
   deps: { resolveBrandsAndManifest: ResolveBrands },
 ): Promise<void> {
@@ -407,6 +411,16 @@ async function runWrite(
       await refuse(plan.reason, plan.message, plan.accounts ? { accounts: plan.accounts } : {});
       return;
     }
+    const planHash = createHash('sha256').update(plan.content).digest('hex').slice(0, 12);
+    if (commit && opts.expect !== undefined && opts.expect !== planHash) {
+      await refuse(
+        'plan_changed',
+        'The planned change is no longer the one the user saw (the file or the shared copy changed ' +
+          'since the dry run). Nothing was written. Run the dry run again, show it, and confirm again.',
+        { plan_hash: planHash },
+      );
+      return;
+    }
     const accountSummary = plan.account ? describeAccounts([plan.account]).trim().replace(/^- /, '') : '';
     const verb = assigning ? 'declare' : 'remove';
     const changeLines = [
@@ -429,6 +443,7 @@ async function runWrite(
           commit: false,
           removed_lines: plan.removed_lines,
           added_lines: plan.added_lines,
+          plan_hash: planHash,
           message:
             'Dry run: pulled any server updates to this brand\'s context and wrote nothing else. ' +
             'Re-run with --commit once the user confirms.',
@@ -469,7 +484,7 @@ async function runWrite(
       }
       await finish('push_failed', 'failed', { rolled_back: rolledBack });
       const message =
-        `context.yaml was not published: ${pushProblem}. The service was not changed. ` +
+        `context.yaml may not have been published: ${pushProblem}. Check with \`mixshift context status\`. ` +
         (rolledBack
           ? 'The local file was put back as it was. Run the command again: it re-pulls and re-checks first.'
           : plan.changed
@@ -531,6 +546,9 @@ async function runWrite(
         account: plan.account,
         edit: plan.edit,
         commit: true,
+        removed_lines: plan.removed_lines,
+        added_lines: plan.added_lines,
+        plan_hash: planHash,
         pushed: true,
         verified,
         readback_brands: readbackBrands,

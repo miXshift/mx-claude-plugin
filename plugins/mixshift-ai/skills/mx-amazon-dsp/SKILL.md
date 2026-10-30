@@ -571,17 +571,18 @@ all with exit 0.
   and list the user's brands (`mixshift brand list`). You may offer the evidence
   from "Matching an advertiser to a brand" as a suggestion; it is never the answer.
   - The user names a brand: run `mixshift context dsp-advertiser assign
-    <advertiser_id> --brand <slug> --json` (a dry run; it asks for `--account
-    <seller id>` only when the brand has several accounts and no single primary one),
-    show them the line it would change, and only after they confirm run it again
-    with `--commit`. Report the read-back it prints: whether the service now
+    <advertiser_id> --brand <slug> --json` (a dry run; it picks the account itself, add
+    `--account <seller id>` only if the user names one),
+    show them the lines it would change, and only after they confirm run it again
+    with `--commit --expect <plan_hash>` (the hash from the dry run you showed, so
+    exactly that change is published). Report the read-back it prints: whether the service now
     resolves the advertiser to that brand.
   - "None of these", "not sure" or no answer: write nothing, keep working, and say
     the changes stay unassigned. Do not ask again this session.
-- **`conflict`**: report both brands and ask which one does **not** own the
+- **`conflict`**: report all brands that declare it and ask which one does **not** own the
   advertiser. Offer to remove it from that one (`mixshift context dsp-advertiser
-  unassign <advertiser_id> --brand <slug> --json` is a dry run; `--commit` on their
-  yes). Mention that a retired brand still counts. `assign` refuses while another
+  unassign <advertiser_id> --brand <slug> --json` is a dry run; `--commit --expect <plan_hash>` on
+  their yes). Mention that a retired brand still counts. `assign` refuses while another
   brand declares the advertiser, so a conflict is only ever fixed with `unassign`.
 - **A lookup error other than "does not support the lookup yet"** (network, a
   server error): say the brand could not be checked, and carry on without writing.
@@ -635,7 +636,9 @@ offer to send it to MixShift (`mx-feedback`).
 
 ### The build, step by step
 
-1. **Confirm the advertiser** (see "Discovery") and echo the id back.
+1. **Confirm the advertiser** (see "Discovery") and echo the id back. Then check
+   which brand it belongs to (see "Which brand a DSP advertiser belongs to") before
+   anything is previewed, so even the first change lands on the right brand.
 2. **Write the launch plan before any call**, as a table the user can check:
    every campaign (name, flight dates, budget, goal KPI) and under it every line
    item (name, inventory type, dates, budget, base bid, pacing), its audiences
@@ -685,8 +688,7 @@ offer to send it to MixShift (`mx-feedback`).
    all **paused**, the targets and creatives attached, and what is left before
    it can spend: creatives still to build or approve in the console, the
    advertiser's payment profile in the console, and turning it on (offer to do
-   that with `dsp.update_*` once they have checked it). If you have not
-   yet, check the advertiser's brand (see "Which brand a DSP advertiser belongs to").
+   that with `dsp.update_*` once they have checked it).
 
 Builds cannot be proposed for later approval yet; they need a signed-in person
 to confirm. For many rows at once, Amazon's own bulk upload (DSP console, Bulk
