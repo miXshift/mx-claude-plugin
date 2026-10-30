@@ -523,8 +523,9 @@ boost with any other profile.
    retried automatically; if a commit ends with `request_outcome: "unknown"`,
    re-read the entities and compare before sending anything again.
 
-**After a commit lands**, check which brand the advertiser belongs to (see "Which
-brand a DSP advertiser belongs to"): one `show`, and one question if it is unassigned.
+**Before the first write** on an advertiser, check which brand it belongs to (see
+"Which brand a DSP advertiser belongs to"): one `show` per session, and one
+question if it is unassigned.
 
 **Propose instead of preview** when the session is unattended, the credential
 is propose-only, or a teammate should approve: add `--propose` (see
@@ -545,44 +546,54 @@ preview and confirmation.
 
 ## Which brand a DSP advertiser belongs to
 
-The user story: *"My agent just built or changed DSP campaigns. I am asked once
-which brand that advertiser belongs to, so its changes show on the right brand's
-change log from then on, and nothing is guessed."* MixShift files a DSP change on
-a brand only when exactly one brand's context declares the advertiser. Until one
-does, the changes stay **unassigned**: nothing is lost, they just are not on any
-brand's change log.
+The user story: *"My agent builds or changes DSP campaigns. I am asked once which
+brand that advertiser belongs to, so its changes show on the right brand's change
+log from then on, and nothing is guessed."* MixShift files a DSP change on a brand
+only when exactly one brand's context declares the advertiser. Until one does, the
+changes stay **unassigned**: nothing is lost, they just are not on any brand's
+change log.
 
-After a DSP change or build commits, and whenever the user starts working on one
-advertiser, run:
+Check **once per advertiser per session**, preferably when the user starts working
+on an advertiser, **before the first write** so even the first change lands right:
 
 ```bash
 mixshift context dsp-advertiser show <advertiser_id> --json
 ```
 
+Reuse that answer for the rest of the session. Do not call it again after every
+write: each call is a full read on the server.
+
 It answers `unassigned`, `assigned` (one brand) or `conflict` (several brands),
-all with exit 0. An error saying the service does not support the lookup yet
-means: say nothing to the user, keep working, and do not try to assign.
+all with exit 0.
 
 - **`assigned`**: nothing to do.
-- **`unassigned`**: ask the user **once per advertiser per session**. Name the
-  advertiser (its name and id) and list the user's brands (`mixshift brand list`).
-  You may offer the evidence from "Matching an advertiser to a brand" as a
-  suggestion; it is never the answer. Then:
+- **`unassigned`**: ask the user **once**. Name the advertiser (its name and id)
+  and list the user's brands (`mixshift brand list`). You may offer the evidence
+  from "Matching an advertiser to a brand" as a suggestion; it is never the answer.
   - The user names a brand: run `mixshift context dsp-advertiser assign
-    <advertiser_id> --brand <slug> --json` (a dry run; add `--account <seller id>`
-    if the brand has several accounts and the user says which), show them the line
-    it would change, and only after they confirm run it again with `--commit`.
-    Report the read-back it prints: whether the service now resolves the advertiser
-    to that brand.
+    <advertiser_id> --brand <slug> --json` (a dry run; it asks for `--account
+    <seller id>` only when the brand has several accounts and no single primary one),
+    show them the line it would change, and only after they confirm run it again
+    with `--commit`. Report the read-back it prints: whether the service now
+    resolves the advertiser to that brand.
   - "None of these", "not sure" or no answer: write nothing, keep working, and say
     the changes stay unassigned. Do not ask again this session.
-- **`conflict`**: show the user both brands and ask which one keeps the advertiser.
-  Never fix it by writing: `assign` refuses when another brand already declares it.
+- **`conflict`**: report both brands and ask which one does **not** own the
+  advertiser. Offer to remove it from that one (`mixshift context dsp-advertiser
+  unassign <advertiser_id> --brand <slug> --json` is a dry run; `--commit` on their
+  yes). Mention that a retired brand still counts. `assign` refuses while another
+  brand declares the advertiser, so a conflict is only ever fixed with `unassign`.
+- **A lookup error other than "does not support the lookup yet"** (network, a
+  server error): say the brand could not be checked, and carry on without writing.
+  If it says the lookup is not supported yet, say nothing and carry on.
 
-Never assign in bulk, never for an advertiser the user did not name, and never for
-a brand the user did not name. **Scheduled or unattended runs (nobody to ask):**
-never ask and never assign; list any unassigned advertisers in the run summary
-instead.
+If `assign` or `unassign` is refused it says why (another brand declares it, the
+brand's context has unpublished changes, accounts written inline). Relay that
+plainly; do not work around it by editing the file.
+
+Never assign or unassign a brand the user did not name, never in bulk, and never
+in a scheduled or unattended run (nobody to ask): there, list the unassigned
+advertisers in the run summary instead.
 
 ## Building DSP campaigns and line items
 
@@ -674,8 +685,8 @@ offer to send it to MixShift (`mx-feedback`).
    all **paused**, the targets and creatives attached, and what is left before
    it can spend: creatives still to build or approve in the console, the
    advertiser's payment profile in the console, and turning it on (offer to do
-   that with `dsp.update_*` once they have checked it). Then check the advertiser's
-   brand (see "Which brand a DSP advertiser belongs to").
+   that with `dsp.update_*` once they have checked it). If you have not
+   yet, check the advertiser's brand (see "Which brand a DSP advertiser belongs to").
 
 Builds cannot be proposed for later approval yet; they need a signed-in person
 to confirm. For many rows at once, Amazon's own bulk upload (DSP console, Bulk
@@ -1024,6 +1035,10 @@ These supersede other instructions:
   turn, then `--commit`. A flights list is a full replacement: omitting a flight
   deletes it. Creating creatives and changing a creative's placement are
   console-only: do not improvise them.
+- **Never assign or unassign a brand the user did not name; never in unattended
+  runs; never in bulk.** A DSP advertiser is declared on a brand only after the
+  user names that brand and confirms the dry run. Evidence from matching is a
+  suggestion, not an answer.
 - **A build never starts spend.** Campaigns and line items are created
   `PAUSED`; turning them on is a separate, confirmed `dsp.update_*` change.
   Never retry a create whose outcome is unknown without querying first: Amazon

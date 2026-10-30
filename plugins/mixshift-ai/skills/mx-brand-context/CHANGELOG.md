@@ -4,7 +4,7 @@
 
 *Renamed `mx-account-cold-start` → `mx-brand-context` (mx- prefix convention + the pivot's "Brand Context" umbrella). `skill_id` and SKILL.md `name` are now `mx-brand-context`; `display_name` is "Brand Context Setup". The old cold-start trigger phrases ("cold start", "run cold start") are retained as deprecated aliases for a 1-2 release window. The per-brand run directory moves from `runs/mx-account-cold-start/<date>/` to `runs/mx-brand-context/<date>/`; old run-dir artifacts are regenerable and not migrated. Render layer (brand-context.html, `brand render-context`, `mixshift brand context`) was already named "Brand Context" and is unchanged.*
 
-*v2.9.0 (mx-ops#205, DSP advertiser): for a brand that runs DSP, Phase 2 now asks once for its DSP advertiser id(s) and, only on the user's confirmation, declares each one on the brand's account through `mixshift context dsp-advertiser assign` (dry run first, one advertiser at a time), so DSP changes show on this brand's change log. Never guessed, seeded or written in bulk; the command refuses when another brand already declares the advertiser.*
+*v2.9.0 (mx-ops#205, DSP advertiser): for a brand that runs DSP, Phase 2 now asks whether it runs Amazon DSP and for its advertiser id(s). Only after Phase 3a/4 validation, and only on the user's confirmation, each id is declared on the brand through `mixshift context dsp-advertiser assign` (dry run first, one advertiser at a time), so DSP changes show on this brand's change log. Never guessed, seeded or written in bulk; the command refuses when another brand already declares the advertiser.*
 
 *v2.8.0 (mx-ops#6 P2, sub-brand path): new Phase 0.3 (Shape Detection) runs
 sub-brand label discovery (`mixshift brand discover --seller-id`) before any

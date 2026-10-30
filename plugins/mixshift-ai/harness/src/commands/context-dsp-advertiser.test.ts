@@ -15,13 +15,24 @@ import { join } from 'node:path';
 import { registerContextCommands } from './context.js';
 import { createContextSyncClient, dspLookupResultFrom } from '../lib/context-sync/client.js';
 import type { ContextSyncClient } from '../lib/context-sync/client.js';
-import { planDspAssignment } from '../lib/context-sync/dsp-advertiser.js';
+import {
+  gatewayParseDspAdvertiserIds,
+  planDspAssignment,
+  planDspUnassignment,
+} from '../lib/context-sync/dsp-advertiser.js';
 import { track } from '../lib/telemetry/index.js';
-import type { DspAdvertiserLookupResult, WireManifestBrand } from '../lib/context-sync/types.js';
+import type { DspAdvertiserLookupResult, WireManifestDoc } from '../lib/context-sync/types.js';
+import { hashContent } from '../lib/context-sync/local.js';
+import { emptyState, saveState } from '../lib/context-sync/state.js';
+import { loadCredentials } from '../lib/auth/credentials.js';
 
 vi.mock('../lib/context-sync/client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/context-sync/client.js')>();
   return { ...actual, createContextSyncClient: vi.fn() };
+});
+vi.mock('../lib/auth/credentials.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/auth/credentials.js')>();
+  return { ...actual, loadCredentials: vi.fn(actual.loadCredentials) };
 });
 vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/telemetry/index.js')>();
@@ -61,6 +72,13 @@ const ACCOUNT_A = [
   '    status: active',
   '    role: primary',
 ].join('\n');
+const ACCOUNT_C = [
+  '  - seller_id: 333',
+  '    seller_name: Acme Goods MX',
+  '    account_type: SC',
+  '    status: active',
+  '    role: secondary',
+].join('\n');
 const ACCOUNT_B = [
   '  - seller_id: 222',
   '    seller_name: Acme Goods CA',
@@ -73,6 +91,9 @@ interface Harness {
   lookups: Array<DspAdvertiserLookupResult>;
   lookupCalls: string[];
   putDoc: ReturnType<typeof vi.fn>;
+  /** The shared copy of context.yaml (undefined = never published). */
+  serverContent: string | undefined;
+  extraDocs: WireManifestDoc[];
 }
 
 let tmpDataDir: string;
@@ -82,19 +103,42 @@ let exitCodeBefore: typeof process.exitCode;
 let h: Harness;
 
 function installClient(opts: { putStatus?: 'ok' | 'conflict' } = {}): void {
-  const manifest: WireManifestBrand[] = [{ brand_slug: 'acme-goods', docs: [] }];
-  h.putDoc = vi.fn(async () =>
-    opts.putStatus === 'conflict'
-      ? {
-          ok: false as const,
-          kind: 'revision_conflict' as const,
-          message: 'conflict',
-          friendly: 'The shared copy moved.',
-        }
-      : { ok: true as const, status: 'created' as const, revision: 1 },
-  );
+  h.putDoc = vi.fn(async (input: { doc_type: string; content: string }) => {
+    if (opts.putStatus === 'conflict') {
+      return {
+        ok: false as const,
+        kind: 'revision_conflict' as const,
+        message: 'conflict',
+        friendly: 'The shared copy moved.',
+      };
+    }
+    if (input.doc_type === 'context') h.serverContent = input.content;
+    return { ok: true as const, status: 'updated' as const, revision: 2 };
+  });
   const client: ContextSyncClient = {
-    fetchManifest: async () => ({ ok: true, brands: manifest }),
+    fetchManifest: async () => ({
+      ok: true,
+      brands: [
+        {
+          brand_slug: 'acme-goods',
+          docs: [
+            ...(h.serverContent !== undefined
+              ? [
+                  {
+                    doc_type: 'context' as const,
+                    revision: 1,
+                    content_hash: hashContent(h.serverContent),
+                    sensitivity: 'internal',
+                    updated_at: '2026-10-01T00:00:00Z',
+                    updated_by_actor: 'someone',
+                  },
+                ]
+              : []),
+            ...h.extraDocs,
+          ],
+        },
+      ],
+    }),
     fetchDoc: async () => ({ ok: false, kind: 'not_found', message: 'nf', friendly: 'nf' }),
     putDoc: h.putDoc as unknown as ContextSyncClient['putDoc'],
     putAssignment: async () => ({ ok: true }),
@@ -136,12 +180,15 @@ const lastJson = (): Record<string, any> => {
 const contextFile = () => join(tmpDataDir, 'clients', 'acme-goods', 'context.yaml');
 const readCtx = () => readFile(contextFile(), 'utf8');
 
-async function seed(accountsYaml: string): Promise<string> {
+/** Write the local context.yaml; by default the shared copy is identical (in sync). */
+async function seed(accountsYaml: string, published = true): Promise<string> {
   const text = contextYaml(accountsYaml);
   await mkdir(join(tmpDataDir, 'clients', 'acme-goods'), { recursive: true });
   await writeFile(contextFile(), text, 'utf8');
+  if (published) h.serverContent = text;
   return text;
 }
+const unassign = (...a: string[]) => run('--json', 'context', 'dsp-advertiser', 'unassign', ...a);
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -157,8 +204,9 @@ beforeEach(async () => {
     stderr.push(String(c));
     return true;
   });
+  vi.mocked(loadCredentials).mockClear();
   tmpDataDir = await mkdtemp(join(tmpdir(), 'mx-dsp-adv-'));
-  h = { lookups: [found()], lookupCalls: [], putDoc: vi.fn() };
+  h = { lookups: [found()], lookupCalls: [], putDoc: vi.fn(), serverContent: undefined, extraDocs: [] };
   installClient();
 });
 
@@ -307,14 +355,24 @@ describe('assign', () => {
     expect(h.putDoc).not.toHaveBeenCalled();
   });
 
-  it('refuses several accounts without --account and lists them', async () => {
-    const before = await seed(`${ACCOUNT_A}\n${ACCOUNT_B}`);
+  it('refuses several accounts when none is the single primary, and lists them', async () => {
+    const before = await seed(`${ACCOUNT_B}\n${ACCOUNT_C}`);
     await assign(ID, '--brand', 'acme-goods', '--commit');
     const out = lastJson();
     expect(out).toMatchObject({ status: 'refused', reason: 'account_required' });
     expect(out.accounts).toHaveLength(2);
-    expect(out.message).toContain('seller_id 222');
+    expect(out.message).toContain('seller_id 333');
     expect(await readCtx()).toBe(before);
+  });
+
+  it('defaults to the single primary account without a question', async () => {
+    await seed(`${ACCOUNT_B}\n${ACCOUNT_A}`);
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    const text = await readCtx();
+    expect(text.slice(0, text.indexOf('seller_id: 111'))).not.toContain('dsp_advertiser_id');
+    expect(text.slice(text.indexOf('seller_id: 111'))).toContain(`dsp_advertiser_id: "${ID}"`);
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed' });
   });
 
   it('uses the account named by --account', async () => {
@@ -376,6 +434,141 @@ describe('assign', () => {
     expect(text).toContain('  ad_metrics: campaignmetric');
   });
 
+  it('publishes only context.yaml: a conflict on an unrelated doc does not fail assign', async () => {
+    await seed(ACCOUNT_A);
+    await writeFile(join(tmpDataDir, 'clients', 'acme-goods', 'narrative.md'), 'local prose', 'utf8');
+    h.extraDocs = [
+      {
+        doc_type: 'narrative',
+        revision: 4,
+        content_hash: hashContent('different server prose'),
+        sensitivity: 'internal',
+        updated_at: '2026-10-01T00:00:00Z',
+        updated_by_actor: 'someone',
+      },
+    ];
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed', verified: true });
+    expect(process.exitCode).toBeUndefined();
+    const docTypes = h.putDoc.mock.calls.map((c) => (c[0] as { doc_type: string }).doc_type);
+    expect(docTypes).toEqual(['context']);
+  });
+
+  it('refuses when context.yaml already has unpublished local changes', async () => {
+    const published = await seed(ACCOUNT_A);
+    const edited = `${published}# my own unpublished note\n`;
+    await writeFile(contextFile(), edited, 'utf8');
+    const state = emptyState(null);
+    state.docs.context = {
+      server_revision: 1,
+      last_synced_hash: hashContent(published),
+      last_synced_at: '2026-10-01T00:00:00Z',
+    };
+    await saveState('acme-goods', state, tmpDataDir);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    const out = lastJson();
+    expect(out).toMatchObject({ status: 'refused', reason: 'context_has_unpublished_changes' });
+    expect(out.message).toContain('review');
+    expect(await readCtx()).toBe(edited);
+    expect(h.putDoc).not.toHaveBeenCalled();
+  });
+
+  it('refuses a context.yaml that was never published', async () => {
+    await seed(ACCOUNT_A, false);
+    await assign(ID, '--brand', 'acme-goods');
+    expect(lastJson()).toMatchObject({ reason: 'context_has_unpublished_changes' });
+  });
+
+  it('dry run says it pulled server updates and wrote nothing else', async () => {
+    await seed(ACCOUNT_A);
+    await assign(ID, '--brand', 'acme-goods');
+    expect(lastJson().message).toContain('wrote nothing else');
+  });
+
+  it('refuses flow-style accounts up front', async () => {
+    const flowItem = '  - {seller_id: 111, seller_name: Acme, account_type: SC, status: active, role: primary}';
+    const before = await seed(flowItem);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'flow_style_account' });
+    expect(await readCtx()).toBe(before);
+    stdout = [];
+    process.exitCode = undefined;
+    await seed('  [{seller_id: 111, seller_name: Acme, account_type: SC, status: active, role: primary}]');
+    await assign(ID, '--brand', 'acme-goods');
+    expect(lastJson()).toMatchObject({ reason: 'flow_style_account' });
+  });
+
+  it('does not silently switch on ids from a multi-line flow list', async () => {
+    const before = await seed(`${ACCOUNT_A}\n    dsp_advertiser_ids: [\n      "${ID2}",\n    ]`);
+    // The service ignores that multi-line list, so it declares nothing today.
+    expect(gatewayParseDspAdvertiserIds(before)).toEqual([]);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'result_not_recognized' });
+    expect(await readCtx()).toBe(before);
+    expect(h.putDoc).not.toHaveBeenCalled();
+  });
+
+  it('refuses a single value under dsp_advertiser_ids instead of dropping it', async () => {
+    const before = await seed(`${ACCOUNT_A}\n    dsp_advertiser_ids: "${ID2}"`);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'existing_value_invalid' });
+    expect(await readCtx()).toBe(before);
+  });
+
+  it.each([
+    ['null', '    dsp_advertiser_id: null', 'dsp_advertiser_id'],
+    ['tilde', '    dsp_advertiser_id: ~', 'dsp_advertiser_id'],
+    ['empty value', '    dsp_advertiser_id:', 'dsp_advertiser_id'],
+    ['empty list key', '    dsp_advertiser_ids:', 'dsp_advertiser_id'],
+    ['empty flow list', '    dsp_advertiser_ids: []', 'dsp_advertiser_id'],
+  ])('treats %s as not declared and replaces it', async (_n, line, _k) => {
+    await seed(`${ACCOUNT_A}\n${line}`);
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed' });
+    const text = await readCtx();
+    expect(gatewayParseDspAdvertiserIds(text)).toEqual([ID]);
+    expect(text).not.toMatch(/dsp_advertiser_ids?:\s*(null|~)?\s*$/m);
+  });
+
+  it('puts the original file back when the push fails, and says to re-run', async () => {
+    installClient({ putStatus: 'conflict' });
+    const before = await seed(ACCOUNT_A);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    const out = lastJson();
+    expect(out).toMatchObject({ status: 'error', kind: 'push_failed', rolled_back: true });
+    expect(out.message).toContain('Run the command again');
+    expect(out.message).not.toContain('not shared yet');
+    expect(await readCtx()).toBe(before);
+  });
+
+  it('says plainly when our push created a conflict (another brand claimed it)', async () => {
+    await seed(ACCOUNT_A);
+    h.lookups = [found(), found('acme-goods', 'other-brand')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    const out = lastJson();
+    expect(out).toMatchObject({ status: 'error', verified: false });
+    expect(out.message).toContain('no brand');
+    expect(out.message).toContain('unassign');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses --commit with a service credential, but allows a dry run', async () => {
+    const before = await seed(ACCOUNT_A);
+    const svc = { credentials: { service: { client_id: 'svc' } }, path: 'x' } as never;
+    vi.mocked(loadCredentials).mockResolvedValueOnce(svc);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'unattended_credential' });
+    expect(h.lookupCalls).toEqual([]);
+    expect(await readCtx()).toBe(before);
+    stdout = [];
+    process.exitCode = undefined;
+    vi.mocked(loadCredentials).mockResolvedValueOnce(svc);
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ reason: 'unattended_credential' });
+  });
+
   it('refuses when an existing advertiser value is unquoted (declares nothing)', async () => {
     const before = await seed(`${ACCOUNT_A}\n    dsp_advertiser_id: 5`);
     await assign(ID, '--brand', 'acme-goods', '--commit');
@@ -415,5 +608,116 @@ describe('dspLookupResultFrom', () => {
     expect(dspLookupResultFrom({ ok: true, advertisers: [{ advertiser_id: ID, brands: 'x' }] }, 200, ID)).toMatchObject({
       ok: false,
     });
+  });
+});
+
+
+describe('unassign', () => {
+  const SINGLE = () => `${ACCOUNT_A}\n    dsp_advertiser_id: "${ID}"`;
+
+  it('dry run shows the removed line and writes nothing', async () => {
+    const before = await seed(SINGLE());
+    h.lookups = [found('acme-goods')];
+    await unassign(ID, '--brand', 'acme-goods');
+    const out = lastJson();
+    expect(out).toMatchObject({ status: 'ok', result: 'dry_run', op: 'unassign', edit: 'removed' });
+    expect(out.removed_lines).toEqual([`    dsp_advertiser_id: "${ID}"`]);
+    expect(await readCtx()).toBe(before);
+    expect(h.putDoc).not.toHaveBeenCalled();
+  });
+
+  it('commit removes a scalar declaration, publishes only context, and reads back', async () => {
+    await seed(SINGLE());
+    h.lookups = [found('acme-goods'), found()];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed', verified: true });
+    expect(gatewayParseDspAdvertiserIds(await readCtx())).toEqual([]);
+    expect(h.putDoc.mock.calls.map((c) => (c[0] as { doc_type: string }).doc_type)).toEqual(['context']);
+  });
+
+  it('keeps the other id when it comes out of a list', async () => {
+    await seed(`${ACCOUNT_A}\n    dsp_advertiser_ids: ["${ID}", "${ID2}"]`);
+    h.lookups = [found('acme-goods'), found()];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(gatewayParseDspAdvertiserIds(await readCtx())).toEqual([ID2]);
+  });
+
+  it('removes the key when the block list becomes empty', async () => {
+    await seed(`${ACCOUNT_A}\n    dsp_advertiser_ids:\n      - "${ID}"`);
+    h.lookups = [found('acme-goods'), found()];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    const text = await readCtx();
+    expect(text).not.toContain('dsp_advertiser_ids');
+    expect(gatewayParseDspAdvertiserIds(text)).toEqual([]);
+  });
+
+  it('is a no-op with exit 0 when the brand does not declare it', async () => {
+    const before = await seed(ACCOUNT_A);
+    h.lookups = [found('other-brand')];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'not_declared' });
+    expect(process.exitCode).toBeUndefined();
+    expect(await readCtx()).toBe(before);
+  });
+
+  it('refuses when the lookup is unavailable', async () => {
+    await seed(SINGLE());
+    h.lookups = [dspLookupResultFrom({}, 404, ID)];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ reason: 'lookup_unavailable' });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses when context.yaml has unpublished changes', async () => {
+    const published = await seed(SINGLE());
+    await writeFile(contextFile(), `${published}# note\n`, 'utf8');
+    const state = emptyState(null);
+    state.docs.context = {
+      server_revision: 1,
+      last_synced_hash: hashContent(published),
+      last_synced_at: '2026-10-01T00:00:00Z',
+    };
+    await saveState('acme-goods', state, tmpDataDir);
+    h.lookups = [found('acme-goods')];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ reason: 'context_has_unpublished_changes' });
+  });
+
+  it('rolls the file back when the push fails', async () => {
+    installClient({ putStatus: 'conflict' });
+    const before = await seed(SINGLE());
+    h.lookups = [found('acme-goods')];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ kind: 'push_failed', rolled_back: true });
+    expect(await readCtx()).toBe(before);
+  });
+
+  it('proves the result against the service reading: a declaration outside accounts is refused', () => {
+    const text = contextYaml(ACCOUNT_A) + `dsp_advertiser_id: "${ID}"\n`;
+    expect(planDspUnassignment(text, ID)).toMatchObject({ ok: false, reason: 'result_not_recognized' });
+  });
+});
+
+// Parity with the service's reader. Ported from mx-gateway extractDspAdvertiserIds
+// (src/context/store.ts) at origin/main e42b4a853266d4269d770f17b9740b48ac544a82.
+describe('gatewayParseDspAdvertiserIds parity', () => {
+  const cases: Array<[string, string, string[]]> = [
+    ['quoted scalar', `dsp_advertiser_id: "${ID}"`, [ID]],
+    ['single-quoted scalar', `dsp_advertiser_id: '${ID}'`, [ID]],
+    ['scalar on a list item', `- dsp_advertiser_id: "${ID}"`, [ID]],
+    ['scalar with a trailing comment', `  dsp_advertiser_id: "${ID}"  # note`, [ID]],
+    ['unquoted scalar declares nothing', `dsp_advertiser_id: ${ID}`, []],
+    ['null scalar', 'dsp_advertiser_id: null', []],
+    ['one-line flow list', `dsp_advertiser_ids: ["${ID}", "${ID2}"]`, [ID, ID2]],
+    ['unquoted item in a flow list is skipped', `dsp_advertiser_ids: ["${ID}", 5]`, [ID]],
+    ['multi-line flow list declares nothing', `dsp_advertiser_ids: [\n  "${ID}",\n]`, []],
+    ['block list with blank and comment lines', `dsp_advertiser_ids:\n\n  # c\n  - "${ID}"\n\n  - "${ID2}"`, [ID, ID2]],
+    ['block list stops at a bad item', `dsp_advertiser_ids:\n  - "${ID}"\n  - 5\n  - "${ID2}"`, [ID]],
+    ['scalar under dsp_advertiser_ids declares nothing', `dsp_advertiser_ids: "${ID}"`, []],
+    ['CRLF line endings', `dsp_advertiser_id: "${ID}"\r\n`, [ID]],
+    ['prose mentioning the key mid-line', `note: see dsp_advertiser_id: "${ID}"`, []],
+  ];
+  it.each(cases)('%s', (_name, text, expected) => {
+    expect(gatewayParseDspAdvertiserIds(text)).toEqual(expected);
   });
 });

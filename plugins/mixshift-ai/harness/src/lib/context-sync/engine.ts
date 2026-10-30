@@ -706,7 +706,11 @@ export async function pull(
 
 export async function push(
   brandSlug: string,
-  options: EngineOptions & { force?: boolean } = {},
+  options: EngineOptions & {
+    force?: boolean;
+    /** Publish only these docs; every other doc is left exactly as it is. */
+    onlyKeys?: readonly DocKey[];
+  } = {},
 ): Promise<BrandActionResult> {
   const built = await buildDocPairs(brandSlug, options);
   if (!built.ok) return { ok: false, brand: brandSlug, message: built.message, kind: built.kind };
@@ -717,6 +721,7 @@ export async function push(
   let stateChanged = built.stateDirty;
 
   for (const pair of built.pairs) {
+    if (options.onlyKeys && !options.onlyKeys.includes(pair.key)) continue;
     if (pair.collision) {
       reports.push(collisionReport(pair));
       continue;
