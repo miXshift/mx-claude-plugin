@@ -93,11 +93,47 @@ if (!catalogDir) {
 // likely way an operation gets retired, and a raw regex over the source would
 // keep counting it as live -- certifying a capability the service refuses at
 // runtime, which is precisely the case this gate exists to catch.
-const stripComments = (src) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+//
+// The scan skips string literals. A regex pass does not: on 2026-10-30 the ads
+// catalog gained the string '*/*' (an Accept header), a regex read its `/*` as a
+// comment opener and dropped every entry up to the next `*/`, about half the
+// catalog. The namespaces those entries carried vanished with them, so every
+// skill claim in them was skipped rather than checked, and the gate printed
+// "0 missing" over 69 claims instead of 238.
+function stripComments(src) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      out += c;
+      if (c === '\\') out += src[++i] ?? '';
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+      out += c;
+    } else if (c === '/' && src[i + 1] === '*' && src[i - 1] !== '\\') {
+      const end = src.indexOf('*/', i + 2);
+      i = end === -1 ? src.length : end + 1;
+      out += ' ';
+    } else if (c === '/' && src[i + 1] === '/' && src[i - 1] !== '\\') {
+      while (i + 1 < src.length && src[i + 1] !== '\n') i++;
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
 
 let catalogFiles = 0;
 const catalogIds = new Set();
+// Namespaces come from the RAW source, before stripping. If the stripper ever
+// mis-reads something (a regex literal holding a quote, say) and loses entries,
+// their namespace still counts, so the lost ids fail loudly as missing instead
+// of taking their skill claims out of the check.
+const namespaces = new Set();
 let dirEntries;
 try {
   dirEntries = readdirSync(catalogDir);
@@ -107,13 +143,14 @@ try {
 for (const f of dirEntries) {
   if (!/operations.*\.(ts|mts)$/.test(f) || /\.(test|spec)\.(ts|mts)$/.test(f)) continue;
   catalogFiles++;
-  const src = stripComments(readFileSync(join(catalogDir, f), 'utf8'));
+  const raw = readFileSync(join(catalogDir, f), 'utf8');
+  for (const m of raw.matchAll(/\bid:\s*'([a-z0-9_]+)\.[a-z0-9_]+'/g)) namespaces.add(m[1]);
+  const src = stripComments(raw);
   for (const m of src.matchAll(/\bid:\s*'([a-z0-9_]+\.[a-z0-9_]+)'/g)) catalogIds.add(m[1]);
 }
 if (catalogIds.size === 0) {
   fail(`found no operation ids in ${catalogDir} — wrong directory, or the catalog shape changed.`);
 }
-const namespaces = new Set([...catalogIds].map((id) => id.split('.')[0]));
 
 // 2. Every operation-shaped token inside BACKTICKS in shipped skill docs.
 //    Backticks only: prose that mentions an operation in passing is not a
