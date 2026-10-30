@@ -48,6 +48,7 @@ import { validateBrandContext } from '../lib/context/load.js';
 import { isSafeBrandSlug } from '../lib/context-sync/local.js';
 import { readIndex } from '../lib/clients/index.js';
 import { resolveBrandName } from '../lib/clients/resolve-brand.js';
+import { registerReportLedgerCommands } from './report-ledger.js';
 
 /**
  * Emit the forecast path's telemetry events. Never changes the command: the
@@ -907,6 +908,8 @@ export function registerReportCommands(program: Command): void {
         }
       });
     });
+
+  registerReportLedgerCommands(report);
 }
 
 /** The pack battery id behind `report battery`. Append-only wire contract:

@@ -319,6 +319,12 @@ export const EventName = {
   ReportForecastExtracted: 'report.forecast_extracted',
   ReportForecastFailed: 'report.forecast_failed',
 
+  // Skill run ledger sync (`mixshift report ledger pull|push|status`,
+  // lib/run-ledger/; mx-ops#202). One row per invocation. Payload: action,
+  // state (the named outcome the skill acts on), files_changed, local_files,
+  // failure_kind. Never a brand slug, file path, file content or URL.
+  ReportLedgerSynced: 'report.ledger_synced',
+
   // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
   // Privacy: payloads carry brand slugs, per-action doc counts, force flag,
   // duration + outcome — never doc content or file paths.
