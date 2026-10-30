@@ -24,6 +24,40 @@ import { z } from 'zod';
 // Sub-shapes
 // -----------------------------------------------------------------------
 
+// A DSP advertiser id as the MixShift server reads it from context.yaml: a
+// QUOTED string of digits (an unquoted ~18-digit id loses precision in YAML
+// parsers, so the server ignores one). Declaring it wrongly must never cost a
+// brand its whole context, since a schema violation stops the loader and sync:
+// a bad value is DROPPED with a warning naming the expected form instead.
+const DSP_ID_FORM = 'dsp_advertiser_id: "123456789012345678"';
+const warnedDspShapes = new Set<string>();
+function warnDspShapeOnce(key: string): void {
+  if (warnedDspShapes.has(key)) return;
+  warnedDspShapes.add(key);
+  process.stderr.write(
+    `[warn] context.yaml: ignoring an invalid ${key}. Write the DSP advertiser id as a quoted string of digits, e.g. ${DSP_ID_FORM} (or dsp_advertiser_ids: ["123456789012345678"]).\n`,
+  );
+}
+const isDspId = (v: unknown): v is string => typeof v === 'string' && /^\d{1,64}$/.test(v);
+
+const dspAdvertiserIdSchema = z.unknown().transform((v): string | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (isDspId(v)) return v;
+  warnDspShapeOnce('dsp_advertiser_id');
+  return undefined;
+});
+
+const dspAdvertiserIdsSchema = z.unknown().transform((v): string[] | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) {
+    warnDspShapeOnce('dsp_advertiser_ids');
+    return undefined;
+  }
+  const kept = v.filter(isDspId);
+  if (kept.length !== v.length) warnDspShapeOnce('dsp_advertiser_ids');
+  return kept;
+});
+
 const accountSchema = z.object({
   seller_id: z.number().int().positive(),
   seller_name: z.string().min(1),
@@ -40,6 +74,11 @@ const accountSchema = z.object({
   region: z.string().nullable().optional(),
   ads_active: z.boolean().optional(),
   retail_active: z.boolean().optional(),
+  // The DSP advertiser(s) this brand owns. MixShift files a DSP change on the
+  // brand that declares its advertiser (and on none when two brands claim it),
+  // so until one is declared a brand's DSP changes stay unassigned.
+  dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
+  dsp_advertiser_ids: dspAdvertiserIdsSchema.optional(),
 });
 
 const sourcesSchema = z.object({

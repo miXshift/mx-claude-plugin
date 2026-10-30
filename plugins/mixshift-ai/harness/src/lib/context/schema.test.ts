@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,7 @@ import {
   STRUCTURAL_EVENT_TYPES,
 } from './schema.js';
 import { validateBrandContext } from './load.js';
+import { validateDocContent } from '../context-sync/engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Walk up to plugin root: src/lib/context/ → src/lib/ → src/ → harness/ → plugin/
@@ -121,6 +122,87 @@ describe('contextSchema — basic shape', () => {
     expect(contextSchema.safeParse(bad('Acme')).success).toBe(false);
     expect(contextSchema.safeParse(bad('123brand')).success).toBe(false);
     expect(contextSchema.safeParse(bad('acme-corp')).success).toBe(true);
+  });
+
+  describe('DSP advertiser declaration on an account', () => {
+    const withAccount = (extra: Record<string, unknown>) => ({
+      schema_version: 1,
+      brand_slug: 'acme',
+      brand_name: 'Acme',
+      last_updated: '2026-05-13',
+      accounts: [
+        {
+          seller_id: 1,
+          seller_name: 'X',
+          account_type: 'SC',
+          status: 'active',
+          role: 'primary',
+          ...extra,
+        },
+      ],
+      sources: {
+        ad_metrics: 'a',
+        ops_revenue: 'b',
+        ops_revenue_field: 'c',
+        ops_units_field: 'd',
+        ops_date_field: 'e',
+      },
+      management: { primary_metric: 'ACOS', acos_target_pct: 20, attribution_window_days: 14 },
+    });
+
+    it('accepts and KEEPS dsp_advertiser_id and dsp_advertiser_ids (not stripped on parse)', () => {
+      const r = contextSchema.safeParse(
+        withAccount({ dsp_advertiser_id: '1234567890', dsp_advertiser_ids: ['1234567890', '9876543210'] }),
+      );
+      expect(r.success).toBe(true);
+      if (r.success) {
+        expect(r.data.accounts[0]!.dsp_advertiser_id).toBe('1234567890');
+        expect(r.data.accounts[0]!.dsp_advertiser_ids).toEqual(['1234567890', '9876543210']);
+      }
+    });
+
+    it('drops (never fails on) values the server would ignore, with a warning naming the expected form', () => {
+      const writes: string[] = [];
+      const spy = vi.spyOn(process.stderr, 'write').mockImplementation(((c: unknown) => {
+        writes.push(String(c));
+        return true;
+      }) as typeof process.stderr.write);
+      try {
+        for (const bad of ['', 'has space', 'a'.repeat(65), 'null', 'ENTITY1ABC', 1234567890, 100000000000000001, true]) {
+          const r = contextSchema.safeParse(withAccount({ dsp_advertiser_id: bad }));
+          expect(r.success).toBe(true);
+          if (r.success) expect(r.data.accounts[0]!.dsp_advertiser_id).toBeUndefined();
+        }
+        // a scalar where a list belongs, and a list with some bad items
+        const scalar = contextSchema.safeParse(withAccount({ dsp_advertiser_ids: '123' }));
+        expect(scalar.success).toBe(true);
+        const mixed = contextSchema.safeParse(withAccount({ dsp_advertiser_ids: ['123', 456, 'x y'] }));
+        expect(mixed.success).toBe(true);
+        if (mixed.success) expect(mixed.data.accounts[0]!.dsp_advertiser_ids).toEqual(['123']);
+        // null is "not declared", and says nothing
+        const nul = contextSchema.safeParse(withAccount({ dsp_advertiser_id: null, dsp_advertiser_ids: null }));
+        expect(nul.success).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(writes.join('')).toContain('dsp_advertiser_id: "123456789012345678"');
+    });
+
+    it('a context with an unquoted advertiser number still loads and syncs (validateDocContent)', () => {
+      const yaml = stringifyYaml(withAccount({ dsp_advertiser_id: 1234567890 }));
+      // stringify writes the number unquoted, exactly what a user would type
+      expect(yaml).toContain('dsp_advertiser_id: 1234567890');
+      const spy = vi.spyOn(process.stderr, 'write').mockImplementation((() => true) as typeof process.stderr.write);
+      try {
+        expect(validateDocContent('context', yaml)).toEqual({ ok: true });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('stays optional', () => {
+      expect(contextSchema.safeParse(withAccount({})).success).toBe(true);
+    });
   });
 
   it('rejects bad account enums', () => {
