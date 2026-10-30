@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.4.0"
+version: "0.5.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -71,6 +71,8 @@ harness_commands:
   - mixshift ads call dsp.query_campaigns --path advertiserId= --body <json>
   - mixshift ads call dsp.query_ad_groups --path advertiserId= --body <json>
   - mixshift ads call dsp.query_targets --path advertiserId= --body <json>
+  - mixshift context dsp-advertiser show <advertiser_id>
+  - mixshift context dsp-advertiser assign <advertiser_id> --brand <slug> [--account <seller_id>] [--commit]
 
 required_context_fields: []
 optional_context_fields: []

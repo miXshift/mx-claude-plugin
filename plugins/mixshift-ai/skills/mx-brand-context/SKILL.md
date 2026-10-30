@@ -738,6 +738,8 @@ Ask the AM **once** during Phase 2:
 
 ---
 
+**DSP advertiser (only for a brand that runs DSP):** ask once for its DSP advertiser id(s), so its DSP changes show on this brand's change log. Never guess one, never seed one from another brand, and never write one the user did not give you. For each id the user names, run `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json` (a dry run; add `--account <seller id>` if the brand has several accounts), show them the line it would change, and only after they confirm run it again with `--commit`. One advertiser at a time. If they do not know it or say skip, write nothing and move on; the mx-amazon-dsp skill asks again the first time that advertiser's DSP work comes up. `assign` refuses when another brand already declares the advertiser: relay that and let the user decide.
+
 ## Phase 3a — Finalize context.yaml + narrative.md + corpora/
 
 Finalize `~/.mixshift/clients/<brand-slug>/`. **Mechanical truth goes in `context.yaml`; prose goes in `narrative.md`; lists go in `corpora/*.csv`. Never put SellerIDs, ACOS targets, or thresholds into prose** — they belong in YAML.
@@ -984,7 +986,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.8.0*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.9.0*
 
 ## Telemetry (required)
 

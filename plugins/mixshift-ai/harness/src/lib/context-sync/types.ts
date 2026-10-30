@@ -198,6 +198,21 @@ export type FetchManifestResult =
     }
   | ContextSyncFailure;
 
+/**
+ * GET /api/context/dsp-advertisers?id=<digits>: which brands' context declares
+ * a DSP advertiser id. `brands` is empty when none does. `unsupported` is a
+ * 404/405 from a service that predates the route.
+ */
+export type DspAdvertiserLookupResult =
+  | { ok: true; advertiser_id: string; brands: string[] }
+  | {
+      ok: false;
+      kind: ContextSyncFailureKind | 'unsupported';
+      message: string;
+      friendly: string;
+      http_status?: number;
+    };
+
 export type FetchDocResult = { ok: true; doc: WireDoc } | ContextSyncFailure;
 
 export type PutDocResult =

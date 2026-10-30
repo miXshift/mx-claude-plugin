@@ -332,6 +332,10 @@ export const EventName = {
   ContextPushCompleted: 'context_sync.push_completed',
   ContextSyncCompleted: 'context_sync.sync_completed',
   ContextMigrateCompleted: 'context_sync.migrate_completed',
+  // `mixshift context dsp-advertiser show|assign` (mx-ops#205). Payload: state
+  // or result, and counts only. Never the advertiser id or a brand slug.
+  ContextDspAdvertiserShown: 'context_sync.dsp_advertiser_shown',
+  ContextDspAdvertiserAssigned: 'context_sync.dsp_advertiser_assigned',
   // One row per autosync invocation, tagged payload.trigger: the implicit
   // resolveBrandFields preflight emits for attempts that clear the guards
   // ('preflight'; throttled/early-skip stays silent so the per-skill-step

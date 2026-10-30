@@ -49,6 +49,7 @@ import type {
   ContextSyncFailureKind,
   ConflictServerDoc,
   DocType,
+  DspAdvertiserLookupResult,
   FetchDocResult,
   FetchManifestResult,
   PutDocInput,
@@ -74,6 +75,8 @@ export const ASSIGNMENT_TIMEOUT_MS = 2_000;
 /** Retire/restore is one small interactive write; a hung host should fail
  *  the command in seconds, not the 30s text-doc budget. */
 export const LIFECYCLE_TIMEOUT_MS = 15_000;
+/** The DSP advertiser lookup is one small fresh read. */
+export const DSP_LOOKUP_TIMEOUT_MS = 15_000;
 
 class ContextSyncNetworkError extends Error {
   /** Sandbox-aware, doctor-pointing text classified from the raw fetch
@@ -122,6 +125,12 @@ export interface ContextSyncClient {
    * method as "not supported".
    */
   setBrandLifecycle?(input: SetBrandLifecycleInput): Promise<SetBrandLifecycleResult>;
+  /**
+   * GET /api/context/dsp-advertisers?id=<digits>: which brands declare this
+   * DSP advertiser. Optional in the TYPE only (older test doubles); a missing
+   * method reads as "not supported".
+   */
+  lookupDspAdvertiser?(advertiserId: string): Promise<DspAdvertiserLookupResult>;
 }
 
 export interface ContextSyncClientOptions {
@@ -295,6 +304,21 @@ export function createContextSyncClient(
         return failureFromException(err);
       }
     },
+
+    async lookupDspAdvertiser(advertiserId: string): Promise<DspAdvertiserLookupResult> {
+      try {
+        const res = await authedRequest(
+          'GET',
+          `/api/context/dsp-advertisers?id=${encodeURIComponent(advertiserId)}`,
+          undefined,
+          DSP_LOOKUP_TIMEOUT_MS,
+        );
+        const json = await parseEnvelope(res);
+        return dspLookupResultFrom(json, res.status, advertiserId);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
   };
 }
 
@@ -378,6 +402,54 @@ export function lifecycleResultFrom(
   };
 }
 
+/**
+ * Map a GET /api/context/dsp-advertisers response onto a result (exported for
+ * tests). A 404/405 is a service that predates the route: `unsupported`.
+ * Any answer that is not the documented shape is a failure, never "no brand".
+ */
+export function dspLookupResultFrom(
+  json: WireEnvelope,
+  httpStatus: number,
+  advertiserId: string,
+): DspAdvertiserLookupResult {
+  if (httpStatus >= 200 && httpStatus < 300 && json.ok === true && Array.isArray(json.advertisers)) {
+    const entry = (json.advertisers as unknown[]).find(
+      (a): a is { advertiser_id: string; brands?: unknown } =>
+        typeof a === 'object' &&
+        a !== null &&
+        (a as { advertiser_id?: unknown }).advertiser_id === advertiserId,
+    );
+    if (!entry) return { ok: true, advertiser_id: advertiserId, brands: [] };
+    if (
+      !Array.isArray(entry.brands) ||
+      !entry.brands.every((b): b is string => typeof b === 'string' && b.length > 0)
+    ) {
+      return {
+        ok: false,
+        kind: 'unknown',
+        message: 'The MixShift service answered the DSP advertiser lookup in a shape this plugin does not recognize.',
+        friendly: 'The MixShift service answered the DSP advertiser lookup in a shape this plugin does not recognize.',
+        http_status: httpStatus,
+      };
+    }
+    return { ok: true, advertiser_id: advertiserId, brands: [...new Set(entry.brands)].sort() };
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    const friendly =
+      'This MixShift service does not support the DSP advertiser lookup yet. Nothing was changed. ' +
+      'Try again after the service is updated.';
+    return { ok: false, kind: 'unsupported', message: friendly, friendly, http_status: httpStatus };
+  }
+  const base = failureFromEnvelope(json, httpStatus);
+  return {
+    ok: false,
+    kind: base.kind,
+    message: base.message,
+    friendly: base.friendly,
+    http_status: httpStatus,
+  };
+}
+
 function lifecycleFailure(
   kind: LifecycleFailureKind,
   friendly: string,
@@ -415,6 +487,8 @@ export interface WireEnvelope {
   message?: string;
   server?: ConflictServerDoc;
   brands?: unknown;
+  /** GET /api/context/dsp-advertisers. */
+  advertisers?: unknown;
   doc?: unknown;
   status?: string;
   revision?: unknown;
