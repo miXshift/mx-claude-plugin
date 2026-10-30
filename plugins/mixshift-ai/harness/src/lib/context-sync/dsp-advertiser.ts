@@ -13,6 +13,7 @@
 import { isMap, isScalar, isSeq, parse as parseYaml, parseDocument } from 'yaml';
 import type { YAMLMap } from 'yaml';
 import type { Document, Pair } from 'yaml';
+import { isDeepStrictEqual } from 'node:util';
 import { contextSchema, normalizeLegacyTacosFields } from '../context/schema.js';
 
 export const DSP_ADVERTISER_ID_PATTERN = /^\d{1,64}$/;
@@ -85,6 +86,7 @@ export type PlanRefusalReason =
   | 'unreadable_yaml'
   | 'no_accounts'
   | 'unexpected_change'
+  | 'existing_context_invalid'
   | 'account_not_found'
   | 'flow_style_account'
   | 'existing_value_invalid'
@@ -188,7 +190,7 @@ function diffLines(before: string, after: string): { removed: string[]; added: s
 }
 
 type Parsed =
-  | { ok: true; doc: Document; items: YAMLMap[]; flow: boolean }
+  | { ok: true; doc: Document; items: YAMLMap[]; flow: boolean; caps: number[] }
   | { ok: false; result: PlanResult };
 
 function parseAccounts(content: string): Parsed {
@@ -207,7 +209,14 @@ function parseAccounts(content: string): Parsed {
   const seq = isSeq(accountsNode) ? accountsNode : null;
   const items = seq ? seq.items.filter(isMap) : [];
   const flow = Boolean(seq?.flow) || items.some((m) => m.flow === true);
-  return { ok: true, doc, items, flow };
+  // Where each account ends: the start of the next account's line, or the end of the list.
+  const caps = items.map((_, i) => {
+    const next = items[i + 1]?.items[0]?.key as { range?: [number, number, number] } | undefined;
+    if (next?.range) return content.lastIndexOf('\n', next.range[0] - 1) + 1;
+    const r = (seq as { range?: [number, number, number] } | null)?.range;
+    return r ? r[1] : content.length;
+  });
+  return { ok: true, doc, items, flow, caps };
 }
 
 const FLOW_MESSAGE =
@@ -300,7 +309,11 @@ function apply(content: string, edits: TextEdit[]): string {
 
 const q = (id: string): string => `"${id}"`;
 
+type Range3 = [number, number, number];
+
 interface PairLines {
+  /** Offset of the key itself (after any "- " of a first key). */
+  ks: number;
   /** Offset of the start of the key's line. */
   start: number;
   /** Offset just past the last line the pair occupies. */
@@ -311,35 +324,48 @@ interface PairLines {
   multiLineFlow: boolean;
 }
 
-function pairLines(t: Text, pair: Pair): PairLines {
-  const key = pair.key as { range?: [number, number, number] };
-  const keyStart = key.range?.[0] ?? 0;
-  const start = t.ls(keyStart);
-  let end = t.lend(keyStart);
+/**
+ * Where a pair sits in the text. The end is the line of the last real content:
+ * capped at `cap` (the start of the next account), then trailing blank and
+ * comment-only lines are trimmed off, because the parser's range can run over
+ * them.
+ */
+function pairLines(t: Text, pair: Pair, cap: number): PairLines {
+  const key = pair.key as { range?: Range3 };
+  const ks = key.range?.[0] ?? 0;
+  const start = t.ls(ks);
+  let e = key.range?.[1] ?? ks;
   let lastItemLine: number | null = null;
   let multiLineFlow = false;
-  const v = pair.value;
-  if (isSeq(v) && v.range) {
-    if (v.flow) {
+  const v = pair.value as { range?: Range3 } | null;
+  if (isSeq(pair.value) && v?.range) {
+    if (pair.value.flow) {
       multiLineFlow = t.ls(v.range[0]) !== t.ls(Math.max(v.range[0], v.range[1] - 1));
-      end = Math.max(end, t.lend(Math.max(v.range[0], v.range[1] - 1)));
-    } else if (v.items.length > 0) {
-      const last = v.items[v.items.length - 1] as { range?: [number, number, number] };
+      e = Math.max(e, v.range[1]);
+    } else if (pair.value.items.length > 0) {
+      const last = pair.value.items[pair.value.items.length - 1] as { range?: Range3 };
       if (last.range) {
         lastItemLine = t.ls(last.range[0]);
-        end = Math.max(end, t.lend(last.range[0]));
+        e = Math.max(e, last.range[1]);
       }
     }
-  } else if (v && typeof v === 'object' && 'range' in v && (v as { range?: number[] }).range) {
-    const r = (v as { range: [number, number, number] }).range;
-    end = Math.max(end, t.lend(Math.max(keyStart, r[1] - 1)));
+  } else if (v?.range) {
+    e = Math.max(e, v.range[1]);
   }
-  return { start, end, lastItemLine, multiLineFlow };
+  e = Math.min(e, cap);
+  const keyLineEnd = t.lend(ks);
+  let end = Math.max(keyLineEnd, t.lend(Math.max(ks, e - 1)));
+  while (end > keyLineEnd) {
+    const prevStart = t.ls(end - 1);
+    if (/^\s*(#.*)?$/.test(t.body(prevStart))) end = prevStart;
+    else break;
+  }
+  return { ks, start, end, lastItemLine, multiLineFlow };
 }
 
-/** The key's own indentation, with any "- " prefix turned into spaces. */
+/** The key's own indentation as spaces (a "- " before a first key counts as spaces). */
 function keyIndent(t: Text, map: YAMLMap): string {
-  const first = map.items[0]?.key as { range?: [number, number, number] } | undefined;
+  const first = map.items[0]?.key as { range?: Range3 } | undefined;
   const off = first?.range?.[0] ?? 0;
   return ' '.repeat(off - t.ls(off));
 }
@@ -353,8 +379,21 @@ function trailingComment(line: string): string {
   return /(\s+#.*)$/.exec(line)?.[1] ?? '';
 }
 
-function listLine(indent: string, ids: string[], comment: string): string {
-  return `${indent}dsp_advertiser_ids: [${ids.map(q).join(', ')}]${comment}`;
+function listLine(ids: string[], comment: string): string {
+  return `dsp_advertiser_ids: [${ids.map(q).join(', ')}]${comment}`;
+}
+
+/**
+ * Remove a pair. An ordinary key loses its whole lines. A key that sits right
+ * after the account's "- " (a first key) is removed from the key's own offset
+ * up to the next key, so the dash stays and the item stays valid.
+ */
+function removePair(t: Text, map: YAMLMap, pair: Pair, pl: PairLines): TextEdit {
+  const prefix = t.s.slice(pl.start, pl.ks);
+  if (!prefix.includes('-')) return { start: pl.start, end: pl.end, text: '' };
+  const next = map.items[map.items.indexOf(pair) + 1]?.key as { range?: Range3 } | undefined;
+  const nks = next?.range?.[0];
+  return { start: pl.ks, end: nks !== undefined && nks >= pl.end ? nks : pl.end, text: '' };
 }
 
 const MULTI_LINE_FLOW_MESSAGE =
@@ -363,11 +402,131 @@ const MULTI_LINE_FLOW_MESSAGE =
   'list, then run this again.';
 
 const DSP_LINE = /^\s*-?\s*dsp_advertiser_ids?:/;
-const DSP_ITEM = /^\s*-\s*"\d{1,64}"\s*(#.*)?$/;
+const DSP_ITEM = /^\s*-\s*(["'])\d{1,64}\1\s*(#.*)?$/;
+const BLANK_OR_COMMENT = /^\s*(#.*)?$/;
+const dashed = (l: string): boolean => /^\s*-/.test(l);
+const stripLead = (l: string): string => l.replace(/^[ \t]*(?:-[ \t]+)?/, '');
 
-/** Every changed line must be a DSP line, or a quoted-digit item under one. */
-function onlyDspLines(removed: string[], added: string[]): boolean {
-  return [...removed, ...added].every((l) => DSP_LINE.test(l) || DSP_ITEM.test(l));
+/**
+ * Every changed line must be a DSP line, or a quoted-digit item under one. The
+ * only other change allowed is on unassign of a first key: the lines after it
+ * may move their indentation or take over the "- ". A DSP line may never lose
+ * or gain its dash on assign.
+ */
+function onlyDspLines(removed: string[], added: string[], op: 'assign' | 'unassign'): boolean {
+  const isDsp = (l: string): boolean => DSP_LINE.test(l) || DSP_ITEM.test(l);
+  const remDsp = removed.filter(isDsp);
+  const addDsp = added.filter(isDsp);
+  let remOther = removed.filter((l) => !isDsp(l));
+  const addOther = added.filter((l) => !isDsp(l));
+  const remDashed = remDsp.filter((l) => DSP_LINE.test(l) && dashed(l)).length;
+  const addDashed = addDsp.filter((l) => DSP_LINE.test(l) && dashed(l)).length;
+  if (op === 'assign') {
+    if (remOther.length > 0 || addOther.length > 0 || remDashed !== addDashed) return false;
+    return true;
+  }
+  if (addDashed > remDashed) return false;
+  remOther = remOther.filter((l) => !BLANK_OR_COMMENT.test(l));
+  if (remOther.length !== addOther.length) return false;
+  const a = remOther.map(stripLead).sort();
+  const b = addOther.map(stripLead).sort();
+  return a.every((l, i) => l === b[i]);
+}
+
+type Plain = Record<string, unknown>;
+const accountsOf = (o: unknown): Plain[] => {
+  const a = (o as Plain | null)?.accounts;
+  return Array.isArray(a) ? (a as Plain[]) : [];
+};
+const validIdsOf = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : [v]).filter(
+    (x): x is string => typeof x === 'string' && isValidDspAdvertiserId(x),
+  );
+const dspIdsOf = (a: Plain): string[] => [
+  ...validIdsOf(a.dsp_advertiser_id),
+  ...(Array.isArray(a.dsp_advertiser_ids) ? validIdsOf(a.dsp_advertiser_ids) : []),
+];
+
+/**
+ * Structural proof, read by the YAML parser and not by lines: with every DSP key
+ * taken out of every account, the old and new documents are identical, and the
+ * DSP values are exactly what the operation should have made them. Any
+ * splicing slip fails closed here.
+ */
+function structuralProblem(
+  before: string,
+  after: string,
+  op: 'assign' | 'unassign',
+  id: string,
+  targetIdx: number,
+): string | null {
+  let o: unknown;
+  let n: unknown;
+  try {
+    o = parseYaml(before);
+    n = parseYaml(after);
+  } catch {
+    return 'does not parse';
+  }
+  const strip = (doc: unknown): unknown => {
+    const c = structuredClone(doc);
+    for (const a of accountsOf(c)) {
+      if (a && typeof a === 'object') {
+        delete a.dsp_advertiser_id;
+        delete a.dsp_advertiser_ids;
+      }
+    }
+    return c;
+  };
+  if (!isDeepStrictEqual(strip(o), strip(n))) return 'something other than the DSP keys changed';
+  const oa = accountsOf(o);
+  const na = accountsOf(n);
+  if (oa.length !== na.length) return 'the number of accounts changed';
+  for (let i = 0; i < oa.length; i++) {
+    const before_ = oa[i] as Plain;
+    const after_ = na[i] as Plain;
+    const old = dspIdsOf(before_);
+    let expected = old;
+    let touched = false;
+    if (op === 'assign' && i === targetIdx) {
+      expected = [...old, id];
+      touched = true;
+    } else if (op === 'unassign' && old.includes(id)) {
+      expected = old.filter((v) => v !== id);
+      touched = true;
+    }
+    if (!sameSet(dspIdsOf(after_), expected)) return `account ${i + 1} holds the wrong DSP advertisers`;
+    if (!touched) {
+      const raw = (a: Plain): unknown => [a.dsp_advertiser_id, a.dsp_advertiser_ids];
+      if (!isDeepStrictEqual(raw(before_), raw(after_))) return `account ${i + 1} changed`;
+    }
+  }
+  return null;
+}
+
+/** null when the ORIGINAL file already passes the schema; else which field fails. */
+function existingContextProblem(content: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = normalizeLegacyTacosFields(parseYaml(content));
+  } catch (err) {
+    return `it does not parse (${err instanceof Error ? err.message : String(err)})`;
+  }
+  const r = contextSchema.safeParse(parsed);
+  if (r.success) return null;
+  const first = r.error.issues[0];
+  const where = first && first.path.length > 0 ? first.path.join('.') : '(root)';
+  return `${where}: ${first?.message ?? 'invalid'}`;
+}
+
+function existingInvalid(problem: string): PlanResult {
+  return {
+    ok: false,
+    reason: 'existing_context_invalid',
+    message:
+      `This brand's context.yaml already fails the brand context schema (${problem}). Nothing was ` +
+      'changed. Fix that first (the mx-brand-context skill, or `mixshift brand validate`), then run this again.',
+  };
 }
 
 function finish(
@@ -376,18 +535,20 @@ function finish(
   expected: string[],
   account: AccountChoice | null,
   edit: PlanEdit,
+  ctx: { op: 'assign' | 'unassign'; id: string; targetIdx: number },
 ): PlanResult {
   const next = apply(content, edits);
   const { removed, added } = diffLines(content, next);
-  if (!onlyDspLines(removed, added)) {
-    return {
-      ok: false,
-      reason: 'unexpected_change',
-      message:
-        'The planned edit would change a line that is not a DSP advertiser line. Nothing was ' +
-        'written. Check this brand\'s DSP advertiser lines by hand.',
-    };
-  }
+  const unexpected = (why: string): PlanResult => ({
+    ok: false,
+    reason: 'unexpected_change',
+    message:
+      `The planned edit would change more than the DSP advertiser lines (${why}). Nothing was ` +
+      "written. Check this brand's DSP advertiser lines by hand.",
+  });
+  if (!onlyDspLines(removed, added, ctx.op)) return unexpected('a line that is not a DSP line');
+  const structural = structuralProblem(content, next, ctx.op, ctx.id, ctx.targetIdx);
+  if (structural) return unexpected(structural);
   const verdict = verifyResult(next, expected);
   if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
   return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
@@ -395,8 +556,9 @@ function finish(
 
 /**
  * Plan declaring `advertiserId` on the brand, by inserting, replacing or
- * removing only the DSP line(s) inside the chosen account. Proves the new text
- * with the gateway's parser: its ids must equal the old ids plus this one.
+ * removing only the DSP line(s) inside the chosen account. Proved three ways:
+ * the changed lines are DSP lines, the parsed documents differ only in the DSP
+ * values, and the gateway's reader sees old ids plus this one.
  */
 export function planDspAssignment(
   content: string,
@@ -405,7 +567,7 @@ export function planDspAssignment(
 ): PlanResult {
   const parsed = parseAccounts(content);
   if (!parsed.ok) return parsed.result;
-  const { items, flow } = parsed;
+  const { items, flow, caps } = parsed;
   if (items.length === 0) {
     return {
       ok: false,
@@ -415,12 +577,16 @@ export function planDspAssignment(
         '(the mx-brand-context skill), then declare the DSP advertiser.',
     };
   }
+  const problem = existingContextProblem(content);
+  if (problem) return existingInvalid(problem);
   if (flow) return { ok: false, reason: 'flow_style_account', message: FLOW_MESSAGE };
 
   const choices = items.map(accountChoiceOf);
   const chosen = chooseAccount(items, choices, accountSelector);
   if (!chosen.ok) return chosen.result;
   const target = chosen.target;
+  const targetIdx = items.indexOf(target);
+  const cap = caps[targetIdx] as number;
   const account = accountChoiceOf(target);
 
   const oldIds = gatewayParseDspAdvertiserIds(content);
@@ -451,17 +617,16 @@ export function planDspAssignment(
 
   const edits: TextEdit[] = [];
   let edit: PlanEdit;
-  const replaceLines = (pl: PairLines, text: string): void => {
-    // Keep the original terminator of the last line the pair occupied.
-    const lastLine = t.ls(pl.end - 1);
-    edits.push({ start: pl.start, end: pl.end, text: text + t.term(lastLine) });
+  const replacePair = (pl: PairLines, text: string): void => {
+    // From the key's own offset, so a first key keeps its "- "; keep the line's terminator.
+    edits.push({ start: pl.ks, end: pl.end, text: text + t.term(t.ls(pl.end - 1)) });
   };
 
   if (listPair && list.kind === 'ids' && isSeq(listPair.value)) {
-    const pl = pairLines(t, listPair);
+    const pl = pairLines(t, listPair, cap);
     if (listPair.value.flow) {
       if (pl.multiLineFlow) return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
-      replaceLines(pl, listLine(indent, [...list.ids, advertiserId], trailingComment(t.body(pl.start))));
+      replacePair(pl, listLine([...list.ids, advertiserId], trailingComment(t.body(pl.start))));
     } else {
       const lastLine = pl.lastItemLine as number;
       const prefix = /^[ \t]*-[ \t]+/.exec(t.body(lastLine))?.[0] ?? `${indent}- `;
@@ -471,30 +636,23 @@ export function planDspAssignment(
     }
     edit = 'appended';
   } else if (singlePair && single.kind === 'ids') {
-    const pl = pairLines(t, singlePair);
-    replaceLines(pl, listLine(indent, [single.ids[0] as string, advertiserId], trailingComment(t.body(pl.start))));
-    if (listPair) {
-      const lp = pairLines(t, listPair);
-      edits.push({ start: lp.start, end: lp.end, text: '' }); // an empty leftover key
-    }
+    const pl = pairLines(t, singlePair, cap);
+    replacePair(pl, listLine([single.ids[0] as string, advertiserId], trailingComment(t.body(pl.start))));
+    if (listPair) edits.push(removePair(t, target, listPair, pairLines(t, listPair, cap))); // an empty leftover key
     edit = 'converted';
   } else if (singlePair) {
     // An empty scalar key (null, ~, blank): give it the id in place.
-    const pl = pairLines(t, singlePair);
-    replaceLines(pl, `${indent}dsp_advertiser_id: ${q(advertiserId)}${trailingComment(t.body(pl.start))}`);
-    if (listPair) {
-      const lp = pairLines(t, listPair);
-      edits.push({ start: lp.start, end: lp.end, text: '' });
-    }
+    const pl = pairLines(t, singlePair, cap);
+    replacePair(pl, `dsp_advertiser_id: ${q(advertiserId)}${trailingComment(t.body(pl.start))}`);
+    if (listPair) edits.push(removePair(t, target, listPair, pairLines(t, listPair, cap)));
     edit = 'replaced_empty';
   } else if (listPair) {
-    const pl = pairLines(t, listPair);
-    replaceLines(pl, listLine(indent, [advertiserId], trailingComment(t.body(pl.start))));
+    const pl = pairLines(t, listPair, cap);
+    replacePair(pl, listLine([advertiserId], trailingComment(t.body(pl.start))));
     edit = 'replaced_empty';
   } else {
     const last = target.items[target.items.length - 1] as Pair;
-    const pl = pairLines(t, last);
-    const at = pl.end;
+    const at = pairLines(t, last, cap).end;
     const unterminated = t.term(t.ls(at - 1)) === '';
     edits.push({
       start: at,
@@ -505,19 +663,24 @@ export function planDspAssignment(
     });
     edit = 'added';
   }
-  return finish(content, edits, [...oldIds, advertiserId], account, edit);
+  return finish(content, edits, [...oldIds, advertiserId], account, edit, {
+    op: 'assign',
+    id: advertiserId,
+    targetIdx,
+  });
 }
 
 /**
  * Plan removing `advertiserId` from every account of this brand that declares
  * it, by removing or rewriting only the DSP line(s). A list that keeps ids
- * stays a list. Proved against the gateway's parser: new ids = old ids minus
- * this one.
+ * stays a list. Proved like assign, with new ids = old ids minus this one.
  */
 export function planDspUnassignment(content: string, advertiserId: string): PlanResult {
   const parsed = parseAccounts(content);
   if (!parsed.ok) return parsed.result;
-  const { items } = parsed;
+  const { items, caps } = parsed;
+  const problem = existingContextProblem(content);
+  if (problem) return existingInvalid(problem);
   const oldIds = gatewayParseDspAdvertiserIds(content);
   if (!oldIds.includes(advertiserId)) {
     return { ok: true, content, changed: false, account: null, edit: 'not_declared', removed_lines: [], added_lines: [] };
@@ -525,43 +688,56 @@ export function planDspUnassignment(content: string, advertiserId: string): Plan
   const t = new Text(content);
   const edits: TextEdit[] = [];
   let account: AccountChoice | null = null;
-  for (const item of items) {
-    const indent = keyIndent(t, item);
+  for (let ai = 0; ai < items.length; ai++) {
+    const item = items[ai] as YAMLMap;
+    const cap = caps[ai] as number;
     const singlePair = findPair(item, 'dsp_advertiser_id');
     if (singlePair && isScalar(singlePair.value) && singlePair.value.value === advertiserId) {
-      const pl = pairLines(t, singlePair);
-      edits.push({ start: pl.start, end: pl.end, text: '' });
+      edits.push(removePair(t, item, singlePair, pairLines(t, singlePair, cap)));
       account = accountChoiceOf(item);
     }
     const listPair = findPair(item, 'dsp_advertiser_ids');
-    if (listPair && isSeq(listPair.value)) {
-      const seq = listPair.value;
-      const keep = seq.items
-        .filter((n) => isScalar(n) && n.value !== advertiserId)
-        .map((n) => (n as { value: string }).value);
-      if (keep.length === seq.items.length) continue;
-      account = accountChoiceOf(item);
-      const pl = pairLines(t, listPair);
-      if (seq.flow) {
-        if (pl.multiLineFlow) return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
-        const line = t.body(pl.start);
-        if (keep.length === 0) edits.push({ start: pl.start, end: pl.end, text: '' });
-        else edits.push({ start: pl.start, end: pl.end, text: listLine(indent, keep, trailingComment(line)) + t.term(pl.start) });
-      } else if (keep.length === 0) {
-        edits.push({ start: pl.start, end: pl.end, text: '' });
-      } else {
-        // Block list: drop just the matching item line(s).
-        for (const n of seq.items) {
-          const node = n as { value?: unknown; range?: [number, number, number] };
-          if (node.value === advertiserId && node.range) {
-            const s = t.ls(node.range[0]);
-            edits.push({ start: s, end: t.lend(node.range[0]), text: '' });
-          }
+    if (!listPair || !isSeq(listPair.value)) continue;
+    const seq = listPair.value;
+    // Only a list that holds the id is touched.
+    if (!seq.items.some((n) => isScalar(n) && n.value === advertiserId)) continue;
+    const kept = seq.items.filter((n) => !(isScalar(n) && n.value === advertiserId));
+    if (!kept.every((n) => isScalar(n) && typeof n.value === 'string' && isValidDspAdvertiserId(n.value))) {
+      return {
+        ok: false,
+        reason: 'existing_value_invalid',
+        message:
+          'A DSP advertiser list on this brand holds a value that is not a quoted string of digits. ' +
+          'Fix that line by hand first; nothing was changed.',
+      };
+    }
+    account = accountChoiceOf(item);
+    const pl = pairLines(t, listPair, cap);
+    if (kept.length === 0) {
+      edits.push(removePair(t, item, listPair, pl));
+    } else if (seq.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: 'result_not_recognized', message: MULTI_LINE_FLOW_MESSAGE };
+      const ids = kept.map((n) => (n as { value: string }).value);
+      edits.push({
+        start: pl.ks,
+        end: pl.end,
+        text: listLine(ids, trailingComment(t.body(pl.start))) + t.term(t.ls(pl.end - 1)),
+      });
+    } else {
+      // Block list: drop just the matching item line(s).
+      for (const n of seq.items) {
+        const node = n as { value?: unknown; range?: Range3 };
+        if (node.value === advertiserId && node.range) {
+          edits.push({ start: t.ls(node.range[0]), end: t.lend(node.range[0]), text: '' });
         }
       }
     }
   }
-  return finish(content, edits, oldIds.filter((v) => v !== advertiserId), account, 'removed');
+  return finish(content, edits, oldIds.filter((v) => v !== advertiserId), account, 'removed', {
+    op: 'unassign',
+    id: advertiserId,
+    targetIdx: -1,
+  });
 }
 
 /** null when the edited text validates and the gateway reads exactly `expected`. */

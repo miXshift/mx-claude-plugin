@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
+import { parse as parseYaml } from 'yaml';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -632,7 +633,7 @@ describe('planDspAssignment', () => {
 });
 
 describe('dspLookupResultFrom', () => {
-  it('maps the documented shape and treats a missing entry as no brand', () => {
+  it('maps the documented shape; an empty brands list is no brand, a missing entry is unknown', () => {
     expect(
       dspLookupResultFrom({ ok: true, advertisers: [{ advertiser_id: ID, brands: ['b', 'a'] }] }, 200, ID),
     ).toEqual({ ok: true, advertiser_id: ID, brands: ['a', 'b'] });
@@ -824,5 +825,179 @@ describe('surgical edit: only the DSP lines change', () => {
     const text = contextYaml(ACCOUNT_A).replace(/\n$/, '');
     const plan = planDspAssignment(text, ID);
     expect(plan.ok).toBe(true);
+  });
+});
+
+
+describe('structure-proof edits (review round 3)', () => {
+  const FIRST = (dspLine: string) =>
+    [
+      `  - ${dspLine}`,
+      '    seller_id: 111',
+      '    seller_name: Acme Goods US',
+      '    account_type: SC',
+      '    status: active',
+      '    role: primary',
+    ].join('\n');
+  const parsedAccounts = (text: string): any[] => (parseYaml(text) as { accounts: any[] }).accounts;
+
+  it('inserts after a nested map whose last value is empty with a comment, next account indented', () => {
+    const accounts = `${ACCOUNT_A}\n    meta:\n      a: # x\n${ACCOUNT_B}`;
+    const text = contextYaml(accounts);
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain(`      a: # x\n    dsp_advertiser_id: "${ID}"\n  - seller_id: 222`);
+    expect(parsedAccounts(plan.content)[0].meta).toEqual({ a: null });
+    expect(parsedAccounts(plan.content)[1].dsp_advertiser_id).toBeUndefined();
+  });
+
+  it('inserts before a comment line that follows an empty last value', () => {
+    const accounts = `${ACCOUNT_A}\n    meta:\n      a:\n      # y\n${ACCOUNT_B}`;
+    const plan = planDspAssignment(contextYaml(accounts), ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const acc = parsedAccounts(plan.content);
+    expect(acc[0].dsp_advertiser_id).toBe(ID);
+    expect(acc[0].meta).toEqual({ a: null });
+    expect(acc[1].dsp_advertiser_id).toBeUndefined();
+  });
+
+  it('inserts after the last item of a block sequence of maps', () => {
+    const accounts = `${ACCOUNT_A}\n    history:\n      - from: 2020\n        to: 2021\n${ACCOUNT_B}`;
+    const plan = planDspAssignment(contextYaml(accounts), ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain(`        to: 2021\n    dsp_advertiser_id: "${ID}"\n  - seller_id: 222`);
+    expect(parsedAccounts(plan.content)[0].history).toEqual([{ from: 2020, to: 2021 }]);
+  });
+
+  it('keeps the dash when a first-key DSP line is converted', () => {
+    const text = contextYaml(FIRST(`dsp_advertiser_id: "${ID2}"`));
+    const plan = planDspAssignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain(`  - dsp_advertiser_ids: ["${ID2}", "${ID}"]\n    seller_id: 111`);
+    expect(parsedAccounts(plan.content)).toHaveLength(1);
+  });
+
+  it('keeps the dash when a first-key flow list is appended to', () => {
+    const plan = planDspAssignment(contextYaml(FIRST(`dsp_advertiser_ids: ["${ID2}"]`)), ID);
+    expect(plan.ok && plan.content).toContain(`  - dsp_advertiser_ids: ["${ID2}", "${ID}"]\n    seller_id: 111`);
+  });
+
+  it('keeps the dash when an empty first-key value is filled', () => {
+    for (const empty of ['dsp_advertiser_id: null', 'dsp_advertiser_id: ~', 'dsp_advertiser_id:']) {
+      const plan = planDspAssignment(contextYaml(FIRST(empty)), ID);
+      expect(plan.ok && plan.content).toContain(`  - dsp_advertiser_id: "${ID}"\n    seller_id: 111`);
+    }
+  });
+
+  it('unassign of a first-key DSP line leaves a valid item', () => {
+    const text = contextYaml(FIRST(`dsp_advertiser_id: "${ID}"`));
+    const plan = planDspUnassignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain('  - seller_id: 111\n    seller_name: Acme Goods US');
+    expect(plan.content).not.toContain('dsp_advertiser');
+    expect(parsedAccounts(plan.content)).toHaveLength(1);
+  });
+
+  it('unassign of a first-key list keeps the other id and the dash', () => {
+    const text = contextYaml(FIRST(`dsp_advertiser_ids: ["${ID}", "${ID2}"]`));
+    const plan = planDspUnassignment(text, ID);
+    expect(plan.ok && plan.content).toContain(`  - dsp_advertiser_ids: ["${ID2}"]\n    seller_id: 111`);
+  });
+
+  it('refuses a context.yaml that already fails the schema, naming the field', () => {
+    const bad = contextYaml(`${ACCOUNT_A}\n  - seller_id: 222`);
+    const a = planDspAssignment(bad, ID);
+    expect(a).toMatchObject({ ok: false, reason: 'existing_context_invalid' });
+    if (!a.ok) expect(a.message).toContain('accounts');
+    expect(planDspUnassignment(bad, ID)).toMatchObject({ ok: false, reason: 'existing_context_invalid' });
+  });
+
+  it('unassign accepts single-quoted block items', () => {
+    const text = contextYaml(`${ACCOUNT_A}\n    dsp_advertiser_ids:\n      - '${ID}'\n      - "${ID2}"`);
+    // The service reads single quotes too.
+    expect(gatewayParseDspAdvertiserIds(text)).toEqual([ID, ID2]);
+    const plan = planDspUnassignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).not.toContain(`'${ID}'`);
+    expect(gatewayParseDspAdvertiserIds(plan.content)).toEqual([ID2]);
+  });
+
+  it('unassign of a whole block list may drop the blank and comment lines between key and items', () => {
+    const text = contextYaml(`${ACCOUNT_A}\n    dsp_advertiser_ids:\n\n      # keep nothing\n      - "${ID}"`);
+    const plan = planDspUnassignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).not.toContain('dsp_advertiser_ids');
+    expect(gatewayParseDspAdvertiserIds(plan.content)).toEqual([]);
+    expect(parsedAccounts(plan.content)).toHaveLength(1);
+  });
+
+  it('unassign leaves another account\'s junk list alone', () => {
+    const accounts = `${ACCOUNT_A}\n    dsp_advertiser_id: "${ID}"\n${ACCOUNT_B}\n    dsp_advertiser_ids: [~, {a: 1}]`;
+    const text = contextYaml(accounts);
+    const plan = planDspUnassignment(text, ID);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.content).toContain('dsp_advertiser_ids: [~, {a: 1}]');
+    expect(plan.content).not.toContain(`"${ID}"`);
+  });
+
+  it('unassign refuses a list that holds the id next to a value that is not an id', () => {
+    const text = contextYaml(`${ACCOUNT_A}\n    dsp_advertiser_ids: ["${ID}", ~]`);
+    expect(planDspUnassignment(text, ID)).toMatchObject({ ok: false, reason: 'existing_value_invalid' });
+  });
+});
+
+describe('command: expect, telemetry, invalid original (review round 3)', () => {
+  it('refuses --expect without --commit', async () => {
+    await seed(ACCOUNT_A);
+    await assign(ID, '--brand', 'acme-goods', '--expect', 'abc123abc123');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'expect_without_commit' });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses when the original context.yaml already fails the schema', async () => {
+    const before = await seed(`${ACCOUNT_A}\n  - seller_id: 222`);
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'existing_context_invalid' });
+    expect(await readCtx()).toBe(before);
+  });
+
+  it('unassign honors --expect: a wrong hash refuses, the dry-run hash commits', async () => {
+    await seed(`${ACCOUNT_A}\n    dsp_advertiser_id: "${ID}"`);
+    h.lookups = [found('acme-goods')];
+    await unassign(ID, '--brand', 'acme-goods');
+    const dry = lastJson();
+    expect(dry.plan_hash).toMatch(/^[0-9a-f]{12}$/);
+    stdout = [];
+    await unassign(ID, '--brand', 'acme-goods', '--commit', '--expect', '000000000000');
+    expect(lastJson()).toMatchObject({ status: 'refused', reason: 'plan_changed' });
+    expect(h.putDoc).not.toHaveBeenCalled();
+    stdout = [];
+    process.exitCode = undefined;
+    h.lookups = [found('acme-goods'), found()];
+    await unassign(ID, '--brand', 'acme-goods', '--commit', '--expect', dry.plan_hash);
+    expect(lastJson()).toMatchObject({ status: 'ok', result: 'committed', verified: true });
+  });
+
+  it('never puts the advertiser id or a brand in the telemetry payload of assign or unassign', async () => {
+    await seed(ACCOUNT_A);
+    h.lookups = [found(), found('acme-goods')];
+    await assign(ID, '--brand', 'acme-goods', '--commit');
+    h.lookups = [found('acme-goods'), found()];
+    stdout = [];
+    await unassign(ID, '--brand', 'acme-goods', '--commit');
+    const calls = vi.mocked(track).mock.calls.map((c) => JSON.stringify(c[0]));
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const c of calls) {
+      expect(c).not.toContain(ID);
+      expect(c).not.toContain('acme-goods');
+    }
   });
 });

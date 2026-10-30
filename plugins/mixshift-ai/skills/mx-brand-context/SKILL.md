@@ -751,7 +751,7 @@ Populate every required and applicable optional section per the Zod schema (run 
 | YAML section | Source phase | Notes |
 |---|---|---|
 | `accounts[]` | Phase 0 | One entry per SellerID. `account_type ∈ {SC, VC}`. `status ∈ {active, wind_down, inactive}`. `role ∈ {primary, legacy, secondary}`. |
-| `accounts[].dsp_advertiser_id` / `dsp_advertiser_ids` | Phase 2 answer, written after Phase 4 validation | Written ONLY by `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json` (a dry run; add `--account <seller id>` if asked), shown to the user, then run again with `--commit` on their yes, one advertiser at a time. Always a quoted string of digits. Never edit these by hand and never drop them when finalizing; `assign` refuses when another brand already declares the id (relay that, let the user decide). |
+| `accounts[].dsp_advertiser_id` / `dsp_advertiser_ids` | Phase 2 answer, written in Phase 4 Step 5 | Written ONLY by `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json`, as in Phase 4 Step 5: a dry run, shown to the user, then `--commit --expect <plan_hash>` on their yes, one advertiser at a time. Always a quoted string of digits. Never edit these by hand and never drop them when finalizing; the command picks the account itself and refuses when another brand already declares the id (relay that, let the user decide). |
 | `sources` | Phase 0 + Phase 1 verification | `ad_metrics` is always `campaignmetric`. `ops_revenue` is `vendor_sales_manufacturing_asin` (VC) or `business_reports_dpst_date` (SC). |
 | `management` | Phase 2 | `primary_metric ∈ {ACOS, TACOS}`. `acos_target_pct` numeric. `attribution_window_days` integer. |
 | `capture_rate_calibration` | Brain (`capture_rate_calibration`) confirmed Phase 2 | Required if `attribution_window_days > 1`. The `daily_settlement_curve` sub-block comes from the brain (the brain computes it from CS-06/07/08 + CS-28); Tier 3 confirms it. |
@@ -879,7 +879,8 @@ If validation fails:
 
 Do not hand off to downstream skills with a failing validator.
 
-**Step 5 — publish, then declare the DSP advertiser (once validation passes).**
+### Step 5 — publish, then declare the DSP advertiser (once validation passes)
+
 1. Publish the finished context: `mixshift context push --brand <brand-slug>` (the same publish setup does anyway). The automatic publish after a write is throttled and may not have run yet, and `assign` refuses while `context.yaml` has unpublished changes, so do this first.
 2. For each advertiser id the user gave in Phase 2 (none, if they said no or skip): run `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json` (a dry run), show the user the lines it would change, and only on their yes run it again with `--commit --expect <plan_hash>` (the hash from the dry run you showed). One advertiser at a time. If it refuses, relay why and let the user decide.
 

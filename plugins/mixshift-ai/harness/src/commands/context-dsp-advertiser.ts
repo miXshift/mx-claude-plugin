@@ -52,6 +52,8 @@ export type AssignRefusalReason =
   | 'unreadable_yaml'
   | 'no_accounts'
   | 'unexpected_change'
+  | 'existing_context_invalid'
+  | 'expect_without_commit'
   | 'plan_changed'
   | 'account_not_found'
   | 'flow_style_account'
@@ -290,6 +292,13 @@ async function runWrite(
     }
     if (!isSafeBrandSlug(brand)) {
       await refuse('invalid_brand', `"${brand}" is not a valid brand slug.`);
+      return;
+    }
+    if (opts.expect !== undefined && !commit) {
+      await refuse(
+        'expect_without_commit',
+        '--expect only applies together with --commit (it pins the change to the dry run the user saw).',
+      );
       return;
     }
     if (commit && (await serviceCredentialActive(root.dataDir))) {
