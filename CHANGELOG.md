@@ -3,6 +3,58 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.20
+
+
+### Added
+
+- **You can now build an FBA inbound shipment step by step from chat.** The new inbound
+  skill walks you from creating the plan through packing, placement, carrier choice, labels
+  and tracking, and can cancel a plan. Every fee Amazon would charge (the placement fee, a
+  partnered carrier, a cancel after a carrier is booked) is shown to you exactly as Amazon
+  lists it and is committed only after you confirm it, and sending the same step twice never
+  charges twice. The look-up side works for everyone: plan and shipment status, tracking,
+  past boxes reused as case-pack templates, and prep details. Building a shipment needs a
+  service credential with shipment write access, which your MixShift admin creates; with a
+  normal sign-in the skill explains what to ask for.
+
+- **You can now build DSP campaigns and line items from a launch plan.** Describe the
+  campaigns (orders) and line items you want (flights, budgets, inventory, bids, pacing), the
+  audiences and other targeting for each line, and the existing creatives to attach,
+  and the DSP skill builds them in the account in one pass instead of one line item at a
+  time in the console. Everything is created paused, each step is shown to you before it
+  is sent, and nothing spends until you turn it on, which the skill can also do once you
+  have checked the build. You can also now ask which audiences a line item is targeting.
+  Creating new creatives is still done in the Amazon DSP console.
+
+### Changed
+
+- **A catalog note now flags that Full-Funnel spend may be missing from the daily campaign table.** Full-Funnel campaigns, which are sponsored ads bought in Campaign Manager, are reportedly available only through unified reporting in Amazon Ads, so a spend total read from the daily campaign table alone can understate sponsored spend for accounts that run them. The note is hedged and tells the agent to say so when it matters.
+
+- **Walmart ads now tell you how to connect an advertiser yourself.** Walmart approved MixShift's
+  Walmart Connect integration for production, so an admin on your Walmart ad account can add MixShift as
+  a partner in Ad Center (Access, then Partners, then + Add Partner) and email the advertiser ID to
+  support@mixshift.io. When no advertiser is connected yet, the Walmart Ads skill now walks you through
+  those steps instead of only saying to contact MixShift.
+
+### Fixed
+
+- **A DSP change no longer shows up on the wrong brand's change log.** DSP campaign,
+  line item and targeting changes belong to a DSP advertiser, not to the Amazon seller
+  you happen to have selected, but they were being filed on the selected seller's brand.
+  The plugin no longer adds its own change-log entry for DSP changes. MixShift files them
+  on the brand whose context links that DSP advertiser (`dsp_advertiser_id: "123456789012345678"`
+  on the brand's account, written in quotes). Until a brand is linked to its DSP
+  advertiser, its DSP changes stay unassigned instead of being filed under another brand.
+
+- **Report Max keeps each brand's report history wherever you run it.** The brand's two report links, last period's commitments, the claims checked
+  last time and the open watch items are now saved with your MixShift account instead
+  of only on the computer that ran the report. A brief started in a fresh cloud session
+  or on a new computer picks up where the last one left off, and adds this period to
+  the same link your client already bookmarked. If that history cannot be found, the
+  report says so and asks for the existing links before publishing, so it never quietly
+  creates a second link.
+
 ## 0.8.19
 
 

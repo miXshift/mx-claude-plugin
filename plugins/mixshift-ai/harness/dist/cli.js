@@ -8483,8 +8483,8 @@ var require_proxy_agent = __commonJS({
         if (!opts || typeof opts === "object" && !(opts instanceof URL2) && !opts.uri) {
           throw new InvalidArgumentError2("Proxy uri is mandatory");
         }
-        const { clientFactory = defaultFactory } = opts;
-        if (typeof clientFactory !== "function") {
+        const { clientFactory: clientFactory2 = defaultFactory } = opts;
+        if (typeof clientFactory2 !== "function") {
           throw new InvalidArgumentError2("Proxy opts.clientFactory must be a function.");
         }
         const { proxyTunnel = true } = opts;
@@ -8519,7 +8519,7 @@ var require_proxy_agent = __commonJS({
           }
           return agentFactory(origin2, options);
         };
-        this[kClient] = clientFactory(url2, { connect });
+        this[kClient] = clientFactory2(url2, { connect });
         this[kAgent] = new Agent({
           ...opts,
           factory,
@@ -25555,10 +25555,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -25572,7 +25572,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map2.comment)
@@ -25596,7 +25596,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map2.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -25612,7 +25612,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -25703,7 +25703,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -25717,13 +25717,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep + cb;
-              sep = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -25766,18 +25766,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start: start2, key, sep, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -25831,8 +25831,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
+        if (!isMap && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -25844,7 +25844,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -25855,8 +25855,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep)
-                for (const st of sep) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -25873,7 +25873,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -26053,7 +26053,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -26070,24 +26070,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep === " ")
-            sep = "\n";
-          else if (!prevMoreIndented && sep === "\n")
-            sep = "\n\n";
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          value += sep + content;
-          sep = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -26269,25 +26269,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep = " ";
+      let sep2 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep === "\n")
-            res += sep;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          res += sep + match[1];
-          sep = " ";
+          res += sep2 + match[1];
+          sep2 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep + (match?.[1] ?? "");
+      return res + sep2 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -27097,14 +27097,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep, value }) {
+    function stringifyItem({ start: start2, key, sep: sep2, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep)
-        for (const st of sep)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -28271,18 +28271,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep;
+          let sep2;
           if (scalar.end) {
-            sep = scalar.end;
-            sep.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map2 = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep }]
+            items: [{ start: start2, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map2;
@@ -28435,15 +28435,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep = it.sep;
-                  sep.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep }]
+                    items: [{ start: start3, key, sep: sep2 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -28637,13 +28637,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep = fc.end.splice(1, fc.end.length);
-            sep.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map2 = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep }]
+              items: [{ start: start2, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map2;
@@ -44309,6 +44309,14 @@ var init_save = __esm({
 });
 
 // src/lib/context/schema.ts
+function warnDspShapeOnce(key) {
+  if (warnedDspShapes.has(key)) return;
+  warnedDspShapes.add(key);
+  process.stderr.write(
+    `[warn] context.yaml: ignoring an invalid ${key}. Write the DSP advertiser id as a quoted string of digits, e.g. ${DSP_ID_FORM} (or dsp_advertiser_ids: ["123456789012345678"]).
+`
+  );
+}
 function normalizeLegacyTacosFields(raw) {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return raw;
@@ -44327,11 +44335,30 @@ function normalizeLegacyTacosFields(raw) {
   delete normalizedMgmt.tacos_target_pct;
   return { ...obj2, management: normalizedMgmt };
 }
-var accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
+var DSP_ID_FORM, warnedDspShapes, isDspId, dspAdvertiserIdSchema, dspAdvertiserIdsSchema, accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
 var init_schema2 = __esm({
   "src/lib/context/schema.ts"() {
     "use strict";
     init_zod();
+    DSP_ID_FORM = 'dsp_advertiser_id: "123456789012345678"';
+    warnedDspShapes = /* @__PURE__ */ new Set();
+    isDspId = (v) => typeof v === "string" && /^\d{1,64}$/.test(v);
+    dspAdvertiserIdSchema = external_exports.unknown().transform((v) => {
+      if (v === void 0 || v === null) return void 0;
+      if (isDspId(v)) return v;
+      warnDspShapeOnce("dsp_advertiser_id");
+      return void 0;
+    });
+    dspAdvertiserIdsSchema = external_exports.unknown().transform((v) => {
+      if (v === void 0 || v === null) return void 0;
+      if (!Array.isArray(v)) {
+        warnDspShapeOnce("dsp_advertiser_ids");
+        return void 0;
+      }
+      const kept = v.filter(isDspId);
+      if (kept.length !== v.length) warnDspShapeOnce("dsp_advertiser_ids");
+      return kept;
+    });
     accountSchema = external_exports.object({
       seller_id: external_exports.number().int().positive(),
       seller_name: external_exports.string().min(1),
@@ -44347,7 +44374,12 @@ var init_schema2 = __esm({
       merchant_alias: external_exports.string().nullable().optional(),
       region: external_exports.string().nullable().optional(),
       ads_active: external_exports.boolean().optional(),
-      retail_active: external_exports.boolean().optional()
+      retail_active: external_exports.boolean().optional(),
+      // The DSP advertiser(s) this brand owns. MixShift files a DSP change on the
+      // brand that declares its advertiser (and on none when two brands claim it),
+      // so until one is declared a brand's DSP changes stay unassigned.
+      dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
+      dsp_advertiser_ids: dspAdvertiserIdsSchema.optional()
     });
     sourcesSchema = external_exports.object({
       ad_metrics: external_exports.string().min(1),
@@ -61479,7 +61511,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join33(tree) {
+      function join35(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61505,7 +61537,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join33(parse4(query));
+        tree = join35(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -65503,6 +65535,11 @@ var init_events = __esm({
       // label, claim or section text, nor the service's free text.
       ReportForecastExtracted: "report.forecast_extracted",
       ReportForecastFailed: "report.forecast_failed",
+      // Skill run ledger sync (`mixshift report ledger pull|push|status`,
+      // lib/run-ledger/; mx-ops#202). One row per invocation. Payload: action,
+      // state (the named outcome the skill acts on), files_changed, local_files,
+      // failure_kind. Never a brand slug, file path, file content or URL.
+      ReportLedgerSynced: "report.ledger_synced",
       // Org-shared brand context sync (lib/context-sync/ + `mixshift context`).
       // Privacy: payloads carry brand slugs, per-action doc counts, force flag,
       // duration + outcome — never doc content or file paths.
@@ -65585,7 +65622,7 @@ function probeSurface(flagValue) {
   const desktopMarkerPresent = lowerPaths.some((p) => p.includes(CLAUDE_DESKTOP_MARKER));
   const ci = isCiEnv();
   const tty = hasInteractiveTty();
-  const base = {
+  const base2 = {
     env,
     flag: flagValue,
     runtimePaths: paths,
@@ -65598,17 +65635,17 @@ function probeSurface(flagValue) {
   };
   const envOverride = process.env[ENV_VAR_OVERRIDE];
   if (envOverride && isKnownSurface(envOverride)) {
-    return { ...base, result: envOverride, decidedBy: "env_override" };
+    return { ...base2, result: envOverride, decidedBy: "env_override" };
   }
   if (flagValue && isKnownSurface(flagValue)) {
-    return { ...base, result: flagValue, decidedBy: "flag" };
+    return { ...base2, result: flagValue, decidedBy: "flag" };
   }
   for (const detect of detectors) {
     const result = detect();
-    if (result !== null) return { ...base, result, decidedBy: result };
+    if (result !== null) return { ...base2, result, decidedBy: result };
   }
   return {
-    ...base,
+    ...base2,
     result: ci || !tty ? "cli_headless" : "cli",
     decidedBy: "fallback"
   };
@@ -66658,7 +66695,7 @@ async function precheckColumns(sql, options) {
     return null;
   }
   const ms = Date.now() - t0;
-  const failure2 = {
+  const failure3 = {
     ok: false,
     kind: "unknown_column",
     table_name: verdict.table,
@@ -66674,22 +66711,22 @@ async function precheckColumns(sql, options) {
       duration_ms: ms,
       query_id: options.query_id,
       query_table: options.query_table ?? verdict.table,
-      error_class: failure2.kind,
+      error_class: failure3.kind,
       payload: {
         stage: "client_precheck",
-        raw_code: failure2.raw_code,
+        raw_code: failure3.raw_code,
         table: verdict.table,
         column: verdict.column.slice(0, 128),
         suggestion: verdict.suggestions[0] ?? null,
         ...querySqlTelemetry(sql, options.query_id),
-        table_name: failure2.table_name,
+        table_name: failure3.table_name,
         query_shape: options.query_shape,
         precheck_ms: ms
       }
     },
     options.dataDirOverride
   );
-  return failure2;
+  return failure3;
 }
 function blankLiterals(sql) {
   let out2 = "";
@@ -66740,10 +66777,10 @@ function unknownColumnTable(text, sql, shapeTable) {
   if (tables.length > 1) return { candidates: tables };
   return { table: shapeTable ?? tables[0] ?? void 0, candidates: [] };
 }
-function syntaxErrorGuidance(friendly, failure2, sql, table) {
-  if (failure2.kind !== "syntax_error") return friendly;
-  const text = `${failure2.message ?? ""} ${friendly}`;
-  if (failure2.raw_code === "ER_BAD_FIELD_ERROR" || /unknown column/i.test(text)) {
+function syntaxErrorGuidance(friendly, failure3, sql, table) {
+  if (failure3.kind !== "syntax_error") return friendly;
+  const text = `${failure3.message ?? ""} ${friendly}`;
+  if (failure3.raw_code === "ER_BAD_FIELD_ERROR" || /unknown column/i.test(text)) {
     const target = unknownColumnTable(text, sql, table);
     const offline = target.table ? loadedSchemaCatalog()?.get(target.table) : void 0;
     const named = /unknown column '([^']+)'/i.exec(text)?.[1]?.split(".").pop();
@@ -66760,7 +66797,7 @@ Tell the user which column you use in place of \`${named}\`.`;
     return `${friendly}
 Check the column name against the table. Run ${describe3} for the real column names and gotchas (\`mixshift data list-tables\` shows the tables it covers).`;
   }
-  if (failure2.raw_code === "ER_PARSE_ERROR") {
+  if (failure3.raw_code === "ER_PARSE_ERROR") {
     const word = RESERVED_ALIAS_RE.exec(blankLiterals(stripSqlComments(sql)))?.[1];
     if (word) {
       return `${friendly}
@@ -67319,7 +67356,7 @@ async function runMysqlQuery(creds, sql, params, options) {
     };
   } catch (err) {
     const classified = classify(err);
-    const failure2 = {
+    const failure3 = {
       ...classified,
       friendly: syntaxErrorGuidance(classified.friendly, classified, sql, options.query_shape?.table)
     };
@@ -67330,19 +67367,19 @@ async function runMysqlQuery(creds, sql, params, options) {
         duration_ms: Date.now() - t0,
         query_id: options.query_id,
         query_table: options.query_table,
-        error_class: failure2.kind,
+        error_class: failure3.kind,
         payload: {
           auth_path: "mysql",
-          raw_code: failure2.raw_code,
+          raw_code: failure3.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
-          ...queryErrorTelemetry(failure2.message, options.query_id),
-          table_name: failure2.table_name,
+          ...queryErrorTelemetry(failure3.message, options.query_id),
+          table_name: failure3.table_name,
           query_shape: options.query_shape
         }
       },
       options.dataDirOverride
     );
-    return failure2;
+    return failure3;
   } finally {
     if (conn) {
       try {
@@ -67440,7 +67477,7 @@ async function runDatahubQuery(creds, sql, params, options) {
     }
     const serverKind = json3.kind ?? "unknown";
     const serverFriendly = json3.friendly ?? json3.message ?? "Query failed";
-    const failure2 = {
+    const failure3 = {
       ok: false,
       kind: serverKind,
       table_name: json3.table_name,
@@ -67464,25 +67501,25 @@ async function runDatahubQuery(creds, sql, params, options) {
         duration_ms: durationMs,
         query_id: options.query_id,
         query_table: options.query_table,
-        error_class: failure2.kind,
+        error_class: failure3.kind,
         payload: {
           auth_path: "datahub",
-          raw_code: failure2.raw_code,
+          raw_code: failure3.raw_code,
           ...querySqlTelemetry(sql, options.query_id),
-          ...queryErrorTelemetry(failure2.message, options.query_id),
-          table_name: failure2.table_name,
+          ...queryErrorTelemetry(failure3.message, options.query_id),
+          table_name: failure3.table_name,
           query_shape: options.query_shape
         }
       },
       options.dataDirOverride
     );
-    return failure2;
+    return failure3;
   } catch (err) {
     const durationMs = Date.now() - t0;
-    let failure2;
+    let failure3;
     const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
     if (budgetPhase) {
-      failure2 = clientBudgetTimeout(
+      failure3 = clientBudgetTimeout(
         budgetPhase,
         err instanceof Error ? err.message : String(err),
         durationMs,
@@ -67493,7 +67530,7 @@ async function runDatahubQuery(creds, sql, params, options) {
         options.query_id
       );
     } else if (err instanceof DatahubNetworkError) {
-      failure2 = {
+      failure3 = {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
@@ -67504,7 +67541,7 @@ async function runDatahubQuery(creds, sql, params, options) {
       };
     } else {
       const message = err instanceof Error ? err.message : String(err);
-      failure2 = {
+      failure3 = {
         ok: false,
         kind: "unknown",
         message,
@@ -67519,13 +67556,13 @@ async function runDatahubQuery(creds, sql, params, options) {
         duration_ms: durationMs,
         query_id: options.query_id,
         query_table: options.query_table,
-        error_class: failure2.kind,
+        error_class: failure3.kind,
         payload: {
           auth_path: "datahub",
           // Set only for a client budget expiry (client_budget, or
           // client_budget_download when the body download ran out); absent on
           // a true network failure.
-          raw_code: failure2.raw_code,
+          raw_code: failure3.raw_code,
           // Download expiry only: how long the service took to answer, so the
           // read can tell a slow link from a service that used the budget.
           headers_ms: budgetPhase === "download" ? headersMs : void 0,
@@ -67535,7 +67572,7 @@ async function runDatahubQuery(creds, sql, params, options) {
       },
       options.dataDirOverride
     );
-    return failure2;
+    return failure3;
   }
 }
 async function runNamedQuery(id, options = {}) {
@@ -67603,7 +67640,7 @@ async function runNamedQuery(id, options = {}) {
         appliedParams: json3.applied_params
       };
     }
-    const failure2 = {
+    const failure3 = {
       ok: false,
       kind: json3.kind ?? "unknown",
       table_name: json3.table_name,
@@ -67619,22 +67656,22 @@ async function runNamedQuery(id, options = {}) {
         outcome: "failed",
         duration_ms: durationMs,
         query_id: id,
-        error_class: failure2.kind,
+        error_class: failure3.kind,
         payload: {
           auth_path: "datahub",
           named_query: true,
-          raw_code: failure2.raw_code
+          raw_code: failure3.raw_code
         }
       },
       options.dataDirOverride
     );
-    return failure2;
+    return failure3;
   } catch (err) {
     const durationMs = Date.now() - t0;
-    let failure2;
+    let failure3;
     const budgetPhase = clientBudgetPhase(err, durationMs, queryTimeoutMs);
     if (budgetPhase) {
-      failure2 = clientBudgetTimeout(
+      failure3 = clientBudgetTimeout(
         budgetPhase,
         err instanceof Error ? err.message : String(err),
         durationMs,
@@ -67643,7 +67680,7 @@ async function runNamedQuery(id, options = {}) {
         id
       );
     } else if (err instanceof DatahubNetworkError) {
-      failure2 = {
+      failure3 = {
         ok: false,
         kind: "host_unreachable",
         message: err.message,
@@ -67654,7 +67691,7 @@ async function runNamedQuery(id, options = {}) {
       };
     } else {
       const message = err instanceof Error ? err.message : String(err);
-      failure2 = { ok: false, kind: "unknown", message, friendly: message, durationMs };
+      failure3 = { ok: false, kind: "unknown", message, friendly: message, durationMs };
     }
     void track(
       {
@@ -67662,19 +67699,19 @@ async function runNamedQuery(id, options = {}) {
         outcome: "failed",
         duration_ms: durationMs,
         query_id: id,
-        error_class: failure2.kind,
+        error_class: failure3.kind,
         // raw_code is set only for a client budget expiry (either phase);
         // headers_ms only for a download expiry.
         payload: {
           auth_path: "datahub",
           named_query: true,
-          raw_code: failure2.raw_code,
+          raw_code: failure3.raw_code,
           headers_ms: budgetPhase === "download" ? headersMs : void 0
         }
       },
       options.dataDirOverride
     );
-    return failure2;
+    return failure3;
   }
 }
 async function readDatahubJson(res) {
@@ -68082,11 +68119,11 @@ function slugify2(input) {
   if (!/^[a-z]/.test(s)) return `b-${s}`;
   return s;
 }
-function ensureUniqueSlug(base, taken) {
-  if (!taken.has(base)) return base;
+function ensureUniqueSlug(base2, taken) {
+  if (!taken.has(base2)) return base2;
   let i = 2;
-  while (taken.has(`${base}-${i}`)) i++;
-  return `${base}-${i}`;
+  while (taken.has(`${base2}-${i}`)) i++;
+  return `${base2}-${i}`;
 }
 var init_brand_grouping = __esm({
   "src/lib/discovery/brand-grouping.ts"() {
@@ -68260,7 +68297,7 @@ function lifecycleResultFrom(json3, httpStatus, requestedSlug) {
       httpStatus
     );
   }
-  const base = failureFromEnvelope(
+  const base2 = failureFromEnvelope(
     {
       ...json3,
       // The lifecycle route may answer with a bare {error:'...'} code; keep it
@@ -68269,11 +68306,11 @@ function lifecycleResultFrom(json3, httpStatus, requestedSlug) {
     },
     httpStatus
   );
-  const friendly = httpStatus === 403 && json3.friendly === void 0 ? "This sign-in is not allowed to change your team's shared brand context. Sign in with an account that can edit brand context, or ask your MixShift admin." : base.friendly;
+  const friendly = httpStatus === 403 && json3.friendly === void 0 ? "This sign-in is not allowed to change your team's shared brand context. Sign in with an account that can edit brand context, or ask your MixShift admin." : base2.friendly;
   return {
     ok: false,
-    kind: httpStatus === 403 && base.kind === "unknown" ? "insufficient_scope" : base.kind,
-    message: base.message,
+    kind: httpStatus === 403 && base2.kind === "unknown" ? "insufficient_scope" : base2.kind,
+    message: base2.message,
     friendly,
     http_status: httpStatus
   };
@@ -68848,12 +68885,12 @@ async function pullOneDoc(brandSlug, pair, client, dataDirOverride) {
 }
 async function pushOneDoc(brandSlug, pair, client, baseRevision, force) {
   const local = pair.local;
-  const put = (base) => client.putDoc({
+  const put = (base2) => client.putDoc({
     brand_slug: brandSlug,
     doc_type: pair.docType,
     ...pair.corpusName !== void 0 ? { corpus_name: pair.corpusName } : {},
     content: local.content,
-    ...base !== void 0 ? { base_revision: base } : {}
+    ...base2 !== void 0 ? { base_revision: base2 } : {}
   });
   let result = await put(baseRevision);
   if (!result.ok && result.kind === "revision_conflict" && force && result.server) {
@@ -69512,7 +69549,7 @@ function preflightEvent(event, seenIds) {
   return null;
 }
 async function syncStakes(brandSlug, options = {}) {
-  const base = {
+  const base2 = {
     brand: brandSlug,
     total: 0,
     permanent_failures: 0,
@@ -69526,22 +69563,22 @@ async function syncStakes(brandSlug, options = {}) {
     validated = await validateBrandContext(brandSlug, options.dataDirOverride);
   } catch (err) {
     return {
-      ...base,
+      ...base2,
       ok: false,
       error: `Could not read the brand context: ${err instanceof Error ? err.message : String(err)}`
     };
   }
   if (!validated.ok) {
     return {
-      ...base,
+      ...base2,
       ok: false,
       error: validated.kind === "file_missing" ? `No brand context found for "${brandSlug}".` : `Brand context for "${brandSlug}" failed validation; fix it before syncing events (mixshift brand validate ${brandSlug}).`
     };
   }
   const events = validated.context.structural_events ?? [];
-  if (events.length === 0) return { ...base, ok: true };
+  if (events.length === 0) return { ...base2, ok: true };
   const client = options.client ?? createTimelineClient({ dataDirOverride: options.dataDirOverride });
-  const result = { ...base, ok: true, total: events.length };
+  const result = { ...base2, ok: true, total: events.length };
   const seenIds = /* @__PURE__ */ new Set();
   for (const event of events) {
     const body = mapEventToStake(brandSlug, event);
@@ -74343,7 +74380,7 @@ function assembleCaptureRateSection(input) {
   });
   const curve = input.settlement ? computeSettlementCurve(input.settlement.rows) : null;
   if (!scalars && !curve) return void 0;
-  const base = scalars ?? {
+  const base2 = scalars ?? {
     enabled: true,
     capture_rate_pct: null,
     fresh_day_acos_improvement_pts: null,
@@ -74351,7 +74388,7 @@ function assembleCaptureRateSection(input) {
     basis: null,
     settled_window_days: null
   };
-  return curve ? { ...base, daily_settlement_curve: curve } : base;
+  return curve ? { ...base2, daily_settlement_curve: curve } : base2;
 }
 function assembleStockoutSection(cs29Rows) {
   const windows = detectStockoutWindows(cs29Rows).map((w) => ({
@@ -77334,8 +77371,8 @@ function fieldConfidence(s, key) {
 }
 function prefilledNote(resolved) {
   if (resolved == null || resolved.source !== "brain") return void 0;
-  const base = resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
-  return resolved.account_wide ? `${base} - ACCOUNT-WIDE, not this sub-brand's own` : base;
+  const base2 = resolved.fetched_at ? `pre-filled ${shortDate(resolved.fetched_at)}` : "pre-filled";
+  return resolved.account_wide ? `${base2} - ACCOUNT-WIDE, not this sub-brand's own` : base2;
 }
 function presenceConfidence(present) {
   return present ? "confirmed" : "gap";
@@ -79355,11 +79392,11 @@ import { dirname as dirname20 } from "node:path";
 init_brand_grouping();
 function mintSlug(labelValue, existingSlugs, sellerName) {
   const existing = toSet(existingSlugs);
-  const base = slugify2(labelValue);
-  if (!existing.has(base)) return base;
+  const base2 = slugify2(labelValue);
+  if (!existing.has(base2)) return base2;
   const sellerSlug = slugify2(sellerName);
-  const prefixed = sellerSlug !== base ? `${sellerSlug}-${base}` : base;
-  if (prefixed !== base && !existing.has(prefixed)) return prefixed;
+  const prefixed = sellerSlug !== base2 ? `${sellerSlug}-${base2}` : base2;
+  if (prefixed !== base2 && !existing.has(prefixed)) return prefixed;
   let n = 2;
   let candidate = `${prefixed}-${n}`;
   while (existing.has(candidate)) {
@@ -79868,7 +79905,7 @@ async function writeYamlAtomic2(path2, obj2) {
 }
 async function upsertIndexRow(suggestion, dataDirOverride) {
   const { index, source } = await readIndex(dataDirOverride);
-  const base = source === "empty" ? emptyIndex() : index;
+  const base2 = source === "empty" ? emptyIndex() : index;
   const row = {
     slug: suggestion.slug,
     display_name: suggestion.display_name,
@@ -79892,8 +79929,8 @@ async function upsertIndexRow(suggestion, dataDirOverride) {
       retail_active: a.retail_active
     }))
   };
-  const next = [...base.brands.filter((b) => b.slug !== suggestion.slug), row];
-  await saveIndex({ ...base, brands: next }, dataDirOverride);
+  const next = [...base2.brands.filter((b) => b.slug !== suggestion.slug), row];
+  await saveIndex({ ...base2, brands: next }, dataDirOverride);
 }
 async function removeIndexRow(slug, dataDirOverride) {
   const { index, source } = await readIndex(dataDirOverride);
@@ -80254,19 +80291,19 @@ Promotion plan for seller ${plan.seller_id}`);
   return lines.join("\n");
 }
 function renderPlanItem(item) {
-  let base;
+  let base2;
   if (item.status === "already_bound") {
-    base = `  \u2713 "${item.label}": already bound to "${item.existing_slug}" (no action needed)`;
+    base2 = `  \u2713 "${item.label}": already bound to "${item.existing_slug}" (no action needed)`;
   } else if (item.status === "flagged") {
     const headline = item.flag_reason === "dormant" ? "looks wound down" : "too small to be worth its own brand";
-    base = `  ! "${item.label}": ${headline} \u2014 NOT proposed (would be "${item.proposed_slug}")`;
+    base2 = `  ! "${item.label}": ${headline} \u2014 NOT proposed (would be "${item.proposed_slug}")`;
   } else {
-    base = `  + "${item.label}": would create "${item.proposed_slug}"`;
+    base2 = `  + "${item.label}": would create "${item.proposed_slug}"`;
   }
   const money3 = item.economic_weight > 0 ? `      trailing 365d: ${fmtMoney(item.revenue_365d)} revenue, ${fmtMoney(item.spend_365d)} ad spend` : "      trailing 365d: no revenue or ad spend found";
   const adsDetail = item.has_ads ? `${item.ads_campaign_count} campaign(s)` : item.spend_365d > 0 ? "no live campaigns (the spend above is historical)" : "no campaigns yet";
   const detail = `      retail: ${item.retail_units} unit(s) [${item.retail_source ?? "n/a"}]; ads: ${adsDetail}`;
-  const lines = [base, money3, detail];
+  const lines = [base2, money3, detail];
   if (item.status === "flagged") {
     lines.push(`      why: ${item.flag_detail ?? item.lifecycle_reason}`);
     lines.push("      promote it anyway with --apply if that is wrong.");
@@ -84669,7 +84706,11 @@ var allowedToolEnum = external_exports.enum([
   "insight_read",
   // The user's own forecast inputs (the monthly sponsored budget) via
   // `mixshift forecast budget set`; user-confirmed, pairs with write_gated.
-  "forecast_write"
+  "forecast_write",
+  // Guarded FBA inbound shipment writes via `mixshift amazon call
+  // fulfillment_inbound.* --commit` (dry-run/preview by default; every
+  // fee-committing commit is user-confirmed against its preview).
+  "shipping_write"
 ]);
 var artifactSchema = external_exports.object({
   name: external_exports.string().min(1),
@@ -86748,16 +86789,16 @@ function formatCellForMd(v) {
   const s = String(v);
   return s.replace(/\|/g, "\\|");
 }
-function emitQueryFailure(failure2, json3, partialPath) {
+function emitQueryFailure(failure3, json3, partialPath) {
   const incomplete = partialPath !== void 0;
   if (json3) {
     process.stdout.write(
       JSON.stringify(
         {
           status: "error",
-          failure_kind: failure2.kind,
-          table_name: failure2.table_name,
-          message: failure2.friendly,
+          failure_kind: failure3.kind,
+          table_name: failure3.table_name,
+          message: failure3.friendly,
           ...incomplete ? { incomplete: true } : {},
           ...partialPath ? { partial_path: partialPath } : {}
         },
@@ -86767,7 +86808,7 @@ function emitQueryFailure(failure2, json3, partialPath) {
     );
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
     if (incomplete) {
       process.stderr.write(
@@ -86777,7 +86818,7 @@ function emitQueryFailure(failure2, json3, partialPath) {
       );
     }
   }
-  process.exitCode = handleAccessDeniedExit(failure2.kind);
+  process.exitCode = handleAccessDeniedExit(failure3.kind);
 }
 function progressReporter(sink) {
   let last = 0;
@@ -87309,9 +87350,9 @@ async function readCachedLatestVersion(dataDirOverride) {
   }
 }
 async function fetchLatestVersion() {
-  const base = await resolveGatewayBaseSafe();
-  if (base) {
-    const viaGateway = await fetchLatestVersionFrom(`${base}/plugin/marketplace.json`);
+  const base2 = await resolveGatewayBaseSafe();
+  if (base2) {
+    const viaGateway = await fetchLatestVersionFrom(`${base2}/plugin/marketplace.json`);
     if (viaGateway !== null) return viaGateway;
   }
   return fetchLatestVersionFrom(MARKETPLACE_URL);
@@ -87456,7 +87497,7 @@ function registerWelcomeCommand(program3) {
       try {
         const idxResult = await readIndex(root.dataDir);
         if (idxResult.source === "file") {
-          const base = countByActivity(idxResult.index);
+          const base2 = countByActivity(idxResult.index);
           const keys = await loadKeyBrands(root.dataDir);
           const keyEntries = keys.map((k) => k.registry_entry).filter((e) => e !== null);
           const firstKey = keyEntries[0] ?? null;
@@ -87467,7 +87508,7 @@ function registerWelcomeCommand(program3) {
             if (brain.ok && brain.brain.sources.seller) brainPopulated++;
           }
           brandCounts = {
-            ...base,
+            ...base2,
             key: keys.length,
             key_cold_started: keyEntries.filter((e) => e.cold_started).length,
             key_brain_populated: brainPopulated,
@@ -88119,9 +88160,9 @@ async function loadChangelog(opts = {}) {
   return { entries: [], source: "none", error: fetched.error };
 }
 async function fetchChangelogMarkdown() {
-  const base = await resolveGatewayBaseSafe();
-  if (base) {
-    const viaGateway = await fetchChangelogFrom(`${base}/plugin/changelog`);
+  const base2 = await resolveGatewayBaseSafe();
+  if (base2) {
+    const viaGateway = await fetchChangelogFrom(`${base2}/plugin/changelog`);
     if (viaGateway.markdown !== null && parseChangelog(viaGateway.markdown).length > 0) {
       return viaGateway;
     }
@@ -88455,9 +88496,9 @@ function isActionsManifest(yamlText) {
   }
 }
 async function fetchActionsYaml() {
-  const base = await resolveGatewayBaseSafe();
-  if (base) {
-    const viaGateway = await fetchActionsYamlFrom(`${base}/plugin/actions.yaml`);
+  const base2 = await resolveGatewayBaseSafe();
+  if (base2) {
+    const viaGateway = await fetchActionsYamlFrom(`${base2}/plugin/actions.yaml`);
     if (viaGateway.yaml !== null && isActionsManifest(viaGateway.yaml)) return viaGateway;
   }
   return fetchActionsYamlFrom(actionsUrl());
@@ -90139,11 +90180,11 @@ function throttleBackoffMs(retryAfterMs, intervalMs, streak, now, deadline) {
   const remaining = deadline - now;
   if (remaining <= 0) return 0;
   const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
-  const base = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.min(
+  const base2 = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : Math.min(
     eff * 2 ** Math.min(Math.max(streak, 1) - 1, 5),
     THROTTLE_BACKOFF_CAP_MS
   );
-  return Math.min(Math.max(base, eff), remaining);
+  return Math.min(Math.max(base2, eff), remaining);
 }
 var QUEUED_BACKOFF_GRACE_POLLS = 10;
 var QUEUED_BACKOFF_CAP_MS = 3e5;
@@ -90153,8 +90194,8 @@ function queuedBackoffMs(intervalMs, queuedPolls, now, deadline) {
   const eff = Math.max(intervalMs || 0, THROTTLE_BACKOFF_FLOOR_MS);
   const over = Math.max(queuedPolls, 1) - QUEUED_BACKOFF_GRACE_POLLS;
   if (over <= 0) return Math.min(eff, remaining);
-  const base = Math.min(eff * 2 ** Math.min(over, 20), QUEUED_BACKOFF_CAP_MS);
-  return Math.min(Math.max(base, eff), remaining);
+  const base2 = Math.min(eff * 2 ** Math.min(over, 20), QUEUED_BACKOFF_CAP_MS);
+  return Math.min(Math.max(base2, eff), remaining);
 }
 var SQP_REPORT_TYPE = "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT";
 var SQP_ASIN_OPTION_CHAR_LIMIT = 200;
@@ -90194,7 +90235,7 @@ function mergeSqpDocuments(docs, fullAsinList) {
   if (docs.length === 0) {
     throw new Error("mergeSqpDocuments: no documents to merge");
   }
-  let base;
+  let base2;
   let dataByAsin = [];
   docs.forEach((doc, i) => {
     let parsed;
@@ -90211,10 +90252,10 @@ function mergeSqpDocuments(docs, fullAsinList) {
       );
     }
     const obj2 = parsed;
-    if (i === 0) base = obj2;
+    if (i === 0) base2 = obj2;
     dataByAsin = dataByAsin.concat(obj2.dataByAsin);
   });
-  const merged = { ...base };
+  const merged = { ...base2 };
   merged.dataByAsin = dataByAsin;
   const spec = merged.reportSpecification;
   if (typeof spec === "object" && spec !== null) {
@@ -90678,15 +90719,15 @@ async function resolveBaseAndToken(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-    if (!base) {
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
       return {
         ok: false,
         kind: "not_authenticated",
         friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) before pulling reports. For unattended runs, configure `mixshift auth service-setup`.'
       };
     }
-    apiBase = base;
+    apiBase = base2;
   }
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
@@ -90750,6 +90791,16 @@ var KNOWN_KINDS = /* @__PURE__ */ new Set([
   "proposal_before_state_unavailable",
   "approval_requires_human",
   "proposal_limit_reached",
+  "shipping_write_disabled",
+  "shipping_write_not_enabled",
+  "preview_required",
+  "preview_not_found",
+  "preview_expired",
+  "preview_already_used",
+  "preview_mismatch",
+  "quote_changed",
+  "option_not_offered",
+  "idempotency_key_conflict",
   // The gateway's pre-Amazon refusal (P2, 2026-10-15; listed here in P5).
   "invalid_request",
   "unknown"
@@ -91819,24 +91870,24 @@ async function trackFailure(operation, mode, itemsCount, result, startedAt, data
     dataDir
   );
 }
-function emitFailure2(failure2, json3) {
+function emitFailure2(failure3, json3) {
   if (json3) {
     writeJson({
-      ...failure2,
-      amazon: failureContractJson(failure2).amazon,
+      ...failure3,
+      amazon: failureContractJson(failure3).amazon,
       status: "failed",
-      ...failure2.status !== void 0 ? { runStatus: failure2.status } : {}
+      ...failure3.status !== void 0 ? { runStatus: failure3.status } : {}
     });
   } else {
     process.stderr.write(`
-error (${failure2.kind}): ${failure2.friendly}
+error (${failure3.kind}): ${failure3.friendly}
 `);
-    if (failure2.message) process.stderr.write(`detail: ${failure2.message}
+    if (failure3.message) process.stderr.write(`detail: ${failure3.message}
 `);
-    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
 `);
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function emitGenericError(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -91894,8 +91945,13 @@ async function spapiCall(input, opts = {}) {
   }
   if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
   if (input.body !== void 0) body.body = input.body;
+  if (input.dryRun === false) body.dryRun = false;
+  if (input.previewId) body.previewId = input.previewId;
+  if (input.approvedQuoteHash) body.approvedQuoteHash = input.approvedQuoteHash;
+  if (input.idempotencyKey) body.idempotencyKey = input.idempotencyKey;
+  const mayChangeState = input.dryRun === false;
   const r = await amazonRequest(
-    { method: "POST", path: "/api/amazon/spapi/call", body, surface: "spapi" },
+    { method: "POST", path: "/api/amazon/spapi/call", body, surface: "spapi", mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
   );
   if (!r.ok) {
@@ -91913,13 +91969,16 @@ async function spapiCall(input, opts = {}) {
       message: `call response missing operation echo`
     };
   }
+  const answer = json3;
+  const write = typeof answer.dryRun === "boolean" ? Object.fromEntries(Object.entries(answer).filter(([k]) => k !== "ok")) : void 0;
   return {
     ok: true,
     operation: json3.operation,
     amazonSellerId: String(json3.amazonSellerId ?? ""),
     legacySellerId: Number(json3.legacySellerId ?? 0),
     marketplaceId: String(json3.marketplaceId ?? ""),
-    payload: json3.payload
+    payload: json3.payload,
+    ...write ? { write } : {}
   };
 }
 
@@ -91964,7 +92023,7 @@ function registerOperations(amazon) {
 }
 function registerCall(amazon) {
   amazon.command("call <operation>").description(
-    "Execute one cataloged SP-API operation (read-only). Run `amazon operations` first for the operation id and its parameter notes."
+    "Execute one cataloged SP-API operation. Run `amazon operations` first for the operation id and its parameter notes. Guarded write operations (FBA inbound shipments) preview by default; only --commit sends one to Amazon."
   ).option("--seller-id <id>", "AmazonSellerID from `amazon merchants`").option(
     "--legacy-seller-id <id>",
     "exact per-marketplace seller record id (authoritative disambiguator)"
@@ -91978,7 +92037,16 @@ function registerCall(amazon) {
     "path placeholder, e.g. --path asin=B0CV4JLCVZ (repeatable)",
     keyValueOption("--path", { bodyFlag: "--body" }),
     {}
-  ).option("--body-file <file>", "JSON request body from a file (body-required operations)").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").action(async (operation, opts, cmd) => {
+  ).option("--body-file <file>", "JSON request body from a file (body-required operations)").option("--body <json>", "inline JSON request body (small payloads; prefer --body-file)").option(
+    "--commit",
+    "guarded write operations only: send it to Amazon. Without it a write is a dry run (a preview, for a step that commits a fee) and nothing is sent."
+  ).option("--preview-id <id>", "with --commit on a fee-committing step: the preview id from its dry run").option(
+    "--approved-quote-hash <hash>",
+    "with --commit on a fee-committing step: the quoteHash from that same preview"
+  ).option(
+    "--idempotency-key <key>",
+    "with --commit: your own key (8-128 letters, digits, . : - _). A resend with the same key replays the first commit and is never sent to Amazon twice."
+  ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
@@ -91991,6 +92059,22 @@ function registerCall(amazon) {
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
+      if (opts.commit && !opts.idempotencyKey) {
+        return emitError9(
+          new Error(
+            "--commit needs --idempotency-key <key> (8-128 letters, digits, . : - _), so a resend of a lost answer replays the first commit instead of sending it twice. Nothing was sent."
+          ),
+          !!root.json
+        );
+      }
+      if (!opts.commit && (opts.previewId || opts.approvedQuoteHash || opts.idempotencyKey)) {
+        return emitError9(
+          new Error(
+            "--preview-id, --approved-quote-hash and --idempotency-key belong on a commit: add --commit, or drop them for a dry run. Nothing was sent."
+          ),
+          !!root.json
+        );
+      }
       const input = {
         operation,
         amazonSellerId: opts.sellerId,
@@ -91998,7 +92082,11 @@ function registerCall(amazon) {
         marketplace: opts.marketplace,
         pathParams: opts.path,
         query: opts.query,
-        ...body !== void 0 ? { body } : {}
+        ...body !== void 0 ? { body } : {},
+        ...opts.commit ? { dryRun: false } : {},
+        ...opts.previewId ? { previewId: opts.previewId } : {},
+        ...opts.approvedQuoteHash ? { approvedQuoteHash: opts.approvedQuoteHash } : {},
+        ...opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}
       };
       const result = await spapiCall(input, { dataDirOverride: root.dataDir });
       if (isReportFailure(result)) {
@@ -92040,15 +92128,49 @@ function registerCall(amazon) {
           ...input.pathParams && Object.keys(input.pathParams).length > 0 ? { path_keys: Object.keys(input.pathParams).sort() } : {},
           // The gateway contract (mx-ops#144): who acts, and whether the same
           // call can succeed later. Enums and a flag; never the fix text.
-          ...failureContractTelemetry(result)
+          ...failureContractTelemetry(result),
+          ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {}
         });
         return emitFailure3(result, !!root.json);
+      }
+      const commitOutcome = opts.commit && result.write ? String(result.write.outcome ?? "") : "";
+      if (commitOutcome === "FAILED" || commitOutcome === "UNCERTAIN" || commitOutcome === "PENDING") {
+        const uncertain = commitOutcome !== "FAILED";
+        await trackSpApi(EventName.AmazonSpApiCalled, "failed", startedAt, root.dataDir, {
+          operation,
+          kind: uncertain ? "commit_uncertain" : "commit_failed",
+          write_outcome: commitOutcome
+        });
+        if (root.json) {
+          writeJson2({
+            status: uncertain ? "uncertain" : "failed",
+            operation: result.operation,
+            amazon_seller_id: result.amazonSellerId,
+            legacy_seller_id: result.legacySellerId,
+            marketplace_id: result.marketplaceId,
+            write: result.write
+          });
+        } else {
+          process.stderr.write(
+            uncertain ? `
+? ${result.operation}: the outcome is unknown (${commitOutcome}). Do not send it as a new request: resend the same command with the same --idempotency-key, or read the plan.
+
+` : `
+\u2717 ${result.operation}: Amazon did not apply it (FAILED).
+
+`
+          );
+          process.stdout.write(JSON.stringify(result.write, null, 2) + "\n");
+        }
+        process.exitCode = uncertain ? 21 : 1;
+        return;
       }
       await trackSpApi(EventName.AmazonSpApiCalled, "ok", startedAt, root.dataDir, {
         operation,
         ...result.amazonSellerId ? { amazon_seller_id: result.amazonSellerId } : {},
         ...result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {},
-        ...result.marketplaceId ? { marketplace_id: result.marketplaceId } : {}
+        ...result.marketplaceId ? { marketplace_id: result.marketplaceId } : {},
+        ...result.write ? { write_mode: opts.commit ? "commit" : "dry_run" } : {}
       });
       if (root.json) {
         writeJson2({
@@ -92057,7 +92179,8 @@ function registerCall(amazon) {
           amazon_seller_id: result.amazonSellerId,
           legacy_seller_id: result.legacySellerId,
           marketplace_id: result.marketplaceId,
-          payload: result.payload
+          payload: result.payload,
+          ...result.write ? { write: result.write } : {}
         });
       } else {
         process.stderr.write(
@@ -92066,7 +92189,9 @@ function registerCall(amazon) {
 
 `
         );
-        process.stdout.write(JSON.stringify(result.payload, null, 2) + "\n");
+        process.stdout.write(
+          JSON.stringify(result.write ?? result.payload, null, 2) + "\n"
+        );
       }
       return;
     } catch (err) {
@@ -92089,35 +92214,39 @@ async function trackSpApi(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson2(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure3(failure2, json3) {
+function emitFailure3(failure3, json3) {
   if (json3) {
     writeJson2({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
       // Amazon's OWN code, status and response body. Previously dropped on the
       // floor, which left a user reporting a failure with nothing complete to
       // send and left us unable to tell a catalog gap from an outage.
-      amazon_error_code: failure2.amazonErrorCode,
-      amazon_status: failure2.amazonStatus,
-      unrecognized_kind: failure2.unrecognizedKind,
-      amazon_response: failure2.responsePayload ?? failure2.responseText,
-      candidates: failure2.candidates,
+      amazon_error_code: failure3.amazonErrorCode,
+      amazon_status: failure3.amazonStatus,
+      unrecognized_kind: failure3.unrecognizedKind,
+      // 'unknown' = the request may have been applied: resend with the SAME
+      // idempotency key or read the plan, never retry as a new request.
+      request_outcome: failure3.requestOutcome,
+      automatic_retry: failure3.automaticRetry,
+      amazon_response: failure3.responsePayload ?? failure3.responseText,
+      candidates: failure3.candidates,
       // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
-      ...failureContractJson(failure2)
+      ...failureContractJson(failure3)
     });
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.message) process.stderr.write(`  ${failure2.message}
+    if (failure3.message) process.stderr.write(`  ${failure3.message}
 `);
-    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
 `);
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function emitError9(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -92926,18 +93055,18 @@ async function trackRetrieved(startedAt, bytes, dataDir, reportType) {
     dataDir
   );
 }
-async function trackFailure2(eventName, failure2, startedAt, dataDir, reportType, runId) {
+async function trackFailure2(eventName, failure3, startedAt, dataDir, reportType, runId) {
   await track(
     {
       event_name: eventName,
       outcome: "failed",
-      error_class: failure2.kind,
+      error_class: failure3.kind,
       duration_ms: Date.now() - startedAt,
       payload: {
-        kind: failure2.kind,
+        kind: failure3.kind,
         // Contract drift: the service sent a `kind` this build does not know,
         // so the class came from the status, not the wire (mx-ops#43).
-        ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {},
+        ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
         ...reportType ? { report_type: reportType } : {},
         // run_id ties this report.failed back to its report.started (same
         // run handle), even when the failure surfaces in a separate `report
@@ -92945,20 +93074,20 @@ async function trackFailure2(eventName, failure2, startedAt, dataDir, reportType
         // before any report.polled event carried the id. Absent only on the
         // pre-run start-failure paths, where no run exists yet.
         ...runId !== void 0 ? { run_id: runId } : {},
-        ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
+        ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
         // Beta richness (feedback #10): seller/report context the service
         // attached to the failure, so a report.failed can be tied to the
         // merchant + Amazon report it was for (present kind-dependently:
         // amazonSellerId on reauth_required, reportId/status on report_fatal).
-        ...failure2.amazonSellerId !== void 0 ? { amazon_seller_id: failure2.amazonSellerId } : {},
-        ...failure2.reportId !== void 0 ? { report_id: failure2.reportId } : {},
-        ...failure2.status !== void 0 ? { report_status: failure2.status } : {},
+        ...failure3.amazonSellerId !== void 0 ? { amazon_seller_id: failure3.amazonSellerId } : {},
+        ...failure3.reportId !== void 0 ? { report_id: failure3.reportId } : {},
+        ...failure3.status !== void 0 ? { report_status: failure3.status } : {},
         // Low-cardinality class of Amazon's stated reason (deprecated,
         // span_exceeds_max, ...). The reason TEXT is never sent to telemetry.
-        ...failure2.amazonError !== void 0 ? { reason_class: classifyAmazonError(failure2.amazonError) } : {},
+        ...failure3.amazonError !== void 0 ? { reason_class: classifyAmazonError(failure3.amazonError) } : {},
         // The gateway contract (mx-ops#144): who acts, and whether the same
         // call can succeed later. Enums and a flag; never the fix text.
-        ...failureContractTelemetry(failure2)
+        ...failureContractTelemetry(failure3)
       }
     },
     dataDir
@@ -92967,41 +93096,41 @@ async function trackFailure2(eventName, failure2, startedAt, dataDir, reportType
 function writeJson3(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure4(failure2, json3) {
+function emitFailure4(failure3, json3) {
   if (json3) {
     writeJson3({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
-      unrecognized_kind: failure2.unrecognizedKind,
-      amazon_seller_id: failure2.amazonSellerId,
-      report_type: failure2.reportType,
-      retry_after_ms: failure2.retryAfterMs,
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      unrecognized_kind: failure3.unrecognizedKind,
+      amazon_seller_id: failure3.amazonSellerId,
+      report_type: failure3.reportType,
+      retry_after_ms: failure3.retryAfterMs,
       // Amazon's own stated reason on a FATAL report (absent when Amazon gave none).
-      amazon_error: failure2.amazonError,
+      amazon_error: failure3.amazonError,
       // Multi-marketplace merchant_not_found: the rows to disambiguate with.
-      candidates: failure2.candidates,
+      candidates: failure3.candidates,
       // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
-      ...failureContractJson(failure2)
+      ...failureContractJson(failure3)
     });
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.amazonError) process.stderr.write(renderAmazonReason(failure2.amazonError));
-    if (failure2.kind === "invalid_request" && failure2.message && failure2.message !== failure2.friendly) {
-      process.stderr.write(`  ${failure2.message}
+    if (failure3.amazonError) process.stderr.write(renderAmazonReason(failure3.amazonError));
+    if (failure3.kind === "invalid_request" && failure3.message && failure3.message !== failure3.friendly) {
+      process.stderr.write(`  ${failure3.message}
 `);
     }
-    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
 `);
-    if (failure2.candidates && failure2.candidates.length > 0) {
-      process.stderr.write(renderCandidates(failure2.candidates));
+    if (failure3.candidates && failure3.candidates.length > 0) {
+      process.stderr.write(renderCandidates(failure3.candidates));
     }
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function renderAmazonReason(text) {
   const body = text.split(/\r?\n/).map((l, i) => i === 0 ? `  Amazon's reason: ${l}` : `    ${l}`).join("\n");
@@ -93010,31 +93139,31 @@ function renderAmazonReason(text) {
   return `${body}${generic}
 `;
 }
-function emitChunkFailure(failure2, json3, chunk, totalChunks, completedRunIds) {
+function emitChunkFailure(failure3, json3, chunk, totalChunks, completedRunIds) {
   if (json3) {
     writeJson3({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
-      unrecognized_kind: failure2.unrecognizedKind,
-      amazon_seller_id: failure2.amazonSellerId,
-      report_type: failure2.reportType,
-      retry_after_ms: failure2.retryAfterMs,
-      amazon_error: failure2.amazonError,
-      candidates: failure2.candidates,
-      ...failureContractJson(failure2),
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      unrecognized_kind: failure3.unrecognizedKind,
+      amazon_seller_id: failure3.amazonSellerId,
+      report_type: failure3.reportType,
+      retry_after_ms: failure3.retryAfterMs,
+      amazon_error: failure3.amazonError,
+      candidates: failure3.candidates,
+      ...failureContractJson(failure3),
       chunk,
       chunks: totalChunks,
       run_ids: completedRunIds
     });
   } else {
     process.stderr.write(`
-\u2717 [SQP chunk ${chunk}/${totalChunks}] ${failure2.friendly}
+\u2717 [SQP chunk ${chunk}/${totalChunks}] ${failure3.friendly}
 `);
-    if (failure2.amazonError) process.stderr.write(renderAmazonReason(failure2.amazonError));
-    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+    if (failure3.amazonError) process.stderr.write(renderAmazonReason(failure3.amazonError));
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
 `);
     if (completedRunIds.length > 0) {
       process.stderr.write(
@@ -93042,11 +93171,11 @@ function emitChunkFailure(failure2, json3, chunk, totalChunks, completedRunIds) 
 `
       );
     }
-    if (failure2.candidates && failure2.candidates.length > 0) {
-      process.stderr.write(renderCandidates(failure2.candidates));
+    if (failure3.candidates && failure3.candidates.length > 0) {
+      process.stderr.write(renderCandidates(failure3.candidates));
     }
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function emitChunkTimeout(json3, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
   const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at Amazon and its run handle is still valid. Resume it with \`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second copy behind the one you are already waiting on and makes the wait longer. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
@@ -93126,7 +93255,7 @@ function renderMerchants(merchants) {
   cols.push("name", "type", "region", "marketplace", "authorized");
   if (hasCron) cols.push("cron");
   const header = "| " + cols.join(" | ") + " |";
-  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const sep2 = "| " + cols.map(() => "---").join(" | ") + " |";
   const rows = merchants.map((m) => {
     const cells = [m.amazonSellerId];
     if (hasLegacy) cells.push(m.legacySellerId != null ? String(m.legacySellerId) : "");
@@ -93135,7 +93264,7 @@ function renderMerchants(merchants) {
     if (hasCron) cells.push(m.cronActive === true ? "yes" : m.cronActive === false ? "no" : "");
     return "| " + cells.join(" | ") + " |";
   });
-  return [header, sep, ...rows].join("\n");
+  return [header, sep2, ...rows].join("\n");
 }
 function renderMarketplaceCell(m) {
   const label = [m.countryCode, m.marketplaceName].filter((s) => !!s).map((s) => mdCell(s)).join(" ");
@@ -93336,8 +93465,8 @@ async function adsCall(input, opts = {}) {
 var SHORT_TIMEOUT_MS = 3e4;
 var COMMIT_TIMEOUT_MS = 9e4;
 function pathFor(id, action) {
-  const base = `/api/amazon/ads/proposals/${encodeURIComponent(id)}`;
-  return action ? `${base}/${action}` : base;
+  const base2 = `/api/amazon/ads/proposals/${encodeURIComponent(id)}`;
+  return action ? `${base2}/${action}` : base2;
 }
 function parseProposal(json3) {
   const p = json3?.proposal;
@@ -93573,11 +93702,11 @@ function renderProposalTable(proposals) {
   if (proposals.length === 0) return "_(no proposals match)_";
   const cols = ["id", "status", "operation", "items", "expires", "title"];
   const header = "| " + cols.join(" | ") + " |";
-  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const sep2 = "| " + cols.map(() => "---").join(" | ") + " |";
   const rows = proposals.map(
     (p) => "| " + [p.id, p.status, p.operation, p.itemsCount ?? "", p.expiresAt ?? "", p.title ?? ""].map(cell).join(" | ") + " |"
   );
-  return [header, sep, ...rows].join("\n");
+  return [header, sep2, ...rows].join("\n");
 }
 function renderDrift(f) {
   if (!f.drift || f.drift.length === 0) return [];
@@ -93594,9 +93723,16 @@ init_deadline();
 var ADS_EMIT_TIMEOUT_MS = 2e3;
 var ENTITY_IDS_CAP = 50;
 var BEFORE_SUMMARY_MAX_CHARS = 2e3;
+function isDspOperation(operation) {
+  return operation.startsWith("dsp.");
+}
 async function emitAdsCommitEvent(input, options = {}) {
   const env = options.env ?? process.env;
   try {
+    if (isDspOperation(input.operation)) {
+      debugLog4(env, `ads-emit: ${input.operation} is advertiser-scoped; the server records it`);
+      return { posted: false, reason: "server_recorded" };
+    }
     const brandSlug = await resolveBrandSlugForSeller(
       input.legacySellerId,
       options.dataDirOverride
@@ -94091,31 +94227,31 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
     }
   });
 }
-async function proposalFailed(failure2, action, startedAt, root, proposalId, operation) {
+async function proposalFailed(failure3, action, startedAt, root, proposalId, operation) {
   await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
     action,
-    kind: failure2.kind,
+    kind: failure3.kind,
     ...proposalId ? { proposal_id: proposalId } : {},
     ...operation ? { operation } : {},
-    ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
-    ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {},
-    ...failure2.requestOutcome ? { request_outcome: failure2.requestOutcome } : {},
-    ...failure2.drift ? { drift_count: failure2.drift.length } : {},
-    ...failure2.proposalStatus ? { proposal_status: failure2.proposalStatus } : {},
-    ...failureContractTelemetry(failure2)
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
+    ...failure3.requestOutcome ? { request_outcome: failure3.requestOutcome } : {},
+    ...failure3.drift ? { drift_count: failure3.drift.length } : {},
+    ...failure3.proposalStatus ? { proposal_status: failure3.proposalStatus } : {},
+    ...failureContractTelemetry(failure3)
   });
-  const next = action === "commit" ? commitOutcomeHint(failure2) : void 0;
-  emitFailure5(failure2, !!root.json, next);
+  const next = action === "commit" ? commitOutcomeHint(failure3) : void 0;
+  emitFailure5(failure3, !!root.json, next);
   if (!root.json) {
-    for (const line of renderDrift(failure2)) process.stderr.write(`${line}
+    for (const line of renderDrift(failure3)) process.stderr.write(`${line}
 `);
   }
 }
-function commitOutcomeHint(failure2) {
-  if (failure2.proposalStatus === "UNCERTAIN") {
+function commitOutcomeHint(failure3) {
+  if (failure3.proposalStatus === "UNCERTAIN") {
     return "Amazon may have applied it. Do NOT commit again and do not propose it again: re-list the targeted entities and check them first.";
   }
-  if (failure2.proposalStatus === "FAILED") {
+  if (failure3.proposalStatus === "FAILED") {
     return "Amazon refused it and nothing was applied. Propose the change again if it is still wanted.";
   }
   return void 0;
@@ -94259,7 +94395,7 @@ Approving this proposal (the version fetched just now, hash ${p.payloadHash.slic
       const r = await commitProposal(id, p.payloadHash, { dataDirOverride: root.dataDir });
       if (isReportFailure(r)) return proposalFailed(r, "commit", startedAt, root, id, p.operation);
       const done = r.proposal;
-      const base = {
+      const base2 = {
         proposal_id: id,
         operation: done.operation || p.operation,
         status: done.status,
@@ -94270,7 +94406,7 @@ Approving this proposal (the version fetched just now, hash ${p.payloadHash.slic
         await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
           action: "commit",
           kind: done.status === "UNCERTAIN" ? "commit_uncertain" : "commit_failed",
-          ...base
+          ...base2
         });
         printProposalResult(
           done,
@@ -94281,7 +94417,7 @@ Approving this proposal (the version fetched just now, hash ${p.payloadHash.slic
         process.exitCode = 1;
         return;
       }
-      await trackAds(EventName.AdsProposalCommitted, "ok", startedAt, root.dataDir, base);
+      await trackAds(EventName.AdsProposalCommitted, "ok", startedAt, root.dataDir, base2);
       printProposalResult(
         done,
         !!root.json,
@@ -94329,57 +94465,57 @@ async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson4(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure5(failure2, json3, nextStep) {
+function emitFailure5(failure3, json3, nextStep) {
   if (json3) {
     writeJson4({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
       // Amazon's OWN code, status and response body. Previously dropped on the
       // floor, which left a user reporting a failure with nothing complete to
       // send and left us unable to tell a catalog gap from an outage.
-      amazon_error_code: failure2.amazonErrorCode,
-      amazon_status: failure2.amazonStatus,
-      unrecognized_kind: failure2.unrecognizedKind,
-      amazon_response: failure2.responsePayload ?? failure2.responseText,
-      candidates: failure2.candidates,
+      amazon_error_code: failure3.amazonErrorCode,
+      amazon_status: failure3.amazonStatus,
+      unrecognized_kind: failure3.unrecognizedKind,
+      amazon_response: failure3.responsePayload ?? failure3.responseText,
+      candidates: failure3.candidates,
       // 'unknown' = the call may have gone through (report create or write):
       // check before resending. Dropped until now, so --json callers could not
       // tell a lost answer from a refusal.
-      request_outcome: failure2.requestOutcome,
+      request_outcome: failure3.requestOutcome,
       // proposal_stale: which live values moved since the proposal was written.
-      drift: failure2.drift,
+      drift: failure3.drift,
       // A failed commit names the proposal and its state (FAILED, UNCERTAIN).
-      proposal_id: failure2.proposalId,
-      proposal_status: failure2.proposalStatus,
+      proposal_id: failure3.proposalId,
+      proposal_status: failure3.proposalStatus,
       next_step: nextStep,
-      automatic_retry: failure2.automaticRetry,
-      concurrency_cap: failure2.concurrencyCap,
+      automatic_retry: failure3.automaticRetry,
+      concurrency_cap: failure3.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
-      retry_after_ms: failure2.retryAfterMs,
+      retry_after_ms: failure3.retryAfterMs,
       // source / retryable / fix / *_params / amazon (mx-ops#144 P5).
-      ...failureContractJson(failure2)
+      ...failureContractJson(failure3)
     });
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.message) process.stderr.write(`  ${failure2.message}
+    if (failure3.message) process.stderr.write(`  ${failure3.message}
 `);
-    for (const line of failureContractLines(failure2)) process.stderr.write(`${line}
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
 `);
-    if (failure2.proposalId) {
+    if (failure3.proposalId) {
       process.stderr.write(
-        `  proposal: ${failure2.proposalId}${failure2.proposalStatus ? ` (${failure2.proposalStatus})` : ""}
+        `  proposal: ${failure3.proposalId}${failure3.proposalStatus ? ` (${failure3.proposalStatus})` : ""}
 `
       );
     }
     if (nextStep) process.stderr.write(`  ${nextStep}
 `);
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function emitError11(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -94397,7 +94533,7 @@ function renderProfiles(profiles) {
   }
   const cols = ["profileId", "legacySellerId", "name", "type", "region", "marketplace"];
   const header = "| " + cols.join(" | ") + " |";
-  const sep = "| " + cols.map(() => "---").join(" | ") + " |";
+  const sep2 = "| " + cols.map(() => "---").join(" | ") + " |";
   const rows = profiles.map((p) => {
     const marketplace = [p.countryCode, p.marketplaceName ?? p.marketplaceId].filter((s) => !!s).join(" ");
     return "| " + [
@@ -94409,7 +94545,7 @@ function renderProfiles(profiles) {
       mdCell2(marketplace)
     ].join(" | ") + " |";
   });
-  return [header, sep, ...rows].join("\n");
+  return [header, sep2, ...rows].join("\n");
 }
 function renderOperations2(operations) {
   if (operations.length === 0) {
@@ -94624,15 +94760,15 @@ async function resolveBaseAndToken2(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-    if (!base) {
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
       return {
         ok: false,
         kind: "not_authenticated",
         friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) first.'
       };
     }
-    apiBase = base;
+    apiBase = base2;
   }
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
@@ -94706,7 +94842,7 @@ function defaultFriendly2(kind) {
     case "walmart_not_configured":
       return "Walmart Connect is not set up on the MixShift service yet. Contact MixShift.";
     case "tenant_not_allowed":
-      return "Walmart Connect is not enabled for this MixShift account yet. Contact MixShift to join the beta.";
+      return "No Walmart Connect advertiser is connected to this MixShift account yet. An admin on the Walmart ad account adds MixShift as a partner in Ad Center (Access > Partners), then emails the advertiser ID to support@mixshift.io.";
     case "advertiser_not_allowed":
       return "That Walmart advertiser is not connected to this MixShift account.";
     case "insufficient_scope":
@@ -94976,50 +95112,50 @@ function safeAuditId(value) {
 function writeJson5(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure6(failure2, json3) {
+function emitFailure6(failure3, json3) {
   if (json3) {
     writeJson5({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
-      advertiser_id: failure2.advertiserId,
-      required_scope: failure2.requiredScope,
-      request_outcome: failure2.requestOutcome,
-      automatic_retry: failure2.automaticRetry,
-      audit_id: failure2.auditId,
-      unrecognized_kind: failure2.unrecognizedKind,
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      advertiser_id: failure3.advertiserId,
+      required_scope: failure3.requiredScope,
+      request_outcome: failure3.requestOutcome,
+      automatic_retry: failure3.automaticRetry,
+      audit_id: failure3.auditId,
+      unrecognized_kind: failure3.unrecognizedKind,
       // Gateway contract (mx-ops#144 P5).
-      source: failure2.source,
-      retryable: failure2.retryable,
-      fix: failure2.fix,
-      invalid_params: failure2.invalidParams,
+      source: failure3.source,
+      retryable: failure3.retryable,
+      fix: failure3.fix,
+      invalid_params: failure3.invalidParams,
       // Walmart's own answer on a Walmart rejection (the gateway's `walmart`).
-      walmart_response: failure2.walmartResponse
+      walmart_response: failure3.walmartResponse
     });
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
 `);
-    if (failure2.fix) process.stderr.write(`  fix: ${failure2.fix}
+    if (failure3.fix) process.stderr.write(`  fix: ${failure3.fix}
 `);
-    if (failure2.walmartResponse !== void 0) {
+    if (failure3.walmartResponse !== void 0) {
       const said = cleanServerText(
-        typeof failure2.walmartResponse === "string" ? failure2.walmartResponse : JSON.stringify(failure2.walmartResponse)
+        typeof failure3.walmartResponse === "string" ? failure3.walmartResponse : JSON.stringify(failure3.walmartResponse)
       );
       if (said) process.stderr.write(`  Walmart said: ${said.length > 500 ? `${said.slice(0, 500)}...` : said}
 `);
     }
-    if (failure2.retryable === false && failure2.source === "request") {
+    if (failure3.retryable === false && failure3.source === "request") {
       process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
     }
-    if (safeAuditId(failure2.auditId)) process.stderr.write(`  change id: ${failure2.auditId} (MixShift change log)
+    if (safeAuditId(failure3.auditId)) process.stderr.write(`  change id: ${failure3.auditId} (MixShift change log)
 `);
   }
-  process.exitCode = exitCodeForWalmartKind(failure2.kind);
+  process.exitCode = exitCodeForWalmartKind(failure3.kind);
 }
 function emitError12(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -95255,15 +95391,15 @@ async function resolveBaseAndToken3(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-    if (!base) {
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
       return {
         ok: false,
         kind: "not_authenticated",
         friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) first.'
       };
     }
-    apiBase = base;
+    apiBase = base2;
   }
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
@@ -95510,12 +95646,12 @@ function landedPrice(offer) {
 function summarizeItem(item, ourSellerId) {
   const body = item.body ?? {};
   const asin = String(body.asin ?? "").toUpperCase();
-  const base = { asin, status: "error", ourShare: 0, totalWeight: 0, segments: [], competitors: [], lostZips: [], ourPrice: null, error: null };
+  const base2 = { asin, status: "error", ourShare: 0, totalWeight: 0, segments: [], competitors: [], lostZips: [], ourPrice: null, error: null };
   const code = item.status?.statusCode ?? 0;
   const errors = [...item.errors ?? [], ...body.errors ?? []];
   if (code < 200 || code >= 300 || errors.length > 0) {
-    base.error = errors.map((e) => e.message || e.code).filter(Boolean).join("; ") || `HTTP ${code}`;
-    return base;
+    base2.error = errors.map((e) => e.message || e.code).filter(Boolean).join("; ") || `HTTP ${code}`;
+    return base2;
   }
   const segments = [];
   for (const option of list(body.featuredBuyingOptions)) {
@@ -95555,7 +95691,7 @@ function summarizeItem(item, ourSellerId) {
   }
   const status = segments.length === 0 ? "no_featured_offer" : ourShare >= HELD_SHARE_FLOOR ? "held" : ourShare > 0 ? "partial" : "lost";
   return {
-    ...base,
+    ...base2,
     status,
     ourShare: Math.round(ourShare * 1e4) / 1e4,
     totalWeight: Math.round(totalWeight * 100) / 100,
@@ -95620,37 +95756,37 @@ function diagnose(summary, buyboxes, offers, ourSellerId) {
   const lowestOther = others[0] ?? null;
   const ourPrice = ourOffer?.price_num ?? summary.ourPrice;
   const undercutters = ourPrice === null ? [] : others.filter((o) => (o.price_num ?? Infinity) < ourPrice);
-  const base = { asin: summary.asin, zips, ourOffer, lowestOther, undercutters, offerCount: offers ? offers.data.offer_count : null };
+  const base2 = { asin: summary.asin, zips, ourOffer, lowestOther, undercutters, offerCount: offers ? offers.data.offer_count : null };
   if (summary.status === "held" && zips.every((z2) => z2.ours || z2.winner === null)) {
-    return { ...base, reason: "held", detail: `Amazon and the shelf agree: we hold the featured offer (${Math.round(summary.ourShare * 100)}% of views).` };
+    return { ...base2, reason: "held", detail: `Amazon and the shelf agree: we hold the featured offer (${Math.round(summary.ourShare * 100)}% of views).` };
   }
   const lostZips = zips.filter((z2) => !z2.ours);
   if (zips.length > 0 && lostZips.length === 0) {
-    return { ...base, reason: "lost_elsewhere", detail: `We win the Buy Box at every observed location, but Amazon reports ${Math.round((1 - summary.ourShare) * 100)}% of views going to ${summary.competitors[0]?.sellerId ?? "another seller"}; the losing segments could not be observed (their sample zips are not observation points).` };
+    return { ...base2, reason: "lost_elsewhere", detail: `We win the Buy Box at every observed location, but Amazon reports ${Math.round((1 - summary.ourShare) * 100)}% of views going to ${summary.competitors[0]?.sellerId ?? "another seller"}; the losing segments could not be observed (their sample zips are not observation points).` };
   }
   const noBox = lostZips.filter((z2) => z2.winner === null);
   if (lostZips.length > 0 && noBox.length === lostZips.length && (offers === null || offers.data.offer_count === 0)) {
-    return { ...base, reason: "no_featured_offer", detail: `No featured offer and no offers at all at ${noBox.map((z2) => z2.zip).join(", ")}: the listing is not buyable there (out of stock everywhere, or suppressed).` };
+    return { ...base2, reason: "no_featured_offer", detail: `No featured offer and no offers at all at ${noBox.map((z2) => z2.zip).join(", ")}: the listing is not buyable there (out of stock everywhere, or suppressed).` };
   }
   if (offers && !ourOffer) {
-    return { ...base, reason: "not_on_listing", detail: `Our offer is not in the offer list at ${offers.zip} (${offers.data.offer_count} other offers): out of stock or not buyable there.` };
+    return { ...base2, reason: "not_on_listing", detail: `Our offer is not in the offer list at ${offers.zip} (${offers.data.offer_count} other offers): out of stock or not buyable there.` };
   }
   if (lostZips.length > 0 && noBox.length === lostZips.length) {
-    return { ...base, reason: "no_featured_offer", detail: `No featured offer is shown at ${noBox.map((z2) => z2.zip).join(", ")}: the Buy Box is suppressed for everyone there, usually a lower price off Amazon or a listing issue.` };
+    return { ...base2, reason: "no_featured_offer", detail: `No featured offer is shown at ${noBox.map((z2) => z2.zip).join(", ")}: the Buy Box is suppressed for everyone there, usually a lower price off Amazon or a listing issue.` };
   }
   const won = lostZips.filter((z2) => z2.winner !== null);
   const cheaper = won.filter((z2) => ourPrice !== null && z2.price !== null && z2.price < ourPrice);
   if (cheaper.length > 0) {
     const w = cheaper[0];
-    return { ...base, reason: "price_undercut", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} against our ${money(ourPrice)}${undercutters.length > 0 ? `; ${undercutters.length} offer(s) on the listing are below our price` : ""}.` };
+    return { ...base2, reason: "price_undercut", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} against our ${money(ourPrice)}${undercutters.length > 0 ? `; ${undercutters.length} offer(s) on the listing are below our price` : ""}.` };
   }
   if (won.length > 0) {
     const w = won[0];
     const ourDays = ourOffer?.promise_days_fastest ?? null;
     const gap = w.promiseDays !== null && ourDays !== null ? ` (${w.promiseDays} d vs our ${ourDays} d)` : w.promiseDays !== null ? ` (${w.promiseDays} d)` : "";
-    return { ...base, reason: "promise_loss", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} with a faster delivery promise${gap}; our price is ${money(ourPrice)}.` };
+    return { ...base2, reason: "promise_loss", detail: `${w.winner} wins at ${w.zip} at ${money(w.price)} with a faster delivery promise${gap}; our price is ${money(ourPrice)}.` };
   }
-  return { ...base, reason: "unresolved", detail: summary.status === "no_featured_offer" ? "Amazon reports no featured offer for this ASIN and the shelf could not be observed." : "Amazon reports a loss; the shelf had no answer for this ASIN." };
+  return { ...base2, reason: "unresolved", detail: summary.status === "no_featured_offer" ? "Amazon reports no featured offer for this ASIN and the shelf could not be observed." : "Amazon reports a loss; the shelf had no answer for this ASIN." };
 }
 function reportCounts(report) {
   const counts = { total: report.asins.length, held: 0, flagged: 0, errors: 0 };
@@ -95983,17 +96119,17 @@ async function readState(dir) {
 }
 async function resolveOutDir(out2, dataDir) {
   if (out2) return resolvePath3(out2);
-  const base = join26(outputDir(dataDir), "featured-offer-check");
+  const base2 = join26(outputDir(dataDir), "featured-offer-check");
   let entries;
   try {
-    entries = (await fs.readdir(base, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+    entries = (await fs.readdir(base2, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
   }
-  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join26(base, name))).mtimeMs })));
+  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join26(base2, name))).mtimeMs })));
   stamped.sort((a, b) => b.mtime - a.mtime);
   if (!stamped[0]) throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
-  return join26(base, stamped[0].name);
+  return join26(base2, stamped[0].name);
 }
 function parseBudget(raw) {
   if (raw === void 0) return DEFAULT_BUDGET;
@@ -96074,17 +96210,17 @@ async function trackCheck(phase, state, startedAt, dataDir, extra = {}) {
     dataDir
   );
 }
-function emitReportFailure(failure2, json3) {
+function emitReportFailure(failure3, json3) {
   if (json3) {
-    process.stdout.write(JSON.stringify({ status: "error", failure_kind: failure2.kind, message: failure2.friendly, detail: failure2.message, http_status: failure2.httpStatus }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ status: "error", failure_kind: failure3.kind, message: failure3.friendly, detail: failure3.message, http_status: failure3.httpStatus }, null, 2) + "\n");
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
 `);
   }
-  process.exitCode = exitCodeForKind(failure2.kind);
+  process.exitCode = exitCodeForKind(failure3.kind);
 }
 function emitError13(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -96230,15 +96366,15 @@ function ageSeconds(observedAt, now) {
   const t = Date.parse(observedAt);
   return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1e3)) : null;
 }
-function failurePayload(failure2, base) {
+function failurePayload(failure3, base2) {
   return {
-    ...base,
-    kind_failed: failure2.kind,
-    ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
-    ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {},
+    ...base2,
+    kind_failed: failure3.kind,
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
     // Gateway contract (mx-ops#144): enums and a flag; never the friendly text.
-    ...failure2.source !== void 0 && CONTRACT_WORD.test(failure2.source) ? { source: failure2.source } : {},
-    ...failure2.retryable !== void 0 ? { retryable: failure2.retryable } : {}
+    ...failure3.source !== void 0 && CONTRACT_WORD.test(failure3.source) ? { source: failure3.source } : {},
+    ...failure3.retryable !== void 0 ? { retryable: failure3.retryable } : {}
   };
 }
 async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
@@ -96256,43 +96392,43 @@ async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson6(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure7(failure2, json3) {
+function emitFailure7(failure3, json3) {
   if (json3) {
     writeJson6({
       status: "error",
-      failure_kind: failure2.kind,
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
-      period: failure2.period,
-      allowance: failure2.allowance,
-      used: failure2.used,
-      resets_at: failure2.resetsAt,
-      request_more: failure2.requestMore,
-      available_count: failure2.availableCount,
-      retry_after_ms: failure2.retryAfterMs,
-      required_scope: failure2.requiredScope,
-      unrecognized_kind: failure2.unrecognizedKind,
-      source: failure2.source,
-      retryable: failure2.retryable,
-      invalid_params: failure2.invalidParams
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      period: failure3.period,
+      allowance: failure3.allowance,
+      used: failure3.used,
+      resets_at: failure3.resetsAt,
+      request_more: failure3.requestMore,
+      available_count: failure3.availableCount,
+      retry_after_ms: failure3.retryAfterMs,
+      required_scope: failure3.requiredScope,
+      unrecognized_kind: failure3.unrecognizedKind,
+      source: failure3.source,
+      retryable: failure3.retryable,
+      invalid_params: failure3.invalidParams
     });
   } else {
     process.stderr.write(`
-\u2717 ${failure2.friendly}
+\u2717 ${failure3.friendly}
 `);
-    if (failure2.message && failure2.message !== failure2.friendly) process.stderr.write(`  ${failure2.message}
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
 `);
-    if (failure2.kind === "shelf_allowance_exhausted") {
-      if (failure2.resetsAt) process.stderr.write(`  used ${failure2.used ?? "?"} of ${failure2.allowance ?? "?"} for ${failure2.period ?? "this month"}; resets ${failure2.resetsAt}
+    if (failure3.kind === "shelf_allowance_exhausted") {
+      if (failure3.resetsAt) process.stderr.write(`  used ${failure3.used ?? "?"} of ${failure3.allowance ?? "?"} for ${failure3.period ?? "this month"}; resets ${failure3.resetsAt}
 `);
       process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
     }
-    if (failure2.retryable === false && failure2.source === "request") {
+    if (failure3.retryable === false && failure3.source === "request") {
       process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
     }
   }
-  process.exitCode = exitCodeForShelfKind(failure2.kind);
+  process.exitCode = exitCodeForShelfKind(failure3.kind);
 }
 function emitError14(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -96611,15 +96747,15 @@ async function resolveBaseAndToken4(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
-    const base = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
-    if (!base) {
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
       return {
         ok: false,
         kind: "not_authenticated",
         friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) before using MixShift Intelligence. For unattended runs, configure `mixshift auth service-setup`.'
       };
     }
-    apiBase = base;
+    apiBase = base2;
   }
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
@@ -97392,19 +97528,19 @@ ${renderCatalog([lookup.entry])}
     );
     return;
   }
-  const failure2 = "failure" in lookup ? lookup.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
-  const hint = "failure" in lookup ? hintForKind(failure2.kind) : "Ids: mixshift intelligence catalog";
+  const failure3 = "failure" in lookup ? lookup.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
+  const hint = "failure" in lookup ? hintForKind(failure3.kind) : "Ids: mixshift intelligence catalog";
   if (root.json) {
-    writeJson7({ ok: false, id, kind: failure2.kind, message: failure2.friendly, detail: failure2.message, ...hint ? { hint } : {} });
+    writeJson7({ ok: false, id, kind: failure3.kind, message: failure3.friendly, detail: failure3.message, ...hint ? { hint } : {} });
   } else {
     process.stdout.write(cmd.helpInformation());
     process.stderr.write(`
-\u2717 (${failure2.kind}) ${failure2.friendly}
+\u2717 (${failure3.kind}) ${failure3.friendly}
 `);
     if (hint) process.stderr.write(`  hint: ${hint}
 `);
   }
-  process.exitCode = exitCodeForKind2(failure2.kind);
+  process.exitCode = exitCodeForKind2(failure3.kind);
 }
 function merchantEcho(params) {
   const merchant = params.merchant;
@@ -97495,50 +97631,50 @@ function hintForKind(kind) {
       return void 0;
   }
 }
-async function trackFailure3(op, insightId, failure2, startedAt, dataDir, runId) {
+async function trackFailure3(op, insightId, failure3, startedAt, dataDir, runId) {
   await track(
     {
       event_name: EventName.IntelligenceRunFailed,
       outcome: "failed",
       duration_ms: Date.now() - startedAt,
-      error_class: failure2.kind,
+      error_class: failure3.kind,
       payload: {
         op,
         ...insightId ? { insight_id: insightId } : {},
         ...runId ? { run_id: runId } : {},
-        failure_kind: failure2.kind,
-        ...failure2.httpStatus ? { http_status: failure2.httpStatus } : {},
+        failure_kind: failure3.kind,
+        ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
         // Contract drift: the service sent a `kind` this build does not know,
         // so the class came from the status, not the wire (mx-ops#43).
-        ...failure2.unrecognizedKind ? { unrecognized_kind: failure2.unrecognizedKind } : {}
+        ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {}
       }
     },
     dataDir
   );
 }
-function emitFailure8(failure2, json3, hintOverride) {
-  const hint = hintOverride ?? hintForKind(failure2.kind);
+function emitFailure8(failure3, json3, hintOverride) {
+  const hint = hintOverride ?? hintForKind(failure3.kind);
   if (json3) {
     writeJson7({
       ok: false,
-      kind: failure2.kind,
-      ...failure2.reason ? { reason: failure2.reason } : {},
-      message: failure2.friendly,
-      detail: failure2.message,
-      http_status: failure2.httpStatus,
-      unrecognized_kind: failure2.unrecognizedKind,
+      kind: failure3.kind,
+      ...failure3.reason ? { reason: failure3.reason } : {},
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      unrecognized_kind: failure3.unrecognizedKind,
       ...hint ? { hint } : {}
     });
   } else {
     process.stderr.write(`
-\u2717 (${failure2.kind}${failure2.reason ? `: ${failure2.reason}` : ""}) ${failure2.friendly}
+\u2717 (${failure3.kind}${failure3.reason ? `: ${failure3.reason}` : ""}) ${failure3.friendly}
 `);
-    if (failure2.message) process.stderr.write(`  detail: ${failure2.message}
+    if (failure3.message) process.stderr.write(`  detail: ${failure3.message}
 `);
     if (hint) process.stderr.write(`  hint: ${hint}
 `);
   }
-  process.exitCode = exitCodeForKind2(failure2.kind);
+  process.exitCode = exitCodeForKind2(failure3.kind);
 }
 function emitError15(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
@@ -98632,8 +98768,8 @@ function writeJson8(obj2) {
 }
 
 // src/commands/report.ts
-import { readFile as readFile47, writeFile as writeFile30, mkdir as mkdir33, readdir as readdir6 } from "node:fs/promises";
-import { dirname as dirname39, join as join28, resolve as resolve2 } from "node:path";
+import { readFile as readFile48, writeFile as writeFile31, mkdir as mkdir35, readdir as readdir7 } from "node:fs/promises";
+import { dirname as dirname41, join as join30, resolve as resolve2 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -99370,14 +99506,14 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
     const levelSpec = resolveLevelUnit(served, fmt, mkey, unitsMap);
     const changeSpec = resolveChangeUnit(served, fmt, mkey, unitsMap);
     const basis = domain2 === "ads" ? ADS_BASIS[mkey ?? ""] ?? ADS_BASIS_DEFAULT : opsBasis(env, mkey);
-    const base = `envelope:insights[${ii}]`;
+    const base2 = `envelope:insights[${ii}]`;
     const stem = `${domain2}.entity.${slug}.${mkey}`;
     const label = `${mkey} \u2014 ${ekey}`;
     for (const [side, field] of SIDE_FIELDS) {
       const v = entry[field];
       if (hasValue(v)) {
         figures2.push(
-          fig(`${stem}.${side}`, label, v, levelSpec, basis, `${base}.${field}`, {
+          fig(`${stem}.${side}`, label, v, levelSpec, basis, `${base2}.${field}`, {
             // Blocking caveats ride the levels here for the same reason they
             // do at total scope -- and this path needs it MORE, not less: the
             // regime guard flags a specific ASIN, so the entity row IS the
@@ -99396,7 +99532,7 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
         // served `deltaUnit` when the engine publishes one, else
         // `changeUnitOf`. Same rule the legs below use, so an entity's rate
         // delta and its own legs agree.
-        fig(`${stem}.delta`, label, netChange, changeSpec, basis, `${base}.netChange`, {
+        fig(`${stem}.delta`, label, netChange, changeSpec, basis, `${base2}.netChange`, {
           caveats: deltaCaveats,
           extra: { pct_change: entry.pctChange ?? null }
         })
@@ -99416,7 +99552,7 @@ function extractEntity(doc, env, domain2, unitsMap, served, registry2, deltaCave
           // never disagree. NOT comp.valueUnit; see `resolveChangeUnit`.
           changeSpec,
           basis,
-          `${base}.components[${ci}].impact`,
+          `${base2}.components[${ci}].impact`,
           {
             extra: {
               footing_ok: asRecord(entry.footing)?.ok ?? null,
@@ -99617,12 +99753,12 @@ function extractFiguresUnprefixed(response, selection) {
     const changeSpec = resolveChangeUnit(served, fmt, key, unitsMap);
     const basis = domain2 === "ads" ? ADS_BASIS[key ?? ""] ?? ADS_BASIS_DEFAULT : opsBasis(env, key);
     const t = asRecord(m.totals) ?? {};
-    const base = `envelope:metrics[${mi}].totals`;
+    const base2 = `envelope:metrics[${mi}].totals`;
     for (const side of ["p1", "p2"]) {
       const v = t[side];
       if (hasValue(v)) {
         figures2.push(
-          fig(`${domain2}.${key}.${side}`, key ?? "", v, levelSpec, basis, `${base}.${side}`, {
+          fig(`${domain2}.${key}.${side}`, key ?? "", v, levelSpec, basis, `${base2}.${side}`, {
             // Blocking only -- a level is not qualified by a comparison caveat.
             caveats: levelCaveats.length > 0 ? levelCaveats : void 0
           })
@@ -99653,7 +99789,7 @@ function extractFiguresUnprefixed(response, selection) {
         // engine's own `deltaUnit`; otherwise from `changeUnitOf`. Either way
         // every leg that foots to this figure resolves through the SAME call,
         // so the two cannot disagree.
-        fig(`${domain2}.${key}.delta`, key ?? "", delta, changeSpec, basis, `${base}.delta`, {
+        fig(`${domain2}.${key}.delta`, key ?? "", delta, changeSpec, basis, `${base2}.delta`, {
           caveats: deltaCaveats,
           population: pop,
           extra: {
@@ -99676,7 +99812,7 @@ function extractFiguresUnprefixed(response, selection) {
           dv,
           changeSpec,
           basis,
-          `${base}.topDrivers[${rank}].delta`,
+          `${base2}.topDrivers[${rank}].delta`,
           { caveats: deltaCaveats }
         )
       );
@@ -100874,6 +101010,985 @@ init_query_runner();
 init_load2();
 init_local();
 init_clients();
+
+// src/commands/report-ledger.ts
+init_local();
+
+// src/lib/run-ledger/client.ts
+init_credentials();
+init_intent();
+init_classify();
+init_api_base();
+var LEDGER_TIMEOUT_MS = 12e4;
+var LedgerNetworkError = class extends Error {
+  friendly;
+  constructor(message, friendly) {
+    super(message);
+    this.name = "LedgerNetworkError";
+    this.friendly = friendly;
+  }
+};
+var NotSignedInError = class extends Error {
+};
+function tenantFromBearer(token) {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return typeof payload.sub === "string" && payload.sub.length > 0 ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+function createRunLedgerClient(options = {}) {
+  const { dataDirOverride } = options;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  async function authedRequest(method, path2, body) {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const apiBase = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!apiBase) {
+      throw new NotSignedInError(
+        "Not signed in to MixShift, so the run ledger cannot be read from the service. Run `mixshift auth login` (or `mixshift auth service-setup` for unattended runs)."
+      );
+    }
+    const doFetch = async (bearer) => {
+      try {
+        return await fetchImpl(`${apiBase}${path2}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            ...body !== void 0 ? { "Content-Type": "application/json" } : {},
+            ...intentHeader()
+          },
+          ...body !== void 0 ? { body: JSON.stringify(body) } : {},
+          signal: AbortSignal.timeout(LEDGER_TIMEOUT_MS)
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new LedgerNetworkError(message, networkErrorMessage(err, resolveApiBaseHost(apiBase)));
+      }
+    };
+    let token = await getValidAccessToken(dataDirOverride);
+    let res = await doFetch(token);
+    if (res.status === 401) {
+      token = await getValidAccessToken(dataDirOverride, true);
+      res = await doFetch(token);
+      if (res.status === 401) {
+        throw new NotSignedInError(
+          "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to sign in again."
+        );
+      }
+    }
+    return { res, tenant: tenantFromBearer(token) };
+  }
+  return {
+    async tenant() {
+      try {
+        return tenantFromBearer(await getValidAccessToken(dataDirOverride));
+      } catch {
+        return null;
+      }
+    },
+    async get(brandSlug, skillId) {
+      try {
+        const params = new URLSearchParams({ brand: brandSlug, skill: skillId });
+        const { res, tenant } = await authedRequest("GET", `/api/run-ledger?${params.toString()}`, void 0);
+        const json3 = await parseJson(res);
+        if (res.ok && json3.ok === true && "ledger" in json3) {
+          const ledger = json3.ledger;
+          if (ledger === null) return { ok: true, ledger: null, tenant };
+          if (isWireLedger(ledger, brandSlug, skillId)) return { ok: true, ledger, tenant };
+          return failure2("unknown", "The MixShift service answered the run ledger read in a shape this plugin does not recognize.", res.status);
+        }
+        return failureFrom(json3, res.status);
+      } catch (err) {
+        return failureFromException3(err);
+      }
+    },
+    async put(body) {
+      try {
+        const { res, tenant } = await authedRequest("PUT", "/api/run-ledger", body);
+        const json3 = await parseJson(res);
+        if (res.ok && json3.ok === true && (json3.status === "created" || json3.status === "updated" || json3.status === "noop") && typeof json3.revision === "number") {
+          return { ok: true, status: json3.status, revision: json3.revision, tenant };
+        }
+        return failureFrom(json3, res.status);
+      } catch (err) {
+        return failureFromException3(err);
+      }
+    }
+  };
+}
+async function parseJson(res) {
+  try {
+    const parsed = await res.json();
+    return parsed !== null && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function isWireLedger(value, brandSlug, skillId) {
+  if (value === null || typeof value !== "object") return false;
+  const v = value;
+  return v.brand_slug === brandSlug && v.skill_id === skillId && typeof v.revision === "number" && Array.isArray(v.files) && v.files.every(
+    (f) => f !== null && typeof f === "object" && typeof f.path === "string" && typeof f.content_hash === "string"
+  );
+}
+function failure2(kind, friendly, httpStatus) {
+  return { ok: false, kind, friendly, ...httpStatus !== void 0 ? { http_status: httpStatus } : {} };
+}
+function failureFrom(json3, httpStatus) {
+  const friendly = typeof json3.friendly === "string" ? json3.friendly : `The run ledger service returned HTTP ${httpStatus}.`;
+  if (httpStatus === 404 || httpStatus === 405) {
+    return failure2(
+      "unsupported",
+      "This MixShift service does not have the run ledger yet, so the local ledger is used.",
+      httpStatus
+    );
+  }
+  if (json3.kind === "ledger_unavailable") {
+    return failure2("unavailable", "The run ledger store is not available on this MixShift service yet, so the local ledger is used.", httpStatus);
+  }
+  if (httpStatus === 503 || httpStatus === 502 || httpStatus === 504) {
+    return failure2(
+      "host_unreachable",
+      "The MixShift service did not answer the run ledger request (HTTP " + httpStatus + "). Try again in a minute.",
+      httpStatus
+    );
+  }
+  if (httpStatus === 409 || json3.kind === "revision_conflict") {
+    const server = json3.server ?? {};
+    return {
+      ...failure2("revision_conflict", friendly, httpStatus),
+      server: {
+        revision: typeof server.revision === "number" ? server.revision : 0,
+        updated_at: typeof server.updated_at === "string" ? server.updated_at : null,
+        updated_by_actor: typeof server.updated_by_actor === "string" ? server.updated_by_actor : null
+      }
+    };
+  }
+  if (json3.kind === "insufficient_scope" || httpStatus === 403) {
+    const required2 = json3.required_scopes;
+    if (httpStatus === 403 && Array.isArray(required2) && !required2.includes("run_ledger:read")) {
+      return failure2(
+        "unsupported",
+        "This MixShift service does not have the run ledger yet, so the local ledger is used.",
+        httpStatus
+      );
+    }
+    return failure2("insufficient_scope", friendly, httpStatus);
+  }
+  if (json3.kind === "too_large") return failure2("too_large", friendly, httpStatus);
+  if (json3.kind === "bad_params") return failure2("bad_params", friendly, httpStatus);
+  return failure2("unknown", friendly, httpStatus);
+}
+function failureFromException3(err) {
+  if (err instanceof LedgerNetworkError) return failure2("host_unreachable", err.friendly);
+  if (err instanceof NotSignedInError) return failure2("not_signed_in", err.message);
+  const message = err instanceof Error ? err.message : String(err);
+  if (/auth login|sign in|signed in|credential/i.test(message)) return failure2("not_signed_in", message);
+  return failure2("unknown", message);
+}
+
+// src/lib/run-ledger/local.ts
+init_resolve();
+import { createHash as createHash6 } from "node:crypto";
+import { mkdir as mkdir33, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile30 } from "node:fs/promises";
+import { dirname as dirname39, join as join28, sep } from "node:path";
+var SKILL_LEDGERS = {
+  // The folder keeps the pre-rename id: it holds every brand's existing ledger.
+  "mx-max-report": { folder: "mx-monthly-report-max" }
+};
+var MAX_FILE_BYTES = 1048576;
+var MAX_LEDGER_BYTES = 16777216;
+var MAX_LEDGER_FILES = 500;
+var SEGMENT_RE = /^[A-Za-z0-9._-]{1,128}$/;
+var TEMP_FILE_RE = /\.tmp-\d+$/;
+var RESERVED_SEGMENT_RE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+function isSafeLedgerPath(path2) {
+  if (typeof path2 !== "string" || path2.length === 0 || path2.length > 256) return false;
+  if (path2.includes("..")) return false;
+  const segments = path2.split("/");
+  if (segments.length > 4) return false;
+  if (TEMP_FILE_RE.test(segments[segments.length - 1])) return false;
+  return segments.every((s) => SEGMENT_RE.test(s) && !s.endsWith(".") && !RESERVED_SEGMENT_RE.test(s));
+}
+function hashContent2(content) {
+  return createHash6("sha256").update(content, "utf8").digest("hex");
+}
+function ledgerDir(brandSlug, skillId, dataDirOverride) {
+  const entry = SKILL_LEDGERS[skillId];
+  if (!entry) throw new Error(`internal error: no run ledger is defined for skill ${JSON.stringify(skillId)}`);
+  return join28(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
+}
+function statePath(brandSlug, dataDirOverride) {
+  return join28(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
+}
+function conflictsDir(brandSlug, skillId, stamp, dataDirOverride) {
+  return join28(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
+}
+async function readLocalLedger(dir) {
+  const files = /* @__PURE__ */ new Map();
+  const skipped = [];
+  let exists = true;
+  async function walk(abs, rel, depth) {
+    let entries;
+    try {
+      entries = await readdir6(abs, { withFileTypes: true });
+    } catch (err) {
+      if (isNotFound(err) && depth === 0) {
+        exists = false;
+        return;
+      }
+      throw err;
+    }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const relPath = [...rel, e.name].join("/");
+      if (e.isDirectory()) {
+        if (depth >= 3) {
+          skipped.push({ path: `${relPath}/`, reason: "too_deep" });
+          continue;
+        }
+        await walk(join28(abs, e.name), [...rel, e.name], depth + 1);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      if (TEMP_FILE_RE.test(e.name)) continue;
+      if (!isSafeLedgerPath(relPath)) {
+        skipped.push({ path: relPath, reason: "unsafe_path" });
+        continue;
+      }
+      const buf = await readFile47(join28(abs, e.name));
+      if (buf.length > MAX_FILE_BYTES) {
+        skipped.push({ path: relPath, reason: "too_large" });
+        continue;
+      }
+      const content = decodeText(buf);
+      if (content === null) {
+        skipped.push({ path: relPath, reason: "not_text" });
+        continue;
+      }
+      files.set(relPath, { content, hash: hashContent2(content), bytes: buf.length });
+    }
+  }
+  await walk(dir, [], 0);
+  return { exists, files, skipped };
+}
+function decodeText(buf) {
+  if (buf.includes(0)) return null;
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buf);
+  } catch {
+    return null;
+  }
+}
+function corruptJsonFiles(files) {
+  const out2 = [];
+  for (const [path2, f] of files) {
+    if (!path2.toLowerCase().endsWith(".json")) continue;
+    try {
+      JSON.parse(f.content.replace(/^﻿/, ""));
+    } catch {
+      out2.push(path2);
+    }
+  }
+  return out2;
+}
+function localPathFor(dir, path2) {
+  if (!isSafeLedgerPath(path2)) {
+    throw new Error(`unsafe run ledger path ${JSON.stringify(path2)}: refusing to resolve a local path`);
+  }
+  const abs = join28(dir, ...path2.split("/"));
+  if (!abs.startsWith(dir + sep)) {
+    throw new Error(`run ledger path ${JSON.stringify(path2)} resolves outside the ledger folder`);
+  }
+  return abs;
+}
+async function writeLedgerFile(dir, path2, content) {
+  const abs = localPathFor(dir, path2);
+  await mkdir33(dirname39(abs), { recursive: true });
+  const tmp = `${abs}.tmp-${process.pid}`;
+  await writeFile30(tmp, content, "utf8");
+  await rename24(tmp, abs);
+}
+async function deleteLedgerFile(dir, path2) {
+  await rm(localPathFor(dir, path2), { force: true });
+}
+async function readSyncState(brandSlug, skillId, dataDirOverride) {
+  const all = await readStateFile(brandSlug, dataDirOverride);
+  const s = all[skillId];
+  if (!s || typeof s.revision !== "number" || typeof s.files !== "object" || s.files === null) return null;
+  return {
+    revision: s.revision,
+    files: s.files,
+    tenant: typeof s.tenant === "string" ? s.tenant : null,
+    synced_at: typeof s.synced_at === "string" ? s.synced_at : ""
+  };
+}
+async function writeSyncState(brandSlug, skillId, state, dataDirOverride) {
+  const path2 = statePath(brandSlug, dataDirOverride);
+  const all = await readStateFile(brandSlug, dataDirOverride);
+  all[skillId] = state;
+  await mkdir33(dirname39(path2), { recursive: true });
+  const tmp = `${path2}.tmp-${process.pid}`;
+  await writeFile30(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
+  await rename24(tmp, path2);
+}
+async function readStateFile(brandSlug, dataDirOverride) {
+  try {
+    const parsed = JSON.parse(await readFile47(statePath(brandSlug, dataDirOverride), "utf8"));
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (err) {
+    if (isNotFound(err)) return {};
+    return {};
+  }
+}
+function isNotFound(err) {
+  return typeof err === "object" && err !== null && "code" in err && (err.code === "ENOENT" || err.code === "ENOTDIR");
+}
+
+// src/lib/run-ledger/sync.ts
+import { copyFile, mkdir as mkdir34 } from "node:fs/promises";
+import { dirname as dirname40, join as join29 } from "node:path";
+var UNAVAILABLE = /* @__PURE__ */ new Set(["unsupported", "unavailable", "host_unreachable"]);
+function base(opts, dir, state, message) {
+  return {
+    state,
+    brand: opts.brand,
+    skill: opts.skill,
+    local_dir: dir,
+    revision: null,
+    changes: [],
+    local_edits: [],
+    diverged: [],
+    corrupt: [],
+    skipped: [],
+    local_files: 0,
+    message
+  };
+}
+function serverSummary(ledger) {
+  return {
+    revision: ledger.revision,
+    updated_at: ledger.updated_at ?? null,
+    updated_by_actor: ledger.updated_by_actor ?? null,
+    file_count: ledger.files.length
+  };
+}
+function failureOf(f) {
+  return { kind: f.kind, message: f.friendly, ...f.http_status !== void 0 ? { http_status: f.http_status } : {} };
+}
+function otherAccount(state, tenant) {
+  return !!(state?.tenant && tenant && state.tenant !== tenant);
+}
+var OTHER_ACCOUNT_MESSAGE = "This computer's run ledger for this brand was synced under a different MixShift sign-in. Nothing was read into it or uploaded. Sign in to the account that owns this brand, or ask which account is right.";
+async function pullLedger(opts) {
+  const dir = ledgerDir(opts.brand, opts.skill, opts.dataDirOverride);
+  const local = await readLocalLedger(dir);
+  const got = await opts.client.get(opts.brand, opts.skill);
+  if (!got.ok) {
+    if (UNAVAILABLE.has(got.kind)) {
+      return {
+        ...base(opts, dir, "gateway_unavailable", unavailableMessage(local)),
+        local_files: local.files.size,
+        skipped: local.skipped,
+        failure: failureOf(got)
+      };
+    }
+    return {
+      ...base(opts, dir, "error", got.friendly),
+      local_files: local.files.size,
+      skipped: local.skipped,
+      failure: failureOf(got)
+    };
+  }
+  const state = await readSyncState(opts.brand, opts.skill, opts.dataDirOverride);
+  if (otherAccount(state, got.tenant)) {
+    return {
+      ...base(opts, dir, "other_account", OTHER_ACCOUNT_MESSAGE),
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  if (got.ledger === null) {
+    if (state && state.revision > 0) {
+      return {
+        ...base(
+          opts,
+          dir,
+          "server_missing",
+          "This computer synced the run ledger with the MixShift service before, but the service has none now. Nothing was uploaded. Check that you are signed in to the right MixShift account before publishing."
+        ),
+        revision: 0,
+        local_files: local.files.size,
+        skipped: local.skipped
+      };
+    }
+    if (local.files.size === 0) {
+      await writeSyncState(
+        opts.brand,
+        opts.skill,
+        { revision: 0, files: {}, tenant: got.tenant, synced_at: (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString() },
+        opts.dataDirOverride
+      );
+      return {
+        ...base(opts, dir, "absent", "No run ledger for this brand on the MixShift service or on this computer."),
+        revision: 0,
+        skipped: local.skipped
+      };
+    }
+    const corrupt = corruptJsonFiles(local.files);
+    return {
+      ...base(
+        opts,
+        dir,
+        "local_only",
+        `The MixShift service has no run ledger for this brand, but this computer has one (${local.files.size} files). Nothing was uploaded. Confirm with the user that its hub URLs are the brand's, then run \`mixshift report ledger push\` to save it as the service copy.`
+      ),
+      revision: 0,
+      corrupt,
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  return applyServer(opts, dir, local, got.ledger, state, got.tenant);
+}
+function unavailableMessage(local) {
+  return local.files.size > 0 ? "The MixShift service run ledger is not available, so the local ledger on this computer is used." : "The MixShift service run ledger is not available, and this computer has no local ledger for this brand.";
+}
+async function uploadFirst(opts, dir, local, tenant) {
+  const corrupt = corruptJsonFiles(local.files);
+  if (corrupt.length > 0) {
+    return {
+      ...base(
+        opts,
+        dir,
+        "local_corrupt",
+        "The local run ledger has JSON files that do not parse, so it was not saved to the MixShift service. Fix or remove them, then push again."
+      ),
+      revision: 0,
+      corrupt,
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  const tooBig = overCaps(local);
+  if (tooBig) {
+    return { ...base(opts, dir, "error", tooBig), revision: 0, local_files: local.files.size, skipped: local.skipped };
+  }
+  const files = [...local.files].map(([path2, f]) => ({ path: path2, content: f.content }));
+  const put = await opts.client.put({ brand_slug: opts.brand, skill_id: opts.skill, base_revision: 0, files });
+  if (!put.ok) {
+    const unavailable = UNAVAILABLE.has(put.kind);
+    return {
+      ...base(
+        opts,
+        dir,
+        put.kind === "revision_conflict" ? "conflict" : unavailable ? "gateway_unavailable" : "error",
+        put.kind === "revision_conflict" ? "Another session saved this brand's run ledger to the MixShift service a moment ago. Nothing was overwritten. Pull again, reconcile, and push." : unavailable ? "The MixShift service run ledger is not available, so the ledger was saved on this computer only." : put.friendly
+      ),
+      revision: 0,
+      local_files: local.files.size,
+      skipped: local.skipped,
+      failure: failureOf(put)
+    };
+  }
+  await writeSyncState(
+    opts.brand,
+    opts.skill,
+    {
+      revision: put.revision,
+      files: Object.fromEntries([...local.files].map(([p, f]) => [p, f.hash])),
+      tenant: put.tenant ?? tenant,
+      synced_at: (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString()
+    },
+    opts.dataDirOverride
+  );
+  return {
+    ...base(
+      opts,
+      dir,
+      "pushed",
+      `Saved this run ledger to the MixShift service as its first revision (${local.files.size} files). From now on the service copy is the one every session reads.`
+    ),
+    revision: put.revision,
+    changes: files.map((f) => ({ path: f.path, change: "added" })),
+    local_files: local.files.size,
+    skipped: local.skipped
+  };
+}
+function overCaps(local) {
+  let bytes = 0;
+  for (const f of local.files.values()) bytes += f.bytes;
+  if (bytes > MAX_LEDGER_BYTES || local.files.size > MAX_LEDGER_FILES) {
+    return `The local run ledger is larger than the MixShift service holds (${MAX_LEDGER_BYTES / 1048576} MB, ${MAX_LEDGER_FILES} files), so it was not uploaded.`;
+  }
+  return null;
+}
+async function applyServer(opts, dir, local, ledger, state, tenant) {
+  const unsafe = ledger.files.map((f) => f.path).filter((p) => !isSafeLedgerPath(p));
+  const folded = new Set(ledger.files.map((f) => f.path.toLowerCase()));
+  if (unsafe.length > 0 || folded.size !== ledger.files.length) {
+    return {
+      ...base(
+        opts,
+        dir,
+        "error",
+        "The MixShift service sent run ledger file names this plugin will not write. Nothing was changed."
+      ),
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  const synced = state?.files ?? {};
+  const server = new Map(ledger.files.map((f) => [f.path, f]));
+  const paths = /* @__PURE__ */ new Set([...server.keys(), ...local.files.keys(), ...Object.keys(synced)]);
+  const writes = [];
+  const localEdits = [];
+  const diverged = [];
+  const unreadable = new Set(local.skipped.filter((k) => !k.path.endsWith("/")).map((k) => k.path));
+  for (const path2 of [...paths].sort()) {
+    const s = server.get(path2);
+    const l = local.files.get(path2);
+    if (unreadable.has(path2)) {
+      if (s) diverged.push(path2);
+      continue;
+    }
+    const sHash = s?.content_hash;
+    const lHash = l?.hash;
+    if (sHash === lHash) continue;
+    const localChanged = lHash !== synced[path2];
+    const serverChanged = sHash !== synced[path2];
+    if (!localChanged) {
+      if (s && typeof s.content !== "string") {
+        return { ...base(opts, dir, "error", "The MixShift service sent a ledger file without its content."), revision: null };
+      }
+      writes.push({ path: path2, content: s ? s.content : null, change: !s ? "deleted" : l ? "updated" : "added" });
+    } else if (!serverChanged) {
+      if (!l && s) {
+        if (typeof s.content !== "string") {
+          return { ...base(opts, dir, "error", "The MixShift service sent a ledger file without its content."), revision: null };
+        }
+        writes.push({ path: path2, content: s.content, change: "added" });
+      } else {
+        localEdits.push(path2);
+      }
+    } else {
+      diverged.push(path2);
+    }
+  }
+  if (diverged.length > 0 && !opts.force) {
+    return {
+      ...base(
+        opts,
+        dir,
+        "diverged",
+        "Some run ledger files changed both on this computer and on the MixShift service since the last sync. Nothing was overwritten. Compare them, then pull with --force to take the service version (your local copies are kept aside), or ask which one is right."
+      ),
+      revision: state?.revision ?? null,
+      diverged,
+      local_edits: localEdits,
+      local_files: local.files.size,
+      skipped: local.skipped,
+      server: serverSummary(ledger)
+    };
+  }
+  let keptAside;
+  if (diverged.length > 0) {
+    const stamp = (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString().replace(/[:.]/g, "-");
+    keptAside = conflictsDir(opts.brand, opts.skill, stamp, opts.dataDirOverride);
+    for (const path2 of diverged) {
+      const aside = join29(keptAside, ...path2.split("/"));
+      if (local.files.has(path2) || unreadable.has(path2)) {
+        await mkdir34(dirname40(aside), { recursive: true });
+        await copyFile(localPathFor(dir, path2), aside);
+      }
+      const s = server.get(path2);
+      if (s && typeof s.content !== "string") {
+        return { ...base(opts, dir, "error", "The MixShift service sent a ledger file without its content."), revision: null };
+      }
+      writes.push({ path: path2, content: s ? s.content : null, change: s ? "updated" : "deleted" });
+    }
+  }
+  for (const w of writes) {
+    if (w.content === null) await deleteLedgerFile(dir, w.path);
+    else await writeLedgerFile(dir, w.path, w.content);
+  }
+  const nextFiles = {};
+  for (const f of ledger.files) nextFiles[f.path] = f.content_hash;
+  for (const path2 of localEdits) {
+    if (synced[path2] !== void 0) nextFiles[path2] = synced[path2];
+    else delete nextFiles[path2];
+  }
+  await writeSyncState(
+    opts.brand,
+    opts.skill,
+    {
+      revision: ledger.revision,
+      files: nextFiles,
+      tenant,
+      synced_at: (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString()
+    },
+    opts.dataDirOverride
+  );
+  const after = await readLocalLedger(dir);
+  const changes = writes.map((w) => ({ path: w.path, change: w.change }));
+  return {
+    ...base(
+      opts,
+      dir,
+      changes.length > 0 ? "pulled" : "up_to_date",
+      changes.length > 0 ? `Pulled the run ledger from the MixShift service (revision ${ledger.revision}, ${changes.length} files changed).` : `The local run ledger already matches the MixShift service (revision ${ledger.revision}).`
+    ),
+    revision: ledger.revision,
+    changes,
+    local_edits: localEdits,
+    local_files: after.files.size,
+    skipped: after.skipped,
+    server: serverSummary(ledger),
+    ...keptAside ? { kept_aside: keptAside, diverged } : {}
+  };
+}
+async function pushLedger(opts) {
+  const dir = ledgerDir(opts.brand, opts.skill, opts.dataDirOverride);
+  const local = await readLocalLedger(dir);
+  const prior = await readSyncState(opts.brand, opts.skill, opts.dataDirOverride);
+  const corrupt = corruptJsonFiles(local.files);
+  if (corrupt.length > 0) {
+    return {
+      ...base(
+        opts,
+        dir,
+        "local_corrupt",
+        "The local run ledger has JSON files that do not parse, so nothing was pushed. Fix them, then push again."
+      ),
+      corrupt,
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  const tooBig = overCaps(local);
+  if (tooBig) return { ...base(opts, dir, "error", tooBig), local_files: local.files.size, skipped: local.skipped };
+  if (!prior) return firstPush(opts, dir, local);
+  if (otherAccount(prior, await opts.client.tenant())) {
+    return {
+      ...base(opts, dir, "other_account", OTHER_ACCOUNT_MESSAGE),
+      revision: prior.revision,
+      local_files: local.files.size,
+      skipped: local.skipped
+    };
+  }
+  const synced = prior.files;
+  const files = [];
+  const missingLocally = [];
+  const changes = [];
+  for (const [path2, f] of local.files) {
+    if (synced[path2] === f.hash) continue;
+    files.push({ path: path2, content: f.content });
+    changes.push({ path: path2, change: synced[path2] === void 0 ? "added" : "updated" });
+  }
+  for (const path2 of Object.keys(synced).sort()) {
+    if (local.files.has(path2) || local.skipped.some((s) => s.path === path2)) continue;
+    if (opts.prune) {
+      files.push({ path: path2, content: null });
+      changes.push({ path: path2, change: "deleted" });
+    } else {
+      missingLocally.push(path2);
+    }
+  }
+  const missing = missingLocally.length > 0 ? { missing_locally: missingLocally } : {};
+  if (files.length === 0) {
+    return {
+      ...base(opts, dir, "up_to_date", "Nothing to push: the local run ledger has no changes since the last sync."),
+      revision: prior.revision,
+      local_files: local.files.size,
+      skipped: local.skipped,
+      ...missing
+    };
+  }
+  const put = await opts.client.put({
+    brand_slug: opts.brand,
+    skill_id: opts.skill,
+    base_revision: prior.revision,
+    files
+  });
+  if (!put.ok) {
+    if (put.kind === "revision_conflict") {
+      return {
+        ...base(
+          opts,
+          dir,
+          "conflict",
+          "The run ledger on the MixShift service changed since this computer last pulled it" + (put.server?.updated_by_actor ? ` (last saved by ${put.server.updated_by_actor})` : "") + ". Nothing was overwritten. Pull, reconcile, and push again."
+        ),
+        revision: prior.revision,
+        changes,
+        local_files: local.files.size,
+        skipped: local.skipped,
+        failure: failureOf(put),
+        ...put.server ? { server: { ...put.server, file_count: 0 } } : {}
+      };
+    }
+    return {
+      ...base(
+        opts,
+        dir,
+        UNAVAILABLE.has(put.kind) ? "gateway_unavailable" : "error",
+        UNAVAILABLE.has(put.kind) ? "The MixShift service run ledger is not available, so the ledger was saved on this computer only." : put.friendly
+      ),
+      revision: prior.revision,
+      changes,
+      local_files: local.files.size,
+      skipped: local.skipped,
+      failure: failureOf(put)
+    };
+  }
+  const nextFiles = { ...synced };
+  for (const f of files) {
+    if (f.content === null) delete nextFiles[f.path];
+    else nextFiles[f.path] = local.files.get(f.path).hash;
+  }
+  await writeSyncState(
+    opts.brand,
+    opts.skill,
+    {
+      revision: put.revision,
+      files: nextFiles,
+      tenant: put.tenant ?? prior.tenant,
+      synced_at: (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString()
+    },
+    opts.dataDirOverride
+  );
+  return {
+    ...base(
+      opts,
+      dir,
+      put.status === "noop" ? "up_to_date" : "pushed",
+      put.status === "noop" ? `The MixShift service already had these changes (revision ${put.revision}).` : `Pushed ${changes.length} run ledger files to the MixShift service (revision ${put.revision}).`
+    ),
+    revision: put.revision,
+    changes: put.status === "noop" ? [] : changes,
+    local_files: local.files.size,
+    skipped: local.skipped,
+    ...missing
+  };
+}
+async function firstPush(opts, dir, local) {
+  const got = await opts.client.get(opts.brand, opts.skill);
+  if (!got.ok) {
+    const unavailable = UNAVAILABLE.has(got.kind);
+    return {
+      ...base(
+        opts,
+        dir,
+        unavailable ? "gateway_unavailable" : "error",
+        unavailable ? "The MixShift service run ledger is not available, so the ledger was saved on this computer only." : got.friendly
+      ),
+      local_files: local.files.size,
+      skipped: local.skipped,
+      failure: failureOf(got)
+    };
+  }
+  if (got.ledger !== null) {
+    return {
+      ...base(
+        opts,
+        dir,
+        "pull_first",
+        "The MixShift service already has a run ledger for this brand that this computer has not pulled. Run `mixshift report ledger pull`, reconcile, then push."
+      ),
+      local_files: local.files.size,
+      skipped: local.skipped,
+      server: serverSummary(got.ledger)
+    };
+  }
+  if (local.files.size === 0) {
+    return {
+      ...base(opts, dir, "up_to_date", "Nothing to push: there is no run ledger on this computer."),
+      revision: 0,
+      skipped: local.skipped
+    };
+  }
+  return uploadFirst(opts, dir, local, got.tenant);
+}
+async function ledgerStatus(opts) {
+  const dir = ledgerDir(opts.brand, opts.skill, opts.dataDirOverride);
+  const local = await readLocalLedger(dir);
+  const got = await opts.client.get(opts.brand, opts.skill);
+  const prior = await readSyncState(opts.brand, opts.skill, opts.dataDirOverride);
+  const foreign = got.ok && otherAccount(prior, got.tenant);
+  const state = foreign ? null : prior;
+  const synced = state?.files ?? {};
+  const localEdits = [...local.files].filter(([path2, f]) => synced[path2] !== f.hash).map(([path2]) => path2).concat(Object.keys(synced).filter((p) => !local.files.has(p))).sort();
+  return {
+    brand: opts.brand,
+    skill: opts.skill,
+    local_dir: dir,
+    local_files: local.files.size,
+    skipped: local.skipped,
+    synced_revision: state?.revision ?? null,
+    other_account: foreign,
+    service: got.ok ? { available: true, revision: got.ledger?.revision ?? null, file_count: got.ledger?.files.length ?? 0 } : { available: false, reason: got.friendly },
+    local_edits: localEdits
+  };
+}
+
+// src/commands/report-ledger.ts
+init_telemetry();
+init_events();
+var DEFAULT_SKILL = "mx-max-report";
+var SERVICE_BRAND_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var PULL_PROCEED = /* @__PURE__ */ new Set(["pulled", "up_to_date", "local_only", "absent", "gateway_unavailable"]);
+var PUSH_PROCEED = /* @__PURE__ */ new Set(["pushed", "up_to_date", "gateway_unavailable"]);
+var clientFactory = (dataDir) => createRunLedgerClient({ dataDirOverride: dataDir });
+function checkLedgerArgs(opts) {
+  const brand = opts.brand ?? "";
+  if (!SERVICE_BRAND_SLUG_RE.test(brand) || !isSafeBrandSlug(brand)) {
+    return `--brand must be a brand slug (lowercase letters, digits and hyphens, as \`mixshift brand list\` shows it); got ${JSON.stringify(brand)}.`;
+  }
+  const skill = opts.skill ?? DEFAULT_SKILL;
+  if (!SKILL_LEDGERS[skill]) {
+    return `--skill must be one of: ${Object.keys(SKILL_LEDGERS).join(", ")}; got ${JSON.stringify(skill)}.`;
+  }
+  return null;
+}
+function printResult(result, json3, proceed) {
+  if (json3) {
+    console.log(JSON.stringify({ ok: proceed, ...result }, null, 2));
+    return;
+  }
+  console.log(`[${result.state}] ${result.message}`);
+  console.log(`  local ledger: ${result.local_dir} (${result.local_files} files)`);
+  if (result.revision !== null) console.log(`  service revision: ${result.revision}`);
+  for (const c of result.changes) console.log(`  ${c.change}: ${c.path}`);
+  for (const p of result.local_edits) console.log(`  newer here (push to save): ${p}`);
+  for (const p of result.diverged) console.log(`  changed on both sides: ${p}`);
+  for (const p of result.corrupt) console.log(`  does not parse: ${p}`);
+  for (const p of result.missing_locally ?? []) console.log(`  missing here, kept on the service (push --prune deletes): ${p}`);
+  for (const s of result.skipped) console.log(`  not synced (${s.reason}): ${s.path}`);
+  if (result.kept_aside) console.log(`  your local copies were kept in: ${result.kept_aside}`);
+}
+async function emit(action, result, skill, ok, t0, dataDir) {
+  await track(
+    {
+      event_name: EventName.ReportLedgerSynced,
+      skill_id: skill,
+      outcome: ok ? "ok" : "failed",
+      duration_ms: Date.now() - t0,
+      ...result.failure ? { error_class: result.failure.kind } : {},
+      payload: {
+        action,
+        state: result.state,
+        files_changed: result.changes?.length ?? 0,
+        local_files: result.local_files,
+        ...result.failure ? { failure_kind: result.failure.kind } : {}
+      }
+    },
+    dataDir
+  );
+}
+function badArgs(message, json3) {
+  if (json3) console.log(JSON.stringify({ ok: false, state: "error", error_class: "bad_params", message }, null, 2));
+  else console.error(message);
+  process.exitCode = 2;
+}
+async function guarded(json3, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (json3) console.log(JSON.stringify({ ok: false, state: "error", error_class: "local_io", message }, null, 2));
+    else console.error(message);
+    process.exitCode = 1;
+  }
+}
+function registerReportLedgerCommands(report) {
+  const ledger = report.command("ledger").description(
+    "Sync a skill's run ledger (Report Max: the brand's hub URLs, commitments, claims register, watch items, restatement baseline and period fragments) with the MixShift service, which holds the one true copy. The folder under ~/.mixshift/clients/<brand>/runs/ is a cache, so a fresh cloud session finds last period's ledger with one pull."
+  );
+  const brandOpt = "--brand <slug>";
+  const brandHelp = "brand slug, as `mixshift brand list` shows it";
+  const skillOpt = "--skill <skill_id>";
+  const skillHelp = `the skill whose ledger to sync (${Object.keys(SKILL_LEDGERS).join(", ")})`;
+  ledger.command("pull").description(
+    "Bring the service ledger into the local cache. When the service has none but this computer does, nothing is uploaded (state local_only): confirm the local ledger with the user, then `push` saves it as the first service copy. Never overwrites a file that changed on both sides (state diverged) unless --force, which keeps your local copies aside. States: pulled, up_to_date, local_only, absent, gateway_unavailable (exit 0); diverged, server_missing, other_account, error (exit 1)."
+  ).requiredOption(brandOpt, brandHelp).option(skillOpt, skillHelp, DEFAULT_SKILL).option("--force", "on diverged files, take the service version (local copies kept aside)", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const bad = checkLedgerArgs(opts);
+    if (bad) return badArgs(bad, !!root.json);
+    await guarded(!!root.json, async () => {
+      const t0 = Date.now();
+      const result = await pullLedger({
+        brand: opts.brand,
+        skill: opts.skill,
+        client: clientFactory(root.dataDir),
+        dataDirOverride: root.dataDir,
+        force: !!opts.force
+      });
+      const proceed = PULL_PROCEED.has(result.state);
+      await emit("pull", result, opts.skill, proceed, t0, root.dataDir);
+      printResult(result, !!root.json, proceed);
+      process.exitCode = proceed ? 0 : 1;
+    });
+  });
+  ledger.command("push").description(
+    "Save the local ledger to the service, carrying only the files changed since the last pull and the revision they were read at. A service copy that moved since then is refused (state conflict): pull, reconcile, push again. A file deleted locally stays on the service unless --prune. States: pushed, up_to_date, gateway_unavailable (exit 0); conflict, pull_first, local_corrupt, other_account, error (exit 1)."
+  ).requiredOption(brandOpt, brandHelp).option(skillOpt, skillHelp, DEFAULT_SKILL).option("--prune", "also delete on the service the files deleted locally since the last sync", false).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const bad = checkLedgerArgs(opts);
+    if (bad) return badArgs(bad, !!root.json);
+    await guarded(!!root.json, async () => {
+      const t0 = Date.now();
+      const result = await pushLedger({
+        brand: opts.brand,
+        skill: opts.skill,
+        client: clientFactory(root.dataDir),
+        dataDirOverride: root.dataDir,
+        prune: !!opts.prune
+      });
+      const proceed = PUSH_PROCEED.has(result.state);
+      await emit("push", result, opts.skill, proceed, t0, root.dataDir);
+      printResult(result, !!root.json, proceed);
+      process.exitCode = proceed ? 0 : 1;
+    });
+  });
+  ledger.command("status").description("Compare the local cache with the service ledger without changing either.").requiredOption(brandOpt, brandHelp).option(skillOpt, skillHelp, DEFAULT_SKILL).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const bad = checkLedgerArgs(opts);
+    if (bad) return badArgs(bad, !!root.json);
+    await guarded(!!root.json, async () => {
+      const t0 = Date.now();
+      const status = await ledgerStatus({
+        brand: opts.brand,
+        skill: opts.skill,
+        client: clientFactory(root.dataDir),
+        dataDirOverride: root.dataDir
+      });
+      await emit(
+        "status",
+        { state: status.service.available ? "ok" : "gateway_unavailable", local_files: status.local_files },
+        opts.skill,
+        true,
+        t0,
+        root.dataDir
+      );
+      if (root.json) {
+        console.log(JSON.stringify({ ok: true, ...status }, null, 2));
+        return;
+      }
+      console.log(`local ledger: ${status.local_dir} (${status.local_files} files)`);
+      console.log(`last synced revision: ${status.synced_revision ?? "never"}`);
+      if (status.other_account) console.log("synced under a different MixShift sign-in");
+      console.log(
+        status.service.available ? `service: revision ${status.service.revision ?? "none (no ledger yet)"}, ${status.service.file_count} files` : `service: not available (${status.service.reason})`
+      );
+      for (const p of status.local_edits) console.log(`  changed here since the last sync: ${p}`);
+      for (const s of status.skipped) console.log(`  not synced (${s.reason}): ${s.path}`);
+    });
+  });
+}
+
+// src/commands/report.ts
 async function trackForecast(build, dataDir) {
   try {
     const built = build();
@@ -100885,7 +102000,7 @@ async function trackForecast(build, dataDir) {
 }
 async function readJson(file2) {
   try {
-    return JSON.parse(await readFile47(file2, "utf8"));
+    return JSON.parse(await readFile48(file2, "utf8"));
   } catch (err) {
     throw new UserFacingError(
       `Could not read ${file2} as JSON: ${err instanceof Error ? err.message : String(err)}`,
@@ -100901,7 +102016,7 @@ async function assertFiguresReadable(explicit) {
   for (const path2 of [...new Set(explicit.map((p) => resolve2(p)))]) {
     let raw;
     try {
-      raw = await readFile47(path2, "utf8");
+      raw = await readFile48(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `--figures ${path2} could not be read: ${err instanceof Error ? err.message : String(err)}`,
@@ -100932,10 +102047,10 @@ async function loadServedContract(docPath, explicit, noFigures) {
   if (explicit && explicit.length > 0) {
     candidates = [...new Set(explicit.map((p) => resolve2(p)))];
   } else {
-    const dir = dirname39(resolve2(docPath));
+    const dir = dirname41(resolve2(docPath));
     try {
-      const entries = await readdir6(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join28(dir, e));
+      const entries = await readdir7(dir);
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join30(dir, e));
     } catch {
       return none;
     }
@@ -100947,7 +102062,7 @@ async function loadServedContract(docPath, explicit, noFigures) {
   for (const path2 of candidates) {
     let raw;
     try {
-      raw = await readFile47(path2, "utf8");
+      raw = await readFile48(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `${path2} could not be read: ${err instanceof Error ? err.message : String(err)}. Fix its permissions, delete the file, or pass --no-figures.`,
@@ -101011,8 +102126,8 @@ function notesPayload(notes) {
 }
 async function writeReportOutput(out2, body) {
   try {
-    await mkdir33(dirname39(out2), { recursive: true });
-    await writeFile30(out2, body, "utf8");
+    await mkdir35(dirname41(out2), { recursive: true });
+    await writeFile31(out2, body, "utf8");
   } catch (err) {
     throw new UserFacingError(
       `Could not write ${out2}: ${err instanceof Error ? err.message : String(err)}`,
@@ -101416,6 +102531,7 @@ ${doc.figures.length} figure(s) extracted${opts.out ? ` -> ${opts.out}` : ""}`
       }
     });
   });
+  registerReportLedgerCommands(report);
 }
 var BATTERY_QUERY_ID = "MPRX-FIGURES-BRAND-01";
 var BATTERY_MAX_ACCOUNTS = 8;
@@ -101580,22 +102696,22 @@ function batteryParams(opts, ids, contextRevenueBasis) {
   if (opts.attribution !== void 0) params.attribution = opts.attribution;
   return params;
 }
-function batteryFailure(failure2) {
-  if (failure2.raw_code === CLIENT_BUDGET_DOWNLOAD_RAW_CODE) {
+function batteryFailure(failure3) {
+  if (failure3.raw_code === CLIENT_BUDGET_DOWNLOAD_RAW_CODE) {
     return new UserFacingError(
       `The figure battery answered, but its document did not finish downloading in time. Check your connection and retry once, or retry with fewer accounts; if it repeats, report it with \`mixshift feedback\` and label the gap in the method notes. (${BATTERY_QUERY_ID}: timeout)`,
       "report_battery_timeout"
     );
   }
-  const budgetExpired = failure2.raw_code === CLIENT_BUDGET_RAW_CODE || failure2.kind === "host_unreachable" && (failure2.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3;
+  const budgetExpired = failure3.raw_code === CLIENT_BUDGET_RAW_CODE || failure3.kind === "host_unreachable" && (failure3.durationMs ?? 0) >= BATTERY_HTTP_TIMEOUT_MS - 5e3;
   if (budgetExpired) {
     return new UserFacingError(
       `The figure battery did not answer within ${Math.round(BATTERY_HTTP_TIMEOUT_MS / 1e3)}s. Retry once, or with fewer accounts; if it repeats, report it with \`mixshift feedback\` and label the gap in the method notes. (${BATTERY_QUERY_ID}: client_timeout)`,
       "report_battery_timeout"
     );
   }
-  const kind = KNOWN_FAILURE_KINDS3.has(failure2.kind) ? failure2.kind : "unknown";
-  return new UserFacingError(`${failure2.friendly} (${BATTERY_QUERY_ID}: ${failure2.kind})`, `report_battery_${kind}`);
+  const kind = KNOWN_FAILURE_KINDS3.has(failure3.kind) ? failure3.kind : "unknown";
+  return new UserFacingError(`${failure3.friendly} (${BATTERY_QUERY_ID}: ${failure3.kind})`, `report_battery_${kind}`);
 }
 function badDocument(why) {
   return new UserFacingError(
@@ -102228,12 +103344,12 @@ init_credentials();
 init_telemetry();
 import { promises as fs3 } from "node:fs";
 import { fileURLToPath as fileURLToPath8 } from "node:url";
-import { dirname as dirname40, join as join30 } from "node:path";
+import { dirname as dirname42, join as join32 } from "node:path";
 
 // src/lib/demos.ts
 var import_yaml25 = __toESM(require_dist(), 1);
 import { promises as fs2 } from "node:fs";
-import { join as join29 } from "node:path";
+import { join as join31 } from "node:path";
 async function loadDemos(skillsDir) {
   if (!skillsDir) return [];
   let entries;
@@ -102246,7 +103362,7 @@ async function loadDemos(skillsDir) {
   for (const skillId of entries) {
     let raw;
     try {
-      raw = await fs2.readFile(join29(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+      raw = await fs2.readFile(join31(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
     } catch {
       continue;
     }
@@ -102364,6 +103480,7 @@ var CATALOG = [
       { id: "mx-amazon-ads", say: "show my campaigns", what: "read live Ads state, or make audited changes" },
       { id: "mx-amazon-amc", say: "run an AMC query", what: "Marketing Cloud SQL analytics" },
       { id: "mx-amazon-dsp", say: "pull a DSP report", what: "Demand-Side Platform reporting" },
+      { id: "mx-amazon-inbound", say: "create an inbound shipment", what: "FBA inbound: look up status and tracking, or build a shipment with every fee confirmed first" },
       { id: "mx-amazon-shelf", say: "what does the shelf look like for <asin>", what: "the shopper's view at a zip: Buy Box, offers, keyword rank, product page (beta)" }
     ]
   },
@@ -102471,17 +103588,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join30(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join32(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname40(fileURLToPath8(import.meta.url));
+  let dir = dirname42(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join30(dir, "skills");
+      const candidate = join32(dir, "skills");
       const stat7 = await fs3.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname40(dir);
+    const parent = dirname42(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -102697,7 +103814,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs5 } from "node:fs";
-import { resolve as resolve3, join as join31, relative, basename as basename4 } from "node:path";
+import { resolve as resolve3, join as join33, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -102800,7 +103917,7 @@ var TEXT_EXT = /* @__PURE__ */ new Set([
 var SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "dist", "__pycache__", ".venv"]);
 var MAX_FILES = 50;
 var MAX_TOTAL_BYTES = 1e6;
-var MAX_FILE_BYTES = 3e5;
+var MAX_FILE_BYTES2 = 3e5;
 var VALID_KINDS = /* @__PURE__ */ new Set([
   "new_skill",
   "modified_plugin_skill",
@@ -102995,7 +104112,7 @@ async function collectBundle(path2) {
     }
     const st = await fs5.stat(absFile).catch(() => null);
     if (!st || !st.isFile()) return;
-    if (st.size > MAX_FILE_BYTES) {
+    if (st.size > MAX_FILE_BYTES2) {
       skipped.push(`${relPath} (too large)`);
       return;
     }
@@ -103030,7 +104147,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join31(dir, e.name);
+        const abs = join33(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -104280,8 +105397,8 @@ init_engine();
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
-import { readdir as readdir7, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname41, join as join32 } from "node:path";
+import { readdir as readdir8, stat as stat6 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname43, join as join34 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -104326,7 +105443,7 @@ async function discoverCredentialFiles(roots, maxDepth) {
 async function walkForCredentials(dir, depth, maxDepth, found) {
   let entries;
   try {
-    entries = await readdir7(dir, { withFileTypes: true });
+    entries = await readdir8(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -104337,14 +105454,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join32(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join34(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename5(dir) !== "auth" || basename5(dirname41(dir)) !== ".mixshift") continue;
-    found.push(join32(dir, entry.name));
+    if (basename5(dir) !== "auth" || basename5(dirname43(dir)) !== ".mixshift") continue;
+    found.push(join34(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -104359,7 +105476,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname41(dirname41(hitPath));
+  return dirname43(dirname43(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -104427,7 +105544,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join32(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join34(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };

@@ -37,7 +37,7 @@ run_kind: per_account
 cadence: on_demand
 risk_tier: 3
 allowed_tools: [file_read, file_write, ads_write]
-side_effect_policy: write_gated   # DSP writes via `mixshift ads call dsp.update_*|dsp.create_*|dsp.delete_targets --commit`; reports still save JSON to ~/.mixshift/reports/
+side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update_ad_groups, dsp.create_campaigns, dsp.create_ad_groups, dsp.create_targets, dsp.create_ad_associations, dsp.delete_targets) via `mixshift ads call <operation> --commit`; reports still save JSON to ~/.mixshift/reports/
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 

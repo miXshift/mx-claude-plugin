@@ -31,6 +31,7 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - CLI commands run, captured as the full command line: the command, subcommand, and arguments (flags, table names, brand slugs, and any ad-hoc SQL you type). Credential material is stripped first (see "Secret redaction" below)
 - Trigger phrases that activated a skill (the natural-language phrase you used to invoke a skill). These are bounded to phrases declared in our skill manifests, i.e. what's already public surface, not arbitrary chat content.
 - Demos: which skill's demo you asked for, whether it has one, how many steps it has, and how many were shown when it finished
+- Report history sync (Report Max): whether the plugin pulled, pushed or checked a brand's report history, the outcome, and how many files changed. Never the brand, a file name, file contents or a link
 
 **Warehouse query events:**
 - Which library SQL query ID or ad-hoc query ran
@@ -78,6 +79,10 @@ Brand files remain local unless you explicitly start sharing a brand with the Mi
 After that explicit first share, later local writes to the same shared brand are automatically published to keep the organization copy current. The plugin prints a notice when an automatic publish succeeds or needs attention. Brands that have never been shared are not automatically uploaded.
 
 To disable automatic publishing, set `MIXSHIFT_CONTEXT_AUTOPUBLISH=off`. Explicit `mixshift context push` and `mixshift context migrate` commands still share documents when you run them.
+
+## Report history (separate from telemetry)
+
+Report Max keeps each brand's report history in a folder on your computer: the two report links, last period's commitments, the claims it checked, open watch items, and the other files a run leaves there. When a run finishes, the skill saves that folder to your MixShift organization's store (`mixshift report ledger push`), including the files' contents, so the next run on another computer or in a fresh cloud session continues from it (`mixshift report ledger pull`). Authorized teammates and MixShift services can read it. Other skills do not use this store.
 
 ## Secret redaction
 

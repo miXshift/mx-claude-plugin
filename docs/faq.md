@@ -205,7 +205,7 @@ Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keyw
 
 ### Does the plugin work with Walmart?
 
-For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To join, ask MixShift to connect your Walmart advertiser. Walmart Marketplace data (orders, items, inventory) is not in the plugin yet.
+For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To connect an advertiser, an admin on your Walmart ad account adds MixShift as a partner in Ad Center (Access, then Partners, then + Add Partner) and emails the advertiser ID to support@mixshift.io; the skill walks you through it. Walmart Marketplace data (orders, items, inventory) is not in the plugin yet.
 
 ### How do I see what a skill does before I use it?
 
