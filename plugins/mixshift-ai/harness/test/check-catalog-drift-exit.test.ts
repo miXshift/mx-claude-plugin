@@ -213,6 +213,27 @@ describe('check-catalog-drift exit codes', () => {
     expect(r.stdout).toContain('2 catalog operations');
   });
 
+  it('fails LOUD, not silent, when stripping loses an entry: namespaces come from the raw source', () => {
+    // A regex literal holding a quote (/don't/) flips the stripper's string parity,
+    // so the later 'https://...' reads as a line comment and the id after it is
+    // lost. That id's namespace must still count, so its claim is reported as
+    // missing (exit 1) rather than dropped from the check (a false exit 0).
+    writeFileSync(
+      join(catalogDir, 'ads-operations.ts'),
+      [
+        'export const ADS_OPERATIONS = [',
+        "  { id: 'sb.create_targets', check: /don't/ },",
+        "  { url: 'https://example.test', id: 'dsp.create_targets' },",
+        '];',
+      ].join('\n'),
+      'utf8',
+    );
+    writeSkill('mx-amazon-dsp', 'Use `sb.create_targets`, then `dsp.create_targets`.');
+    const r = run();
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('dsp.create_targets');
+  });
+
   it('fails closed when the docs side yields too few claims to be a real check', () => {
     // The mirror of the catalog-side guard, and the one that was missing: an
     // empty or mis-pointed skills dir reported "0 missing" and exited 0. A
