@@ -775,17 +775,23 @@ type DevicePollResponse =
   | DevicePollPending
   | DevicePollFailure;
 
+/** Lines printed for the terminal device flow: the link, then the code as its own step. */
+export function deviceLoginInstructions(loginUrl: string, code: string): string {
+  return (
+    `\nMixShift device-code login\n` +
+    `  1. Open this URL in any browser:\n     ${loginUrl}\n` +
+    `  2. If the page asks for a code, type: ${code}\n` +
+    `  3. Sign in and confirm the device on the page.\n` +
+    `  4. This terminal continues automatically once you're done.\n\n`
+  );
+}
+
 async function runDeviceLogin(
   opts: ResolvedOptions,
 ): Promise<AuthLoginResult> {
   const init = await deviceInit(opts);
 
-  process.stdout.write(
-    `\nMixShift device-code login\n` +
-      `  1. Open this URL in any browser:\n     ${init.loginUrl}\n` +
-      `  2. Sign in and confirm the device on the page.\n` +
-      `  3. This terminal continues automatically once you're done.\n\n`,
-  );
+  process.stdout.write(deviceLoginInstructions(init.loginUrl, init.deviceCode));
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < DEVICE_POLL_TIMEOUT_MS) {

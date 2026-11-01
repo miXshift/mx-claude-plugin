@@ -142,7 +142,7 @@ when they want the analysis that produces the change.
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Direct the user to run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
 | Ads API enabled for the tenant | Inferred from a successful `ads profiles` call | A call returning `ads_not_configured` (exit 6) means the Amazon Ads app is not turned on for this MixShift service. Tell the user to contact MixShift ops. |
 | A reachable profile | `mixshift ads profiles` | Lists the advertiser-account profiles this tenant can call for. See "Profile selection." |
-| Write capability (writes only) | The credential holds `ads:write` | Signed-in user sessions hold it implicitly. Machine credentials need it issued explicitly; a write without it fails `insufficient_scope` (exit 11). |
+| Write capability (writes only) | The credential holds `ads:write` | Your organization may have turned it off for you (ask your org admin). A service credential needs it granted when the credential is created. A write without it fails `insufficient_scope` (exit 11). |
 
 Brand setup is **not required.** You only need a signed-in session.
 

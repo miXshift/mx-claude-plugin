@@ -28,7 +28,7 @@
  * telemetry) fixture.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildDoctorBuildSection,
   renderBuildSection,
@@ -285,5 +285,66 @@ describe('renderBuildSection + renderBuildStaleBanner coherence', () => {
         expect(banner).not.toBe('');
       }
     }
+  });
+});
+
+describe('doctor signed-in lines', () => {
+  it('names the token actor, not the typed label, and shows the identity line', async () => {
+    const { renderDoctorSignedInLines } = await import('./doctor.js');
+    const auth = {
+      signedIn: true,
+      kind: 'interactive' as const,
+      email: 'tenant@example.test',
+      personLabel: 'typed@example.test',
+      tokenActor: 'verified@example.test',
+    };
+    expect(
+      renderDoctorSignedInLines(auth, { read: true, verified: true, org_name: 'acme-co', org_registered: true, role: 'builder' }),
+    ).toEqual([
+      '  Signed in as verified@example.test (verified member of acme-co, builder)',
+      '    tenant login: tenant@example.test',
+    ]);
+    expect(renderDoctorSignedInLines(auth)).toEqual([
+      '  signed in (interactive) as verified@example.test',
+      '    tenant login: tenant@example.test',
+    ]);
+  });
+});
+
+describe('doctor identity read', () => {
+  const human = { signedIn: true, kind: 'interactive' as const, email: 'tenant@example.test' };
+
+  it('is not attempted when the service is unreachable, or when not a live human sign-in', async () => {
+    const { readDoctorIdentity } = await import('./doctor.js');
+    const read = vi.fn();
+    expect(await readDoctorIdentity(human, false, 10000, undefined, read)).toBeUndefined();
+    expect(await readDoctorIdentity({ signedIn: false, kind: 'none' }, true, 10000, undefined, read)).toBeUndefined();
+    expect(await readDoctorIdentity({ signedIn: true, kind: 'service' }, true, 10000, undefined, read)).toBeUndefined();
+    expect(await readDoctorIdentity({ ...human, refreshExpired: true }, true, 10000, undefined, read)).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('passes min(--timeout, 3 s) as the identity timeout', async () => {
+    const { readDoctorIdentity } = await import('./doctor.js');
+    const read = vi.fn().mockResolvedValue({ read: true });
+    await readDoctorIdentity(human, true, 10000, '/d', read);
+    await readDoctorIdentity(human, true, 1500, '/d', read);
+    expect(read.mock.calls.map((c) => c[2])).toEqual([3000, 1500]);
+  });
+
+  it('shows only "sign-in ended" once its check ended the sign-in, and the tenant login from the token email otherwise', async () => {
+    const { renderDoctorSignedInLines } = await import('./doctor.js');
+    const auth = { ...human, personLabel: 'typed@example.test', tokenActor: 'actor@example.test', tokenEmail: 'claim-tenant@example.test' };
+    expect(renderDoctorSignedInLines(auth, { read: false, ended: true, reason: 'no saved sign-in' })).toEqual([
+      '  Your sign-in ended. Run `mixshift auth login` to sign in again.',
+    ]);
+    expect(renderDoctorSignedInLines(auth)).toEqual([
+      '  signed in (interactive) as actor@example.test',
+      '    tenant login: claim-tenant@example.test',
+    ]);
+    // No tenant line when it equals the actor shown.
+    expect(renderDoctorSignedInLines({ ...auth, tokenEmail: 'actor@example.test' })).toEqual([
+      '  signed in (interactive) as actor@example.test',
+    ]);
   });
 });

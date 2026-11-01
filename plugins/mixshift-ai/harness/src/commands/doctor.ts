@@ -38,6 +38,7 @@ import {
 import { detectSurface, type Surface } from '../lib/telemetry/surface.js';
 import { getValidAccessToken } from '../lib/auth/credentials.js';
 import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
+import { fetchIdentity, formatIdentityLines, IDENTITY_TIMEOUT_MS, type IdentityResult } from '../lib/auth/identity.js';
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { REGISTRATION_URL } from '../lib/onboarding.js';
@@ -79,6 +80,8 @@ interface DoctorFullReport {
   };
   channel: Surface;
   auth: AuthSummary;
+  /** Human sign-in only: the gateway's answer to /v1/me (verified or typed, org, role, denied scopes). */
+  identity?: IdentityResult;
   telemetry: {
     enabled: boolean;
     reason: string;
@@ -263,6 +266,11 @@ async function assembleFullReport(opts: {
     }
   }
 
+  // Identity — only for a live human sign-in. Unlike `auth status`, doctor's own sign-in check above
+  // (getValidAccessToken) may already have renewed the sign-in, or ended it after a refresh 401; this read
+  // only uses whatever token is valid afterwards and never refreshes on its own.
+  const identity = await readDoctorIdentity(auth, network.health.reachable, opts.timeoutMs, opts.dataDirOverride);
+
   // Telemetry — local state.
   const ts = await getTelemetryStatus(opts.dataDirOverride);
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
@@ -273,6 +281,7 @@ async function assembleFullReport(opts: {
     build,
     channel,
     auth,
+    ...(identity ? { identity } : {}),
     telemetry: {
       enabled: ts.enabled,
       reason: ts.reason,
@@ -393,6 +402,40 @@ export function renderBuildStaleBanner(build: DoctorFullReport['build']): string
   );
 }
 
+/**
+ * Doctor's identity read: human sign-ins only, skipped when the service is unreachable, with the
+ * timeout capped at min(--timeout, 3 s). `read` is injectable for tests.
+ */
+export async function readDoctorIdentity(
+  auth: AuthSummary,
+  reachable: boolean,
+  timeoutMs: number,
+  dataDirOverride?: string,
+  read: typeof fetchIdentity = fetchIdentity,
+): Promise<IdentityResult | undefined> {
+  if (!(auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true && reachable)) return undefined;
+  return read(dataDirOverride, fetch, Math.min(timeoutMs, IDENTITY_TIMEOUT_MS));
+}
+
+/** True when doctor's own check ended the sign-in (no saved sign-in left to read). */
+function signInEnded(identity?: IdentityResult): boolean {
+  return identity !== undefined && 'ended' in identity && identity.ended === true;
+}
+
+/** The "signed in as" lines under Auth. Names the token's actor first (as `auth status` does), never only the typed label. */
+export function renderDoctorSignedInLines(auth: AuthSummary, identity?: IdentityResult): string[] {
+  // Doctor's own check ended the sign-in: the rest of the summary was taken before it, so say only that.
+  if (signInEnded(identity) && identity) return formatIdentityLines('', identity).map((l) => `  ${l}`);
+  const who = auth.tokenActor ?? auth.personLabel ?? auth.email ?? '?';
+  const lines = identity
+    ? formatIdentityLines(who, identity).map((l) => `  ${l}`)
+    : [`  signed in (interactive) as ${who}`];
+  // Same sources as `auth status`: the token's own email, compared with the actor shown.
+  const tenant = auth.tokenEmail ?? auth.email;
+  if (tenant && tenant !== who) lines.push(`    tenant login: ${tenant}`);
+  return lines;
+}
+
 export function renderFull(r: DoctorFullReport): string {
   const out: string[] = [];
   out.push('mixshift doctor');
@@ -417,13 +460,13 @@ export function renderFull(r: DoctorFullReport): string {
     out.push(
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`,
     );
+  } else if (r.auth.kind === 'interactive' && r.auth.refreshExpired === true) {
+    // The saved sign-in itself has expired (as `auth status` says): nothing to renew.
+    out.push('  not signed in (saved sign-in expired). Run `mixshift auth login`.');
+  } else if (r.auth.kind === 'interactive' && signInEnded(r.identity)) {
+    out.push(...renderDoctorSignedInLines(r.auth, r.identity));
   } else if (r.auth.kind === 'interactive') {
-    out.push(
-      `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? '?'}`,
-    );
-    if (r.auth.email && r.auth.email !== r.auth.personLabel) {
-      out.push(`    tenant login: ${r.auth.email}`);
-    }
+    out.push(...renderDoctorSignedInLines(r.auth, r.identity));
     out.push(`    service: ${r.auth.apiBase ?? '?'}`);
     if (r.auth.accessExpired) {
       out.push(

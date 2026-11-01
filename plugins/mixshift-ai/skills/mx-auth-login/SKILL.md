@@ -6,9 +6,11 @@ description: >
   (device-code or PKCE browser flow) when a human is present, service
   credentials (admin-issued, OAuth client_credentials) for unattended
   runs like scheduled Cowork tasks and CI, and a paste-token direct
-  mode for claude.ai web where no shell exists. Collects a
-  self-attested work email (person_label) for per-employee session
-  attribution on the interactive paths. Replaces the retired legacy
+  mode for claude.ai web where no shell exists. Asks for a work email
+  (person_label) as a prefill hint on the interactive paths; members of
+  an organization with member sign-in prove who they are on the sign-in
+  page instead. `mixshift auth status` shows who you are signed in as.
+  Replaces the retired legacy
   raw-MySQL path; the CLI `mixshift auth setup` command exists only
   for backward compatibility and should not be recommended.
 metadata:
@@ -55,7 +57,9 @@ One or two sentences, then move. Don't repeat the framing at each step.
 
 ## Step 1 — Get the user's work email (person_label) [Paths A and D only]
 
-**Why:** one MixShift tenant credential is shared across many employees in the same org. The `person_label` is a self-attested work email — it lets your admin see *who* in the org did what in their session log. It's not authentication, just attribution. (Path C skips this: service credentials carry their own `svc:` label, chosen by the admin at creation.)
+**Why:** on a shared MixShift login, the `person_label` is the work email your admin sees against your actions in the session log. On a shared login it is typed, not proven. It is also a prefill hint for the sign-in page. (Path C skips this: service credentials carry their own `svc:` label, chosen by the admin at creation.)
+
+**If your organization uses member sign-in,** the sign-in page lets you choose **Sign in with Google** or **Continue as \<you\>**. Doing so proves who you are, so your actions are recorded under your verified identity and your organization's role and limits apply to you. `mixshift auth status` shows whether your session is verified, your organization and role, and anything you are not allowed to do. If you are unsure, send people to the page and let them pick; do not guess for them.
 
 **Check first:** if `~/.mixshift/auth/credentials` exists and has a `datahub.person_label` from a prior login, reuse it. Tell the user:
 
@@ -63,7 +67,7 @@ One or two sentences, then move. Don't repeat the framing at each step.
 
 **Otherwise ask once:**
 
-> *"What's your work email? It's just for session attribution, not auth — e.g. you@yourcompany.com."*
+> *"What's your work email? It pre-fills the sign-in page (e.g. you@yourcompany.com). If your organization uses member sign-in, you'll confirm who you are on the page."*
 
 Accept anything that parses as `<local>@<domain>.<tld>`. If the user gives something that doesn't look like an email, push back gently and ask again. Don't accept partial values.
 
@@ -100,10 +104,11 @@ Capture `device_code` and `login_url`. The other fields don't need to be passed 
 **Step A2 — Send the user to the URL:**
 
 > *"Open this link to sign in: \<login_url\>*
-> *Use your MixShift login — the same email + password you use to log into MixShift. Your credentials stay on the sign-in page; the plugin only holds a token after.*
+> *If the page asks for a code, type: \<device_code\>*
+> *Use your MixShift login, or "Sign in with Google" if your organization uses it. Your credentials stay on the sign-in page; the plugin only holds a token after.*
 > *Tell me when you're done."*
 
-Don't paste the device code separately — the URL encodes it. The user just signs in on the page.
+Always relay BOTH the link and the `device_code`, the code on its own line, in Cowork and in Claude Code chat. The URL already carries the code, so the password sign-in works exactly as before and never asks for it. But members who choose "Continue as \<you\>" must TYPE the code shown on their device, so they need to see it. The code is the `device_code` value from `device-init` (a short code like `ABCD-EFGH`); there is no separate user code.
 
 Include one heads-up with the link: after they approve, the page may say "return to your CLI". That just means come back to this chat and say "done"; there is no separate CLI step.
 
@@ -134,7 +139,7 @@ One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` bl
 
 There is no shell and no local disk, so the plugin cannot store tokens for the user. The user mints tokens themselves and pastes the access token into the connector configuration:
 
-> *"Open https://mcp.mixshift.io/login?mode=direct in a browser tab, sign in with your MixShift login plus your work email, and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
+> *"Open https://mcp.mixshift.io/login?mode=direct&client_id=mx-claude-browser in a browser tab, sign in with your MixShift login plus your work email (or with Google if your organization uses it), and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
 
 Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the service (auth moved to the HTTP transport layer). If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
 
@@ -186,7 +191,7 @@ If it fails:
 
 End with a concise success message. Use what you actually learned, don't speculate.
 
-- Path A/D: *"Signed in as \<person_label\> (tenant: \<tenant_email\>). Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
+- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
 - Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at /admin any time."*
 
 Don't restate everything from the CLI output (it's already on screen). Don't list features they could try unless they're already in context.
@@ -229,7 +234,7 @@ If the user gets stuck mid-flow:
 
 ## Hard rules
 
-- **`person_label` is required on interactive paths.** Never skip or default it. The login won't proceed without it.
+- **`person_label` is required on interactive paths.** Never skip or default it. The login won't proceed without it. It is a prefill hint, not the identity: for a member, the sign-in page decides who they are.
 - **Never ask the user to paste credentials in chat.** Passwords belong in the browser; service-credential secrets belong in a file or env var. If a secret lands in chat anyway, finish the job and then recommend rotation.
 - **Never echo tokens or secrets.** Refer to the user by email or label, never by token value. Never cat the credentials file or the secret file into chat output.
 - **Credentials stay local.** Use the storage-anchor phrasings above. Never imply they leave the machine.

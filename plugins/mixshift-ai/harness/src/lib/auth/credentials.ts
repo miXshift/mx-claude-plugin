@@ -19,6 +19,7 @@ import { mkdir, readFile, rename, writeFile, chmod, unlink, open, stat } from 'n
 import { dirname, join } from 'node:path';
 import { credentialsPath } from '../paths/resolve.js';
 import { formatZodError } from '../profile/format-error.js';
+import { reverifyCopy } from './refusal-copy.js';
 import {
   credentialsSchema,
   newCredentials,
@@ -566,7 +567,8 @@ const SESSION_EXPIRED_FALLBACK_MESSAGE =
  */
 function buildAuthRequiredError(body: Refresh401Body | null): Error {
   if (body?.error === 'session_expired' || body?.error === 'session_revoked') {
-    return new Error(`AUTH REQUIRED: ${body.message ?? SESSION_EXPIRED_FALLBACK_MESSAGE}`);
+    const fallback = body.reason === 'reverify' ? reverifyCopy() : SESSION_EXPIRED_FALLBACK_MESSAGE;
+    return new Error(`AUTH REQUIRED: ${body.message ?? fallback}`);
   }
   return new Error(SESSION_EXPIRED_FALLBACK_MESSAGE);
 }

@@ -57,6 +57,7 @@ import { createGunzip, gunzipSync } from 'node:zlib';
 
 import { loadCredentials, getValidAccessToken } from '../auth/credentials.js';
 import { intentHeader } from '../auth/intent.js';
+import { insufficientScopeCopy, isScopeRefusalReason } from '../auth/refusal-copy.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1900,10 +1901,26 @@ export function classifyAmazonError(text: string): ReportReasonClass {
   return 'other';
 }
 
+/**
+ * TEMPORARY phrase match. Today the gateway (token-source.ts) words one insufficient_scope message as
+ * "Delegated user sessions hold it...", which is wrong for a person whose organization turned the
+ * permission off. Drop that one text and use the plugin's copy; pass every other gateway text through
+ * (for example the accurate shipping:write one). Remove this match when the gateway sends a `reason`
+ * (planned in gateway slice S4), because a known `reason` already wins below.
+ */
+const STALE_SCOPE_CLAIM = /delegated user sessions? hold/i;
+
+function scopeRefusalFriendly(json: Record<string, unknown>, serverFriendly: string | undefined): string {
+  const scopes = json.required_scopes ?? json.required_scope ?? json.required;
+  if (isScopeRefusalReason(json.reason)) return insufficientScopeCopy(json.reason, scopes);
+  if (serverFriendly !== undefined && !STALE_SCOPE_CLAIM.test(serverFriendly)) return serverFriendly;
+  return insufficientScopeCopy(undefined, scopes);
+}
+
 /** Map a server `{ ok:false, kind, ... }` envelope to a typed ReportFailure,
  *  trusting the server's kind when recognized and filling a friendly default
  *  when the server omitted one. */
-function toReportFailure(
+export function toReportFailure(
   json: Record<string, unknown>,
   httpStatus: number,
   surface?: AmazonSurface,
@@ -1947,7 +1964,9 @@ function toReportFailure(
   const friendly =
     kind === 'proposal_not_approved' && proposalStatus !== undefined
       ? proposalNotApprovedText(proposalStatus)
-      : (serverFriendly ?? defaultFriendly(kind, surface));
+      : kind === 'insufficient_scope'
+        ? scopeRefusalFriendly(json, serverFriendly)
+        : (serverFriendly ?? defaultFriendly(kind, surface));
   return {
     ok: false,
     kind,
@@ -2217,11 +2236,7 @@ function defaultFriendly(kind: ReportFailureKind, surface?: AmazonSurface): stri
         'Contact MixShift ops.'
       );
     case 'insufficient_scope':
-      return (
-        'This credential lacks a scope this call requires (writes need ' +
-        'ads:write). Signed-in user sessions hold it; machine credentials ' +
-        'must be issued with it explicitly by a MixShift admin.'
-      );
+      return insufficientScopeCopy();
     case 'reauth_required':
       return (
         'This Amazon merchant needs to be re-authorized in MixShift before ' +

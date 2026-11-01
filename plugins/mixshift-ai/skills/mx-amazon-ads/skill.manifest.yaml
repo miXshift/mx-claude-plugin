@@ -118,5 +118,6 @@ notes: >
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
     - Amazon Ads API enabled for the tenant; calls fail with
       ads_not_configured otherwise (user contacts MixShift ops).
-    - Writes need the ads:write scope; signed-in user sessions hold it
-      implicitly, machine credentials must be issued with it.
+    - Writes need the ads:write scope; it may be off for a person in their
+      organization (ask the org admin), and a service credential needs it
+      granted when the credential is created.

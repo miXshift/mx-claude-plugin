@@ -226,9 +226,10 @@ function renderWelcome(args: {
   lines.push('━━ Step 1 — Sign in to MixShift ━━');
   lines.push('');
   lines.push('  Sign in so the plugin can read your Amazon ads + retail data.');
-  lines.push('  You\'ll need your MixShift account (the same email + password');
-  lines.push('  you use to log into MixShift). Your credentials stay in your');
-  lines.push('  browser; the plugin only holds a token after.');
+  lines.push('  You\'ll need your MixShift account. If your organization uses member');
+  lines.push('  sign-in, choose "Sign in with Google" (or "Continue as <you>" when');
+  lines.push('  already signed in on the web); otherwise use your team login as before.');
+  lines.push('  Your credentials stay in your browser; the plugin only holds a token after.');
   lines.push('');
   for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split('\n')) {
     lines.push(l ? `  ${l}` : l);
@@ -482,9 +483,10 @@ function renderWelcomeChat(args: {
   lines.push('');
   lines.push(
     'Sign in so the plugin can read your Amazon ads + retail data. ' +
-      "You'll need your MixShift account (the same email + password you " +
-      'use to log into MixShift). Your credentials stay in your browser; ' +
-      'the plugin only holds a token after.',
+      "You'll need your MixShift account. If your organization uses member " +
+      'sign-in, choose "Sign in with Google" (or "Continue as <you>" when ' +
+      'already signed in on the web); otherwise use your team login as before. ' +
+      'Your credentials stay in your browser; the plugin only holds a token after.',
   );
   lines.push('');
   lines.push(NO_ACCOUNT_CHAT);

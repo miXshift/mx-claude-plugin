@@ -91,13 +91,14 @@ The welcome copy already told the user: *"I'll set up a sign-in link for you rig
 
 **If the user says they have no MixShift account** (or asks how to get one), do not drive the sign-in; there is nothing to sign in to yet. The rendered welcome already includes the "No MixShift account yet?" pointer. Reinforce it conversationally: create an account at https://www.mydashapplications.com/auth/registration, then connect Amazon accounts and activate ads + retail data (walkthrough: https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Set the expectation that most accounts are fully populated within 24-48 hours of activation, large catalogs can take longer, and MixShift emails them when data is ready. Invite them back: say "welcome" then and sign-in continues from Step 1 here. Emit `skill.completed --outcome ok` (the registration handoff is the correct outcome for a brand-new user) and end the turn.
 
-1. **Collect their work email.** Ask once, in plain language: *"What's your work email? (Used for session attribution — the same one you use to log into MixShift is fine.)"* Skip this prompt if a stored email exists (check `~/.mixshift/auth/credentials` for `datahub.person_label` from a prior login, or `~/.mixshift/profile.yaml::user.email`).
+1. **Collect their work email.** Ask once, in plain language: *"What's your work email? (It pre-fills the sign-in page. If your organization uses member sign-in, you'll choose Sign in with Google on the page and that proves who you are.)"* Skip this prompt if a stored email exists (check `~/.mixshift/auth/credentials` for `datahub.person_label` from a prior login, or `~/.mixshift/profile.yaml::user.email`).
 2. **Initialize the sign-in flow.** Run `mixshift auth device-init --person-label "<email>"` via Bash (if `mixshift` isn't found, run the same args via `node "$MIXSHIFT_CLI"`).
-   - **On success**, the JSON carries `device_code` and `login_url`; capture both and continue to step 3.
+   - **On success**, the JSON carries `device_code` and `login_url`; capture both and continue to step 3, where you relay both (the code on its own line).
    - **If it returns `{ "ok": false, "error": "<message>" }`** (a network failure, typically the Cowork / Claude Code sandbox egress allowlist not including `mcp.mixshift.io`): **stop here. Do NOT send a sign-in link you can't complete.** Surface the `error` text, have the user run `mixshift doctor` for the full diagnosis, and point them to mx-auth-login's **"If the sandbox is blocking sign-in"** section for remediation plus no-sandbox alternatives. Emit `skill.completed --outcome failed` and end. Don't loop device-init.
 3. **Prep the user + send them the link** in one chat reply:
    > *"Click this to sign in: \<login_url\>*
-   > *Use your MixShift login — same email + password you use for MixShift. Tell me when you're done."*
+   > *If the page asks for a code, type: \<device_code\>*
+   > *Use your MixShift login, or Sign in with Google if your organization uses it. Tell me when you're done."*
 
    Include one heads-up with the link: after they approve, the page may say "return to your CLI". That just means come back to this chat and say "done"; there is no separate CLI step.
 4. **Poll for approval when they confirm.** When the user says they're done, run `mixshift auth device-poll <device_code> --person-label "<email>"`. On `pending` re-poll politely; on `expired` restart from step 2; on `approved` move to verification.

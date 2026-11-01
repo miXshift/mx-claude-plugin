@@ -23,7 +23,7 @@ Concretely:
 
 1. **Collects your work email** (`person_label`) — used to attribute your session in MixShift's admin tooling. Same email you use to log into MixShift is fine. Not stored as auth.
 2. **Opens a browser tab** at `https://mcp.mixshift.io/login`.
-3. **You sign in** with your MixShift account (email + password). Your credentials stay between you and the sign-in page — the plugin never sees them.
+3. **You sign in** with your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before. Your credentials stay between you and the sign-in page — the plugin never sees them.
 4. **The sign-in page returns** a token pair (24h access + 30d refresh) to the plugin's local callback.
 5. **Tokens are written** to `~/.mixshift/auth/credentials` at mode `0600`.
 6. **Profile is updated** — `~/.mixshift/profile.yaml` gets your email so downstream commands (telemetry, feedback) know who you are.
@@ -60,8 +60,8 @@ The chat-driven path handles sign-in inline: it asks for your work email, opens 
 ```
 You:    welcome
 Claude: Welcome to the MixShift plugin. You'll need your MixShift
-        account (the same email + password you use to log into
-        MixShift). I'll set up a sign-in link for you in a moment.
+        account (team login, or Sign in with Google if your
+        organization uses member sign-in). I'll set up a sign-in link for you in a moment.
         What's your work email?
 You:    you@yourcompany.com
 Claude: Click this to sign in: https://mcp.mixshift.io/login?device_code=...
