@@ -38,7 +38,7 @@ import {
 import { detectSurface, type Surface } from '../lib/telemetry/surface.js';
 import { getValidAccessToken } from '../lib/auth/credentials.js';
 import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
-import { fetchIdentity, formatIdentityLines, type IdentityResult } from '../lib/auth/identity.js';
+import { fetchIdentity, formatIdentityLines, IDENTITY_TIMEOUT_MS, type IdentityResult } from '../lib/auth/identity.js';
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { REGISTRATION_URL } from '../lib/onboarding.js';
@@ -267,9 +267,10 @@ async function assembleFullReport(opts: {
   }
 
   // Identity — only for a live human sign-in.
+  // Read-only like `auth status` (no refresh); skipped when the service is unreachable.
   const identity =
-    auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true
-      ? await fetchIdentity(opts.dataDirOverride)
+    auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true && network.health.reachable
+      ? await fetchIdentity(opts.dataDirOverride, fetch, Math.min(opts.timeoutMs, IDENTITY_TIMEOUT_MS))
       : undefined;
 
   // Telemetry — local state.
@@ -403,6 +404,13 @@ export function renderBuildStaleBanner(build: DoctorFullReport['build']): string
   );
 }
 
+/** The "signed in as" lines under Auth. Names the token's actor first (as `auth status` does), never only the typed label. */
+export function renderDoctorSignedInLines(auth: AuthSummary, identity?: IdentityResult): string[] {
+  const who = auth.tokenActor ?? auth.personLabel ?? auth.email ?? '?';
+  if (identity) return formatIdentityLines(who, identity).map((l) => `  ${l}`);
+  return [`  signed in (interactive) as ${who}`];
+}
+
 export function renderFull(r: DoctorFullReport): string {
   const out: string[] = [];
   out.push('mixshift doctor');
@@ -428,19 +436,7 @@ export function renderFull(r: DoctorFullReport): string {
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`,
     );
   } else if (r.auth.kind === 'interactive') {
-    if (r.identity) {
-      for (const l of formatIdentityLines(
-        r.auth.personLabel ?? r.auth.email ?? '?',
-        r.auth.email,
-        r.identity,
-      )) {
-        out.push(`  ${l}`);
-      }
-    } else {
-      out.push(
-        `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? '?'}`,
-      );
-    }
+    out.push(...renderDoctorSignedInLines(r.auth, r.identity));
     if (r.auth.email && r.auth.email !== r.auth.personLabel) {
       out.push(`    tenant login: ${r.auth.email}`);
     }

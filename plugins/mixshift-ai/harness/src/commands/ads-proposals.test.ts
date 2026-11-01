@@ -14,6 +14,7 @@
  *   - every proposal error kind: exit code + --json envelope.
  */
 
+import { insufficientScopeCopy } from '../lib/auth/refusal-copy.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
@@ -501,7 +502,8 @@ describe('proposal error kinds: exit code + --json envelope', () => {
     expect(json()).toMatchObject({
       status: 'error',
       failure_kind: kind,
-      message: `friendly for ${kind}`,
+      // insufficient_scope uses the plugin's own copy, never the gateway's text (it may be stale).
+      message: kind === 'insufficient_scope' ? insufficientScopeCopy() : `friendly for ${kind}`,
       source: 'request',
       retryable: false,
       fix: 'do the fix',

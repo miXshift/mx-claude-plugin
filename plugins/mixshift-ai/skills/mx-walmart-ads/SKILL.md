@@ -103,7 +103,7 @@ Route elsewhere:
 | Signed in to MixShift | `~/.mixshift/auth/credentials` exists | Run `mixshift auth login` (or say "sign in to MixShift" in chat). Calls fail with `not_authenticated` until then. |
 | Walmart enabled for the MixShift account | `mixshift walmart ads advertisers` succeeds | `tenant_not_allowed` (exit 6) means no Walmart advertiser is connected to this MixShift account yet. Walk the user through [Connecting a Walmart advertiser](#connecting-a-walmart-advertiser). |
 | The advertiser connected | It appears in `walmart ads advertisers` | An id that is not listed fails `advertiser_not_allowed` (exit 7). An advertiser the user expected but does not see has not been connected yet: [Connecting a Walmart advertiser](#connecting-a-walmart-advertiser). It cannot be done from chat. |
-| Write capability (writes only) | The advertiser's `access` is `owner`, and the credential holds `ads:write` | `read` access can preview but not commit. Signed-in user sessions hold `ads:write`; a machine credential without it fails `insufficient_scope` (exit 11). |
+| Write capability (writes only) | The advertiser's `access` is `owner`, and the credential holds `ads:write` | `read` access can preview but not commit. `ads:write` may be off for this person in their organization (ask the org admin), and a service credential needs it granted when it is created; without it the write fails `insufficient_scope` (exit 11). |
 
 Brand setup is **not required.** A signed-in session is enough.
 

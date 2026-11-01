@@ -56,7 +56,7 @@ Claude runs the `welcome` skill and walks you through sign-in inline. The full f
 
 1. Claude asks for your work email (used to attribute your session — same email you use to log into MixShift is fine).
 2. Claude opens a browser tab at the MixShift sign-in page (`https://mcp.mixshift.io/login`).
-3. You sign in with your MixShift account — If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before. Your credentials stay on the sign-in page; the plugin never sees them.
+3. You sign in with your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before. Your credentials stay on the sign-in page; the plugin never sees them.
 4. You return to chat and say "done".
 5. Claude confirms the sign-in, runs a verification query, and shows you the brands you have access to.
 

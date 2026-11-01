@@ -17,9 +17,8 @@ export function isScopeRefusalReason(v: unknown): v is 'member_ceiling' | 'role'
 const ASK_ADMIN = 'ask your organization admin';
 
 export function insufficientScopeCopy(reason?: unknown, scopes?: unknown): string {
-  const list = Array.isArray(scopes)
-    ? scopes.filter((s): s is string => typeof s === 'string' && /^[a-z0-9:_-]{1,64}$/i.test(s))
-    : [];
+  const raw = Array.isArray(scopes) ? scopes : typeof scopes === 'string' ? [scopes] : [];
+  const list = raw.filter((s): s is string => typeof s === 'string' && /^[a-z0-9:_-]{1,64}$/i.test(s));
   const need = list.length > 0 ? ` (${list.join(' ')})` : '';
   switch (reason) {
     case 'member_ceiling':
@@ -34,8 +33,8 @@ export function insufficientScopeCopy(reason?: unknown, scopes?: unknown): strin
     default:
       return (
         `This sign-in is not allowed to do this${need}. The permission may be off for you in your ` +
-        `organization, or this credential was issued without it, so ${ASK_ADMIN}. ` +
-        '`mixshift auth status` shows what you are signed in as.'
+        `organization, so ${ASK_ADMIN}. For a service credential, the scope has to be granted when ` +
+        'the credential is created. `mixshift auth status` shows what you are signed in as.'
       );
   }
 }

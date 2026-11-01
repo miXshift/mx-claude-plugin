@@ -5,8 +5,9 @@
  * `auth login`), human and service credentials are told apart, an expired
  * access token that can still renew reads as signed in, a dead refresh token
  * reads as needing sign-in, --json carries a stable shape, and the command
- * rewrites no credentials. The only network calls are the identity reads
- * (GET /v1/me and /v1/manifest), and they fail soft.
+ * rewrites no credentials, and never refreshes a session. The only network calls
+ * are the identity reads (GET /v1/me and /v1/manifest) with a still-fresh token,
+ * and they fail soft.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -137,7 +138,7 @@ describe('auth status', () => {
       access_expires_at: d.expires_at,
       access_expired: false,
       needs_sign_in: false,
-      identity: { read: false, reason: 'the service could not be reached' },
+      identity: { read: false, reason: 'the service could not be reached in time' },
     });
   });
 
@@ -224,7 +225,21 @@ describe('auth status', () => {
     expect(JSON.parse(out)).toMatchObject({ actor: 'person@example.test', tenant_login: 'tenant@example.test' });
   });
 
-  it('is read-only: only the identity reads touch the network, credentials file byte-identical', async () => {
+  it('is read-only: an expired token means no network call and no credential write', async () => {
+    await saveDatahub(datahub({ expires: -HOUR }), dataDir);
+    const { path } = await loadCredentials(dataDir);
+    const before = await readFile(path, 'utf-8');
+    await status();
+    expect(out).toContain('identity: shown after your next MixShift call refreshes the sign-in');
+    out = '';
+    await status('--json');
+    expect(JSON.parse(out).identity).toMatchObject({ read: false, deferred: true });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await readFile(path, 'utf-8')).toBe(before);
+    expect(err).toBe('');
+  });
+
+  it('a fresh token reads identity from /v1/me and the manifest only, credentials byte-identical', async () => {
     await saveDatahub(datahub(), dataDir);
     const { path } = await loadCredentials(dataDir);
     const before = await readFile(path, 'utf-8');

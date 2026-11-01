@@ -3,13 +3,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { fetchIdentity, formatIdentityLines, parseIdentity } from './identity.js';
 import { insufficientScopeCopy, notAMemberCopy, reverifyCopy, isScopeRefusalReason } from './refusal-copy.js';
-import { saveDatahub } from './credentials.js';
+import { saveDatahub, loadCredentials } from './credentials.js';
 
 const HOUR = 3_600_000;
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
@@ -59,55 +59,54 @@ afterEach(async () => {
 });
 
 describe('identity line', () => {
-  it('verified member: org, role and denied scopes', async () => {
+  it('verified member: org name, role and denied scopes', async () => {
     const f = router({ me: () => json(200, { verified: true, org: 'org-1', scopes: [] }), manifest: () => json(200, MANIFEST) });
     const id = await fetchIdentity(dataDir, f);
-    expect(formatIdentityLines('person@example.com', 'tenant@example.test', id)).toEqual([
+    expect(formatIdentityLines('person@example.com', id)).toEqual([
       'Signed in as person@example.com (verified member of acme-co, builder)',
       'Not allowed for you: ads:write (set by your organization; ask an org admin)',
     ]);
   });
 
-  it('typed email on a shared login: not verified', async () => {
+  it('shared login (verified false) is a quiet line: no "not verified", no "typed email"', async () => {
     const f = router({
       me: () => json(200, { verified: false, org: null }),
       manifest: () => json(200, { ...MANIFEST, person: { ...MANIFEST.person, denied_scopes: [] } }),
     });
     const id = await fetchIdentity(dataDir, f);
-    expect(formatIdentityLines('person@example.com', undefined, id)).toEqual([
-      'Signed in as person@example.com on the shared acme-co login (typed email, not verified)',
-    ]);
+    const lines = formatIdentityLines('person@example.com', id);
+    expect(lines).toEqual(['Signed in as person@example.com (acme-co, builder)']);
+    expect(lines.join(' ')).not.toMatch(/not verified|typed email|does not report/);
   });
 
-  it('old gateway: absent verified/org read as unknown, never as false', async () => {
+  it('old gateway: absent verified/org print nothing about verification', async () => {
     const f = router({ me: () => json(200, { mixshift_tenant_id: '1', scopes: [] }) });
     const id = await fetchIdentity(dataDir, f);
     expect(id).toEqual({ read: true });
-    const [line] = formatIdentityLines('person@example.com', 'tenant@example.test', id);
-    expect(line).toBe('Signed in as person@example.com (this service does not report whether your sign-in is verified)');
-    expect(line).not.toMatch(/not verified|typed/);
+    expect(formatIdentityLines('person@example.com', id)).toEqual(['Signed in as person@example.com']);
   });
 
-  it('open (unregistered) org: no role is claimed', () => {
+  it('open (unregistered) org: no org name and no role', () => {
     const id = parseIdentity({ verified: false }, { org: { name: 'tenant-login', registered: false }, person: { role_name: 'member' } });
-    expect(formatIdentityLines('person@example.com', 'tenant@example.test', id)[0]).toBe(
-      'Signed in as person@example.com on the shared tenant@example.test login (typed email, not verified)',
-    );
+    expect(formatIdentityLines('person@example.com', id)).toEqual(['Signed in as person@example.com']);
   });
 
-  it('manifest failure drops role and denied scopes but keeps verified', async () => {
+  it('never prints a role of unknown', () => {
+    const id = parseIdentity({ verified: true }, { org: { name: 'acme-co', registered: true }, person: { role_name: 'unknown' } });
+    expect(formatIdentityLines('person@example.com', id)).toEqual(['Signed in as person@example.com (verified member of acme-co)']);
+  });
+
+  it('manifest failure omits the org name (never a raw org id) and the role', async () => {
     const f = router({ me: () => json(200, { verified: true, org: 'org-1' }), manifest: () => json(500, {}) });
     const id = await fetchIdentity(dataDir, f);
-    expect(formatIdentityLines('person@example.com', undefined, id)).toEqual([
-      'Signed in as person@example.com (verified member of org-1)',
-    ]);
+    expect(formatIdentityLines('person@example.com', id)).toEqual(['Signed in as person@example.com (verified member)']);
   });
 
   it('/v1/me failure: says the identity could not be read, never prints a token', async () => {
     const f = router({ me: () => json(500, { error: 'server_error' }) });
     const id = await fetchIdentity(dataDir, f);
     expect(id).toEqual({ read: false, reason: 'the service answered 500' });
-    const text = formatIdentityLines('person@example.com', undefined, id).join('\n');
+    const text = formatIdentityLines('person@example.com', id).join('\n');
     expect(text).toBe('Signed in as person@example.com (your identity could not be read: the service answered 500)');
     expect(text).not.toContain(SECRET);
     // The bearer goes only in the header, to /v1/me and the manifest.
@@ -116,21 +115,33 @@ describe('identity line', () => {
 
   it('network failure fails soft', async () => {
     const f = vi.fn().mockRejectedValue(new Error('boom')) as unknown as typeof fetch;
-    expect(await fetchIdentity(dataDir, f)).toEqual({ read: false, reason: 'the service could not be reached' });
+    expect(await fetchIdentity(dataDir, f)).toEqual({ read: false, reason: 'the service could not be reached in time' });
   });
 
-  it('a re-verify refusal on refresh surfaces the gateway cause', async () => {
+  it('an expired access token is never refreshed: no network call, credentials untouched', async () => {
     await saveDatahub(creds({ expires_at: iso(-HOUR) }), dataDir);
-    const f = vi.fn().mockResolvedValue(
-      json(401, { ok: false, error: 'session_expired', reason: 'reverify', message: reverifyCopy() }),
-    );
-    vi.stubGlobal('fetch', f);
-    try {
-      const id = await fetchIdentity(dataDir, f as unknown as typeof fetch);
-      expect(id).toEqual({ read: false, reason: reverifyCopy() });
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    const { path } = await loadCredentials(dataDir);
+    const before = await readFile(path, 'utf-8');
+    const f = vi.fn() as unknown as typeof fetch & ReturnType<typeof vi.fn>;
+    const id = await fetchIdentity(dataDir, f);
+    expect(id).toMatchObject({ read: false, deferred: true });
+    expect(f).not.toHaveBeenCalled();
+    expect(await readFile(path, 'utf-8')).toBe(before);
+    expect(formatIdentityLines('person@example.com', id)).toEqual([
+      'Signed in as person@example.com (identity: shown after your next MixShift call refreshes the sign-in)',
+    ]);
+  });
+
+  it('a slow service does not stall past the timeout', async () => {
+    const hang = vi.fn((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_res, rej) => {
+        init?.signal?.addEventListener('abort', () => rej(new Error('aborted')));
+      }),
+    ) as unknown as typeof fetch;
+    const t0 = Date.now();
+    const id = await fetchIdentity(dataDir, hang, 100);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(id).toEqual({ read: false, reason: 'the service could not be reached in time' });
   });
 });
 
@@ -183,9 +194,16 @@ describe('refusal copy wired into the gateway envelopes', () => {
     expect(f.friendly).toContain('Your organization has turned this permission off for you (ads:write)');
   });
 
-  it('insufficient_scope envelope: no reason keeps the gateway text, or the new fallback', async () => {
+  it('insufficient_scope envelope: no reason uses the plugin copy, not the gateway text', async () => {
     const { toReportFailure } = await import('../amazon/reports.js');
-    expect(toReportFailure({ ok: false, kind: 'insufficient_scope', friendly: 'server text' }, 403).friendly).toBe('server text');
+    // The gateway's own text is never passed through: older gateways still say signed-in sessions hold the scope.
+    const stale = toReportFailure(
+      { ok: false, kind: 'insufficient_scope', friendly: 'Delegated user sessions hold it', required_scope: 'ads:write' },
+      403,
+    ).friendly;
+    expect(stale).not.toContain('Delegated');
+    expect(stale).toContain('(ads:write)');
+    expect(stale).toContain('granted when');
     const bare = toReportFailure({ ok: false, kind: 'insufficient_scope' }, 403).friendly;
     expect(bare).toContain('may be off for you in your organization');
     expect(bare).not.toMatch(/Signed-in user sessions hold it/i);

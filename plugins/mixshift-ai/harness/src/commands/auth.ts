@@ -811,7 +811,7 @@ export function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
     );
   } else if (r.credential === 'human') {
     if (r.identity) {
-      out.push(...formatIdentityLines(r.actor ?? '?', r.tenant_login, r.identity));
+      out.push(...formatIdentityLines(r.actor ?? '?', r.identity));
     } else {
       out.push(`Signed in (human sign-in) as ${r.actor ?? '?'}`);
     }
@@ -838,10 +838,11 @@ function registerStatusSubcommand(auth: Command): void {
   auth
     .command('status')
     .description(
-      'Show whether you are signed in, as whom (your org, your role, and whether your session is ' +
-        'verified or only a typed email), the tenant login, and when the access token expires. ' +
-        'It never signs in or prompts. For a human sign-in it asks the service who you are (GET /v1/me); ' +
-        'if that fails, status still works and says the identity could not be read.',
+      'Show whether you are signed in, as whom (your organization and role, and "verified member" when ' +
+        'you signed in as yourself), the tenant login, and when the access token expires. ' +
+        'Read-only: it never signs in, prompts, refreshes your session or writes credentials. While the ' +
+        'saved access token is fresh it asks the service who you are (GET /v1/me, 3 s limit); if that ' +
+        'fails or the token has expired, status still works and says so.',
     )
     .action(async (_opts: Record<string, never>, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();

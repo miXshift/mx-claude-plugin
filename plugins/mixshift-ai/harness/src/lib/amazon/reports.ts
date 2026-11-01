@@ -1948,8 +1948,13 @@ export function toReportFailure(
   const friendly =
     kind === 'proposal_not_approved' && proposalStatus !== undefined
       ? proposalNotApprovedText(proposalStatus)
-      : kind === 'insufficient_scope' && isScopeRefusalReason(json.reason)
-        ? insufficientScopeCopy(json.reason, json.required_scopes)
+      : kind === 'insufficient_scope'
+        ? // Never the gateway's own `friendly` here: older gateways still say signed-in sessions
+          // hold the scope. A known `reason` names the cause; otherwise the plugin's own copy.
+          insufficientScopeCopy(
+            isScopeRefusalReason(json.reason) ? json.reason : undefined,
+            json.required_scopes ?? json.required_scope ?? json.required,
+          )
         : (serverFriendly ?? defaultFriendly(kind, surface));
   return {
     ok: false,

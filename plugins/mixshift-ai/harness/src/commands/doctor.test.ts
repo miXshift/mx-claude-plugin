@@ -287,3 +287,20 @@ describe('renderBuildSection + renderBuildStaleBanner coherence', () => {
     }
   });
 });
+
+describe('doctor signed-in lines', () => {
+  it('names the token actor, not the typed label, and shows the identity line', async () => {
+    const { renderDoctorSignedInLines } = await import('./doctor.js');
+    const auth = {
+      signedIn: true,
+      kind: 'interactive' as const,
+      email: 'tenant@example.test',
+      personLabel: 'typed@example.test',
+      tokenActor: 'verified@example.test',
+    };
+    expect(
+      renderDoctorSignedInLines(auth, { read: true, verified: true, org_name: 'acme-co', org_registered: true, role: 'builder' }),
+    ).toEqual(['  Signed in as verified@example.test (verified member of acme-co, builder)']);
+    expect(renderDoctorSignedInLines(auth)).toEqual(['  signed in (interactive) as verified@example.test']);
+  });
+});
