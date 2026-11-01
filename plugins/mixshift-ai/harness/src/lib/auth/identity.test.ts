@@ -209,3 +209,13 @@ describe('refusal copy wired into the gateway envelopes', () => {
     }
   });
 });
+
+describe('device login instructions', () => {
+  it('shows the link and the code as its own step', async () => {
+    const { deviceLoginInstructions } = await import('./login-flow.js');
+    const t = deviceLoginInstructions('https://auth.example.test/login?device_code=ABCD-EFGH', 'ABCD-EFGH');
+    expect(t).toContain('1. Open this URL in any browser:\n     https://auth.example.test/login?device_code=ABCD-EFGH');
+    expect(t).toContain('2. If the page asks for a code, type: ABCD-EFGH');
+    expect(t).toContain('3. Sign in and confirm the device on the page.');
+  });
+});

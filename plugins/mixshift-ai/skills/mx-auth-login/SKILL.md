@@ -104,10 +104,11 @@ Capture `device_code` and `login_url`. The other fields don't need to be passed 
 **Step A2 — Send the user to the URL:**
 
 > *"Open this link to sign in: \<login_url\>*
+> *If the page asks for a code, type: \<device_code\>*
 > *Use your MixShift login, or "Sign in with Google" if your organization uses it. Your credentials stay on the sign-in page; the plugin only holds a token after.*
 > *Tell me when you're done."*
 
-Don't paste the device code separately — the URL encodes it. The user just signs in on the page.
+Always relay BOTH the link and the `device_code`, the code on its own line, in Cowork and in Claude Code chat. The URL already carries the code, so the password sign-in works exactly as before and never asks for it. But members who choose "Continue as \<you\>" must TYPE the code shown on their device, so they need to see it. The code is the `device_code` value from `device-init` (a short code like `ABCD-EFGH`); there is no separate user code.
 
 Include one heads-up with the link: after they approve, the page may say "return to your CLI". That just means come back to this chat and say "done"; there is no separate CLI step.
 
