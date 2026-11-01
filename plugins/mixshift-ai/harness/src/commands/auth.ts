@@ -16,6 +16,7 @@ import type { PluginDefaults } from '../lib/defaults/schema.js';
 import { serviceCredsSchema } from '../lib/auth/schema.js';
 import { saveService, getValidAccessToken } from '../lib/auth/credentials.js';
 import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
+import { fetchIdentity, formatIdentityLines, type IdentityResult } from '../lib/auth/identity.js';
 import { exchangeSetupCode } from '../lib/auth/setup-code.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { getPluginVersion } from '../lib/plugin-version.js';
@@ -313,9 +314,10 @@ function registerLoginSubcommand(auth: Command): void {
     )
     .option(
       '--person-label <email>',
-      'Your work email — attributes this session to you in the admin ' +
-        'view. Required because one tenant credential is shared across ' +
-        'many employees; person_label lets admins see who did what.',
+      'Your work email. A prefill hint for the sign-in page, not your identity: ' +
+        'if your organization uses member sign-in, you choose "Sign in with Google" ' +
+        'there and the sign-in itself proves who you are. On a shared login it is ' +
+        'the typed name admins see against your actions. Still required here.',
     )
     .option(
       '--device-label <label>',
@@ -421,7 +423,7 @@ async function promptPersonLabel(): Promise<string> {
   }
   return input({
     message:
-      'Your work email (for per-employee session attribution; not auth):',
+      'Your work email (a prefill hint; on a shared login it is the name your actions are recorded under):',
     required: true,
     validate: (v: string) =>
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
@@ -736,6 +738,8 @@ export interface AuthStatusReport {
   /** True when the sign-in can no longer renew itself and a new sign-in is needed. */
   needs_sign_in: boolean;
   next_step?: string;
+  /** Human sign-in only: who the gateway says this session is (verified or typed, org, role, denied scopes). */
+  identity?: IdentityResult;
 }
 
 /** Pure: turn the shared local summary into the `auth status` report. */
@@ -795,7 +799,7 @@ export function buildAuthStatusReport(a: AuthSummary): AuthStatusReport {
   };
 }
 
-function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
+export function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
   const out: string[] = [];
   if (!r.signed_in) {
     out.push(
@@ -806,7 +810,11 @@ function renderAuthStatus(r: AuthStatusReport, a: AuthSummary): string {
           : 'Not signed in.',
     );
   } else if (r.credential === 'human') {
-    out.push(`Signed in (human sign-in) as ${r.actor ?? '?'}`);
+    if (r.identity) {
+      out.push(...formatIdentityLines(r.actor ?? '?', r.tenant_login, r.identity));
+    } else {
+      out.push(`Signed in (human sign-in) as ${r.actor ?? '?'}`);
+    }
     if (r.tenant_login && r.tenant_login !== r.actor) out.push(`  tenant login: ${r.tenant_login}`);
     out.push(`  service: ${r.service ?? '?'}`);
     if (r.access_expired) {
@@ -830,14 +838,18 @@ function registerStatusSubcommand(auth: Command): void {
   auth
     .command('status')
     .description(
-      'Show whether you are signed in, as whom, the tenant login, and when the access token expires. ' +
-        'Read-only: reads the local credentials file only. It never signs in, prompts, ' +
-        'contacts the sign-in service, or refreshes your session.',
+      'Show whether you are signed in, as whom (your org, your role, and whether your session is ' +
+        'verified or only a typed email), the tenant login, and when the access token expires. ' +
+        'It never signs in or prompts. For a human sign-in it asks the service who you are (GET /v1/me); ' +
+        'if that fails, status still works and says the identity could not be read.',
     )
     .action(async (_opts: Record<string, never>, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const summary = await summarizeAuth(root.dataDir);
       const report = buildAuthStatusReport(summary);
+      if (report.signed_in && report.credential === 'human') {
+        report.identity = await fetchIdentity(root.dataDir);
+      }
       if (root.json) {
         process.stdout.write(JSON.stringify(report, null, 2) + '\n');
       } else {
@@ -865,7 +877,7 @@ function registerDeviceInitSubcommand(auth: Command): void {
     )
     .option(
       '--person-label <email>',
-      'Self-attested per-employee actor email (required).',
+      'Your work email. A prefill hint for the sign-in page (required); a member sign-in proves identity on the page itself.',
     )
     .option('--device-label <label>', 'Device hostname-style label.')
     .option('--client-id <slug>', 'Surface-attribution client_id.')
@@ -919,7 +931,7 @@ function registerDevicePollSubcommand(auth: Command): void {
     )
     .option(
       '--person-label <email>',
-      'Self-attested per-employee actor email (must match device-init).',
+      'Your work email, as given to device-init (a prefill hint, must match).',
     )
     .option('--device-label <label>', 'Device label (match device-init).')
     .option('--client-id <slug>', 'client_id (match device-init).')

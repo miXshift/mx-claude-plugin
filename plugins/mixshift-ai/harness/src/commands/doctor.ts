@@ -38,6 +38,7 @@ import {
 import { detectSurface, type Surface } from '../lib/telemetry/surface.js';
 import { getValidAccessToken } from '../lib/auth/credentials.js';
 import { summarizeAuth, type AuthSummary } from '../lib/auth/summary.js';
+import { fetchIdentity, formatIdentityLines, type IdentityResult } from '../lib/auth/identity.js';
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { REGISTRATION_URL } from '../lib/onboarding.js';
@@ -79,6 +80,8 @@ interface DoctorFullReport {
   };
   channel: Surface;
   auth: AuthSummary;
+  /** Human sign-in only: the gateway's answer to /v1/me (verified or typed, org, role, denied scopes). */
+  identity?: IdentityResult;
   telemetry: {
     enabled: boolean;
     reason: string;
@@ -263,6 +266,12 @@ async function assembleFullReport(opts: {
     }
   }
 
+  // Identity — only for a live human sign-in.
+  const identity =
+    auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true
+      ? await fetchIdentity(opts.dataDirOverride)
+      : undefined;
+
   // Telemetry — local state.
   const ts = await getTelemetryStatus(opts.dataDirOverride);
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
@@ -273,6 +282,7 @@ async function assembleFullReport(opts: {
     build,
     channel,
     auth,
+    ...(identity ? { identity } : {}),
     telemetry: {
       enabled: ts.enabled,
       reason: ts.reason,
@@ -418,9 +428,19 @@ export function renderFull(r: DoctorFullReport): string {
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`,
     );
   } else if (r.auth.kind === 'interactive') {
-    out.push(
-      `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? '?'}`,
-    );
+    if (r.identity) {
+      for (const l of formatIdentityLines(
+        r.auth.personLabel ?? r.auth.email ?? '?',
+        r.auth.email,
+        r.identity,
+      )) {
+        out.push(`  ${l}`);
+      }
+    } else {
+      out.push(
+        `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? '?'}`,
+      );
+    }
     if (r.auth.email && r.auth.email !== r.auth.personLabel) {
       out.push(`    tenant login: ${r.auth.email}`);
     }
