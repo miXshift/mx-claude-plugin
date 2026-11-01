@@ -332,11 +332,14 @@ describe('doctor identity read', () => {
     expect(read.mock.calls.map((c) => c[2])).toEqual([3000, 1500]);
   });
 
-  it('shows "sign-in ended" and the tenant login from the token email', async () => {
+  it('shows only "sign-in ended" once its check ended the sign-in, and the tenant login from the token email otherwise', async () => {
     const { renderDoctorSignedInLines } = await import('./doctor.js');
     const auth = { ...human, personLabel: 'typed@example.test', tokenActor: 'actor@example.test', tokenEmail: 'claim-tenant@example.test' };
     expect(renderDoctorSignedInLines(auth, { read: false, ended: true, reason: 'no saved sign-in' })).toEqual([
       '  Your sign-in ended. Run `mixshift auth login` to sign in again.',
+    ]);
+    expect(renderDoctorSignedInLines(auth)).toEqual([
+      '  signed in (interactive) as actor@example.test',
       '    tenant login: claim-tenant@example.test',
     ]);
     // No tenant line when it equals the actor shown.

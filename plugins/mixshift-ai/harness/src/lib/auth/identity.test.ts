@@ -194,9 +194,9 @@ describe('refusal copy wired into the gateway envelopes', () => {
     expect(f.friendly).toContain('Your organization has turned this permission off for you (ads:write)');
   });
 
-  it('insufficient_scope envelope: no reason uses the plugin copy, not the gateway text', async () => {
+  it('insufficient_scope envelope: no reason replaces the stale "sessions hold it" gateway text with the plugin copy', async () => {
     const { toReportFailure } = await import('../amazon/reports.js');
-    // The gateway's own text is never passed through: older gateways still say signed-in sessions hold the scope.
+    // Gateway text that still claims signed-in sessions hold the scope is replaced; other gateway text passes through.
     const stale = toReportFailure(
       { ok: false, kind: 'insufficient_scope', friendly: 'Delegated user sessions hold it', required_scope: 'ads:write' },
       403,
@@ -241,7 +241,10 @@ describe('device login instructions', () => {
 describe('review round 2', () => {
   it('shipping:write gateway text passes through; only the stale claim is replaced', async () => {
     const { toReportFailure } = await import('../amazon/reports.js');
-    const shipping = 'Only service credentials hold shipping:write. Nothing was sent to Amazon.';
+    // The gateway's real shipping:write text (inbound-write-service.ts SHIPPING_SCOPE_FRIENDLY).
+    const shipping =
+      'This credential lacks the shipping:write scope. For now only service credentials hold it: a tenant admin grants ' +
+      'it when creating a service credential at /admin. Plugin sign-ins and AI connectors do not hold it yet. Nothing was sent to Amazon.';
     expect(toReportFailure({ ok: false, kind: 'insufficient_scope', friendly: shipping }, 403).friendly).toBe(shipping);
     const stale = toReportFailure(
       { ok: false, kind: 'insufficient_scope', friendly: 'Writes need ads:write. Delegated user sessions hold it.' },

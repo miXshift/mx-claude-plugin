@@ -417,8 +417,15 @@ export async function readDoctorIdentity(
   return read(dataDirOverride, fetch, Math.min(timeoutMs, IDENTITY_TIMEOUT_MS));
 }
 
+/** True when doctor's own check ended the sign-in (no saved sign-in left to read). */
+function signInEnded(identity?: IdentityResult): boolean {
+  return identity !== undefined && 'ended' in identity && identity.ended === true;
+}
+
 /** The "signed in as" lines under Auth. Names the token's actor first (as `auth status` does), never only the typed label. */
 export function renderDoctorSignedInLines(auth: AuthSummary, identity?: IdentityResult): string[] {
+  // Doctor's own check ended the sign-in: the rest of the summary was taken before it, so say only that.
+  if (signInEnded(identity) && identity) return formatIdentityLines('', identity).map((l) => `  ${l}`);
   const who = auth.tokenActor ?? auth.personLabel ?? auth.email ?? '?';
   const lines = identity
     ? formatIdentityLines(who, identity).map((l) => `  ${l}`)
@@ -453,6 +460,11 @@ export function renderFull(r: DoctorFullReport): string {
     out.push(
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`,
     );
+  } else if (r.auth.kind === 'interactive' && r.auth.refreshExpired === true) {
+    // The saved sign-in itself has expired (as `auth status` says): nothing to renew.
+    out.push('  not signed in (saved sign-in expired). Run `mixshift auth login`.');
+  } else if (r.auth.kind === 'interactive' && signInEnded(r.identity)) {
+    out.push(...renderDoctorSignedInLines(r.auth, r.identity));
   } else if (r.auth.kind === 'interactive') {
     out.push(...renderDoctorSignedInLines(r.auth, r.identity));
     out.push(`    service: ${r.auth.apiBase ?? '?'}`);
