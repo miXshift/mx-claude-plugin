@@ -138,7 +138,7 @@ describe('auth status', () => {
       access_expires_at: d.expires_at,
       access_expired: false,
       needs_sign_in: false,
-      identity: { read: false, reason: 'the service could not be reached in time' },
+      identity: { read: false, reason: 'the service could not be reached' },
     });
   });
 

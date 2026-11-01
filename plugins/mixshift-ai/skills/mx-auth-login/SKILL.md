@@ -191,7 +191,7 @@ If it fails:
 
 End with a concise success message. Use what you actually learned, don't speculate.
 
-- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as and whether the session is verified or a typed email, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
+- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
 - Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at /admin any time."*
 
 Don't restate everything from the CLI output (it's already on screen). Don't list features they could try unless they're already in context.

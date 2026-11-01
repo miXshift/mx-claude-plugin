@@ -1901,6 +1901,22 @@ export function classifyAmazonError(text: string): ReportReasonClass {
   return 'other';
 }
 
+/**
+ * TEMPORARY phrase match. Today the gateway (token-source.ts) words one insufficient_scope message as
+ * "Delegated user sessions hold it...", which is wrong for a person whose organization turned the
+ * permission off. Drop that one text and use the plugin's copy; pass every other gateway text through
+ * (for example the accurate shipping:write one). Remove this match when the gateway sends a `reason`
+ * (planned in gateway slice S4), because a known `reason` already wins below.
+ */
+const STALE_SCOPE_CLAIM = /delegated user sessions? hold/i;
+
+function scopeRefusalFriendly(json: Record<string, unknown>, serverFriendly: string | undefined): string {
+  const scopes = json.required_scopes ?? json.required_scope ?? json.required;
+  if (isScopeRefusalReason(json.reason)) return insufficientScopeCopy(json.reason, scopes);
+  if (serverFriendly !== undefined && !STALE_SCOPE_CLAIM.test(serverFriendly)) return serverFriendly;
+  return insufficientScopeCopy(undefined, scopes);
+}
+
 /** Map a server `{ ok:false, kind, ... }` envelope to a typed ReportFailure,
  *  trusting the server's kind when recognized and filling a friendly default
  *  when the server omitted one. */
@@ -1949,12 +1965,7 @@ export function toReportFailure(
     kind === 'proposal_not_approved' && proposalStatus !== undefined
       ? proposalNotApprovedText(proposalStatus)
       : kind === 'insufficient_scope'
-        ? // Never the gateway's own `friendly` here: older gateways still say signed-in sessions
-          // hold the scope. A known `reason` names the cause; otherwise the plugin's own copy.
-          insufficientScopeCopy(
-            isScopeRefusalReason(json.reason) ? json.reason : undefined,
-            json.required_scopes ?? json.required_scope ?? json.required,
-          )
+        ? scopeRefusalFriendly(json, serverFriendly)
         : (serverFriendly ?? defaultFriendly(kind, surface));
   return {
     ok: false,

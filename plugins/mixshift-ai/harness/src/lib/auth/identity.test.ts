@@ -115,7 +115,7 @@ describe('identity line', () => {
 
   it('network failure fails soft', async () => {
     const f = vi.fn().mockRejectedValue(new Error('boom')) as unknown as typeof fetch;
-    expect(await fetchIdentity(dataDir, f)).toEqual({ read: false, reason: 'the service could not be reached in time' });
+    expect(await fetchIdentity(dataDir, f)).toEqual({ read: false, reason: 'the service could not be reached' });
   });
 
   it('an expired access token is never refreshed: no network call, credentials untouched', async () => {
@@ -141,7 +141,7 @@ describe('identity line', () => {
     const t0 = Date.now();
     const id = await fetchIdentity(dataDir, hang, 100);
     expect(Date.now() - t0).toBeLessThan(2000);
-    expect(id).toEqual({ read: false, reason: 'the service could not be reached in time' });
+    expect(id).toEqual({ read: false, reason: 'the service could not be reached' });
   });
 });
 
@@ -235,5 +235,40 @@ describe('device login instructions', () => {
     expect(t).toContain('1. Open this URL in any browser:\n     https://auth.example.test/login?device_code=ABCD-EFGH');
     expect(t).toContain('2. If the page asks for a code, type: ABCD-EFGH');
     expect(t).toContain('3. Sign in and confirm the device on the page.');
+  });
+});
+
+describe('review round 2', () => {
+  it('shipping:write gateway text passes through; only the stale claim is replaced', async () => {
+    const { toReportFailure } = await import('../amazon/reports.js');
+    const shipping = 'Only service credentials hold shipping:write. Nothing was sent to Amazon.';
+    expect(toReportFailure({ ok: false, kind: 'insufficient_scope', friendly: shipping }, 403).friendly).toBe(shipping);
+    const stale = toReportFailure(
+      { ok: false, kind: 'insufficient_scope', friendly: 'Writes need ads:write. Delegated user sessions hold it.' },
+      403,
+    ).friendly;
+    expect(stale).not.toContain('Delegated');
+    expect(stale).toContain('may be off for you in your organization');
+    // A known reason still wins over any gateway text.
+    expect(
+      toReportFailure({ ok: false, kind: 'insufficient_scope', reason: 'role', friendly: shipping }, 403).friendly,
+    ).toContain('Your role in your organization');
+  });
+
+  it('a 401 from /v1/me with a fresh token suggests signing in again if it keeps happening', async () => {
+    const f = router({ me: () => json(401, {}) });
+    const id = await fetchIdentity(dataDir, f);
+    expect(id).toMatchObject({ read: false });
+    expect(formatIdentityLines('person@example.com', id)[0]).toContain('run `mixshift auth login` if this keeps happening');
+  });
+
+  it('no saved sign-in (ended) says the sign-in ended, not "could not be read"', async () => {
+    const { clearDatahub } = await import('./credentials.js');
+    await clearDatahub(dataDir);
+    const id = await fetchIdentity(dataDir, vi.fn() as unknown as typeof fetch);
+    expect(id).toMatchObject({ read: false, ended: true });
+    expect(formatIdentityLines('person@example.com', id)).toEqual([
+      'Your sign-in ended. Run `mixshift auth login` to sign in again.',
+    ]);
   });
 });

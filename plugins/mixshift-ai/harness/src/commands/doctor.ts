@@ -266,12 +266,10 @@ async function assembleFullReport(opts: {
     }
   }
 
-  // Identity — only for a live human sign-in.
-  // Read-only like `auth status` (no refresh); skipped when the service is unreachable.
-  const identity =
-    auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true && network.health.reachable
-      ? await fetchIdentity(opts.dataDirOverride, fetch, Math.min(opts.timeoutMs, IDENTITY_TIMEOUT_MS))
-      : undefined;
+  // Identity — only for a live human sign-in. Unlike `auth status`, doctor's own sign-in check above
+  // (getValidAccessToken) may already have renewed the sign-in, or ended it after a refresh 401; this read
+  // only uses whatever token is valid afterwards and never refreshes on its own.
+  const identity = await readDoctorIdentity(auth, network.health.reachable, opts.timeoutMs, opts.dataDirOverride);
 
   // Telemetry — local state.
   const ts = await getTelemetryStatus(opts.dataDirOverride);
@@ -404,11 +402,31 @@ export function renderBuildStaleBanner(build: DoctorFullReport['build']): string
   );
 }
 
+/**
+ * Doctor's identity read: human sign-ins only, skipped when the service is unreachable, with the
+ * timeout capped at min(--timeout, 3 s). `read` is injectable for tests.
+ */
+export async function readDoctorIdentity(
+  auth: AuthSummary,
+  reachable: boolean,
+  timeoutMs: number,
+  dataDirOverride?: string,
+  read: typeof fetchIdentity = fetchIdentity,
+): Promise<IdentityResult | undefined> {
+  if (!(auth.signedIn && auth.kind === 'interactive' && auth.refreshExpired !== true && reachable)) return undefined;
+  return read(dataDirOverride, fetch, Math.min(timeoutMs, IDENTITY_TIMEOUT_MS));
+}
+
 /** The "signed in as" lines under Auth. Names the token's actor first (as `auth status` does), never only the typed label. */
 export function renderDoctorSignedInLines(auth: AuthSummary, identity?: IdentityResult): string[] {
   const who = auth.tokenActor ?? auth.personLabel ?? auth.email ?? '?';
-  if (identity) return formatIdentityLines(who, identity).map((l) => `  ${l}`);
-  return [`  signed in (interactive) as ${who}`];
+  const lines = identity
+    ? formatIdentityLines(who, identity).map((l) => `  ${l}`)
+    : [`  signed in (interactive) as ${who}`];
+  // Same sources as `auth status`: the token's own email, compared with the actor shown.
+  const tenant = auth.tokenEmail ?? auth.email;
+  if (tenant && tenant !== who) lines.push(`    tenant login: ${tenant}`);
+  return lines;
 }
 
 export function renderFull(r: DoctorFullReport): string {
@@ -437,9 +455,6 @@ export function renderFull(r: DoctorFullReport): string {
     );
   } else if (r.auth.kind === 'interactive') {
     out.push(...renderDoctorSignedInLines(r.auth, r.identity));
-    if (r.auth.email && r.auth.email !== r.auth.personLabel) {
-      out.push(`    tenant login: ${r.auth.email}`);
-    }
     out.push(`    service: ${r.auth.apiBase ?? '?'}`);
     if (r.auth.accessExpired) {
       out.push(

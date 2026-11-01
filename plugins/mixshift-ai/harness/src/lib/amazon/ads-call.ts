@@ -33,8 +33,8 @@
  *
  * Failure kinds are shared with reports.ts, plus `ads_not_configured` (the
  * service has no Ads app credentials set) and `insufficient_scope` (the
- * credential lacks ads:write; user sessions hold it, machine credentials
- * need an explicit grant).
+ * credential lacks ads:write; it may be off for a person in their organization,
+ * and a service credential needs it granted when it is created).
  */
 
 import {

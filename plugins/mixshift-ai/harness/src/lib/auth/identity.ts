@@ -12,9 +12,10 @@
  * soft (`read: false`), and the caller prints that instead of an identity.
  * Nothing here ever prints or returns a token.
  *
- * READ-ONLY: this never refreshes a session and never writes credentials. An
+ * This module never refreshes a session and never writes credentials. An
  * expired access token is not renewed here; the read is deferred until some
- * other call has renewed it.
+ * other call has renewed it. (`auth status` relies on that to stay read-only;
+ * `doctor` runs its own sign-in check first, which may renew the sign-in.)
  */
 
 import { loadCredentials } from './credentials.js';
@@ -23,7 +24,7 @@ export interface IdentityOk {
   read: true;
   /** true = the person's own sign-in verified this session; false = shared login; undefined = older gateway. */
   verified?: boolean;
-  /** Org id from /v1/me (present only for a verified session). Never printed; the org name is. */
+  /** Org id from /v1/me (present only for a verified session). Kept in --json; the text line shows the org name instead. */
   org?: string;
   /** Org display name from the manifest. */
   org_name?: string;
@@ -38,6 +39,8 @@ export interface IdentityFailed {
   reason: string;
   /** True when the read was skipped (not failed) because the saved access token has expired. */
   deferred?: boolean;
+  /** True when there is no saved sign-in any more (for example doctor's own check ended it after a 401). */
+  ended?: boolean;
 }
 
 export type IdentityResult = IdentityOk | IdentityFailed;
@@ -105,7 +108,7 @@ export async function fetchIdentity(
   try {
     const { credentials } = await loadCredentials(dataDirOverride);
     const d = credentials?.datahub;
-    if (!d?.api_base || !d.access_token) return { read: false, reason: 'no saved sign-in' };
+    if (!d?.api_base || !d.access_token) return { read: false, ended: true, reason: 'no saved sign-in' };
     if (!(Date.parse(d.expires_at) - Date.now() > FRESH_MARGIN_MS)) {
       return { read: false, deferred: true, reason: 'the saved access token has expired' };
     }
@@ -115,11 +118,17 @@ export async function fetchIdentity(
       getJson(`${base}/v1/manifest?surface=plugin`, d.access_token, fetchImpl, timeoutMs).catch(() => null),
     ]);
     if (me.status < 200 || me.status >= 300) {
-      return { read: false, reason: `the service answered ${me.status}` };
+      return {
+        read: false,
+        reason:
+          me.status === 401
+            ? 'the service answered 401; run `mixshift auth login` if this keeps happening'
+            : `the service answered ${me.status}`,
+      };
     }
     return parseIdentity(me.json, manifest && manifest.status >= 200 && manifest.status < 300 ? manifest.json : null);
   } catch {
-    return { read: false, reason: 'the service could not be reached in time' };
+    return { read: false, reason: 'the service could not be reached' };
   }
 }
 
@@ -131,6 +140,7 @@ export async function fetchIdentity(
  */
 export function formatIdentityLines(who: string, id: IdentityResult): string[] {
   if (!id.read) {
+    if (id.ended) return ['Your sign-in ended. Run `mixshift auth login` to sign in again.'];
     return [
       id.deferred
         ? `Signed in as ${who} (identity: shown after your next MixShift call refreshes the sign-in)`
