@@ -5,8 +5,9 @@ description: >
   service at mcp.mixshift.io. Routes by scenario: interactive sign-in
   (device-code or PKCE browser flow) when a human is present, service
   credentials (admin-issued, OAuth client_credentials) for unattended
-  runs like scheduled Cowork tasks and CI, and a paste-token direct
-  mode for claude.ai web where no shell exists. Asks for a work email
+  runs like scheduled Cowork tasks and CI. On claude.ai web or Claude
+  Desktop chat (no shell) it points the user to the MixShift remote MCP
+  connector, which signs in by OAuth automatically. Asks for a work email
   (person_label) as a prefill hint on the interactive paths; members of
   an organization with member sign-in prove who they are on the sign-in
   page instead. `mixshift auth status` shows who you are signed in as.
@@ -14,7 +15,7 @@ description: >
   raw-MySQL path; the CLI `mixshift auth setup` command exists only
   for backward compatibility and should not be recommended.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   author: "MixShift"
 trigger_phrases:
   - sign in to mixshift
@@ -43,7 +44,7 @@ Ask yourself one question: **will a human be present every time this credential 
 |---|---|
 | User wants to query data now, says "sign in", first-run welcome | **Path A** (interactive, device-code) — the default |
 | "scheduled task", "cron", "runs at 9am", "automation", "CI", "when I'm not around", "service credential", auth failing inside a scheduled Cowork task | **Invoke the `mx-auth-service-setup` skill** — it orchestrates the whole machine-credential flow |
-| claude.ai web / no Bash tool available | **Path D** (direct mode, paste token) |
+| claude.ai web, Claude Desktop chat, or no Bash tool available | **Path D** (remote MCP connector, OAuth sign-in, no token to paste) |
 | "I don't have a MixShift account", brand-new to MixShift, no login yet | **No-account handoff** (see "No MixShift account yet" below); registration lives on the web platform, not in the plugin |
 
 When in doubt, ask: *"Is this for you to use right now, or for something that runs on its own (a schedule, automation, CI)?"* One question, then route. A user setting up a scheduled skill usually needs BOTH: their own interactive sign-in for building it, and a service credential so the schedule survives without them.
@@ -55,7 +56,7 @@ One or two sentences, then move. Don't repeat the framing at each step.
 - Interactive: *"I'll sign you in to MixShift. You'll click a link, sign in there, and come back — about 30 seconds. Your password stays in your browser; the plugin only stores a short-lived token."*
 - Service: *"Scheduled runs can't click sign-in links, so they use a service credential — a machine key your MixShift admin creates. One-time setup, then the schedule authenticates itself forever."*
 
-## Step 1 — Get the user's work email (person_label) [Paths A and D only]
+## Step 1 — Get the user's work email (person_label) [Path A only]
 
 **Why:** on a shared MixShift login, the `person_label` is the work email your admin sees against your actions in the session log. On a shared login it is typed, not proven. It is also a prefill hint for the sign-in page. (Path C skips this: service credentials carry their own `svc:` label, chosen by the admin at creation.)
 
@@ -135,13 +136,22 @@ Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations
 
 One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` block) and a service credential both exist in the same data dir, the human session wins and the service credential is the fallback.
 
-## Path D — claude.ai web (no Bash, MCP connector)
+## Path D — claude.ai web / Claude Desktop chat (no shell): remote MCP connector
 
-There is no shell and no local disk, so the plugin cannot store tokens for the user. The user mints tokens themselves and pastes the access token into the connector configuration:
+There is no shell and no local disk here, so the plugin's CLI cannot run. Chat uses MixShift's remote MCP server instead, and Claude handles sign-in through OAuth. There is no token to paste.
 
-> *"Open https://mcp.mixshift.io/login?mode=direct&client_id=mx-claude-browser in a browser tab, sign in with your MixShift login plus your work email (or with Google if your organization uses it), and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
+> *"In chat, MixShift connects as a connector rather than the plugin:*
+> *1. Customize > Connectors > Add custom connector.*
+> *2. Name it MixShift, URL `https://mcp.mixshift.io/mcp`. Claude detects the sign-in and registers itself, so leave the OAuth client fields empty.*
+> *3. Sign in with your MixShift login (or Sign in with Google if your organization uses it) and approve.*
+> *4. In a chat, turn it on from + > Connectors.*
+> *On a Claude Team or Enterprise plan, an org owner adds it first under Organization settings > Connectors, then each person connects. Claude keeps the connector signed in and refreshes it, so you won't be asked again every chat. The connector gives you the raw MixShift tools (warehouse SQL, Amazon retail and Ads, brand context, timeline), not the plugin's skill workflows. For those, use Cowork or Claude Code."*
 
-Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the service (auth moved to the HTTP transport layer). If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
+If the connector was added before September 27, it still has read-only access. Remove it and add it again to get write tools.
+
+Manual-token fallback (only if the OAuth connect fails and support has not fixed it yet, or for MCP clients without OAuth such as Cursor and Codex): `https://mcp.mixshift.io/login?mode=direct` shows a 24-hour access token for a Bearer header. It does not refresh, so do not offer it as the normal chat path.
+
+Do NOT attempt to call auth bootstrap MCP tools. They no longer exist on the service. If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
 
 ## No MixShift account yet (registration handoff)
 
@@ -164,7 +174,7 @@ Lead with `doctor`, which confirms the cause and prints the exact remediation:
    - **Cowork, personal Pro/Max:** open Settings > Capabilities (claude.ai/settings/capabilities) > "Code execution and file creation", enable "Allow network egress", add both domains under "Additional allowed domains", then start a **new** conversation. If they do not take under "Package managers only" mode, set the mode to "All domains".
    - **Cowork, Team/Enterprise:** an org admin adds the same domains under Organization settings > Capabilities > Code execution, then a **new** conversation.
    - **Standalone Claude Code:** add them to `~/.claude/settings.json` under `sandbox.network.allowedDomains`, then start a new session.
-3. **Or use a surface that isn't sandbox-blocked:** sign in from **claude.ai web** (Path D, paste-token), or run MixShift from a **normal Claude Code terminal** session where egress isn't restricted.
+3. **Or use a surface that isn't sandbox-blocked:** use the **MixShift connector in claude.ai or Claude Desktop chat** (Path D, OAuth sign-in, raw tools only), or run MixShift from a **normal Claude Code terminal** session where egress isn't restricted.
 
 Then re-run the sign-in. Emit `skill.completed --outcome failed` for the blocked attempt so the funnel reflects it.
 
@@ -176,7 +186,7 @@ Confirm warehouse access works through the token:
 mixshift data query --sql "SELECT NOW() AS db_time, USER() AS db_user"
 ```
 
-(On claude.ai use the `legacy_query` MCP tool with the same SQL once the connector has the token.)
+(On claude.ai / Claude Desktop chat, use the connector's `legacy_query` tool with the same SQL once the connector is signed in.)
 
 If it returns one row: *"You're signed in — warehouse is reachable."* For Path C add: *"Your scheduled runs will authenticate as \<svc: label\>."*
 
@@ -191,7 +201,8 @@ If it fails:
 
 End with a concise success message. Use what you actually learned, don't speculate.
 
-- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
+- Path A: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
+- Path D: *"MixShift is connected in chat. Claude keeps the connector signed in. For skill workflows like reports, use Cowork or Claude Code."*
 - Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at /admin any time."*
 
 Don't restate everything from the CLI output (it's already on screen). Don't list features they could try unless they're already in context.
