@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.5.0"
+version: "0.6.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -28,7 +28,7 @@ description: >
   (`mixshift auth login`).
 
 # Tier 3 since DSP writes (dsp.update_campaigns, dsp.update_ad_groups, and the
-# 0.4.0 builds dsp.create_*, dsp.delete_targets) joined the skill: they change a live advertiser, so they are write-gated exactly like
+# 0.4.0 builds dsp.create_*, dsp.delete_targets; 0.6.0 tracked products) joined the skill: they change a live advertiser, so they are write-gated exactly like
 # mx-amazon-ads (dry run default, user-confirmed --commit, ads:write). Reports
 # and reads still mutate nothing advertiser-facing. Modeled as per_account
 # because every call targets a specific merchant login
@@ -37,7 +37,7 @@ run_kind: per_account
 cadence: on_demand
 risk_tier: 3
 allowed_tools: [file_read, file_write, ads_write]
-side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update_ad_groups, dsp.create_campaigns, dsp.create_ad_groups, dsp.create_targets, dsp.create_ad_associations, dsp.delete_targets) via `mixshift ads call <operation> --commit`; reports still save JSON to ~/.mixshift/reports/
+side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update_ad_groups, dsp.create_campaigns, dsp.create_ad_groups, dsp.create_targets, dsp.create_ad_associations, dsp.delete_targets, dsp.create_conversion_tracking_products, dsp.delete_conversion_tracking_products) via `mixshift ads call <operation> --commit`; reports still save JSON to ~/.mixshift/reports/
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 

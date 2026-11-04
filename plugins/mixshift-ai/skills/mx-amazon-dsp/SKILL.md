@@ -1,22 +1,22 @@
 ---
 name: mx-amazon-dsp
 description: >
-  Read and build an Amazon DSP (Demand-Side Platform) advertiser straight
-  from Amazon. REPORTING: how DSP did last year, history older than 90 days,
+  Read and build an Amazon DSP advertiser straight from Amazon.
+  REPORTING: how DSP did last year, history older than 90 days,
   year-over-year or monthly history. ACCOUNT READS answer what is set up now:
   campaigns, line items, creatives, which creatives sit on which line items
   and whether they are live, approval or rejection reasons, eligible
   creatives, and which audiences a line item targets. Use it to audit a DSP
   account, explain why a creative is not delivering, or find an id. Also
-  finds which DSP advertiser a login can reach, where most DSP work gets
-  stuck. BUILDS: create campaigns (orders) and line items in bulk from a
-  launch plan, always paused, add audiences and other targeting, and attach
-  existing creatives. EDITS: campaign budget, flights and state; line item
-  budget, dates, bids, pacing, and turning them on. Builds and edits are
-  previewed and applied only on confirmation. Creating creatives is
-  console-only. No brand setup needed, only sign-in.
+  finds which DSP advertiser a login can reach. BUILDS ARE AVAILABLE: create orders (campaigns) and line items (ad
+  groups) in bulk from a launch plan, always paused, plus audiences, other
+  targeting, tracked products and existing creatives, with a readiness check
+  before turning an order on. EDITS: campaign budget, flights, state; line
+  item budget, dates, bids, pacing. Previewed, applied only on confirmation.
+  Console only: creating a creative, "Automatically create responsive ads".
+  No brand setup, only sign-in.
 metadata:
-  version: "0.5.0"
+  version: "0.6.0"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -297,6 +297,13 @@ mixshift ads call accounts.query_advertiser_accounts --legacy-seller-id <id> \
 
 If the user already knows the DSP advertiser id, skip discovery and use it.
 
+**Several advertisers with one name.** When `accounts.query_advertiser_accounts`
+returns more than one advertiser with the same name, do not pick. For each one,
+check whether it holds campaigns (`dsp.query_campaigns`) and, when AMC
+audiences are involved, which one the audiences were sent to (the `advertiserId`
+on `amc.list_audiences` rows, `mx-amazon-amc`). Show the user what each holds
+(name, id, campaign count, audiences) and ask which to use.
+
 ### Matching an advertiser to a brand
 
 **There is no reliable automatic mapping, and you should not invent one.** A
@@ -453,14 +460,23 @@ does not exist.
 
 ### What is NOT available
 
-Creating a DSP creative, and pausing or removing a creative's placement on a
-line item, are **not** in the catalog. There is no workaround through this
-surface: say plainly that MixShift can show the account and tell them exactly
-what to change, and that the change itself is made in the Amazon DSP console for
-now. Amazon also has **no delete for DSP campaigns or line items**: a wrong one
-is left paused (and can be renamed). Edits and builds are available: see
-"Changing DSP campaigns and ad groups" and "Building DSP campaigns and line
-items", which also covers attaching an existing creative to a line item.
+Building orders (campaigns), line items (ad groups), targets, tracked products
+and creative links **is** available: see "Building DSP campaigns and line
+items". Only these are **not** in the catalog:
+
+- Creating a DSP creative.
+- Pausing or removing a creative's placement on a line item.
+- The order setting "Automatically create responsive ads" (AutomatedREC). Amazon's
+  API has no switch for it; it exists only on the console's Create order screen
+  and cannot be turned on later. See "Order of operations" for the split that works.
+
+There is no workaround through this surface for those: say plainly that MixShift
+can show the account and tell them exactly what to change, and that the change
+itself is made in the Amazon DSP console for now. Amazon also has **no delete for
+DSP campaigns or line items**: a wrong one is left paused (and can be renamed).
+Edits and builds are available: see "Changing DSP campaigns and ad groups" and
+"Building DSP campaigns and line items", which also covers attaching an existing
+creative to a line item.
 
 ## Changing DSP campaigns and ad groups
 
@@ -533,16 +549,17 @@ is propose-only, or a teammate should approve: add `--propose` (see
 only afterward. Money changes over 25% are flagged and need the approver's
 `--acknowledge-guard`.
 
-**Still console-only.** Creating a creative, and pausing or removing a
-creative's placement on a line item, are **not** in the catalog. Say so
+**Still console-only.** Creating a creative, turning on "Automatically create
+responsive ads", and pausing or removing a creative's placement on a line item
+are **not** in the catalog. Say so
 plainly: MixShift can show the account and tell them exactly what to change,
 and that change is made in the Amazon DSP console. Do not improvise it through
 another operation.
 
 **Turning a new build on** is this section's job: once a build from "Building
-DSP campaigns and line items" is checked, `dsp.update_campaigns` and
-`dsp.update_ad_groups` with `state: "ACTIVE"` start delivery, through the same
-preview and confirmation.
+DSP campaigns and line items" has passed "Before activating an order",
+`dsp.update_campaigns` and `dsp.update_ad_groups` with `state: "ACTIVE"` start
+delivery, through the same preview and confirmation.
 
 ## Which brand a DSP advertiser belongs to
 
@@ -602,7 +619,12 @@ The user story: *"I have a DSP launch plan (orders, line items, audiences,
 creatives) and I want it built in the account in one pass, not clicked in one
 line item at a time, and I want to check it before anything spends."*
 
-Five write operations build new structure, on Amazon's Campaign Management API.
+This section is the whole routine, start to finish: **"Order of operations"**
+(the decisions, in the order they bind), then **"The build, step by step"**, then
+**"Before activating an order"**. Follow it as one path; most failed builds
+skipped a decision that only an earlier step can make.
+
+Five write operations build new structure on Amazon's Campaign Management API; the lookups and tracked-product operations below use the DSP v1 and Audiences APIs.
 They follow the same write contract as edits (preview, the user confirms in a
 separate turn, then `--commit`), and **nothing they create can spend**: Amazon
 creates DSP campaigns and line items **paused only**, MixShift refuses any
@@ -634,12 +656,46 @@ line items and creatives they create show up in `dsp.list_campaigns`,
 error, report Amazon's answer as it came, do not retry with another id, and
 offer to send it to MixShift (`mx-feedback`).
 
+Lookups and tracked products, used while building:
+
+| Operation | What it does |
+|---|---|
+| `dsp.list_advertised_product_categories` | Lists advertised product categories (`id`, `name`, `parentId`). A line item takes subcategory ids (rows with a `parentId`); a parent category is accepted only on a VIDEO line item (one parent, or subcategories of one parent). Ids from the console's picker are refused. |
+| `dsp.list_conversion_tracking_products` | Reads an order's tracked products (ASIN, featured flag, domain). |
+| `dsp.create_conversion_tracking_products` | Adds tracked products to an order: `productId`, `productAssociation` (`FEATURED`, `FEATURED_WITH_VARIATION` or `NOT_FEATURED`), `domain`. Previewed, confirmed and audited like the other writes. |
+| `dsp.delete_conversion_tracking_products` | Removes tracked products from an order. |
+| `dsp.search_audiences` | Searches Amazon's DSP audiences (in-market, lifestyle and so on) by name or category. Send `adType: 'DSP'` in the body and the advertiser id both as the account and as the `advertiserId` query value. The ids it returns go into `dsp.create_targets`. |
+| `dsp.list_audience_categories` | Browses the audience category tree. |
+
+### Order of operations
+
+Work through these in order; each later step depends on an earlier one.
+
+| # | Decide or do | Rule |
+|---|---|---|
+| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. |
+| 2 | **Media type** | Send `optimizations.primaryInventoryTypes` on the order (`AUDIO`, `DISPLAY`, `VIDEO_OLV`, `VIDEO_STV`) and match it to the line items (Display line items mean `["DISPLAY"]`). Without it the order has no media type and creatives do not populate. MixShift refuses a campaign create without it. |
+| 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
+| 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |
+| 5 | **Flights** | A line item's start must fall inside the order's flight. |
+| 6 | **Product category** | Look up subcategory ids with `dsp.list_advertised_product_categories`; put them in `advertisedProductCategoryIds` on every line item (a create without it is refused). A parent category only fits a VIDEO line item. |
+| 7 | **Frequency caps** | On create: `{eventMaxCount, frequencyTargetingSetting: USER or HOUSEHOLD, timeCount, timeUnit: DAYS, HOURS or MINUTES}`. The read shape differs: never copy a read into a create. The old frequency keys are refused on create. |
+| 8 | **Audiences** | Amazon's own: `dsp.search_audiences` (browse with `dsp.list_audience_categories`), then `dsp.create_targets`. From AMC: the 18-digit `dspCanonicalId` from `amc.list_audiences`, **never** the short `dspAudienceId` (refused). |
+| 9 | **Supply and default targets** | Amazon adds about 100 default targets to a new display line item, including third-party verification (`THIRD_PARTY`), inventory sources (exchanges) and day parts. Some AMC audiences forbid third-party trackers: remove the `THIRD_PARTY` targets with `dsp.delete_targets` (100 per call). An "Amazon O&O + Publisher Direct only" plan means deleting the third-party exchange `INVENTORY_SOURCE` targets the same way. |
+| 10 | **Preview, then commit** | A clean preview checks the request shape and MixShift's rules, **not every Amazon-side validation**; a commit can still fail per item (HTTP 207 lists success and error by index). Say so before the user confirms. |
+
+These rules are for **creating**. The edit operations (`dsp.update_campaigns`, `dsp.update_ad_groups`) run on the DSP v1 API, which still takes its own KPI names and the older frequency shape (`frequencyType`, `maxImpressions`, `timeUnitCount`, `levelType`): read the entity with `dsp.list_campaigns` / `dsp.list_ad_groups` and edit in that shape, not the create shape.
+
 ### The build, step by step
 
 1. **Confirm the advertiser** (see "Discovery") and echo the id back. Then check
    which brand it belongs to (see "Which brand a DSP advertiser belongs to") before
    anything is previewed, so even the first change lands on the right brand.
-2. **Write the launch plan before any call**, as a table the user can check:
+2. **Settle "Order of operations" step 1 (AutomatedREC) before anything is
+   created.** If the user wants Amazon's automatic responsive ad, the orders are
+   created in the console first and this build starts at the line items; an order
+   created here can never get one.
+3. **Write the launch plan before any call**, as a table the user can check:
    every campaign (name, flight dates, budget, goal KPI) and under it every line
    item (name, inventory type, dates, budget, base bid, pacing), its audiences
    (by DSP audience id and name) and other targeting, and its creatives (by
@@ -649,14 +705,15 @@ offer to send it to MixShift (`mx-feedback`).
      similar shoppers. On retargeting and loyalty lines the expansion can cost
      many times more per purchase, so ask which they want per line.
    - **Budget allocation** (`MANUAL` vs `AUTO`) and the goal KPI.
-   - Where the audience ids come from: an AMC audience's DSP id is on the
-     audience itself (`mx-amazon-amc`, or the AMC app); Amazon's own audiences
-     are picked in the DSP console for now, so ask the user for those ids.
+   - Where the audience ids come from: an AMC audience's 18-digit
+     `dspCanonicalId` is on the audience itself (`amc.list_audiences`,
+     `mx-amazon-amc`); Amazon's own audiences are found with
+     `dsp.search_audiences`. Show the user the matches and let them choose.
    Get the user's yes on the plan.
-3. **Check for duplicates.** `dsp.query_campaigns` with a `nameFilter`
+4. **Check for duplicates.** `dsp.query_campaigns` with a `nameFilter`
    (`EXACT_MATCH`) on the planned names. A build that already exists, or a
    half-finished earlier run, is continued, never created twice.
-4. **Build in dependency order, one step at a time**, each step previewed and
+5. **Build in dependency order, one step at a time**, each step previewed and
    confirmed as one change set (all of its calls within the caps):
    1. campaigns, then read each new `campaignId` from `success[].campaign`;
    2. line items with those ids, then read each `adGroupId`;
@@ -665,7 +722,8 @@ offer to send it to MixShift (`mx-feedback`).
       video ad format; a new display line item carried more than 100, mostly
       inventory sources and day parts, so page with `nextToken`): read them with
       `dsp.query_targets` and summarize them by type. To change one, remove it
-      with `dsp.delete_targets` and add the replacement;
+      with `dsp.delete_targets` and add the replacement (see "Order of
+      operations" for the third-party and exchange targets);
    4. creatives: check each pairing with `dsp.list_eligible_creatives` first
       (a creative whose type does not fit the line item's inventory is refused),
       then attach with `dsp.create_ad_associations` (`adId` is the creative's
@@ -674,25 +732,43 @@ offer to send it to MixShift (`mx-feedback`).
       line item on.
    Later steps differ from the confirmed plan only by the ids Amazon assigned.
    If the user wants to change anything else mid-build, preview it again.
-5. **Read the 207 per item.** Each response can carry three lists, each entry
+6. **Read the 207 per item.** Each response can carry three lists, each entry
    with its `index`: `success` (created), `partialSuccess` (**created**, with
    some fields refused: the entity exists, so fix it with an update, never
    create it again) and `error` (not created, with Amazon's message). An empty
    list can come back as `[]` or not at all, depending on the operation. Report
    the counts and each refusal in plain words.
-6. **An unknown outcome is not a failure.** A commit that ends with
+7. **An unknown outcome is not a failure.** A commit that ends with
    `request_outcome: "unknown"` (a 5xx or a lost answer) may have created the
    entities. Query by name or id before sending anything again; a blind retry
    makes duplicates, and Amazon cannot delete DSP campaigns or line items.
-7. **Hand back a build sheet**: every campaign and line item with its new id,
+8. **Hand back a build sheet**: every campaign and line item with its new id,
    all **paused**, the targets and creatives attached, and what is left before
    it can spend: creatives still to build or approve in the console, the
-   advertiser's payment profile in the console, and turning it on (offer to do
-   that with `dsp.update_*` once they have checked it).
+   advertiser's payment profile in the console, and turning it on (run "Before activating an order" first, then offer to
+   do that with `dsp.update_*`).
 
 Builds cannot be proposed for later approval yet; they need a signed-in person
 to confirm. For many rows at once, Amazon's own bulk upload (DSP console, Bulk
 operations) is the other route, and the user can mix the two.
+
+### Before activating an order
+
+Run this read-only check and report it **before** any `dsp.update_campaigns`
+sets `state: "ACTIVE"`. Present the results as a checklist (pass or fail per
+line, with the id it was checked on) and **stop on any failure**: say what is
+missing and how to fix it; do not turn the order on.
+
+- [ ] **Media type set.** `dsp.query_campaigns` shows `optimizations.primaryInventoryTypes` matching the line items.
+- [ ] **Tracked products present.** `dsp.list_conversion_tracking_products` returns the order's ASINs. Required for an endemic order or a `ROAS` / `ROAS_PROMOTED` goal.
+- [ ] **KPI prerequisites met.** `ROAS` and `ROAS_PROMOTED` need the tracked products above. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion on the order (Events manager in the console); MixShift cannot read that yet, so **ask the user to confirm it** and mark the line "confirmed by user", not "checked". Activation error `CONVERSION_TRACKING_REQUIRED` means: endemic order, add tracked products; non-endemic order or off-Amazon KPI, add an off-Amazon conversion.
+- [ ] **Every line item has targeting.** `dsp.query_targets` per line item returns audiences or other intended targets, not only Amazon's defaults.
+- [ ] **AutomatedREC present, if the user chose it.** Ask the user to confirm in the console that the order shows its automatically created responsive ad (MixShift cannot yet confirm it from the API; `dsp.list_eligible_creatives` may list it, so mention it if it does). If it is missing, it cannot be added to an existing order: the order is rebuilt in the console.
+- [ ] **Every line item has an approved creative.** `dsp.list_eligible_creatives` lists the creative as eligible and `dsp.list_association_moderations` shows it approved, not `PENDING` or rejected.
+- [ ] **No forbidden third-party trackers.** Where a line item targets an AMC audience that forbids them, no `THIRD_PARTY` targets remain (`dsp.query_targets`; remove with `dsp.delete_targets`).
+
+A passing checklist is not a guarantee: Amazon can still refuse the activation,
+and the result is reported per item like any other write.
 
 ## Which reporting surface: the 90-day rule
 
