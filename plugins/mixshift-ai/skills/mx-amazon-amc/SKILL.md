@@ -16,7 +16,7 @@ description: >
   dry-run first and `--commit` only after the user confirms. No brand setup
   needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -664,6 +664,14 @@ Body file `lapsed.json` (window 365 days back to today, relative, weekly):
   wire may have created the audience; an identical re-POST makes a SECOND one
   with a new id. List first.
 
+### Using an AMC audience on a DSP line item
+
+When you build DSP targeting (`mx-amazon-dsp`, `dsp.create_targets`), use the
+audience's 18-digit **`dspCanonicalId`** from `amc.list_audiences`, never the
+short `dspAudienceId`: MixShift refuses the short id before Amazon. Some AMC
+audiences also forbid third-party trackers on the line item; `mx-amazon-dsp`
+covers removing the `THIRD_PARTY` targets Amazon adds by default.
+
 ### Listing and the source of record
 
 `amc.list_audiences` returns the array under **`executionMetadata`** (not
@@ -671,9 +679,13 @@ Body file `lapsed.json` (window 365 days back to today, relative, weekly):
 `statusReason`, `lastRefreshedTime` and the DSP ids once activated. The
 instance is the system of record: an audience created here exists whether or
 not another MixShift surface has recorded it, and an audience created elsewhere
-shows up here. When the user's MixShift AMC workspace page does not list an
-audience you created, that is the page lagging the instance, not a failed
-create; point them at the destination account's audience list.
+shows up here. An audience made with `amc.create_audience` also appears in the
+MixShift AMC app (AMC Workspaces, amc.mixshift.ai) on that advertiser's
+Audiences page the next time it is opened: the app reads the AMC instance and
+pulls in audiences it did not create. Never tell a user the app cannot see
+audiences made in Claude; give them the link. If a just-created audience is not
+there yet, reopen the page, and check the destination account's audience list
+for sync status.
 
 ## Reactive error handling (branch on failure_kind, never on HTTP status)
 
