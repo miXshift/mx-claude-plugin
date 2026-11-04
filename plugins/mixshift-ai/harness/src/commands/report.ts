@@ -579,6 +579,7 @@ export function registerReportCommands(program: Command): void {
                     attestation: fdoc.source.attestation,
                     out: opts.out ?? null,
                     findings: ffindings,
+                    unplaced_claims: fdoc.source.unplaced_claims,
                   },
                   null,
                   2,
@@ -592,6 +593,9 @@ export function registerReportCommands(program: Command): void {
                   `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ''}`,
               );
               for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+              for (const id of fdoc.source.unplaced_claims) {
+                console.log(`  note: claim ${id} is not one this version knows; kept for the internal companion only`);
+              }
               if (opts.check) console.log(ffindings.length === 0 ? 'CHECK: PASS' : `CHECK: FAIL (${ffindings.length})`);
             }
           } catch (err) {
