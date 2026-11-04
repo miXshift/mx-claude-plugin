@@ -1,5 +1,5 @@
 /**
- * `mixshift context <status|pull|push|sync|migrate|dsp-advertiser>` — org-shared brand
+ * `mixshift context <status|pull|push|sync|migrate|dsp-advertiser|amc-instance>` — org-shared brand
  * context sync. The server (/api/context on mx-legacy-auth) is the source
  * of truth; the local files under ~/.mixshift/clients/<brand>/ are the
  * cache the skills read. All logic lives in lib/context-sync/; this file
@@ -23,6 +23,7 @@ import {
   AUTOSYNC_THROTTLE_MS,
 } from '../lib/context-sync/autosync.js';
 import { registerDspAdvertiserCommands } from './context-dsp-advertiser.js';
+import { registerAmcInstanceCommands } from './context-amc-instance.js';
 import { brandDirExists, listLocalBrands } from '../lib/context-sync/local.js';
 import type { DocActionReport, DocStatusReport, WireManifestBrand } from '../lib/context-sync/types.js';
 import { syncStakes, type StakeSyncResult } from '../lib/timeline/stake-sync.js';
@@ -215,6 +216,7 @@ export function registerContextCommands(program: Command): void {
   registerAutosyncSubcommand(context);
 
   registerDspAdvertiserCommands(context, { resolveBrandsAndManifest });
+  registerAmcInstanceCommands(context, { resolveBrandsAndManifest });
 
   context
     .command('migrate')

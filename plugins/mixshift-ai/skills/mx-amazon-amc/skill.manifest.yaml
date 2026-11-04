@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.4.0"
+version: "0.5.0"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
@@ -56,6 +56,9 @@ harness_commands:
   - mixshift ads call amc.get_audience --path instanceId= --path entityId= --path audienceExecutionId=
   - mixshift ads call amc.update_audience --path instanceId= --path entityId= --path audienceExecutionId= --body-file <file> [--commit]
   - mixshift ads call amc.delete_audience --path instanceId= --path entityId= --path audienceExecutionId= [--commit]
+  - mixshift context amc-instance show <instance_id>
+  - mixshift context amc-instance assign <instance_id> --brand <slug> [--account <seller_id>] [--commit] [--expect <plan_hash>]
+  - mixshift context amc-instance unassign <instance_id> --brand <slug> [--commit] [--expect <plan_hash>]
 
 required_context_fields: []
 optional_context_fields: []

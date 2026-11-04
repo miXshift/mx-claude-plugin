@@ -12,6 +12,9 @@
  *   - Never guesses the brand: the committed profile's legacySellerId must
  *     map to exactly ONE brand in the local registry (index.yaml). Zero or
  *     multiple matches → skip emission silently.
+ *   - AMC (`amc.*`) operations are never emitted from here either (D-193): the
+ *     instance, not the selected seller, says which brand they belong to, and the
+ *     server records them against it.
  *   - DSP (`dsp.*`) operations are never emitted from here. They are not
  *     seller- or profile-scoped (the advertiser rides only in the
  *     Amazon-Ads-AccountId header), so the selected seller says nothing about
@@ -82,6 +85,11 @@ export type AdsEmitResult =
       detail?: string;
     };
 
+/** AMC operations are instance-scoped, not seller-scoped (D-193). */
+export function isAmcOperation(operation: string): boolean {
+  return operation.startsWith('amc.');
+}
+
 /** DSP operations are advertiser-scoped, not seller-scoped. */
 export function isDspOperation(operation: string): boolean {
   return operation.startsWith('dsp.');
@@ -98,8 +106,8 @@ export async function emitAdsCommitEvent(
 ): Promise<AdsEmitResult> {
   const env = options.env ?? process.env;
   try {
-    if (isDspOperation(input.operation)) {
-      debugLog(env, `ads-emit: ${input.operation} is advertiser-scoped; the server records it`);
+    if (isDspOperation(input.operation) || isAmcOperation(input.operation)) {
+      debugLog(env, `ads-emit: ${input.operation} is advertiser- or instance-scoped; the server records it`);
       return { posted: false, reason: 'server_recorded' };
     }
     const brandSlug = await resolveBrandSlugForSeller(

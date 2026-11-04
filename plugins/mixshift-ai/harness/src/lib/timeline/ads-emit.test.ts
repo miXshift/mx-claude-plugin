@@ -172,8 +172,11 @@ describe('emitAdsCommitEvent', () => {
     'dsp.create_targets',
     'dsp.create_ad_associations',
     'dsp.update_campaigns',
+    'amc.create_audience',
+    'amc.update_audience',
+    'amc.delete_audience',
   ])(
-    'never emits %s: DSP is advertiser-scoped, so the selected seller must not pick the brand',
+    'never emits %s: DSP and AMC are advertiser- or instance-scoped, so the selected seller must not pick the brand',
     async (operation) => {
       // The selected seller maps to exactly one brand, which is precisely the
       // case that used to file a DSP change on that brand's timeline.

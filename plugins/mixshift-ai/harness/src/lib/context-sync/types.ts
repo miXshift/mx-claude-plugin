@@ -213,6 +213,21 @@ export type DspAdvertiserLookupResult =
       http_status?: number;
     };
 
+/**
+ * GET /api/context/amc-instances?id=<instance id>: which brands' context
+ * declares an AMC instance id. `brands` is empty when none does. `unsupported`
+ * is a 404/405 from a service that predates the route.
+ */
+export type AmcInstanceLookupResult =
+  | { ok: true; instance_id: string; brands: string[] }
+  | {
+      ok: false;
+      kind: ContextSyncFailureKind | 'unsupported';
+      message: string;
+      friendly: string;
+      http_status?: number;
+    };
+
 export type FetchDocResult = { ok: true; doc: WireDoc } | ContextSyncFailure;
 
 export type PutDocResult =
