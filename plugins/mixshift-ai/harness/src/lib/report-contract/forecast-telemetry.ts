@@ -119,6 +119,8 @@ export function forecastExtractedPayload(
     claims: doc.claims.length,
     sections: doc.sections.length,
     client_safe: clientSafe,
+    // A count only: tells us the service sent a claim id this version cannot place.
+    ...(doc.source.unplaced_claims.length > 0 ? { unplaced_claims: doc.source.unplaced_claims.length } : {}),
     ...(ctx.checkRan ? { check_findings: findings.length } : {}),
     expect_month: ctx.expectMonth !== undefined,
   };

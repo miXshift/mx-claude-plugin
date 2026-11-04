@@ -9,6 +9,7 @@ import {
   roleOfClaim,
   roleOfId,
 } from '../src/lib/report-contract/forecast';
+import { forecastExtractedPayload } from '../src/lib/report-contract/forecast-telemetry';
 
 /**
  * The forecast extractor over REAL FCT-TRACK-01 answers: testdata/fct-track-01.*.json
@@ -133,6 +134,145 @@ describe('forecast extractor', () => {
     expect(doc.source.unrecognised).toEqual(['forecast.something_new.sales.month']);
     expect(doc.figures).toEqual([]);
     expect(checkForecast(doc).map((f) => f.rule)).toContain('FORECAST-ROLE');
+  });
+
+  it('a claim id this version cannot place is kept for the internal companion and never withholds the forecast', () => {
+    expect(roleOfClaim('claim.forecast.something_new')).toBeNull();
+    const answer = load('revenue.current');
+    answer.report_data.claims.push({
+      id: 'claim.forecast.something_new',
+      kind: 'tracking',
+      text: 'A disclosure line this version has not seen before.',
+      figure_refs: ['forecast.actual.sales.ytd'],
+    });
+    const doc = extractForecast(answer);
+    expect(doc.forecast.state).toBe('provided_current');
+    expect(doc.source.reason).not.toBe('unrecognised_figures');
+    expect(doc.source.unrecognised).toEqual([]);
+    expect(doc.source.unplaced_claims).toEqual(['claim.forecast.something_new']);
+    expect(doc.claims.find((c) => c.id === 'claim.forecast.something_new')?.forecast_role).toBe('basis');
+    expect(doc.figures.length).toBe(extractForecast(load('revenue.current')).figures.length);
+    expect(checkForecast(doc)).toEqual([]);
+    // Telemetry carries the count only, never the id or the text.
+    const payload = forecastExtractedPayload(doc, [], { checkRan: true });
+    expect(payload.unplaced_claims).toBe(1);
+    expect(JSON.stringify(payload)).not.toContain('something_new');
+    expect(forecastExtractedPayload(extractForecast(load('revenue.current')), [], { checkRan: true })).not.toHaveProperty('unplaced_claims');
+  });
+
+  it('a withheld forecast names no kept claim, and a claim with no id still withholds', () => {
+    // An unknown figure withholds; the unknown claim beside it was not kept, so it is not named as kept.
+    const both = load('revenue.current');
+    both.report_data.figures.push({ ...both.report_data.figures[0], id: 'forecast.something_new.sales.month' });
+    both.report_data.claims.push({ id: 'claim.forecast.something_new', kind: 'tracking', text: 'A new line.', figure_refs: [] });
+    const withheld = extractForecast(both);
+    expect(withheld.forecast.state).toBe('not_provided');
+    expect(withheld.source.unrecognised).toEqual(['forecast.something_new.sales.month']);
+    expect(withheld.source.unplaced_claims).toEqual([]);
+    expect(withheld.claims).toEqual([]);
+    expect(forecastExtractedPayload(withheld, [], { checkRan: true })).not.toHaveProperty('unplaced_claims');
+    // A claim with no id is malformed, not new.
+    const noId = load('revenue.current');
+    noId.report_data.claims.push({ kind: 'tracking', text: 'A line with no id.', figure_refs: [] });
+    const doc = extractForecast(noId);
+    expect(doc.forecast.state).toBe('not_provided');
+    expect(doc.source.reason).toBe('unrecognised_figures');
+    expect(doc.source.unrecognised).toEqual(['']);
+    expect(checkForecast(doc).map((f) => f.rule)).toContain('FORECAST-ROLE');
+  });
+
+  it('two_actuals (months whose figure corrected in the app differs from the warehouse) is internal basis, revenue and units', () => {
+    for (const [name, claimId, actualId, word] of [
+      ['revenue.current', 'claim.forecast.two_actuals', 'forecast.actual.sales.ytd', 'sales figure'],
+      ['units.current', 'claim.forecast.units.two_actuals', 'forecast.actual.units.ytd', 'units figure'],
+    ] as const) {
+      expect(roleOfClaim(claimId)).toBe('basis');
+      const answer = load(name);
+      answer.report_data.claims.push({
+        id: claimId,
+        kind: 'tracking',
+        text: `7 of the 10 months in this total carry a ${word} that differs from the warehouse figure read today; the figure used is the one the model was given, and both are in the population.`,
+        figure_refs: [actualId],
+      });
+      const doc = extractForecast(answer);
+      expect(doc.forecast.state, name).toBe('provided_current');
+      expect(doc.source.unplaced_claims, name).toEqual([]);
+      expect(doc.claims.find((c) => c.id === claimId)?.forecast_role, name).toBe('basis');
+      expect(checkForecast(doc), name).toEqual([]);
+    }
+  });
+
+  it('every id the forecasting service emits today is placed, with the same role in revenue and units', () => {
+    // The service's figure, derived and claim ids as of 2026-11-04 (revenue spelling). A units id is
+    // the same id with `units` where revenue says `sales`, or under `forecast.units.` when it names
+    // no metric; a units claim is under `claim.forecast.units.`.
+    const unitsId = (id: string) => (id.includes('.sales.') ? id.replace('.sales.', '.units.') : id.replace(/^forecast\./, 'forecast.units.'));
+    const figures: Array<[string, string]> = [
+      ['forecast.actual.sales.ytd', 'actual'],
+      ['forecast.expected.rolling.sales.ytd', 'forecast'],
+      ['forecast.expected.at_actual_spend.sales.ytd', 'forecast'],
+      ['forecast.expected.year_start.sales.ytd', 'year_start'],
+      ['forecast.fit.sales.ytd', 'projection'],
+      ['forecast.variance.actual_vs_projection.ytd', 'projection'],
+      ['forecast.variance.actual_vs_projection_pct.ytd', 'projection'],
+      ['forecast.tolerance.h1_3', 'forecast'],
+      ['forecast.actual.sales.month', 'actual'],
+      ['forecast.expected.rolling.sales.month', 'forecast'],
+      ['forecast.expected.at_actual_spend.sales.month', 'forecast'],
+      ['forecast.range.lower.sales.month', 'forecast'],
+      ['forecast.range.upper.sales.month', 'forecast'],
+      ['forecast.assumed_yoy.sales.month', 'forecast'],
+      ['forecast.last_year.sales.month', 'actual'],
+      ['forecast.variance.actual_vs_rolling.month', 'forecast'],
+      ['forecast.variance.actual_vs_rolling_pct.month', 'forecast'],
+      ['forecast.projection.sales.month', 'projection'],
+      ['forecast.variance.actual_vs_projection.month', 'projection'],
+      ['forecast.variance.actual_vs_projection_pct.month', 'projection'],
+      ['forecast.model.sales.per_ad_dollar', 'basis'],
+      ['forecast.model.sales.per_ad_dollar_margin', 'basis'],
+      ['forecast.model.sales.per_ad_dollar_prior', 'basis'],
+      ['forecast.model.sales.growth_per_month_prior', 'basis'],
+      ['forecast.model.sales.growth_per_month', 'basis'],
+      ['forecast.model.training_months', 'basis'],
+      ['forecast.model.seasonal_amplitude', 'basis'],
+      ['forecast.model.seasonal_peak_month', 'basis'],
+      ['forecast.overlay.sales.corrected', 'basis'],
+      ['forecast.overlay.ad_spend_corrected', 'basis'],
+      ['forecast.overlay.ignored', 'basis'],
+      ['forecast.overlay.withheld', 'basis'],
+      ['forecast.overlay.source_moved', 'basis'],
+      ['forecast.projected.sales.2026-11', 'outlook'],
+      ['forecast.range.lower.sales.2026-11', 'outlook'],
+      ['forecast.range.upper.sales.2026-11', 'outlook'],
+      ['forecast.spend.2026-11', 'outlook'],
+      ['forecast.assumed_yoy.sales.2026-11', 'outlook'],
+      // Derived.
+      ['forecast.variance.actual_vs_forecast_at_actual_spend.ytd', 'forecast'],
+      ['forecast.variance.actual_vs_year_start.ytd', 'year_start'],
+      ['forecast.variance.actual_vs_forecast_at_actual_spend.month', 'forecast'],
+      ['forecast.projection_vs_last_year_pct.sales.month', 'projection'],
+      ['forecast.model.sales.per_ad_dollar_change', 'basis'],
+      ['forecast.model.sales.growth_per_month_change', 'basis'],
+      ['forecast.projected.sales.rest_of_window', 'outlook'],
+      ['forecast.projected.sales.window_total', 'outlook'],
+    ];
+    for (const [id, role] of figures) {
+      expect(roleOfId(id), id).toBe(role);
+      expect(roleOfId(unitsId(id)), unitsId(id)).toBe(role);
+    }
+    const claims: Array<[string, string]> = [
+      ['projection_line', 'projection'],
+      ['operator_line', 'forecast'],
+      ['month_projection_line', 'projection'],
+      ['month_line', 'forecast'],
+      ['two_actuals', 'basis'],
+      ['outlook', 'outlook'],
+      ['basis', 'basis'],
+    ];
+    for (const [name, role] of claims) {
+      expect(roleOfClaim(`claim.forecast.${name}`), name).toBe(role);
+      expect(roleOfClaim(`claim.forecast.units.${name}`), `units ${name}`).toBe(role);
+    }
   });
 
   it('CHECK catches dangling references, the other metric, duplicates, a forecast claim citing the fit, and contract breaks', () => {

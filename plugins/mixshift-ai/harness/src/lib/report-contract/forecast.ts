@@ -19,10 +19,14 @@
  *      Every figure, derived figure and claim is tagged with its role. The
  *      year-start forecast, which stands in for a plan nobody has recorded,
  *      has a role of its own and is internal only.
- *   3. FAIL CLOSED. An id this module cannot place withholds the WHOLE
- *      forecast (state `not_provided`, reason `unrecognised_figures`), so a
- *      change in the service's ids can never let a projection reach a client
- *      brief under the forecast's name.
+ *   3. FAIL CLOSED. A figure or derived id this module cannot place withholds
+ *      the WHOLE forecast (state `not_provided`, reason `unrecognised_figures`),
+ *      so a change in the service's ids can never let a projection reach a
+ *      client brief under the forecast's name. A claim id it cannot place does
+ *      not: a claim is a sentence the client brief never quotes (only figures
+ *      reach it), so an unknown one is kept as `basis`, which reaches the
+ *      internal companion only, and is named in `source.unplaced_claims`. One
+ *      new disclosure line from the service no longer blanks a brand's forecast.
  *   4. CLIENT-SAFE. `client_safe` is true only for an actual, projection,
  *      forecast or outlook figure that carries no blocking caveat (and, for a derived
  *      figure, whose inputs are all client-safe). The client brief quotes
@@ -99,8 +103,12 @@ export interface ForecastFiguresDocument {
     /** True when the published forecast closed months after the report month,
      *  so its year-to-date figures run past it (they carry a blocking caveat). */
     ytd_runs_past_report_month: boolean;
-    /** Ids this build could not place; non-empty means the forecast was withheld. */
+    /** Figure or derived ids this build could not place; non-empty means the forecast was withheld. */
     unrecognised: string[];
+    /** Claim ids this build could not place. They never withhold the forecast: each is kept
+     *  with the role `basis`, so it reaches the internal companion only. Empty when the
+     *  forecast was withheld, since nothing was kept. A claim with no id still withholds. */
+    unplaced_claims: string[];
     published: {
       at: string;
       by: string;
@@ -191,12 +199,18 @@ export function roleOfId(id: string): ForecastRole | null {
   return null;
 }
 
-/** Role of a claim, by its id. */
+/**
+ * Role of a claim, by its id. An id matching none is `null`, which the
+ * extractor keeps as `basis` (internal only) rather than withholding for.
+ */
 export function roleOfClaim(id: string): ForecastRole | null {
   if (/projection_line$/.test(id)) return 'projection';
   if (/(operator_line|month_line)$/.test(id)) return 'forecast';
   if (/outlook$/.test(id)) return 'outlook';
   if (/basis$/.test(id)) return 'basis';
+  // Some months in a total carry a figure corrected in the forecasting app that differs from the
+  // warehouse: the reconciliation the internal companion states, never the client brief.
+  if (/two_actuals$/.test(id)) return 'basis';
   return null;
 }
 
@@ -250,6 +264,7 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
       spend_basis: spendBasis,
       ytd_runs_past_report_month: r.ytd_runs_past_report_month === true,
       unrecognised: [],
+      unplaced_claims: [],
       published,
       attestation: '',
     },
@@ -323,27 +338,37 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
       });
     }
     const claims: ForecastClaim[] = [];
+    const unplacedClaims: string[] = [];
+    let malformedClaims = 0;
     for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
       if (!isRec(c)) continue;
       const id = str(c.id) ?? '';
+      const role = roleOfClaim(id);
+      // A claim with no id is malformed, not new: it withholds the forecast, as it always did.
+      if (id === '') malformedClaims += 1;
+      // An unknown claim is kept, internal only: see guarantee 3.
+      else if (role === null) unplacedClaims.push(id);
       claims.push({
         id,
         kind: str(c.kind) ?? '',
         text: str(c.text) ?? '',
         figure_refs: strs(c.figure_refs),
-        forecast_role: (roleOfClaim(id) ?? 'unclassified') as ForecastRole,
+        forecast_role: role ?? 'basis',
         ...(str(c.comparison_basis) ? { comparison_basis: str(c.comparison_basis)! } : {}),
       });
     }
-    const unrecognised = [...figures, ...derived, ...claims]
+    const unrecognised = [...figures, ...derived]
       .filter((x) => (x.forecast_role as string) === 'unclassified')
-      .map((x) => x.id);
+      .map((x) => x.id)
+      .concat(Array.from({ length: malformedClaims }, () => ''));
     if (unrecognised.length > 0) {
-      // FAIL CLOSED: an id we cannot place withholds the whole forecast.
+      // FAIL CLOSED: a figure we cannot place (or a claim with no id) withholds the whole forecast.
       state = 'not_provided';
       reason = 'unrecognised_figures';
       doc.source.unrecognised = unrecognised;
     } else {
+      // Named only when they were kept: a withheld forecast keeps nothing.
+      doc.source.unplaced_claims = unplacedClaims;
       doc.currency = str(rd.currency);
       doc.caveat_registry = registry;
       doc.figures = figures;
