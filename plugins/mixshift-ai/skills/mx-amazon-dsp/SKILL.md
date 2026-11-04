@@ -619,6 +619,11 @@ The user story: *"I have a DSP launch plan (orders, line items, audiences,
 creatives) and I want it built in the account in one pass, not clicked in one
 line item at a time, and I want to check it before anything spends."*
 
+This section is the whole routine, start to finish: **"Order of operations"**
+(the decisions, in the order they bind), then **"The build, step by step"**, then
+**"Before activating an order"**. Follow it as one path; most failed builds
+skipped a decision that only an earlier step can make.
+
 Five write operations build new structure (plus lookups and tracked-product operations, below), on Amazon's Campaign Management API.
 They follow the same write contract as edits (preview, the user confirms in a
 separate turn, then `--commit`), and **nothing they create can spend**: Amazon
@@ -684,7 +689,11 @@ Work through these in order; each later step depends on an earlier one.
 1. **Confirm the advertiser** (see "Discovery") and echo the id back. Then check
    which brand it belongs to (see "Which brand a DSP advertiser belongs to") before
    anything is previewed, so even the first change lands on the right brand.
-2. **Write the launch plan before any call**, as a table the user can check:
+2. **Settle "Order of operations" step 1 (AutomatedREC) before anything is
+   created.** If the user wants Amazon's automatic responsive ad, the orders are
+   created in the console first and this build starts at the line items; an order
+   created here can never get one.
+3. **Write the launch plan before any call**, as a table the user can check:
    every campaign (name, flight dates, budget, goal KPI) and under it every line
    item (name, inventory type, dates, budget, base bid, pacing), its audiences
    (by DSP audience id and name) and other targeting, and its creatives (by
@@ -699,10 +708,10 @@ Work through these in order; each later step depends on an earlier one.
      `mx-amazon-amc`); Amazon's own audiences are found with
      `dsp.search_audiences`. Show the user the matches and let them choose.
    Get the user's yes on the plan.
-3. **Check for duplicates.** `dsp.query_campaigns` with a `nameFilter`
+4. **Check for duplicates.** `dsp.query_campaigns` with a `nameFilter`
    (`EXACT_MATCH`) on the planned names. A build that already exists, or a
    half-finished earlier run, is continued, never created twice.
-4. **Build in dependency order, one step at a time**, each step previewed and
+5. **Build in dependency order, one step at a time**, each step previewed and
    confirmed as one change set (all of its calls within the caps):
    1. campaigns, then read each new `campaignId` from `success[].campaign`;
    2. line items with those ids, then read each `adGroupId`;
@@ -721,17 +730,17 @@ Work through these in order; each later step depends on an earlier one.
       line item on.
    Later steps differ from the confirmed plan only by the ids Amazon assigned.
    If the user wants to change anything else mid-build, preview it again.
-5. **Read the 207 per item.** Each response can carry three lists, each entry
+6. **Read the 207 per item.** Each response can carry three lists, each entry
    with its `index`: `success` (created), `partialSuccess` (**created**, with
    some fields refused: the entity exists, so fix it with an update, never
    create it again) and `error` (not created, with Amazon's message). An empty
    list can come back as `[]` or not at all, depending on the operation. Report
    the counts and each refusal in plain words.
-6. **An unknown outcome is not a failure.** A commit that ends with
+7. **An unknown outcome is not a failure.** A commit that ends with
    `request_outcome: "unknown"` (a 5xx or a lost answer) may have created the
    entities. Query by name or id before sending anything again; a blind retry
    makes duplicates, and Amazon cannot delete DSP campaigns or line items.
-7. **Hand back a build sheet**: every campaign and line item with its new id,
+8. **Hand back a build sheet**: every campaign and line item with its new id,
    all **paused**, the targets and creatives attached, and what is left before
    it can spend: creatives still to build or approve in the console, the
    advertiser's payment profile in the console, and turning it on (run "Before activating an order" first, then offer to
@@ -750,8 +759,9 @@ missing and how to fix it; do not turn the order on.
 
 - [ ] **Media type set.** `dsp.query_campaigns` shows `optimizations.primaryInventoryTypes` matching the line items.
 - [ ] **Tracked products present.** `dsp.list_conversion_tracking_products` returns the order's ASINs. Required for an endemic order or a `ROAS` / `ROAS_PROMOTED` goal.
-- [ ] **KPI prerequisites met.** `ROAS` and `ROAS_PROMOTED` need the tracked products above; `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion on the order (Events manager in the console). Activation error `CONVERSION_TRACKING_REQUIRED` means: endemic order, add tracked products; non-endemic order or off-Amazon KPI, add an off-Amazon conversion.
+- [ ] **KPI prerequisites met.** `ROAS` and `ROAS_PROMOTED` need the tracked products above. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion on the order (Events manager in the console); MixShift cannot read that yet, so **ask the user to confirm it** and mark the line "confirmed by user", not "checked". Activation error `CONVERSION_TRACKING_REQUIRED` means: endemic order, add tracked products; non-endemic order or off-Amazon KPI, add an off-Amazon conversion.
 - [ ] **Every line item has targeting.** `dsp.query_targets` per line item returns audiences or other intended targets, not only Amazon's defaults.
+- [ ] **AutomatedREC present, if the user chose it.** `dsp.list_eligible_creatives` on each line item lists the responsive ecommerce creative Amazon generated for the order. None means it was not created; it cannot be added to an existing order, so the order is rebuilt in the console.
 - [ ] **Every line item has an approved creative.** `dsp.list_eligible_creatives` lists the creative as eligible and `dsp.list_association_moderations` shows it approved, not `PENDING` or rejected.
 - [ ] **No forbidden third-party trackers.** Where a line item targets an AMC audience that forbids them, no `THIRD_PARTY` targets remain (`dsp.query_targets`; remove with `dsp.delete_targets`).
 

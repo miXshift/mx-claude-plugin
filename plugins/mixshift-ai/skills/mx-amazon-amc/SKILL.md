@@ -681,8 +681,8 @@ instance is the system of record: an audience created here exists whether or
 not another MixShift surface has recorded it, and an audience created elsewhere
 shows up here. An audience made with `amc.create_audience` also appears in the
 MixShift AMC app (AMC Workspaces, amc.mixshift.ai) on that advertiser's
-Audiences page the next time it is opened: the app reads the AMC instance and
-pulls in audiences it did not create. Never tell a user the app cannot see
+Audiences page the next time it is opened, when the advertiser is set up in the
+app: the app reads the AMC instance and pulls in audiences it did not create. Never tell a user the app cannot see
 audiences made in Claude; give them the link. If a just-created audience is not
 there yet, reopen the page, and check the destination account's audience list
 for sync status.
