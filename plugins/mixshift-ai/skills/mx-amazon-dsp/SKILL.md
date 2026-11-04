@@ -664,7 +664,7 @@ Lookups and tracked products, used while building:
 | `dsp.list_conversion_tracking_products` | Reads an order's tracked products (ASIN, featured flag, domain). |
 | `dsp.create_conversion_tracking_products` | Adds tracked products to an order: `productId`, `productAssociation` (`FEATURED`, `FEATURED_WITH_VARIATION` or `NOT_FEATURED`), `domain`. Previewed, confirmed and audited like the other writes. |
 | `dsp.delete_conversion_tracking_products` | Removes tracked products from an order. |
-| `dsp.search_audiences` | Searches Amazon's DSP audiences (in-market, lifestyle and so on) by name or category. The ids it returns go into `dsp.create_targets`. |
+| `dsp.search_audiences` | Searches Amazon's DSP audiences (in-market, lifestyle and so on) by name or category. Send `adType: 'DSP'` in the body and the advertiser id both as the account and as the `advertiserId` query value. The ids it returns go into `dsp.create_targets`. |
 | `dsp.list_audience_categories` | Browses the audience category tree. |
 
 ### Order of operations
@@ -675,7 +675,7 @@ Work through these in order; each later step depends on an earlier one.
 |---|---|---|
 | 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. |
 | 2 | **Media type** | Send `optimizations.primaryInventoryTypes` on the order (`AUDIO`, `DISPLAY`, `VIDEO_OLV`, `VIDEO_STV`) and match it to the line items (Display line items mean `["DISPLAY"]`). Without it the order has no media type and creatives do not populate. MixShift refuses a campaign create without it. |
-| 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND` and `TOTAL_RETURN_ON_AD_SPEND` are deprecated and refused (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
+| 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
 | 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |
 | 5 | **Flights** | A line item's start must fall inside the order's flight. |
 | 6 | **Product category** | Look up the leaf id with `dsp.list_advertised_product_categories`; put it in `advertisedProductCategoryIds` on every line item (a create without it is refused). |
