@@ -160,6 +160,27 @@ describe('forecast extractor', () => {
     expect(forecastExtractedPayload(extractForecast(load('revenue.current')), [], { checkRan: true })).not.toHaveProperty('unplaced_claims');
   });
 
+  it('a withheld forecast names no kept claim, and a claim with no id still withholds', () => {
+    // An unknown figure withholds; the unknown claim beside it was not kept, so it is not named as kept.
+    const both = load('revenue.current');
+    both.report_data.figures.push({ ...both.report_data.figures[0], id: 'forecast.something_new.sales.month' });
+    both.report_data.claims.push({ id: 'claim.forecast.something_new', kind: 'tracking', text: 'A new line.', figure_refs: [] });
+    const withheld = extractForecast(both);
+    expect(withheld.forecast.state).toBe('not_provided');
+    expect(withheld.source.unrecognised).toEqual(['forecast.something_new.sales.month']);
+    expect(withheld.source.unplaced_claims).toEqual([]);
+    expect(withheld.claims).toEqual([]);
+    expect(forecastExtractedPayload(withheld, [], { checkRan: true })).not.toHaveProperty('unplaced_claims');
+    // A claim with no id is malformed, not new.
+    const noId = load('revenue.current');
+    noId.report_data.claims.push({ kind: 'tracking', text: 'A line with no id.', figure_refs: [] });
+    const doc = extractForecast(noId);
+    expect(doc.forecast.state).toBe('not_provided');
+    expect(doc.source.reason).toBe('unrecognised_figures');
+    expect(doc.source.unrecognised).toEqual(['']);
+    expect(checkForecast(doc).map((f) => f.rule)).toContain('FORECAST-ROLE');
+  });
+
   it('two_actuals (months whose figure corrected in the app differs from the warehouse) is internal basis, revenue and units', () => {
     for (const [name, claimId, actualId, word] of [
       ['revenue.current', 'claim.forecast.two_actuals', 'forecast.actual.sales.ytd', 'sales figure'],

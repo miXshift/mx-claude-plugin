@@ -307,8 +307,10 @@ export const EventName = {
   // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
   // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
   // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,
-  // figures, derived, claims, sections, client_safe (COUNTS), check_findings?
-  // (count, only when --check ran), expect_month (bool)}. forecast_failed
+  // figures, derived, claims, sections, client_safe (COUNTS), unplaced_claims?
+  // (count of claim ids this version could not place, kept internal only; only
+  // when > 0), check_findings? (count, only when --check ran), expect_month
+  // (bool)}. forecast_failed
   // (error_class forecast_month_mismatch | unrecognised_figures |
   // check_findings | not_a_forecast_answer | extract_error): the forecast was
   // withheld for a defect or the forecast path errored; same identifying

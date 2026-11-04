@@ -106,7 +106,8 @@ export interface ForecastFiguresDocument {
     /** Figure or derived ids this build could not place; non-empty means the forecast was withheld. */
     unrecognised: string[];
     /** Claim ids this build could not place. They never withhold the forecast: each is kept
-     *  with the role `basis`, so it reaches the internal companion only. */
+     *  with the role `basis`, so it reaches the internal companion only. Empty when the
+     *  forecast was withheld, since nothing was kept. A claim with no id still withholds. */
     unplaced_claims: string[];
     published: {
       at: string;
@@ -337,12 +338,16 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
       });
     }
     const claims: ForecastClaim[] = [];
+    const unplacedClaims: string[] = [];
+    let malformedClaims = 0;
     for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
       if (!isRec(c)) continue;
       const id = str(c.id) ?? '';
       const role = roleOfClaim(id);
+      // A claim with no id is malformed, not new: it withholds the forecast, as it always did.
+      if (id === '') malformedClaims += 1;
       // An unknown claim is kept, internal only: see guarantee 3.
-      if (role === null) doc.source.unplaced_claims.push(id);
+      else if (role === null) unplacedClaims.push(id);
       claims.push({
         id,
         kind: str(c.kind) ?? '',
@@ -354,13 +359,16 @@ export function extractForecast(response: unknown, opts: ExtractForecastOptions 
     }
     const unrecognised = [...figures, ...derived]
       .filter((x) => (x.forecast_role as string) === 'unclassified')
-      .map((x) => x.id);
+      .map((x) => x.id)
+      .concat(Array.from({ length: malformedClaims }, () => ''));
     if (unrecognised.length > 0) {
-      // FAIL CLOSED: a figure we cannot place withholds the whole forecast.
+      // FAIL CLOSED: a figure we cannot place (or a claim with no id) withholds the whole forecast.
       state = 'not_provided';
       reason = 'unrecognised_figures';
       doc.source.unrecognised = unrecognised;
     } else {
+      // Named only when they were kept: a withheld forecast keeps nothing.
+      doc.source.unplaced_claims = unplacedClaims;
       doc.currency = str(rd.currency);
       doc.caveat_registry = registry;
       doc.figures = figures;
