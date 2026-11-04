@@ -536,9 +536,12 @@ audience change on a brand only when exactly one brand's context declares the
 instance. The seller you happened to select does not decide it: an instance is its
 own account. Until one brand declares it, the changes are held under the instance
 itself (nothing is lost, they are just not on any brand's change log yet), and they
-move onto the brand's change log as soon as one brand declares it.
+move onto the brand's change log as soon as one brand declares it. Once a brand
+declares the instance, new changes are recorded on that brand itself, so `unassign` is
+how to correct a wrong pick going forward only: changes already recorded on the
+brand stay on it.
 
-Check **once per instance per session**, **before the first audience or workflow
+Check **once per instance per session**, **before the first audience
 write** on it (`amc.create_audience`, `amc.update_audience`, `amc.delete_audience`),
 so even the first change lands right:
 
@@ -548,7 +551,7 @@ mixshift context amc-instance show <instance_id> --json
 
 Reuse that answer for the rest of the session. Do not call it again after every
 write: each call is a full read on the server. Reads (listing instances, data
-sources, audiences, running a query) need no brand and no check.
+sources, audiences) and running a query or workflow need no brand and no check.
 
 It answers `unassigned`, `assigned` (one brand) or `conflict` (several brands),
 all with exit 0.

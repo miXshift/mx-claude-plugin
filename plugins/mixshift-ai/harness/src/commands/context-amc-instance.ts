@@ -203,7 +203,7 @@ export function registerAmcInstanceCommands(
     .command('unassign')
     .description(
       'Remove an AMC instance from one brand the user named: the way out of a conflict or a ' +
-        'wrong pick. Dry run by default; --commit writes, publishes only context.yaml, and ' +
+        'wrong pick going forward (events already recorded on the brand stay on it). Dry run by default; --commit writes, publishes only context.yaml, and ' +
         'reads the answer back. A brand that does not declare it is a no-op.',
     )
     .argument('<instance_id>', 'the AMC instance id (letters and digits)')
