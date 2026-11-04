@@ -624,7 +624,7 @@ This section is the whole routine, start to finish: **"Order of operations"**
 **"Before activating an order"**. Follow it as one path; most failed builds
 skipped a decision that only an earlier step can make.
 
-Five write operations build new structure (plus lookups and tracked-product operations, below), on Amazon's Campaign Management API.
+Five write operations build new structure on Amazon's Campaign Management API; the lookups and tracked-product operations below use the DSP v1 and Audiences APIs.
 They follow the same write contract as edits (preview, the user confirms in a
 separate turn, then `--commit`), and **nothing they create can spend**: Amazon
 creates DSP campaigns and line items **paused only**, MixShift refuses any
@@ -660,7 +660,7 @@ Lookups and tracked products, used while building:
 
 | Operation | What it does |
 |---|---|
-| `dsp.list_advertised_product_categories` | Lists advertised product categories (`id`, `name`, `parentId`). A line item needs a **leaf** category id; ids from the console's picker are refused. |
+| `dsp.list_advertised_product_categories` | Lists advertised product categories (`id`, `name`, `parentId`). A line item takes subcategory ids (rows with a `parentId`); a parent category is accepted only on a VIDEO line item (one parent, or subcategories of one parent). Ids from the console's picker are refused. |
 | `dsp.list_conversion_tracking_products` | Reads an order's tracked products (ASIN, featured flag, domain). |
 | `dsp.create_conversion_tracking_products` | Adds tracked products to an order: `productId`, `productAssociation` (`FEATURED`, `FEATURED_WITH_VARIATION` or `NOT_FEATURED`), `domain`. Previewed, confirmed and audited like the other writes. |
 | `dsp.delete_conversion_tracking_products` | Removes tracked products from an order. |
@@ -678,11 +678,13 @@ Work through these in order; each later step depends on an earlier one.
 | 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
 | 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |
 | 5 | **Flights** | A line item's start must fall inside the order's flight. |
-| 6 | **Product category** | Look up the leaf id with `dsp.list_advertised_product_categories`; put it in `advertisedProductCategoryIds` on every line item (a create without it is refused). |
-| 7 | **Frequency caps** | On create: `{eventMaxCount, frequencyTargetingSetting: USER or HOUSEHOLD, timeCount, timeUnit: DAYS, HOURS or MINUTES}`. The read shape differs: never copy a read into a create. The old frequency keys are refused. |
+| 6 | **Product category** | Look up subcategory ids with `dsp.list_advertised_product_categories`; put them in `advertisedProductCategoryIds` on every line item (a create without it is refused). A parent category only fits a VIDEO line item. |
+| 7 | **Frequency caps** | On create: `{eventMaxCount, frequencyTargetingSetting: USER or HOUSEHOLD, timeCount, timeUnit: DAYS, HOURS or MINUTES}`. The read shape differs: never copy a read into a create. The old frequency keys are refused on create. |
 | 8 | **Audiences** | Amazon's own: `dsp.search_audiences` (browse with `dsp.list_audience_categories`), then `dsp.create_targets`. From AMC: the 18-digit `dspCanonicalId` from `amc.list_audiences`, **never** the short `dspAudienceId` (refused). |
 | 9 | **Supply and default targets** | Amazon adds about 100 default targets to a new display line item, including third-party verification (`THIRD_PARTY`), inventory sources (exchanges) and day parts. Some AMC audiences forbid third-party trackers: remove the `THIRD_PARTY` targets with `dsp.delete_targets` (100 per call). An "Amazon O&O + Publisher Direct only" plan means deleting the third-party exchange `INVENTORY_SOURCE` targets the same way. |
 | 10 | **Preview, then commit** | A clean preview checks the request shape and MixShift's rules, **not every Amazon-side validation**; a commit can still fail per item (HTTP 207 lists success and error by index). Say so before the user confirms. |
+
+These rules are for **creating**. The edit operations (`dsp.update_campaigns`, `dsp.update_ad_groups`) run on the DSP v1 API, which still takes its own KPI names and the older frequency shape (`frequencyType`, `maxImpressions`, `timeUnitCount`, `levelType`): read the entity with `dsp.list_campaigns` / `dsp.list_ad_groups` and edit in that shape, not the create shape.
 
 ### The build, step by step
 
@@ -761,7 +763,7 @@ missing and how to fix it; do not turn the order on.
 - [ ] **Tracked products present.** `dsp.list_conversion_tracking_products` returns the order's ASINs. Required for an endemic order or a `ROAS` / `ROAS_PROMOTED` goal.
 - [ ] **KPI prerequisites met.** `ROAS` and `ROAS_PROMOTED` need the tracked products above. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion on the order (Events manager in the console); MixShift cannot read that yet, so **ask the user to confirm it** and mark the line "confirmed by user", not "checked". Activation error `CONVERSION_TRACKING_REQUIRED` means: endemic order, add tracked products; non-endemic order or off-Amazon KPI, add an off-Amazon conversion.
 - [ ] **Every line item has targeting.** `dsp.query_targets` per line item returns audiences or other intended targets, not only Amazon's defaults.
-- [ ] **AutomatedREC present, if the user chose it.** `dsp.list_eligible_creatives` on each line item lists the responsive ecommerce creative Amazon generated for the order. None means it was not created; it cannot be added to an existing order, so the order is rebuilt in the console.
+- [ ] **AutomatedREC present, if the user chose it.** Ask the user to confirm in the console that the order shows its automatically created responsive ad (MixShift cannot yet confirm it from the API; `dsp.list_eligible_creatives` may list it, so mention it if it does). If it is missing, it cannot be added to an existing order: the order is rebuilt in the console.
 - [ ] **Every line item has an approved creative.** `dsp.list_eligible_creatives` lists the creative as eligible and `dsp.list_association_moderations` shows it approved, not `PENDING` or rejected.
 - [ ] **No forbidden third-party trackers.** Where a line item targets an AMC audience that forbids them, no `THIRD_PARTY` targets remain (`dsp.query_targets`; remove with `dsp.delete_targets`).
 
