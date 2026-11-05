@@ -40,6 +40,37 @@ function warnDspShapeOnce(key: string): void {
 }
 const isDspId = (v: unknown): v is string => typeof v === 'string' && /^\d{1,64}$/.test(v);
 
+// AMC instance ids (D-193): same discipline as the DSP ids above, a short
+// alphanumeric token such as "amcabc123xyz". A bad value is dropped with a warning.
+const AMC_ID_FORM = 'amc_instance_id: "amcabc123xyz"';
+const warnedAmcShapes = new Set<string>();
+function warnAmcShapeOnce(key: string): void {
+  if (warnedAmcShapes.has(key)) return;
+  warnedAmcShapes.add(key);
+  process.stderr.write(
+    `[warn] context.yaml: ignoring an invalid ${key}. Write the AMC instance id as a quoted string of letters and digits, e.g. ${AMC_ID_FORM} (or amc_instance_ids: ["amcabc123xyz"]).\n`,
+  );
+}
+const isAmcId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9]{1,64}$/.test(v);
+
+const amcInstanceIdSchema = z.unknown().transform((v): string | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (isAmcId(v)) return v;
+  warnAmcShapeOnce('amc_instance_id');
+  return undefined;
+});
+
+const amcInstanceIdsSchema = z.unknown().transform((v): string[] | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) {
+    warnAmcShapeOnce('amc_instance_ids');
+    return undefined;
+  }
+  const kept = v.filter(isAmcId);
+  if (kept.length !== v.length) warnAmcShapeOnce('amc_instance_ids');
+  return kept;
+});
+
 const dspAdvertiserIdSchema = z.unknown().transform((v): string | undefined => {
   if (v === undefined || v === null) return undefined;
   if (isDspId(v)) return v;
@@ -79,6 +110,8 @@ const accountSchema = z.object({
   // so until one is declared a brand's DSP changes stay unassigned.
   dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
   dsp_advertiser_ids: dspAdvertiserIdsSchema.optional(),
+  amc_instance_id: amcInstanceIdSchema.optional(),
+  amc_instance_ids: amcInstanceIdsSchema.optional(),
 });
 
 const sourcesSchema = z.object({

@@ -47,7 +47,7 @@ shapes:
       account_type: [SC, VC]
       status: [active, wind_down, inactive]
       role: [primary, legacy, secondary]
-    optional: [dsp_advertiser_id, dsp_advertiser_ids]
+    optional: [dsp_advertiser_id, dsp_advertiser_ids, amc_instance_id, amc_instance_ids]
     note: |
       dsp_advertiser_id (string) / dsp_advertiser_ids (list of strings): the DSP
       advertiser(s) this brand owns, each a QUOTED string of digits, e.g.
@@ -56,6 +56,12 @@ shapes:
       advertiser; with none (or two brands claiming it) it stays unassigned. A
       value in any other shape is dropped with a warning; it never fails the
       brand context load or sync.
+      amc_instance_id (string) / amc_instance_ids (list of strings): the AMC
+      instance(s) this brand owns, each a QUOTED string of letters and digits,
+      e.g. amc_instance_id: "amcabc123xyz". MixShift files an AMC audience
+      change on the brand that declares the instance; with none (or two brands
+      claiming it) it is held under the instance until one brand declares it.
+      Same drop-with-a-warning rule for any other shape.
 
   sources:
     required:

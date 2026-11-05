@@ -661,6 +661,8 @@ Walk the AM through `kickoff.md` Step 4. The full question list and rationale li
 
 **DSP question:** ask "does this brand run Amazon DSP, and what is its advertiser id (or ids)?" along with the other Phase 2 questions. Never guess an id, never seed one from another brand, and never write one the user did not give you. Just note the answer for now: the declaration is written after Phase 3a and Phase 4 validation (see the `accounts[]` row in Phase 3a), so a half-built draft is never published. "Not sure" or "skip" means write nothing; the mx-amazon-dsp skill asks again the first time that advertiser's DSP work comes up.
 
+**AMC question:** ask "does this brand use Amazon Marketing Cloud, and what is its AMC instance id (or ids)?" in the same breath as the DSP question. The same rules apply: never guess an id, never seed one from another brand, never write one the user did not give you, and just note the answer for now (it is written after validation, in Phase 4 Step 5). An instance id looks like `amcabc123xyz`; the user can find it with the mx-amazon-amc skill's discovery chain. "Not sure" or "skip" means write nothing; the mx-amazon-amc skill asks again before the first audience write (create, update or delete) on that instance; running a query needs no brand check.
+
 **Critical execution rules** (model behavior, not AM-facing prose):
 - If TACOS is primary metric, derive ACOS thresholds from posture and the historical SC vs. ad-attributed ratio.
 - Combine catalog-derived brand terms (Phase 1) with AM-supplied variants (Phase 2) into a single `context.yaml::brand_terms` map. Don't keep two lists.
@@ -752,6 +754,7 @@ Populate every required and applicable optional section per the Zod schema (run 
 |---|---|---|
 | `accounts[]` | Phase 0 | One entry per SellerID. `account_type ∈ {SC, VC}`. `status ∈ {active, wind_down, inactive}`. `role ∈ {primary, legacy, secondary}`. |
 | `accounts[].dsp_advertiser_id` / `dsp_advertiser_ids` | Phase 2 answer, written in Phase 4 Step 5 | Written ONLY by `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json`, as in Phase 4 Step 5: a dry run, shown to the user, then `--commit --expect <plan_hash>` on their yes, one advertiser at a time. Always a quoted string of digits. Never edit these by hand and never drop them when finalizing; the command picks the account itself and refuses when another brand already declares the id (relay that, let the user decide). |
+| `accounts[].amc_instance_id` / `amc_instance_ids` | Phase 2 answer, written in Phase 4 Step 5 | Written ONLY by `mixshift context amc-instance assign <instance_id> --brand <brand-slug> --json`, as in Phase 4 Step 5: a dry run, shown to the user, then `--commit --expect <plan_hash>` on their yes, one instance at a time. Always a quoted string of letters and digits. Never edit these by hand and never drop them when finalizing; the command picks the account itself and refuses when another brand already declares the instance (relay that, let the user decide). |
 | `sources` | Phase 0 + Phase 1 verification | `ad_metrics` is always `campaignmetric`. `ops_revenue` is `vendor_sales_manufacturing_asin` (VC) or `business_reports_dpst_date` (SC). |
 | `management` | Phase 2 | `primary_metric ∈ {ACOS, TACOS}`. `acos_target_pct` numeric. `attribution_window_days` integer. |
 | `capture_rate_calibration` | Brain (`capture_rate_calibration`) confirmed Phase 2 | Required if `attribution_window_days > 1`. The `daily_settlement_curve` sub-block comes from the brain (the brain computes it from CS-06/07/08 + CS-28); Tier 3 confirms it. |
@@ -881,10 +884,11 @@ Do not hand off to downstream skills with a failing validator.
 
 The manifest's `sql_ids` list is the SQL inventory contract. New SQL must be added to `shared/sql-library/catalog.yaml` and the relevant skill manifest before consumption; review changes by comparing that inventory with the prior committed manifest.
 
-### Step 5 — publish, then declare the DSP advertiser (once validation passes)
+### Step 5 — publish, then declare the DSP advertiser and AMC instance (once validation passes)
 
 1. Publish the finished context: `mixshift context push --brand <brand-slug>` (the same publish setup does anyway). The automatic publish after a write is throttled and may not have run yet, and `assign` refuses while `context.yaml` has unpublished changes, so do this first.
 2. For each advertiser id the user gave in Phase 2 (none, if they said no or skip): run `mixshift context dsp-advertiser assign <advertiser_id> --brand <brand-slug> --json` (a dry run), show the user the lines it would change, and only on their yes run it again with `--commit --expect <plan_hash>` (the hash from the dry run you showed). One advertiser at a time. If it refuses, relay why and let the user decide.
+3. For each AMC instance id the user gave in Phase 2 (none, if they said no or skip): the same, with `mixshift context amc-instance assign <instance_id> --brand <brand-slug> --json` (a dry run), the lines shown to the user, and `--commit --expect <plan_hash>` only on their yes. One instance at a time. If it refuses, relay why and let the user decide.
 
 ---
 
@@ -992,7 +996,7 @@ If no discoveries surface this run, write a minimal file with `"discoveries": {}
 
 ---
 
-*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.9.0*
+*Version history: see [CHANGELOG.md](CHANGELOG.md). Skill version: 2.10.0*
 
 ## Telemetry (required)
 

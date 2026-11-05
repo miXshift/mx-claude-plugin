@@ -200,6 +200,35 @@ describe('contextSchema — basic shape', () => {
       }
     });
 
+    it('accepts and KEEPS amc_instance_id and amc_instance_ids; drops a bad shape with a warning, never fails', () => {
+      const ok = contextSchema.safeParse(
+        withAccount({ amc_instance_id: 'amcfake0001', amc_instance_ids: ['amcfake0001', 'amcfake0002'] }),
+      );
+      expect(ok.success).toBe(true);
+      if (ok.success) {
+        expect(ok.data.accounts[0]!.amc_instance_id).toBe('amcfake0001');
+        expect(ok.data.accounts[0]!.amc_instance_ids).toEqual(['amcfake0001', 'amcfake0002']);
+      }
+      const writes: string[] = [];
+      const spy = vi.spyOn(process.stderr, 'write').mockImplementation(((c: unknown) => {
+        writes.push(String(c));
+        return true;
+      }) as typeof process.stderr.write);
+      try {
+        for (const bad of ['', 'has space', 'a-b', 'a'.repeat(65), 12345, true]) {
+          const r = contextSchema.safeParse(withAccount({ amc_instance_id: bad }));
+          expect(r.success).toBe(true);
+          if (r.success) expect(r.data.accounts[0]!.amc_instance_id).toBeUndefined();
+        }
+        const mixed = contextSchema.safeParse(withAccount({ amc_instance_ids: ['amcfake0001', 5, 'x y'] }));
+        expect(mixed.success).toBe(true);
+        if (mixed.success) expect(mixed.data.accounts[0]!.amc_instance_ids).toEqual(['amcfake0001']);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(writes.join('')).toContain('amc_instance_id: "amcabc123xyz"');
+    });
+
     it('stays optional', () => {
       expect(contextSchema.safeParse(withAccount({})).success).toBe(true);
     });

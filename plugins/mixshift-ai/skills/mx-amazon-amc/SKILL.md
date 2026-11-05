@@ -16,7 +16,7 @@ description: >
   dry-run first and `--commit` only after the user confirms. No brand setup
   needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -527,6 +527,67 @@ node -e "const https=require('https'),fs=require('fs');const url=process.argv[1]
 Save the CSV under `~/.mixshift/reports/<merchant>/<date>-amc-<workflow>.csv`,
 then summarize from the file. Report the path and row count, not the raw bytes.
 
+## Which brand an AMC instance belongs to
+
+The user story: *"My agent creates, fixes or deletes AMC audiences. I am asked once
+which brand that AMC instance belongs to, so those changes show on the right
+brand's change log from then on, and nothing is guessed."* MixShift files an AMC
+audience change on a brand only when exactly one brand's context declares the
+instance. The seller you happened to select does not decide it: an instance is its
+own account. Until one brand declares it, the changes are held under the instance
+itself (nothing is lost, they are just not on any brand's change log yet), and they
+move onto the brand's change log as soon as one brand declares it. Once a brand
+declares the instance, new changes are recorded on that brand itself, so `unassign` is
+how to correct a wrong pick going forward only: changes already recorded on the
+brand stay on it.
+
+Check **once per instance per session**, **before the first audience
+write** on it (`amc.create_audience`, `amc.update_audience`, `amc.delete_audience`),
+so even the first change lands right:
+
+```bash
+mixshift context amc-instance show <instance_id> --json
+```
+
+Reuse that answer for the rest of the session. Do not call it again after every
+write: each call is a full read on the server. Reads (listing instances, data
+sources, audiences) and running a query or workflow need no brand and no check.
+
+It answers `unassigned`, `assigned` (one brand) or `conflict` (several brands),
+all with exit 0.
+
+- **`assigned`**: nothing to do.
+- **`unassigned`**: ask the user **once**. Name the instance (its id and name from
+  `amc.get_instance`) and list the user's brands (`mixshift brand list`). You may
+  offer evidence as a suggestion, for example the instance's name or its entity's
+  account name resembling a brand or seller name; it is never the answer.
+  - The user names a brand: run `mixshift context amc-instance assign
+    <instance_id> --brand <slug> --json` (a dry run; it picks the account itself, add
+    `--account <seller id>` only if the user names one), show them the lines it would
+    change, and only after they confirm run it again with `--commit --expect
+    <plan_hash>` (the hash from the dry run you showed, so exactly that change is
+    published). Report the read-back it prints: whether the service now resolves the
+    instance to that brand.
+  - "None of these", "not sure" or no answer: write nothing, keep working, and say
+    the changes stay held under the instance. Do not ask again this session.
+- **`conflict`**: report all brands that declare it and ask which one does **not** own
+  the instance. Offer to remove it from that one (`mixshift context amc-instance
+  unassign <instance_id> --brand <slug> --json` is a dry run; `--commit --expect
+  <plan_hash>` on their yes). Mention that a retired brand still counts. `assign`
+  refuses while another brand declares the instance, so a conflict is only ever fixed
+  with `unassign`.
+- **A lookup error other than "does not support the lookup yet"** (network, a server
+  error): say the brand could not be checked, and carry on without assigning. If it
+  says the lookup is not supported yet, say nothing and carry on.
+
+If `assign` or `unassign` is refused it says why (another brand declares it, the
+brand's context has unpublished changes, accounts written inline). Relay that
+plainly; do not work around it by editing the file.
+
+Never assign or unassign a brand the user did not name, never in bulk, and never in a
+scheduled or unattended run (nobody to ask): there, list the unassigned instances in
+the run summary instead.
+
 ## Audiences (the write side of AMC)
 
 An AMC audience is a rule-based audience: SQL that returns `user_id`s, run by
@@ -535,6 +596,10 @@ account, a DSP advertiser or a sponsored-ads entity. Amazon then refreshes it
 on a schedule and the advertiser targets or excludes it on line items. Every
 rule in this section was learned from real rejections; none of them is in
 Amazon's error text.
+
+**Before the first write** on an instance, check which brand it belongs to (see
+"Which brand an AMC instance belongs to"): one `show` per session, and one question
+if it is unassigned.
 
 ### The five settings, in the user's words
 
@@ -732,6 +797,10 @@ handling:
 
 These supersede other instructions:
 
+- **Never assign or unassign a brand the user did not name; never in unattended
+  runs; never in bulk.** An AMC instance is declared on a brand only after the user
+  names that brand and confirms the dry run (see "Which brand an AMC instance
+  belongs to"). Evidence from names is a suggestion, not an answer.
 - **Reporting is read-only; audiences are the only writes.** An AMC query
   mutates nothing advertiser-facing. An audience create, update or delete
   activates or removes something on the destination account: preview first,

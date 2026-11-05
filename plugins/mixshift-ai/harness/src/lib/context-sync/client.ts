@@ -50,6 +50,7 @@ import type {
   ConflictServerDoc,
   DocType,
   DspAdvertiserLookupResult,
+  AmcInstanceLookupResult,
   FetchDocResult,
   FetchManifestResult,
   PutDocInput,
@@ -77,6 +78,8 @@ export const ASSIGNMENT_TIMEOUT_MS = 2_000;
 export const LIFECYCLE_TIMEOUT_MS = 15_000;
 /** The DSP advertiser lookup is one small fresh read. */
 export const DSP_LOOKUP_TIMEOUT_MS = 15_000;
+/** The AMC instance lookup is one small fresh read. */
+export const AMC_LOOKUP_TIMEOUT_MS = 15_000;
 
 class ContextSyncNetworkError extends Error {
   /** Sandbox-aware, doctor-pointing text classified from the raw fetch
@@ -131,6 +134,11 @@ export interface ContextSyncClient {
    * method reads as "not supported".
    */
   lookupDspAdvertiser?(advertiserId: string): Promise<DspAdvertiserLookupResult>;
+  /**
+   * GET /api/context/amc-instances?id=<instance id>: which brands declare this
+   * AMC instance. Optional in the TYPE only; a missing method reads as "not supported".
+   */
+  lookupAmcInstance?(instanceId: string): Promise<AmcInstanceLookupResult>;
 }
 
 export interface ContextSyncClientOptions {
@@ -319,6 +327,21 @@ export function createContextSyncClient(
         return failureFromException(err);
       }
     },
+
+    async lookupAmcInstance(instanceId: string): Promise<AmcInstanceLookupResult> {
+      try {
+        const res = await authedRequest(
+          'GET',
+          `/api/context/amc-instances?id=${encodeURIComponent(instanceId)}`,
+          undefined,
+          AMC_LOOKUP_TIMEOUT_MS,
+        );
+        const json = await parseEnvelope(res);
+        return amcLookupResultFrom(json, res.status, instanceId);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
   };
 }
 
@@ -455,6 +478,44 @@ export function dspLookupResultFrom(
   };
 }
 
+/**
+ * Map a GET /api/context/amc-instances response onto a result (exported for
+ * tests). Same rules as dspLookupResultFrom: a 404/405 is `unsupported`; any
+ * answer that is not the documented shape is a failure, never "no brand".
+ */
+export function amcLookupResultFrom(
+  json: WireEnvelope,
+  httpStatus: number,
+  instanceId: string,
+): AmcInstanceLookupResult {
+  if (httpStatus >= 200 && httpStatus < 300 && json.ok === true && Array.isArray(json.instances)) {
+    const entry = (json.instances as unknown[]).find(
+      (a): a is { instance_id: string; brands?: unknown } =>
+        typeof a === 'object' && a !== null && (a as { instance_id?: unknown }).instance_id === instanceId,
+    );
+    if (!entry) {
+      const m = 'The MixShift service answered the AMC instance lookup without an entry for this instance.';
+      return { ok: false, kind: 'unknown', message: m, friendly: m, http_status: httpStatus };
+    }
+    if (
+      !Array.isArray(entry.brands) ||
+      !entry.brands.every((b): b is string => typeof b === 'string' && b.length > 0)
+    ) {
+      const m = 'The MixShift service answered the AMC instance lookup in a shape this plugin does not recognize.';
+      return { ok: false, kind: 'unknown', message: m, friendly: m, http_status: httpStatus };
+    }
+    return { ok: true, instance_id: instanceId, brands: [...new Set(entry.brands)].sort() };
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    const friendly =
+      'This MixShift service does not support the AMC instance lookup yet. Nothing was changed. ' +
+      'Try again after the service is updated.';
+    return { ok: false, kind: 'unsupported', message: friendly, friendly, http_status: httpStatus };
+  }
+  const base = failureFromEnvelope(json, httpStatus);
+  return { ok: false, kind: base.kind, message: base.message, friendly: base.friendly, http_status: httpStatus };
+}
+
 function lifecycleFailure(
   kind: LifecycleFailureKind,
   friendly: string,
@@ -494,6 +555,8 @@ export interface WireEnvelope {
   brands?: unknown;
   /** GET /api/context/dsp-advertisers. */
   advertisers?: unknown;
+  /** GET /api/context/amc-instances. */
+  instances?: unknown;
   doc?: unknown;
   status?: string;
   revision?: unknown;

@@ -338,6 +338,10 @@ export const EventName = {
   // or result, and counts only. Never the advertiser id or a brand slug.
   ContextDspAdvertiserShown: 'context_sync.dsp_advertiser_shown',
   ContextDspAdvertiserAssigned: 'context_sync.dsp_advertiser_assigned',
+  // `mixshift context amc-instance show|assign|unassign` (D-193). Payload: state
+  // or result, and counts only. Never the instance id or a brand slug.
+  ContextAmcInstanceShown: 'context_sync.amc_instance_shown',
+  ContextAmcInstanceAssigned: 'context_sync.amc_instance_assigned',
   // One row per autosync invocation, tagged payload.trigger: the implicit
   // resolveBrandFields preflight emits for attempts that clear the guards
   // ('preflight'; throttled/early-skip stays silent so the per-skill-step
