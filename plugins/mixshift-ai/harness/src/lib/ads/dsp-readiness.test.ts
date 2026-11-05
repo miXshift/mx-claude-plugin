@@ -8,10 +8,10 @@ import {
 } from './dsp-readiness.js';
 import { isReportFailure, type ReportFailure } from '../amazon/reports.js';
 
-const ADV = '583522466791149589';
-const CAMP = '577494217848082836';
-const AG = '594418588682008774';
-const CREATIVE = '582322110087171418';
+const ADV = '1000000000000000001';
+const CAMP = '2000000000000000002';
+const AG = '3000000000000000003';
+const CREATIVE = '4000000000000000004';
 
 type Handler = (input: Parameters<ReadinessCall>[0]) => unknown;
 
@@ -51,7 +51,7 @@ function baseHandlers(): Record<string, Handler> {
     }),
     'dsp.list_conversion_tracking_products': () => ({
       nextToken: null,
-      productTrackingList: [{ productId: 'B0946MVWGD', productAssociation: 'FEATURED', domain: 'AMAZON_US' }],
+      productTrackingList: [{ productId: 'B000TEST01', productAssociation: 'FEATURED', domain: 'AMAZON_US' }],
     }),
     'dsp.query_targets': () => ({
       targets: [
@@ -217,11 +217,13 @@ describe('checkDspReadiness: media type', () => {
     expect(c.detail).toContain(`${AG} (ONLINE_VIDEO)`);
   });
 
-  it('does not judge an inventory type it does not know', async () => {
+  it('names an inventory type it cannot map instead of passing it', async () => {
     const r = await run({
       'dsp.query_ad_groups': () => ({ adGroups: [{ adGroupId: AG, inventoryType: 'SOMETHING_NEW' }] }),
     });
-    expect(one(r, 'media_type').level).toBe('pass');
+    const c = one(r, 'media_type');
+    expect(c.level).toBe('warn');
+    expect(c.detail).toContain(`${AG} (SOMETHING_NEW)`);
   });
 });
 
@@ -241,10 +243,50 @@ describe('checkDspReadiness: goal and tracked products', () => {
     }
   });
 
-  it('only warns on a non-retail goal with no tracked products', async () => {
+  it('fails closed on a non-retail goal with no tracked products (Amazon refuses an endemic order without them)', async () => {
     const r = await run({ 'dsp.query_campaigns': kpi('REACH'), 'dsp.list_conversion_tracking_products': none });
+    const c = one(r, 'tracked_products');
+    expect(c.level).toBe('fail');
+    expect(c.fix).toContain('off-Amazon conversion');
+    expect(r.ready).toBe(false);
+  });
+
+  it('fails when the order shows no goal and tracks no products', async () => {
+    const r = await run({
+      'dsp.query_campaigns': () => ({
+        campaigns: [{ campaignId: CAMP, state: 'PAUSED', optimizations: { primaryInventoryTypes: ['DISPLAY'] } }],
+      }),
+      'dsp.list_conversion_tracking_products': none,
+    });
+    expect(one(r, 'goal_kpi').level).toBe('warn');
+    expect(one(r, 'tracked_products').level).toBe('fail');
+    expect(r.ready).toBe(false);
+  });
+
+  it('only warns on an off-Amazon goal with no tracked products, and asks to confirm the conversion', async () => {
+    const r = await run({
+      'dsp.query_campaigns': kpi('COST_PER_CONVERSION_OFF_AMAZON'),
+      'dsp.list_conversion_tracking_products': none,
+    });
     expect(one(r, 'tracked_products').level).toBe('warn');
+    expect(one(r, 'off_amazon_conversion').level).toBe('confirm');
     expect(r.ready).toBe(true);
+  });
+
+  it('passes on one tracked product even when the read stopped early', async () => {
+    const r = await run({
+      'dsp.list_conversion_tracking_products': () => ({ nextToken: 'more', productTrackingList: [{ productId: 'B1' }] }),
+    });
+    const c = one(r, 'tracked_products');
+    expect(c.level).toBe('pass');
+    expect(c.detail).toContain('+ tracked');
+  });
+
+  it('asks Amazon for the largest tracked-products page', async () => {
+    const { call, calls } = fakeCall();
+    await checkDspReadiness(call, ADV, CAMP);
+    const tp = calls.find((c) => c.operation === 'dsp.list_conversion_tracking_products');
+    expect(tp?.query?.maxResults).toBe(10000);
   });
 
   it('reads an empty 200 with neither key as none', async () => {
@@ -346,6 +388,54 @@ describe('checkDspReadiness: line items and targeting', () => {
     expect(r.ready).toBe(false);
   });
 
+  it("ignores line items that belong to another order", async () => {
+    const r = await run({
+      'dsp.query_ad_groups': () => ({
+        adGroups: [
+          { adGroupId: AG, campaignId: CAMP, inventoryType: 'DISPLAY' },
+          { adGroupId: '9', campaignId: 'another-order', inventoryType: 'DISPLAY' },
+        ],
+      }),
+    });
+    expect(r.lineItems.map((l) => l.adGroupId)).toEqual([AG]);
+  });
+
+  it('does not count a target without a type as intended targeting', async () => {
+    const r = await run({
+      'dsp.query_targets': () => ({ targets: [target('DAYPART'), { adGroupId: AG, negative: false }] }),
+    });
+    expect(one(r, 'targeting').level).toBe('fail');
+  });
+
+  it('splits many line items across targets reads and creative reads', async () => {
+    const ids = Array.from({ length: 55 }, (_, i) => `7${String(i).padStart(3, '0')}`);
+    const { call, calls } = fakeCall({
+      'dsp.query_ad_groups': () => ({ adGroups: ids.map((adGroupId) => ({ adGroupId, inventoryType: 'DISPLAY' })) }),
+      'dsp.query_targets': (input) => {
+        const inc = ((input.body as Record<string, unknown>).adGroupIdFilter as { include: string[] }).include;
+        return { targets: inc.map((id) => target('AUDIENCE', id)) };
+      },
+      'dsp.list_creative_associations': (input) => {
+        const inc = ((input.body as Record<string, unknown>).adGroupIdFilter as { include: string[] }).include;
+        return {
+          associations: inc.map((adGroupId) => ({ adGroupId, adCreativeId: 'c', state: 'ACTIVE', creativeAssociationStatus: 'APPROVED' })),
+        };
+      },
+      'dsp.list_association_moderations': () => ({ associationStatuses: [] }),
+    });
+    const r = (await checkDspReadiness(call, ADV, CAMP)) as ReadinessReport;
+    const tReads = calls.filter((c) => c.operation === 'dsp.query_targets');
+    expect(tReads).toHaveLength(3);
+    for (const c of tReads) {
+      expect(((c.body as Record<string, unknown>).adGroupIdFilter as { include: string[] }).include.length).toBeLessThanOrEqual(20);
+    }
+    expect(calls.filter((c) => c.operation === 'dsp.list_creative_associations')).toHaveLength(2);
+    expect(byId(r, 'targeting')).toHaveLength(55);
+    expect(byId(r, 'targeting').every((c) => c.level === 'pass')).toBe(true);
+    expect(byId(r, 'creative').every((c) => c.level === 'pass')).toBe(true);
+    expect(r.ready).toBe(true);
+  });
+
   it('marks targeting unchecked per line item when its read fails', async () => {
     const r = await run({ 'dsp.query_targets': () => failure() });
     expect(one(r, 'targeting').level).toBe('unchecked');
@@ -427,13 +517,62 @@ describe('checkDspReadiness: creatives', () => {
     expect(c.detail).toContain('Logo too small');
   });
 
-  it('warns when the approved attachment is paused', async () => {
+  it('fails when the only approved attachment is paused: the line item has nothing to serve', async () => {
     const r = await run({
       'dsp.list_creative_associations': () => ({
         associations: [{ adCreativeId: CREATIVE, adGroupId: AG, state: 'INACTIVE', creativeAssociationStatus: 'APPROVED' }],
       }),
     });
-    expect(one(r, 'creative').level).toBe('warn');
+    expect(one(r, 'creative').level).toBe('fail');
+    expect(r.ready).toBe(false);
+  });
+
+  it('warns, not fails, on approved with exceptions (some targeted supply still reviewing)', async () => {
+    const reason = 'This creative is pending approval from one or more supply sources targeted by one of its line items.';
+    const r = await run({
+      'dsp.list_creative_associations': () => ({
+        associations: [{ adCreativeId: CREATIVE, adGroupId: AG, state: 'ACTIVE', creativeAssociationStatus: 'APPROVED_WITH_EXCEPTIONS' }],
+      }),
+      'dsp.list_association_moderations': () => ({
+        associationStatuses: [
+          {
+            adCreativeId: CREATIVE,
+            adGroupId: AG,
+            adExperiences: [
+              { adExperience: 'DISPLAY', associationModerationStatus: 'APPROVED_WITH_EXCEPTIONS', associationModerationReasons: [reason] },
+            ],
+          },
+        ],
+      }),
+    });
+    const c = one(r, 'creative');
+    expect(c.level).toBe('warn');
+    expect(c.detail).toContain('approved with exceptions');
+    expect(c.detail).toContain('pending approval from one or more supply sources');
+    expect(r.ready).toBe(true);
+  });
+
+  it('fails and names a moderation status it does not recognize', async () => {
+    const r = await run({
+      'dsp.list_creative_associations': () => ({
+        associations: [{ adCreativeId: CREATIVE, adGroupId: AG, state: 'ACTIVE', creativeAssociationStatus: 'SOMETHING_NEW' }],
+      }),
+      'dsp.list_association_moderations': () => ({ associationStatuses: [] }),
+    });
+    const c = one(r, 'creative');
+    expect(c.level).toBe('fail');
+    expect(c.detail).toContain('SOMETHING_NEW');
+  });
+
+  it('does not count an attachment with no state as live', async () => {
+    const r = await run({
+      'dsp.list_creative_associations': () => ({
+        associations: [{ adCreativeId: CREATIVE, adGroupId: AG, creativeAssociationStatus: 'APPROVED' }],
+      }),
+    });
+    const c = one(r, 'creative');
+    expect(c.level).toBe('fail');
+    expect(c.detail).toContain('state unknown');
   });
 
   it('marks creatives unchecked when the attachments cannot be read', async () => {

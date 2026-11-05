@@ -40,7 +40,7 @@ import {
 import { resolveDataDir } from '../lib/paths/resolve.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 interface RootOptions {
   json?: boolean;
@@ -63,7 +63,7 @@ const NUMERIC_ID = /^\d{1,30}$/;
 export function registerDspCommands(program: Command): void {
   const dsp = program
     .command('dsp')
-    .description('Amazon DSP checks built on the Ads API (reads only).');
+    .description('Amazon DSP checks built on the Ads API (reads and dry-run previews; never commits).');
 
   dsp
     .command('readiness <campaignId>')
@@ -190,28 +190,46 @@ function registerSupplyPreset(dsp: Command): void {
           return emitFailure(plan, json);
         }
 
-        const outDir = opts.outDir ?? join(resolveDataDir(root.dataDir), 'dsp');
+        const outDir = resolve(opts.outDir ?? join(resolveDataDir(root.dataDir), 'dsp'));
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const previews: Array<{ bodyFile: string; items: number; auditId?: string; commit: string }> = [];
         if (plan.batches.length) await mkdir(outDir, { recursive: true });
         for (const [i, targetIds] of plan.batches.entries()) {
           const bodyFile = join(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
           await writeFile(bodyFile, JSON.stringify({ targetIds }, null, 2) + '\n', 'utf8');
-          // The dry run: the service validates, snapshots every target in the
-          // set and records an audit row; Amazon is not called.
+          // The dry run, asked for explicitly: the service validates, snapshots
+          // every target in the set and records an audit row; Amazon is not
+          // called. An answer that is not a dry run stops the command loudly.
           const res = await adsCall(
-            { operation: 'dsp.delete_targets', pathParams: { advertiserId: opts.advertiserId }, body: { targetIds }, ...selector },
+            {
+              operation: 'dsp.delete_targets',
+              pathParams: { advertiserId: opts.advertiserId },
+              body: { targetIds },
+              dryRun: true,
+              ...selector,
+            },
             { dataDirOverride: root.dataDir },
           );
           if (isReportFailure(res)) {
             await trackSupply('failed', startedAt, root.dataDir, { kind: res.kind, stage: 'preview' });
             return emitFailure(res, json);
           }
+          if (res.dryRun !== true) {
+            await trackSupply('failed', startedAt, root.dataDir, { kind: 'not_a_dry_run', stage: 'preview' });
+            const message =
+              'The service did not answer the preview as a dry run. Stopped; check the line items with ' +
+              '`mixshift dsp supply-preset` again (or dsp.query_targets) before doing anything else.' +
+              (res.auditId ? ` audit: ${res.auditId}` : '');
+            if (json) process.stdout.write(JSON.stringify({ status: 'error', message }, null, 2) + '\n');
+            else process.stderr.write(`error: ${message}\n`);
+            process.exitCode = 1;
+            return;
+          }
           previews.push({
             bodyFile,
             items: res.itemsCount ?? targetIds.length,
             ...(res.auditId ? { auditId: res.auditId } : {}),
-            commit: commitCommand(selector, opts.advertiserId, bodyFile, res.auditId),
+            commit: commitCommand(selector, opts.advertiserId, bodyFile, res.auditId, root.dataDir),
           });
         }
 
@@ -244,19 +262,28 @@ function registerSupplyPreset(dsp: Command): void {
     });
 }
 
-function shellQuote(s: string): string {
-  // Backslashes stay as they are: Windows paths are the common case, and a
-  // backslash before an ordinary character is literal inside double quotes.
-  return /^[A-Za-z0-9_./:=@-]+$/.test(s) ? s : `"${s.replace(/(["$`])/g, '\\$1')}"`;
+/**
+ * Quote one argument so the same text pastes into bash and PowerShell:
+ * single quotes are literal in both (no `$`, backslash or backtick expansion),
+ * so Windows and UNC paths survive. A value holding a single quote cannot be
+ * written once for both shells; it gets bash's form.
+ */
+export function shellQuote(s: string): string {
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(s)) return s;
+  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-function commitCommand(
+export function commitCommand(
   selector: { profileId?: string; legacySellerId?: string; sellerId?: string; marketplace?: string },
   advertiserId: string,
   bodyFile: string,
   auditId: string | undefined,
+  dataDir?: string,
 ): string {
-  const parts = ['mixshift ads call dsp.delete_targets'];
+  const parts = ['mixshift'];
+  // The commit must run under the same sign-in as the preview.
+  if (dataDir) parts.push(`--data-dir ${shellQuote(resolve(dataDir))}`);
+  parts.push('ads call dsp.delete_targets');
   if (selector.profileId) parts.push(`--profile-id ${shellQuote(selector.profileId)}`);
   if (selector.legacySellerId) parts.push(`--legacy-seller-id ${shellQuote(selector.legacySellerId)}`);
   if (selector.sellerId) parts.push(`--seller-id ${shellQuote(selector.sellerId)}`);

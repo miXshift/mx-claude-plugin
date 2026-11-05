@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { planSupplyPreset, renderSupplyPlan, DELETE_TARGETS_MAX, type SupplyCall, type SupplyPlan } from './dsp-supply.js';
 import { isReportFailure, type ReportFailure } from '../amazon/reports.js';
 
-const ADV = '583522466791149589';
-const AG1 = '579169548266394480';
-const AG2 = '594418588682008774';
+const ADV = '1000000000000000001';
+const AG1 = '3000000000000000006';
+const AG2 = '3000000000000000003';
 
 let seq = 0;
 function src(adGroupId: string, kind: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
@@ -79,6 +79,13 @@ describe('planSupplyPreset', () => {
     expect(l1?.remove).toEqual([]);
     expect(l1?.skipped).toContain('no Amazon or Publisher Direct source to keep');
     expect(p.targetIds).toHaveLength(1);
+  });
+
+  it('never calls unclassified sources "already done"', async () => {
+    const { call } = fake([{ targets: [src(AG1, 'SOMETHING_NEW'), src(AG1, 'SOMETHING_NEW')] }]);
+    const p = await plan(call);
+    expect(p.targetIds).toEqual([]);
+    expect(p.lines[0]?.skipped).toContain('could not classify 2 inventory source(s)');
   });
 
   it('flags an id that has no inventory sources (wrong id or another advertiser)', async () => {

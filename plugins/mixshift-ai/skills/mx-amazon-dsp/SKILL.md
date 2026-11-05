@@ -687,7 +687,7 @@ Work through these in order; each later step depends on an earlier one.
 | 6 | **Product category** | Look up subcategory ids with `dsp.list_advertised_product_categories`; put them in `advertisedProductCategoryIds` on every line item (a create without it is refused). A parent category only fits a VIDEO line item. |
 | 7 | **Frequency caps** | On create: `{eventMaxCount, frequencyTargetingSetting: USER or HOUSEHOLD, timeCount, timeUnit: DAYS, HOURS or MINUTES}`. The read shape differs: never copy a read into a create. The old frequency keys are refused on create. |
 | 8 | **Audiences** | Amazon's own: `dsp.search_audiences` (browse with `dsp.list_audience_categories`), then `dsp.create_targets`. From AMC: the 18-digit `dspCanonicalId` from `amc.list_audiences`, **never** the short `dspAudienceId` (refused). |
-| 9 | **Supply and default targets** | Amazon adds about 100 default targets to a new display line item, including third-party verification (`THIRD_PARTY`), inventory sources (exchanges) and day parts. Some AMC audiences forbid third-party trackers: remove the `THIRD_PARTY` targets with `dsp.delete_targets` (1,000 per call). For an "Amazon O&O + Publisher Direct only" plan, run `mixshift dsp supply-preset <adGroupId> ... --advertiser-id <id>`: it keeps the `INVENTORY_SOURCE` targets typed `AMAZON` and `APD` (Publisher Direct), plans removing the `THIRD_PARTY_EXCHANGE` ones, and previews that as a `dsp.delete_targets` dry run. Show the user the per-line counts; after they confirm, run the commit command it prints. A line item with no Amazon or Publisher Direct source is left alone. |
+| 9 | **Supply and default targets** | Amazon adds about 100 default targets to a new display line item, including third-party verification (`THIRD_PARTY`), inventory sources (exchanges) and day parts. Some AMC audiences forbid third-party trackers: remove the `THIRD_PARTY` targets with `dsp.delete_targets` (1,000 per call). For an "Amazon O&O + Publisher Direct only" plan, run `mixshift dsp supply-preset <adGroupId> ... --advertiser-id <id>`: it keeps the `INVENTORY_SOURCE` targets typed `AMAZON` and `APD` (Publisher Direct), plans removing the `THIRD_PARTY_EXCHANGE` ones, and previews that as a `dsp.delete_targets` dry run. Show the user the per-line counts; after they confirm, run the commit command it prints. A line item with no Amazon or Publisher Direct source is left alone. Changing supply sends attached creatives back through review by the supply that remains: for a while they read `APPROVED_WITH_EXCEPTIONS` (they serve where approved). |
 | 10 | **Preview, then commit** | A clean preview checks the request shape and MixShift's rules, **not every Amazon-side validation**; a commit can still fail per item (HTTP 207 lists success and error by index). Say so before the user confirms. |
 
 These rules are for **creating**. The edit operations (`dsp.update_campaigns`, `dsp.update_ad_groups`) run on the DSP v1 API, which still takes its own KPI names and the older frequency shape (`frequencyType`, `maxImpressions`, `timeUnitCount`, `levelType`): read the entity with `dsp.list_campaigns` / `dsp.list_ad_groups` and edit in that shape, not the create shape.
@@ -768,8 +768,10 @@ mixshift dsp readiness <campaignId> --advertiser-id <id> --legacy-seller-id <id>
 ```
 
 It prints one line per check, marked `PASS`, `FAIL`, `WARN`, `CONFIRM` or
-`NOT CHECKED`, with the ids it checked and the fix under each failure, and
-exits 3 when the order is not ready (any `FAIL`, or a check it could not run).
+`NOT CHECKED`, with the ids it checked and the fix under each failure. **Any
+nonzero exit means do not switch the order on**: 3 means it checked the order
+and it is not ready (any `FAIL`, or a check it could not run); other codes mean
+the order could not be read at all (sign-in, merchant, Amazon's answer).
 Show the user the checklist as it came and **stop on any `FAIL` or `NOT
 CHECKED`**: say what is missing and how to fix it; do not turn the order on.
 Ask the user about every `CONFIRM` line (it is something the API cannot read)

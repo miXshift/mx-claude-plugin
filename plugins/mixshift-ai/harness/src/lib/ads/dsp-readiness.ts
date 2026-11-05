@@ -103,6 +103,7 @@ const DEFAULT_TARGET_TYPES = new Set([
   'THIRD_PARTY',
   'VIDEO_AD_FORMAT',
   'BRAND_SAFETY_TIER',
+  'UNTYPED',
 ]);
 /** Line item inventoryType -> the order media type it needs. Unknown types are not judged. */
 const INVENTORY_TO_MEDIA: Record<string, string> = {
@@ -113,8 +114,15 @@ const INVENTORY_TO_MEDIA: Record<string, string> = {
 };
 
 const MAX_PAGES = 20;
-const CM_AD_GROUP_FILTER_MAX = 100;
+/**
+ * Line items per targets read. Amazon accepts 100, but a new display line item
+ * carries about 225 default targets, so 100 per read would exhaust MAX_PAGES
+ * pages of 500 and read NOT CHECKED; 20 keeps one read well inside the bound.
+ */
+const CM_AD_GROUP_FILTER_MAX = 20;
 const V1_AD_GROUP_CHUNK = 50;
+/** Tracked products read page size (Amazon's maximum, 10,000). */
+const TRACKED_PRODUCTS_PAGE = 10000;
 
 type Rec = Record<string, unknown>;
 
@@ -172,8 +180,12 @@ function readFailureText(f: ReportFailure): string {
 /** Approval of one association from its moderation row (or the association's own status). */
 function approvalOf(moderation: Rec | undefined, association: Rec | undefined): {
   status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'UNKNOWN';
+  /** APPROVED_WITH_EXCEPTIONS: serves, but some targeted supply has not approved it yet. */
+  exceptions: boolean;
   reasons: string[];
   experiences: string[];
+  /** Amazon's status values as read, for an UNKNOWN verdict. */
+  raw: string[];
 } {
   const experiences: string[] = [];
   const statuses: string[] = [];
@@ -201,14 +213,19 @@ function approvalOf(moderation: Rec | undefined, association: Rec | undefined): 
     const s = str(association?.creativeAssociationStatus)?.toUpperCase();
     if (s) statuses.push(s);
   }
-  if (statuses.includes('APPROVED')) return { status: 'APPROVED', reasons, experiences };
+  const base = { reasons, experiences, raw: [...new Set(statuses)] };
+  if (statuses.includes('APPROVED')) return { status: 'APPROVED', exceptions: false, ...base };
+  // Measured 2026-11-05: after a line item's third-party exchanges were
+  // removed, its approved creative read APPROVED_WITH_EXCEPTIONS ("pending
+  // approval from one or more supply sources targeted by one of its line items").
+  if (statuses.includes('APPROVED_WITH_EXCEPTIONS')) return { status: 'APPROVED', exceptions: true, ...base };
   if (statuses.some((s) => s === 'PENDING' || s === 'IN_REVIEW' || s === 'PENDING_REVIEW')) {
-    return { status: 'PENDING', reasons, experiences };
+    return { status: 'PENDING', exceptions: false, ...base };
   }
   if (statuses.some((s) => s === 'REJECTED' || s === 'DISAPPROVED')) {
-    return { status: 'REJECTED', reasons, experiences };
+    return { status: 'REJECTED', exceptions: false, ...base };
   }
-  return { status: 'UNKNOWN', reasons, experiences };
+  return { status: 'UNKNOWN', exceptions: false, ...base };
 }
 
 function fmtCounts(m: Record<string, number>): string {
@@ -299,9 +316,14 @@ export async function checkDspReadiness(
     'adGroups',
     'body',
   );
+  // Keep only this order's line items: a row that names another order never
+  // counts toward this order's targeting or creatives.
   const adGroups: Rec[] = isReportFailure(agRes)
     ? []
-    : agRes.rows.map(asRec).filter((r): r is Rec => !!r && !!str(r.adGroupId));
+    : agRes.rows
+        .map(asRec)
+        .filter((r): r is Rec => !!r && !!str(r.adGroupId))
+        .filter((r) => str(r.campaignId) === undefined || str(r.campaignId) === campaignId);
   report.lineItems = adGroups.map((g) => ({
     adGroupId: str(g.adGroupId) as string,
     ...(str(g.name) ? { name: str(g.name) } : {}),
@@ -327,9 +349,11 @@ export async function checkDspReadiness(
       const need = li.inventoryType ? INVENTORY_TO_MEDIA[li.inventoryType] : undefined;
       return need !== undefined && !media.includes(need);
     });
+    // A line item type this build cannot map is named, never passed silently.
+    const unmapped = report.lineItems.filter((li) => !li.inventoryType || !INVENTORY_TO_MEDIA[li.inventoryType]);
     add({
       id: 'media_type',
-      level: mismatched.length ? 'fail' : 'pass',
+      level: mismatched.length ? 'fail' : unmapped.length ? 'warn' : 'pass',
       label: 'Media type set',
       detail:
         `Order media type ${media.join(', ')}` +
@@ -337,6 +361,11 @@ export async function checkDspReadiness(
           ? `; does not cover line item ${mismatched
               .map((m) => `${m.adGroupId} (${m.inventoryType})`)
               .join(', ')}`
+          : '') +
+        (unmapped.length
+          ? `; could not match line item ${unmapped
+              .map((m) => `${m.adGroupId} (${m.inventoryType ?? 'no inventory type'})`)
+              .join(', ')} to a media type, check it by hand`
           : ''),
       ...(mismatched.length
         ? { fix: 'Make the order media type match its line items, or move those line items to an order that does.' }
@@ -360,6 +389,7 @@ export async function checkDspReadiness(
     {
       operation: 'dsp.list_conversion_tracking_products',
       pathParams: { ...path, campaignId },
+      query: { maxResults: TRACKED_PRODUCTS_PAGE },
     },
     'productTrackingList',
     'query',
@@ -376,25 +406,52 @@ export async function checkDspReadiness(
     const asins = tpRes.rows.map((r) => str(asRec(r)?.productId)).filter((x): x is string => !!x);
     report.trackedProducts = asins.length;
     const sample = asins.slice(0, 5).join(', ') + (asins.length > 5 ? ', ...' : '');
+    const addFix =
+      'Add the advertised ASINs with dsp.create_conversion_tracking_products, then read them back ' +
+      'with dsp.list_conversion_tracking_products.';
     if (asins.length > 0) {
+      // One tracked product is enough for this gate, so a read that stopped
+      // early still passes; the count says it is a lower bound.
       add({
         id: 'tracked_products',
-        level: tpRes.truncated ? 'unchecked' : 'pass',
+        level: 'pass',
         label: 'Tracked products present',
-        detail: `${asins.length} tracked${tpRes.truncated ? ' (read stopped early)' : ''}: ${sample}`,
+        detail: `${asins.length}${tpRes.truncated ? '+' : ''} tracked: ${sample}`,
+      });
+    } else if (retail) {
+      add({
+        id: 'tracked_products',
+        level: 'fail',
+        label: 'Tracked products present',
+        detail:
+          `None, and the goal ${kpi} optimizes toward retail sales: Amazon refuses to activate it ` +
+          '(CONVERSION_TRACKING_REQUIRED).',
+        fix: addFix,
+      });
+    } else if (kpi && /OFF_AMAZON/.test(kpi)) {
+      // This goal's prerequisite is the off-Amazon conversion (its own CONFIRM line).
+      add({
+        id: 'tracked_products',
+        level: 'warn',
+        label: 'Tracked products present',
+        detail: 'None. An order that advertises products sold on Amazon needs them before it can be switched on.',
+        fix: addFix,
       });
     } else {
+      // Fail closed: Amazon refuses to switch on an order that advertises
+      // products sold on Amazon until it tracks them, whatever its goal, and
+      // the API cannot say whether an order is that kind.
       add({
         id: 'tracked_products',
-        level: retail ? 'fail' : 'warn',
+        level: 'fail',
         label: 'Tracked products present',
-        detail: retail
-          ? `None, and the goal ${kpi} optimizes toward retail sales: Amazon refuses to activate it ` +
-            '(CONVERSION_TRACKING_REQUIRED).'
-          : 'None. An endemic (retail) order needs them before it can be switched on.',
+        detail:
+          `None${kpi ? ` (goal ${kpi})` : ' (and the order shows no goal KPI)'}. Amazon refuses to switch on an ` +
+          'order that advertises products sold on Amazon until it tracks them (CONVERSION_TRACKING_REQUIRED).',
         fix:
-          'Add the advertised ASINs with dsp.create_conversion_tracking_products, then read them back ' +
-          'with dsp.list_conversion_tracking_products.',
+          addFix +
+          ' If this order advertises nothing sold on Amazon, it needs an off-Amazon conversion from Events ' +
+          'manager instead: confirm that in the DSP console and treat this line as answered.',
       });
     }
   }
@@ -466,7 +523,8 @@ export async function checkDspReadiness(
         li.negativeTargets += 1;
         continue;
       }
-      const type = str(t.targetType) ?? 'UNKNOWN';
+      // A row without a type is counted as a default, never as intended targeting.
+      const type = str(t.targetType) ?? 'UNTYPED';
       li.targetsByType[type] = (li.targetsByType[type] ?? 0) + 1;
       if (type === 'INVENTORY_SOURCE') {
         const src = asRec(asRec(t.targetDetails)?.inventorySourceTarget);
@@ -633,29 +691,44 @@ export async function checkDspReadiness(
       if (ap.experiences.includes('RESPONSIVE_ECOMMERCE')) responsive.push(cid);
       return { cid, state: str(a.state), ...ap };
     });
-    const live = judged.filter((j) => j.status === 'APPROVED' && j.state !== 'INACTIVE');
-    const approvedPaused = judged.filter((j) => j.status === 'APPROVED' && j.state === 'INACTIVE');
+    // Live only when Amazon says ACTIVE: a paused or unknown attachment state
+    // leaves the line item with nothing to serve.
+    const live = judged.filter((j) => j.status === 'APPROVED' && j.state === 'ACTIVE');
+    const approvedPaused = judged.filter((j) => j.status === 'APPROVED' && j.state !== 'ACTIVE');
     const pending = judged.filter((j) => j.status === 'PENDING');
     const rejected = judged.filter((j) => j.status === 'REJECTED');
     const describe = (js: typeof judged): string => js.map((j) => j.cid).join(', ');
     if (live.length) {
+      const clean = live.filter((j) => !j.exceptions);
+      const partial = live.filter((j) => j.exceptions);
+      const partialReasons = [...new Set(partial.flatMap((j) => j.reasons))].slice(0, 2);
       add({
         id: 'creative',
         adGroupId: li.adGroupId,
-        level: creativeTruncated ? 'unchecked' : 'pass',
+        level: creativeTruncated ? 'unchecked' : clean.length ? 'pass' : 'warn',
         label,
         detail:
-          `approved: ${describe(live)}` +
+          (clean.length ? `approved: ${describe(clean)}` : '') +
+          (clean.length && partial.length ? '; ' : '') +
+          (partial.length
+            ? `approved with exceptions: ${describe(partial)}` +
+              (partialReasons.length ? ` (${partialReasons.join('; ')})` : '')
+            : '') +
           (pending.length ? `; still pending: ${describe(pending)}` : '') +
           (rejected.length ? `; rejected: ${describe(rejected)}` : ''),
+        ...(clean.length
+          ? {}
+          : { fix: 'It can serve where it is approved; some of the targeted supply is still reviewing it.' }),
       });
     } else if (approvedPaused.length) {
       add({
         id: 'creative',
         adGroupId: li.adGroupId,
-        level: 'warn',
+        level: 'fail',
         label,
-        detail: `approved but the attachment is paused: ${describe(approvedPaused)}`,
+        detail:
+          'approved but the attachment is not active: ' +
+          approvedPaused.map((j) => `${j.cid} (${j.state ?? 'state unknown'})`).join(', '),
         fix: 'Switch the creative attachment on, or the line item has nothing to serve.',
       });
     } else {
@@ -669,7 +742,11 @@ export async function checkDspReadiness(
           (pending.length ? `moderation pending: ${describe(pending)}` : '') +
           (pending.length && rejected.length ? '; ' : '') +
           (rejected.length ? `rejected: ${describe(rejected)}${reasons.length ? ` (${reasons.join('; ')})` : ''}` : '') +
-          (!pending.length && !rejected.length ? `attached, approval unknown: ${describe(judged)}` : ''),
+          (!pending.length && !rejected.length
+            ? `attached, approval not recognized: ${judged
+                .map((j) => `${j.cid} (${j.raw.join(', ') || 'no status'})`)
+                .join(', ')}`
+            : ''),
         fix: pending.length
           ? 'Wait for Amazon\'s review (dsp.list_association_moderations) before switching on.'
           : 'Fix or replace the rejected creative in the DSP console, then attach it again.',

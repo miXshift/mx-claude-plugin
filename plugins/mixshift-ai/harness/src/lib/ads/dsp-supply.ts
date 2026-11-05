@@ -138,6 +138,10 @@ export async function planSupplyPreset(
       // targeting at all, whose meaning Amazon does not document: refuse it.
       line.skipped = 'no Amazon or Publisher Direct source to keep; removing its exchanges would leave no supply targeting';
       line.remove = [];
+    } else if (line.thirdPartyExchange === 0 && line.other > 0) {
+      // Unclassified sources are never called "already done": if Amazon stops
+      // sending inventorySourceType, every row lands here.
+      line.skipped = `could not classify ${line.other} inventory source(s); nothing planned, check them by hand`;
     } else if (line.thirdPartyExchange === 0) {
       line.skipped = 'already Amazon and Publisher Direct only';
     }

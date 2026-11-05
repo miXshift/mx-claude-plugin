@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { registerDspCommands, EXIT_NOT_READY } from './dsp.js';
+import { registerDspCommands, EXIT_NOT_READY, shellQuote, commitCommand } from './dsp.js';
 import { adsCall } from '../lib/amazon/ads-call.js';
 import { track } from '../lib/telemetry/index.js';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
@@ -17,9 +17,9 @@ vi.mock('../lib/telemetry/index.js', async (importOriginal) => {
   return { ...actual, track: vi.fn(async () => {}) };
 });
 
-const ADV = '583522466791149589';
-const CAMP = '579709840191279772';
-const AG = '579169548266394480';
+const ADV = '1000000000000000001';
+const CAMP = '2000000000000000005';
+const AG = '3000000000000000006';
 
 function payloads(mediaTypes: string[] | undefined): Record<string, unknown> {
   return {
@@ -34,7 +34,7 @@ function payloads(mediaTypes: string[] | undefined): Record<string, unknown> {
       ],
     },
     'dsp.query_ad_groups': { adGroups: [{ adGroupId: AG, inventoryType: 'DISPLAY' }] },
-    'dsp.list_conversion_tracking_products': { nextToken: null, productTrackingList: [] },
+    'dsp.list_conversion_tracking_products': { nextToken: null, productTrackingList: [{ productId: 'B000TEST01' }] },
     'dsp.query_targets': { targets: [{ adGroupId: AG, targetType: 'AUDIENCE', negative: false }] },
     'dsp.list_creative_associations': {
       associations: [{ adGroupId: AG, adCreativeId: 'c1', state: 'ACTIVE', creativeAssociationStatus: 'APPROVED' }],
@@ -174,8 +174,8 @@ describe('mixshift dsp readiness', () => {
       expect(process.exitCode).toBeUndefined();
       const del = vi.mocked(adsCall).mock.calls.map((c) => c[0]).find((i) => i.operation === 'dsp.delete_targets');
       expect(del?.body).toEqual({ targetIds: ['x1'] });
-      // A preview only: the command never asks for a commit itself.
-      expect(del?.dryRun).toBeUndefined();
+      // A preview only, asked for explicitly: the command never commits.
+      expect(del?.dryRun).toBe(true);
       const files = await readdir(dir);
       expect(files).toHaveLength(1);
       expect(JSON.parse(await readFile(join(dir, files[0] as string), 'utf8'))).toEqual({ targetIds: ['x1'] });
@@ -185,6 +185,35 @@ describe('mixshift dsp readiness', () => {
         `mixshift ads call dsp.delete_targets --legacy-seller-id 574 --path advertiserId=${ADV} --body-file `,
       );
       expect(text).toContain('--commit --proposal-id audit-123');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('supply-preset stops loudly when the service does not answer the preview as a dry run', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsp-supply-'));
+    try {
+      vi.mocked(adsCall).mockImplementation(async (input) =>
+        input.operation === 'dsp.query_targets'
+          ? {
+              ok: true,
+              operation: input.operation,
+              profileId: 'p',
+              legacySellerId: 574,
+              marketplaceId: null,
+              payload: {
+                targets: [
+                  { adGroupId: AG, targetId: 'keep', targetType: 'INVENTORY_SOURCE', targetDetails: { inventorySourceTarget: { inventorySourceType: 'AMAZON' } } },
+                  { adGroupId: AG, targetId: 'x1', targetType: 'INVENTORY_SOURCE', targetDetails: { inventorySourceTarget: { inventorySourceType: 'THIRD_PARTY_EXCHANGE' } } },
+                ],
+              },
+            }
+          : { ok: true, operation: input.operation, profileId: 'p', legacySellerId: 574, marketplaceId: null, dryRun: false, auditId: 'a1' },
+      );
+      await runDsp('dsp', 'supply-preset', AG, '--advertiser-id', ADV, '--out-dir', dir);
+      expect(process.exitCode).toBe(1);
+      expect(err.join('')).toContain('did not answer the preview as a dry run');
+      expect(out.join('')).not.toContain('DRY RUN');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -206,5 +235,25 @@ describe('mixshift dsp readiness', () => {
     await runDsp('dsp', 'readiness', CAMP, '--advertiser-id', ADV);
     expect(process.exitCode).toBe(2);
     expect(err.join('')).toContain('Sign in first');
+  });
+});
+
+describe('the printed commit command', () => {
+  it('quotes paths so they paste into bash and PowerShell alike', () => {
+    expect(shellQuote('C:\\Users\\a b\\x.json')).toBe("'C:\\Users\\a b\\x.json'");
+    expect(shellQuote('/tmp/$HOME/x.json')).toBe("'/tmp/$HOME/x.json'");
+    expect(shellQuote('\\\\server\\share\\x.json')).toBe("'\\\\server\\share\\x.json'");
+    expect(shellQuote("it's.json")).toBe("'it'\\''s.json'");
+    expect(shellQuote('plain-id_1.json')).toBe('plain-id_1.json');
+  });
+
+  it('carries the selector, --data-dir and the preview audit id', () => {
+    const cmd = commitCommand({ legacySellerId: '574' }, ADV, '/x/body 1.json', 'audit-1', '/data dir');
+    expect(cmd).toMatch(/^mixshift --data-dir '.*data dir' ads call dsp\.delete_targets --legacy-seller-id 574 /);
+    expect(cmd).toContain(`--path advertiserId=${ADV} --body-file '/x/body 1.json' --commit --proposal-id audit-1`);
+  });
+
+  it('drops an audit id that is not a plain token', () => {
+    expect(commitCommand({}, ADV, '/x.json', 'a b;rm -rf')).not.toContain('--proposal-id');
   });
 });
