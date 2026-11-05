@@ -104,7 +104,7 @@ The welcome copy already told the user: *"I'll set up a sign-in link for you rig
 4. **Poll for approval when they confirm.** When the user says they're done, run `mixshift auth device-poll <device_code> --person-label "<email>"`. On `pending` re-poll politely; on `expired` restart from step 2; on `approved` move to verification.
 5. **Verify + bottom line.** Run `mixshift data query --sql "SELECT 1"` to confirm the warehouse is reachable, then show a concise success message + 1-2 things they can try next.
 
-For the detailed dispatch logic (Bash path vs MCP path on claude.ai, error envelopes, specific fallbacks), defer to the `mx-auth-login` skill's SKILL.md — those rules apply here verbatim. The welcome's job is just to remove the "say 'sign in to mixshift'" middleman so the new user gets a sign-in link without having to know any magic phrase.
+For the detailed dispatch logic (Bash path, the claude.ai / Claude Desktop connector path where Claude signs in by OAuth, error envelopes, specific fallbacks), defer to the `mx-auth-login` skill's SKILL.md — those rules apply here verbatim. The welcome's job is just to remove the "say 'sign in to mixshift'" middleman so the new user gets a sign-in link without having to know any magic phrase.
 
 ## When to use this skill
 

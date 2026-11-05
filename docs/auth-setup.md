@@ -159,7 +159,7 @@ The plugin holds tokens, not passwords. Your actual MixShift password is entered
 |---|---|---|
 | **Access token** (JWT, sign-in) | 24h | The plugin auto-refreshes ~60s before expiry. Transparent to you. |
 | **Refresh token** | 30d | When this expires, re-run `mixshift auth login`. Same flow. |
-| **Access token** (service credential) | ~1h | The plugin re-mints automatically from the static credential. Nothing for you to do, ever. |
+| **Access token** (service credential) | 12h | The plugin re-mints automatically from the static credential. Nothing for you to do, ever. |
 
 Refresh tokens are **one-time-use** — replaying a rotated refresh token revokes every active session for your user as a defense against token theft. The plugin's refresh logic is gated by a singleton so concurrent requests can't accidentally trigger this.
 
@@ -272,7 +272,7 @@ The raw secret is never accepted as a command-line argument (argv leaks into she
 ### How it works
 
 - The credential is written to the `service` block of `~/.mixshift/auth/credentials` (mode 0600).
-- At run time the plugin mints a short-lived (~1h) access token from `https://mcp.mixshift.io/oauth/token` and caches it at `~/.mixshift/auth/service-token-cache.json`. Near expiry it just mints again.
+- At run time the plugin mints a short-lived (12h) access token from `https://mcp.mixshift.io/oauth/token` and caches it at `~/.mixshift/auth/service-token-cache.json`. Near expiry it just mints again.
 - If you ALSO have a human sign-in (`datahub` block) on the same machine, the human session wins. The service credential is the fallback for environments where no one signed in.
 - Telemetry and MixShift audit logs attribute the automation's activity to the credential's `svc:` label, so the admin can always see which automation did what.
 
@@ -302,7 +302,7 @@ Your tenant admin creates one at `https://mcp.mixshift.io/admin` with "Create wi
 
 ### 2. Mint an access token
 
-Exchange the credential for a short-lived (about 1 hour) bearer token using the OAuth client_credentials grant:
+Exchange the credential for a short-lived (12 hour) bearer token using the OAuth client_credentials grant:
 
 ```bash
 curl -sS https://mcp.mixshift.io/oauth/token \
@@ -311,7 +311,7 @@ curl -sS https://mcp.mixshift.io/oauth/token \
 ```
 
 ```json
-{ "access_token": "eyJ...", "expires_in": 3600 }
+{ "access_token": "eyJ...", "expires_in": 43200 }
 ```
 
 Mint once per run and reuse the token until it nears expiry. Re-mint when you get a 401.
@@ -372,7 +372,7 @@ https://mcp.mixshift.io/mcp
 You authenticate with a bearer token. Two ways to get one:
 
 - **Personal use:** open `https://mcp.mixshift.io/login?mode=direct` in a browser, sign in with your MixShift account, and copy the access token it shows. Access tokens last 24 hours; when one expires, mint a new one the same way.
-- **Long-lived or shared setups:** ask your tenant admin for a service credential (see [Service credentials](#service-credentials-unattended-runs)), then mint tokens from it with the `client_credentials` grant as shown in [Querying from your own app](#querying-from-your-own-app-direct-api). Service-minted tokens last about 1 hour, so this path fits tooling that can re-mint, not a paste-once config.
+- **Long-lived or shared setups:** ask your tenant admin for a service credential (see [Service credentials](#service-credentials-unattended-runs)), then mint tokens from it with the `client_credentials` grant as shown in [Querying from your own app](#querying-from-your-own-app-direct-api). Service-minted tokens last 12 hours, so this path fits tooling that can re-mint or restart, not a paste-once config.
 
 ### Cursor
 

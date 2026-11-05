@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-login
 display_name: MixShift Auth Login
-version: "0.2.2"
+version: "0.2.3"
 description: >
   Authenticate against the MixShift warehouse via the mx-legacy-auth
   service (token-based). Routes by scenario: interactive sign-in
@@ -9,8 +9,9 @@ description: >
   flow from a terminal) when a human is present, admin-issued service
   credentials (OAuth client_credentials via `mixshift auth
   service-setup`) for unattended runs like scheduled Cowork tasks and
-  CI, and a paste-token direct mode (/login?mode=direct) on claude.ai
-  web where no shell exists. Collects a self-attested work email
+  CI. On claude.ai web / Claude Desktop chat (no shell) it routes to the
+  remote MCP connector at https://mcp.mixshift.io/mcp, which signs in by
+  OAuth with dynamic client registration. Collects a self-attested work email
   (person_label) for per-employee session attribution on interactive
   paths; service credentials attribute via their admin-chosen svc:
   label. Replaces the retired legacy chat-driven raw-MySQL flow; the
@@ -63,13 +64,15 @@ notes: >
   refresh_token, expires_at, refresh_expires_at, user_id, email,
   person_label, device_label, client_id, api_base}. Service installs
   write a `service` block holding {api_base, client_id (svc_...),
-  client_secret, label}; the harness mints ~1h access tokens on
+  client_secret, label}; the harness mints 12h access tokens on
   demand via POST /oauth/token (grant_type=client_credentials) and
   caches them at service-token-cache.json. Precedence when multiple
   blocks coexist: datahub, then service, then legacy mysql.
 
-  The claude.ai path is /login?mode=direct (user pastes the access
-  token into the connector config). The old mixshift_auth_start /
+  The claude.ai / Claude Desktop path is the remote MCP connector
+  (OAuth + DCR via /oauth/register, auto-refreshing). /login?mode=direct
+  (24h pasted Bearer, no refresh) is only a fallback for clients
+  without OAuth (Cursor, Codex). The old mixshift_auth_start /
   mixshift_auth_complete MCP tools were REMOVED from the service when
   auth moved to the HTTP transport layer; any instructions
   referencing them are stale.
