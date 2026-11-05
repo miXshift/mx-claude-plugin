@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.6.0"
+version: "0.7.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -41,8 +41,8 @@ side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
-# Harness commands the skill calls (DSP is the DSP family inside `ads call`;
-# there is no dedicated `dsp` subcommand).
+# Harness commands the skill calls (DSP is the DSP family inside `ads call`,
+# plus the 0.7.0 composites `dsp readiness` and `dsp supply-preset`).
 # NOTE the two parameter names: the report operations take --path accountId=,
 # the /dsp/v1 account reads take --path advertiserId=. Same value, different
 # name per surface. The two discovery operations are in the Accounts family, so
@@ -71,6 +71,8 @@ harness_commands:
   - mixshift ads call dsp.query_campaigns --path advertiserId= --body <json>
   - mixshift ads call dsp.query_ad_groups --path advertiserId= --body <json>
   - mixshift ads call dsp.query_targets --path advertiserId= --body <json>
+  - mixshift dsp readiness <campaignId> --advertiser-id <id> --legacy-seller-id <id>
+  - mixshift dsp supply-preset <adGroupId> --advertiser-id <id> --legacy-seller-id <id>
   - mixshift context dsp-advertiser show <advertiser_id>
   - mixshift context dsp-advertiser assign <advertiser_id> --brand <slug> [--account <seller_id>] [--commit] [--expect <plan_hash>]
   - mixshift context dsp-advertiser unassign <advertiser_id> --brand <slug> [--commit] [--expect <plan_hash>]
