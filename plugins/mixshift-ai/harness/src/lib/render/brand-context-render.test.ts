@@ -213,6 +213,15 @@ describe('brand-context render — placeholder ACoS target is never confirmed', 
     // The model-facing headline carries the source next to the number.
     expect(headline.context_snapshot.acos_target_pct).toBe(20);
     expect(headline.context_snapshot.acos_target_source).toBe('default');
+    // The required-field audit row warns instead of reading ok, and skill
+    // readiness never says "all required context confirmed".
+    const row = review.audit_rows.find((r: any) => r.path === 'management.acos_target_pct');
+    expect(row.status).toBe('warn');
+    expect(row.value).toContain(PLACEHOLDER_NOTE);
+    expect(html).not.toContain('All required context confirmed.');
+    for (const r of review.skill_readiness) {
+      expect(r.notes).not.toContain('All required context confirmed.');
+    }
   });
 
   it('a user-confirmed target stays confirmed, with no placeholder note', async () => {
@@ -221,6 +230,8 @@ describe('brand-context render — placeholder ACoS target is never confirmed', 
     expect(f.acos_target_pct).toEqual({ level: 'confirmed', source: 'context' });
     expect(html).not.toContain(PLACEHOLDER_NOTE);
     expect(headline.context_snapshot.acos_target_source).toBe('user');
+    const row = review.audit_rows.find((r: any) => r.path === 'management.acos_target_pct');
+    expect(row.status).toBe('ok');
   });
 });
 

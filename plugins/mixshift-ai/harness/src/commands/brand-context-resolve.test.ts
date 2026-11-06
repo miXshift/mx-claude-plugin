@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -144,6 +144,43 @@ describe('brand context resolve on a retired brand', () => {
     const unknown = await resolve('--json');
     expect(unknown.stdout).toBe(active.stdout);
     expect(unknown.stderr).toBe('');
+  });
+
+  it('a bootstrap placeholder ACoS target prints as a placeholder, never "you confirmed"', async () => {
+    const dir = join(tmpDataDir, 'clients', 'acme-snacks');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'context.yaml'),
+      [
+        'schema_version: 1',
+        'brand_slug: acme-snacks',
+        'brand_name: Acme Snacks',
+        'last_updated: 2026-05-01',
+        'accounts:',
+        '  - seller_id: 123',
+        '    seller_name: Test',
+        '    account_type: SC',
+        '    status: active',
+        '    role: primary',
+        'sources:',
+        '  ad_metrics: ads',
+        '  ops_revenue: rev',
+        '  ops_revenue_field: r',
+        '  ops_units_field: u',
+        '  ops_date_field: d',
+        'management:',
+        '  primary_metric: ACOS',
+        '  acos_target_pct: 20',
+        '  acos_target_source: default',
+        '  attribution_window_days: 7',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const r = await resolve();
+    expect(r.stdout).toContain('⊙ acos_target_pct: 20 (placeholder default, not from your data: confirm it)');
+    expect(r.stdout).not.toContain('acos_target_pct: 20 (you confirmed)');
+    expect(r.stdout).toContain('✓ primary_metric: ACOS (you confirmed)');
   });
 
   it('an older service (no lifecycle field) prints nothing extra', async () => {

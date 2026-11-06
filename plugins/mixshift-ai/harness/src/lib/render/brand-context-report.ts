@@ -29,7 +29,7 @@ import {
   contextPath,
   narrativePath,
 } from '../paths/resolve.js';
-import { loadBrain } from '../brain/read.js';
+import { loadBrain, PLACEHOLDER_NOTE } from '../brain/read.js';
 
 // ---------------------------------------------------------------------------
 // Source shapes (loose — we degrade gracefully on missing fields)
@@ -196,6 +196,11 @@ export interface AuditCoverage {
   recommended_total: number;
   stale_count: number;
   open_gaps_count: number;
+  /** Populated fields that are only a bootstrap placeholder (today the ACoS
+   *  target with `management.acos_target_source: default`). They still count
+   *  as present, but readiness and the verdict must not call them confirmed.
+   *  Absent = 0. */
+  placeholder_count?: number;
 }
 
 /**
@@ -214,6 +219,7 @@ export function computeAuditCoverage(
   let recommended_total = 0;
   let stale_count = 0;
   let open_gaps_count = 0;
+  let placeholder_count = 0;
 
   for (const label of labels) {
     const value = context ? resolveAuditPath(context, label.path) : undefined;
@@ -225,6 +231,14 @@ export function computeAuditCoverage(
       isStaleDate(value, now)
     );
     if (isStale) stale_count += 1;
+    // The bootstrap 20% placeholder is populated (skills can run on it), so
+    // it still counts as present, but the row warns and says it needs
+    // confirming instead of reading ok.
+    const isPlaceholder =
+      isPresent &&
+      label.path === 'management.acos_target_pct' &&
+      getNested(context, 'management.acos_target_source') === 'default';
+    if (isPlaceholder) placeholder_count += 1;
 
     if (label.tier === 'required') {
       required_total += 1;
@@ -237,17 +251,18 @@ export function computeAuditCoverage(
     let status: 'ok' | 'miss' | 'warn' | 'muted';
     if (!isPresent) {
       status = label.tier === 'required' ? 'miss' : label.tier === 'recommended' ? 'warn' : 'muted';
-    } else if (isStale) {
+    } else if (isStale || isPlaceholder) {
       status = 'warn';
     } else {
       status = 'ok';
     }
 
+    const display = formatAuditValue(label, value, isPresent, isStale);
     rows.push({
       label,
       value,
       status,
-      display: formatAuditValue(label, value, isPresent, isStale),
+      display: isPlaceholder ? `${display} (${PLACEHOLDER_NOTE})` : display,
       is_stale: isStale,
     });
 
@@ -265,6 +280,7 @@ export function computeAuditCoverage(
     recommended_total,
     stale_count,
     open_gaps_count,
+    placeholder_count,
   };
 }
 
@@ -430,12 +446,15 @@ export function computeVerdict(args: VerdictArgs): { verdict: Verdict; reason: s
       reason: `${missing} required field(s) missing.`,
     };
   }
-  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
+  const placeholders = args.coverage.placeholder_count ?? 0;
+  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0 || placeholders > 0) {
     const parts: string[] = [];
     if (args.coverage.open_gaps_count > 0)
       parts.push(`${args.coverage.open_gaps_count} open gap(s)`);
     if (args.coverage.stale_count > 0)
       parts.push(`${args.coverage.stale_count} stale field(s)`);
+    if (placeholders > 0)
+      parts.push(`ACoS target is a placeholder default to confirm`);
     return {
       verdict: 'YELLOW',
       reason: parts.join('; ') + '.',

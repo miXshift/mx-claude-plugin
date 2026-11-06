@@ -283,6 +283,29 @@ export const BRAND_FIELD_KEYS = Object.keys(
   BRAND_FIELD_REGISTRY,
 ) as BrandFieldKey[];
 
+/**
+ * True when a resolved field's Tier-3 value is only a bootstrap placeholder
+ * nobody confirmed: the ACoS target (and its provenance field) when
+ * `management.acos_target_source` is 'default', which bootstrap writes when
+ * the warehouse had no target and it filled in 20%. Such a value sits in
+ * context.yaml but must never read as confirmed: every surface (the Brand
+ * Context page, review.json, `brand context resolve`) shows it as pre-filled
+ * with PLACEHOLDER_NOTE.
+ */
+export function isPlaceholderDefault(
+  fields: Record<BrandFieldKey, ResolvedField<unknown> | null>,
+  key: BrandFieldKey,
+): boolean {
+  if (key !== 'acos_target_pct' && key !== 'acos_target_source') return false;
+  return (
+    fields[key]?.source === 'context' &&
+    fields.acos_target_source?.value === 'default'
+  );
+}
+
+/** The short note shown beside a placeholder default. */
+export const PLACEHOLDER_NOTE = 'placeholder default, not from your data: confirm it';
+
 function getByPath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((acc, seg) => {
     if (acc == null || typeof acc !== 'object') return undefined;

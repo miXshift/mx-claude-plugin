@@ -314,15 +314,21 @@ function computeSkillReadiness(
       : ctx
         ? 'partial'
         : 'defaults';
+  // A required field filled only by the bootstrap placeholder (the default
+  // ACoS target) is populated, not confirmed: never say "confirmed" for it.
+  const hasPlaceholder = (coverage.placeholder_count ?? 0) > 0;
   const readyNote =
     tier === 'context'
-      ? 'All required context confirmed.'
+      ? hasPlaceholder
+        ? 'Required context is filled in, but the ACoS target is a placeholder default: confirm it.'
+        : 'All required context confirmed.'
       : tier === 'brain'
         ? 'Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen.'
         : tier === 'partial'
           ? 'Partial context; unset fields fall back to skill defaults.'
           : 'No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.';
-  const readyTone: 'complete' | 'partial' = tier === 'context' ? 'complete' : 'partial';
+  const readyTone: 'complete' | 'partial' =
+    tier === 'context' && !hasPlaceholder ? 'complete' : 'partial';
 
   const notBootstrapped = {
     status: 'Blocked',

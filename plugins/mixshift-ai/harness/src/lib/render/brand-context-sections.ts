@@ -46,7 +46,13 @@ import type {
   AuditCoverage,
   Verdict,
 } from './brand-context-report.js';
-import { BRAND_FIELD_KEYS, type BrandFieldKey, type ResolvedField } from '../brain/read.js';
+import {
+  BRAND_FIELD_KEYS,
+  isPlaceholderDefault,
+  PLACEHOLDER_NOTE,
+  type BrandFieldKey,
+  type ResolvedField,
+} from '../brain/read.js';
 
 /** The resolved registered-field map, as `resolveBrandFields(slug)` returns. */
 export type ResolvedFieldMap = Record<
@@ -87,27 +93,9 @@ function levelOf(resolved: ResolvedField<unknown> | null | undefined): Confidenc
   return resolved.source === 'context' ? 'confirmed' : 'prefilled';
 }
 
-/**
- * True when a registered field's Tier-3 value is only a bootstrap placeholder
- * nobody confirmed: the ACoS target (and its provenance field) when
- * `management.acos_target_source` is 'default', which bootstrap writes when
- * the warehouse had no target and it filled in 20%. Such a value sits in
- * context.yaml but must never read as confirmed: it renders pre-filled with
- * PLACEHOLDER_NOTE, and review.json flags it the same way.
- */
-export function isPlaceholderDefault(
-  fields: ResolvedFieldMap,
-  key: BrandFieldKey,
-): boolean {
-  if (key !== 'acos_target_pct' && key !== 'acos_target_source') return false;
-  return (
-    fields[key]?.source === 'context' &&
-    fields.acos_target_source?.value === 'default'
-  );
-}
-
-/** The short note shown beside a placeholder default. */
-export const PLACEHOLDER_NOTE = 'placeholder default, not from your data: confirm it';
+// The placeholder rule lives with the resolver (lib/brain/read.ts) so the
+// page, review.json and `brand context resolve` all apply the same one.
+export { isPlaceholderDefault, PLACEHOLDER_NOTE };
 
 /** Confidence of a REGISTERED brand field: the resolver's tier, except that a
  *  placeholder default is pre-filled, never confirmed. */
