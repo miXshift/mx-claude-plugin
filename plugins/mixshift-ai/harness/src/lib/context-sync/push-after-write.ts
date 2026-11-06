@@ -430,7 +430,7 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
       // the read-only way to check, instead of "could not sync".
       if (result.timedOut) {
         return (
-          `Your ${brandSlug} save is still syncing to your team and will finish in the background; ` +
+          `Your ${brandSlug} save took longer than usual to reach your team and will go up on the next sync; ` +
           `your work is saved locally. Check it with \`mixshift context status --brand ${brandSlug}\`.`
         );
       }

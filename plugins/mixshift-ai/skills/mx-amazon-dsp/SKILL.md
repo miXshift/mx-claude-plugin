@@ -16,7 +16,7 @@ description: >
   Console only: creating a creative, "Automatically create responsive ads".
   No brand setup, only sign-in.
 metadata:
-  version: "0.7.0"
+  version: "0.7.1"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -679,7 +679,7 @@ Work through these in order; each later step depends on an earlier one.
 
 | # | Decide or do | Rule |
 |---|---|---|
-| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. |
+| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. **A hand-built responsive ecommerce ad works from the API** (`dsp.create_ads`, proven on a test advertiser November 2026): adType `COMPONENT` with `creative.componentCreative.responsiveEcommerceSettings` (products, language, inventory types, `optimizationGoalKpi` and `supportedThirdPartySellers` are required by Amazon), created paused, then linked to a line item with `dsp.create_ad_associations`; it goes through Amazon's moderation like any creative. It is not the console's automatic one, and a DSP ad cannot be deleted, so preview it and get the user's yes first. |
 | 2 | **Media type** | Send `optimizations.primaryInventoryTypes` on the order (`AUDIO`, `DISPLAY`, `VIDEO_OLV`, `VIDEO_STV`) and match it to the line items (Display line items mean `["DISPLAY"]`). Without it the order has no media type and creatives do not populate. MixShift refuses a campaign create without it. |
 | 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
 | 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |

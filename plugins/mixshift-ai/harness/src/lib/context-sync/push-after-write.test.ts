@@ -484,7 +484,7 @@ describe('user-facing notice (stderr)', () => {
 
     expect(result).toMatchObject({ published: false, reason: 'failed', timedOut: true });
     expect(stderrText()).toBe(
-      'Your acme save is still syncing to your team and will finish in the background; ' +
+      'Your acme save took longer than usual to reach your team and will go up on the next sync; ' +
         'your work is saved locally. Check it with `mixshift context status --brand acme`.\n',
     );
     expect(stderrText()).not.toContain('Could not sync');
