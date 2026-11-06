@@ -446,15 +446,16 @@ export function computeVerdict(args: VerdictArgs): { verdict: Verdict; reason: s
       reason: `${missing} required field(s) missing.`,
     };
   }
-  const placeholders = args.coverage.placeholder_count ?? 0;
-  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0 || placeholders > 0) {
+  // A placeholder ACoS target does NOT move the verdict: the audit row, the
+  // readiness note and `brand context resolve` already flag it, and brand
+  // setup does not yet record a target the user gives as theirs, so a YELLOW
+  // here would loop the user back into setup (review 2026-11-06).
+  if (args.coverage.open_gaps_count > 0 || args.coverage.stale_count > 0) {
     const parts: string[] = [];
     if (args.coverage.open_gaps_count > 0)
       parts.push(`${args.coverage.open_gaps_count} open gap(s)`);
     if (args.coverage.stale_count > 0)
       parts.push(`${args.coverage.stale_count} stale field(s)`);
-    if (placeholders > 0)
-      parts.push(`ACoS target is a placeholder default to confirm`);
     return {
       verdict: 'YELLOW',
       reason: parts.join('; ') + '.',

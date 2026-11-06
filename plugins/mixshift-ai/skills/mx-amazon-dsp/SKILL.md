@@ -1139,8 +1139,9 @@ These supersede other instructions:
   `dsp.create_*`, `dsp.delete_targets`) NEVER reaches Amazon without a preview
   the user saw and explicit confirmation of that exact change set in a SEPARATE
   turn, then `--commit`. A flights list is a full replacement: omitting a flight
-  deletes it. Creating creatives and changing a creative's placement are
-  console-only: do not improvise them.
+  deletes it. Building a creative is console-only except the responsive
+  ecommerce ad (`dsp.create_ads`); do not improvise any other creative or a
+  creative's placement.
 - **Never assign or unassign a brand the user did not name; never in unattended
   runs; never in bulk.** A DSP advertiser is declared on a brand only after the
   user names that brand and confirms the dry run. Evidence from matching is a
