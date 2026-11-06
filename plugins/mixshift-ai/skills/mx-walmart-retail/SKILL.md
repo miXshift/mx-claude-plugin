@@ -254,15 +254,16 @@ code. These are reads, so retrying a read is always safe.
 | `insufficient_scope` | 11 | This sign-in is not allowed to read that data. Ask the MixShift account admin to grant it. |
 | `write_refused` | 11 | That operation changes the account. Claude only reads; make the change in the MixShift app. |
 | `bad_request` | 12 | Walmart rejected the request as sent. Fix it from the operation notes and Walmart's answer (`walmart_response`); do not resend unchanged. |
-| `upstream_auth` | 14 | Walmart refused. If `walmart_status` is 401 or 403, Walmart refused **this one read** for this seller: they did not grant that permission, and the connection itself is fine. Say which read, carry on with the other reads, and do not tell them to reconnect. Only if every read is refused, suggest they reconnect at https://mcp.mixshift.io/walmart/marketplace/connect or contact support@mixshift.io. |
+| `upstream_auth` | 14 | Two meanings; check `reason` first. **`reason: "reauth_required"`** (any `walmart_status`): Walmart no longer accepts the seller's connection to MixShift. It is dead; a Seller Center admin must reconnect at https://mcp.mixshift.io/walmart/marketplace/connect. Stop the plan. **No `reason`, with `walmart_response` present and `walmart_status` 401 or 403:** Walmart refused **this one read** because the seller did not grant that permission. The connection is fine: say which read, carry on with the other reads, and do not tell them to reconnect. Anything else: contact support@mixshift.io. |
 | `invalid_request` | 15 | MixShift refused the request before sending anything: an unknown operation, a missing parameter, a wrong shape. Read the message, check `operations`, fix it; never resend unchanged. |
 | `upstream_unavailable` | 1 | Walmart is not answering right now. This is on Walmart's side: **the seller does not need to reconnect.** Try again in a minute. |
 | `host_unreachable` / `unknown` | 1 | MixShift's service did not answer, or an unexpected error. Retry once, then relay the message. Never loop. |
 
 A sign-in or access failure (`not_authenticated`, `session_expired`,
-`tenant_not_allowed`, `seller_not_allowed`) stops the whole plan: report it
-once with the remedy. A refused single read (`upstream_auth` with a 401 or
-403) does not.
+`tenant_not_allowed`, `seller_not_allowed`, or `upstream_auth` with
+`reason: "reauth_required"`) stops the whole plan: report it once with the
+remedy. A refused single read (`upstream_auth` with no `reason`, a
+`walmart_response` and a 401 or 403) does not.
 
 ## Hard rules
 

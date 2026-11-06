@@ -146,6 +146,18 @@ describe('walmart marketplace call', () => {
     expect(out.walmart_status).toBe(403);
     expect(process.exitCode).toBe(14);
   });
+
+  it('carries the gateway reason in --json', async () => {
+    vi.mocked(marketplaceCall).mockResolvedValueOnce({
+      ok: false,
+      kind: 'upstream_auth',
+      friendly: 'Reconnect.',
+      walmartStatus: 400,
+      reason: 'reauth_required',
+    });
+    await run('--json', 'walmart', 'marketplace', 'call', 'mp.list_orders', '--seller', '1234567890');
+    expect(JSON.parse(stdout).reason).toBe('reauth_required');
+  });
 });
 
 describe('walmart marketplace sellers', () => {

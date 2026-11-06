@@ -51,6 +51,8 @@ export interface MarketplaceFailure extends Omit<WalmartFailure, 'kind' | 'adver
   sellerId?: string;
   /** Walmart's own HTTP status, when Walmart answered and the service says so. */
   walmartStatus?: number;
+  /** Gateway reason code. 'reauth_required' = Walmart no longer accepts the seller's connection. */
+  reason?: string;
 }
 
 export interface MarketplaceSellerView {
@@ -345,19 +347,21 @@ function toFailure(json: Record<string, unknown>, httpStatus: number): Marketpla
           : 'bad_request'
         : 'unknown';
   const walmartStatus = walmartStatusOf(json);
+  const reason = cleanServerText(json.reason);
   const issues = parseRouteIssues(json.issues);
   const message = typeof json.message === 'string' ? json.message : issues?.detail;
   const sellerId =
     typeof json.sellerId === 'string' || typeof json.sellerId === 'number' ? String(json.sellerId) : undefined;
   const fix = cleanServerText(json.fix);
   const friendly =
-    typeof json.friendly === 'string' && json.friendly ? json.friendly : defaultFriendly(kind, walmartStatus);
+    typeof json.friendly === 'string' && json.friendly ? json.friendly : defaultFriendly(kind, walmartStatus, { reason, hasWalmartBody: json.walmart !== undefined });
   return {
     ok: false,
     kind,
     friendly,
     httpStatus,
     ...(walmartStatus !== undefined ? { walmartStatus } : {}),
+    ...(reason !== undefined ? { reason } : {}),
     ...(message !== undefined ? { message } : {}),
     ...(sellerId !== undefined ? { sellerId } : {}),
     ...(typeof json.required === 'string' ? { requiredScope: json.required } : {}),
@@ -381,7 +385,11 @@ function statusOnlyFailure(httpStatus: number, detail?: string): MarketplaceFail
   };
 }
 
-export function defaultFriendly(kind: MarketplaceFailureKind, walmartStatus?: number): string {
+export function defaultFriendly(
+  kind: MarketplaceFailureKind,
+  walmartStatus?: number,
+  detail: { reason?: string; hasWalmartBody?: boolean } = {},
+): string {
   switch (kind) {
     case 'seller_not_allowed':
       return (
@@ -407,7 +415,13 @@ export function defaultFriendly(kind: MarketplaceFailureKind, walmartStatus?: nu
     case 'not_found':
       return 'Walmart has no record matching that request.';
     case 'upstream_auth':
-      return walmartStatus === 401 || walmartStatus === 403
+      // Two meanings. reason 'reauth_required' = the token mint was refused: the
+      // connection is dead whatever the status. A refused READ (no reason, Walmart's
+      // body present, 401/403) is one permission the seller did not grant.
+      if (detail.reason === 'reauth_required') {
+        return "Walmart no longer accepts this seller's connection to MixShift. A Seller Center admin needs to reconnect it at https://mcp.mixshift.io/walmart/marketplace/connect.";
+      }
+      return !detail.reason && detail.hasWalmartBody && (walmartStatus === 401 || walmartStatus === 403)
         ? 'Walmart refused this one read for this seller: the seller has not granted that permission. The connection itself still works, and other reads may succeed.'
         : "Walmart refused MixShift's access for this seller. Contact MixShift.";
     case 'throttled':

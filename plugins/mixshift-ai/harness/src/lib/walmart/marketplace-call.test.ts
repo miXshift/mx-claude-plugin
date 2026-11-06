@@ -148,7 +148,7 @@ describe('marketplaceCall', () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, CATALOG))
-      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', walmartStatus: 403 }));
+      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', status: 403, walmart: { error: 'forbidden' } }));
     const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -156,6 +156,34 @@ describe('marketplaceCall', () => {
       expect(r.walmartStatus).toBe(403);
       expect(r.friendly).toMatch(/this one read/);
     }
+  });
+
+  it('treats upstream_auth with reason reauth_required as a dead connection whatever the status', async () => {
+    for (const status of [400, 401, 403]) {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, CATALOG))
+        .mockResolvedValueOnce(
+          jsonResponse(502, { ok: false, kind: 'upstream_auth', status, reason: 'reauth_required', sellerId: '555' }),
+        );
+      const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.reason).toBe('reauth_required');
+        expect(r.friendly).toMatch(/reconnect it at https:\/\/mcp\.mixshift\.io\/walmart\/marketplace\/connect/);
+        expect(r.friendly).not.toMatch(/this one read/);
+      }
+    }
+  });
+
+  it('does not call upstream_auth without a reason or Walmart body a refused read', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, CATALOG))
+      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', status: 401 }));
+    const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.friendly).not.toMatch(/this one read/);
   });
 
   it('treats upstream_unavailable as Walmart being down, not a reconnect', async () => {

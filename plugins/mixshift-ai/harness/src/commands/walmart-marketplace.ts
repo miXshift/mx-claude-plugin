@@ -260,6 +260,7 @@ function emitFailure(failure: MarketplaceFailure, json: boolean): void {
       detail: failure.message,
       http_status: failure.httpStatus,
       walmart_status: failure.walmartStatus,
+      reason: failure.reason,
       seller_id: failure.sellerId,
       required_scope: failure.requiredScope,
       unrecognized_kind: failure.unrecognizedKind,
