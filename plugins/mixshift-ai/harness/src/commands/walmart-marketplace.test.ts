@@ -147,6 +147,20 @@ describe('walmart marketplace call', () => {
     expect(process.exitCode).toBe(14);
   });
 
+  it('sends unknown_operation to telemetry when the catalog did not know the id', async () => {
+    vi.mocked(marketplaceCall).mockResolvedValueOnce({
+      ok: false,
+      kind: 'invalid_request',
+      friendly: 'x',
+      operationKnown: false,
+    });
+    await run('--json', 'walmart', 'marketplace', 'call', 'my private note', '--seller', '1234567890');
+    expect(lastTrack().payload.operation).toBe('unknown_operation');
+    vi.mocked(marketplaceCall).mockResolvedValueOnce({ ok: false, kind: 'seller_not_allowed', friendly: 'x', operationKnown: true });
+    await run('--json', 'walmart', 'marketplace', 'call', 'mp.list_orders', '--seller', '1234567890');
+    expect(lastTrack().payload.operation).toBe('mp.list_orders');
+  });
+
   it('carries the gateway reason in --json', async () => {
     vi.mocked(marketplaceCall).mockResolvedValueOnce({
       ok: false,
@@ -172,6 +186,15 @@ describe('walmart marketplace sellers', () => {
     expect(out.sellers[0].sellerId).toBe('1234567890');
     expect(lastTrack().event_name).toBe('walmart.marketplace.sellers_listed');
     expect(JSON.stringify(lastTrack().payload)).not.toMatch(/acme/);
+  });
+
+  it('flags a seller that must reconnect in the human table', () => {
+    const out = renderSellers([
+      { sellerId: '1', environment: 'production', label: 'acme', reconnectRequired: true },
+      { sellerId: '2', environment: 'production', label: 'beta', connectionExpiresAt: '2026-12-01' },
+    ]);
+    expect(out).toMatch(/RECONNECT NEEDED: https:\/\/mcp\.mixshift\.io\/walmart\/marketplace\/connect/);
+    expect(out).toMatch(/connection expires 2026-12-01/);
   });
 
   it('renders a table, and an empty state', () => {

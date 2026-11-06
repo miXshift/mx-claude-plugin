@@ -1,7 +1,7 @@
 ---
 name: mx-walmart-retail
 description: >
-  Read your Walmart Marketplace seller account for the Walmart sellers
+  Beta. Read your Walmart Marketplace seller account for the Walmart sellers
   connected to the signed-in MixShift account, straight from Walmart, through
   the bundled harness CLI. Gives one view per SKU of what is selling, what you
   have, what is inbound, how many days of supply you have left and what to
@@ -38,6 +38,8 @@ trigger_phrases:
 ---
 
 # Walmart Marketplace (per-SKU sales, stock, inbound, days of supply, reorder)
+
+> Beta: Marketplace connections are opening account by account. Say so if the user asks why they cannot connect yet.
 
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
@@ -101,16 +103,21 @@ Brand setup is **not required.**
 
 ## Connecting a seller
 
-The seller connects themselves; nobody waits on MixShift. In plain words
-(these are steps on the web, not commands):
+The seller connects themselves. In plain words (these are steps on the web,
+not commands):
 
 1. A **Seller Center admin** for the Walmart seller account opens
    https://mcp.mixshift.io/walmart/marketplace/connect.
 2. They sign in with their MixShift account.
 3. They approve MixShift on Walmart's own screen.
 
+If the connect page says Walmart is still reviewing MixShift's app ("Almost
+there"), Marketplace connections are not open for that account yet: contact
+support@mixshift.io.
+
 They can disconnect at any time from the same place or from Walmart Seller
-Center. Nothing changes in the plugin: no update, no new sign-in. Never say a
+Center. To **reconnect** a seller whose connection stopped working, open the
+same page again. Nothing changes in the plugin: no update, no new sign-in. Never say a
 seller is connected until `walmart marketplace sellers` lists it.
 
 ## Step 1: pick the seller
@@ -123,8 +130,11 @@ Returns `{ status: "ok", count, sellers: [...] }`. Each row has `sellerId`,
 `environment`, `label` and `scopes`. Use `label` when talking to the user and
 pass `sellerId` as `--seller` on every call. `production` is the real account;
 `sandbox` is Walmart's test environment with dummy data: never present sandbox
-numbers as real. If a seller is connected in both environments, pass
-`--environment production` (or `sandbox`). If there is one seller, use it; if
+numbers as real. When a seller is connected in both test and live environments, pass
+`--environment production` (or `sandbox`). If a row has `reconnectRequired: true` (or a `connectionExpiresAt` that is
+soon), tell the user before running any reads: that connection needs to be
+reconnected at https://mcp.mixshift.io/walmart/marketplace/connect. If there is
+one seller, use it; if
 several, ask which by `label`.
 
 ## Step 2: the generic call shape
@@ -247,14 +257,14 @@ code. These are reads, so retrying a read is always safe.
 |---|---|---|
 | `not_authenticated` / `session_expired` | 2 | Not signed in, or the session ended. Run `mixshift auth login`. |
 | `tenant_not_allowed` | 6 | Walmart Marketplace is not turned on for this MixShift account yet. Ask MixShift at support@mixshift.io. Stop. |
-| `walmart_not_configured` | 6 | Marketplace is not set up on MixShift's service. Contact MixShift. Stop. |
+| `walmart_not_configured` | 6 | Relay the message. This is what the service says when **no seller is connected** to the account: give the steps in "Connecting a seller". Stop. |
 | `seller_not_allowed` | 7 | That seller is not connected to this MixShift account. Re-run `walmart marketplace sellers` and use a listed id, or give the steps in "Connecting a seller". |
 | `not_found` | 7 | Walmart has no such record. Re-check the SKU, order or item id. |
 | `throttled` | 8 | Walmart is rate-limiting. Wait a minute and try again. |
 | `insufficient_scope` | 11 | This sign-in is not allowed to read that data. Ask the MixShift account admin to grant it. |
 | `write_refused` | 11 | That operation changes the account. Claude only reads; make the change in the MixShift app. |
 | `bad_request` | 12 | Walmart rejected the request as sent. Fix it from the operation notes and Walmart's answer (`walmart_response`); do not resend unchanged. |
-| `upstream_auth` | 14 | Two meanings; check `reason` first. **`reason: "reauth_required"`** (any `walmart_status`): Walmart no longer accepts the seller's connection to MixShift. It is dead; a Seller Center admin must reconnect at https://mcp.mixshift.io/walmart/marketplace/connect. Stop the plan. **No `reason`, with `walmart_response` present and `walmart_status` 401 or 403:** Walmart refused **this one read** because the seller did not grant that permission. The connection is fine: say which read, carry on with the other reads, and do not tell them to reconnect. Anything else: contact support@mixshift.io. |
+| `upstream_auth` | 14 | Two meanings; check `reason` first. **`reason: "reauth_required"`** (any `walmart_status`): Walmart no longer accepts the seller's connection to MixShift. It is dead; a Seller Center admin must reconnect by opening https://mcp.mixshift.io/walmart/marketplace/connect. Stop the plan. **No `reason`, with `walmart_response` present and `walmart_status` 401 or 403:** Walmart refused **this one read** because the seller did not grant that permission. The connection is fine: say which read, carry on with the other reads, and do not tell them to reconnect. Anything else: contact support@mixshift.io. |
 | `invalid_request` | 15 | MixShift refused the request before sending anything: an unknown operation, a missing parameter, a wrong shape. Read the message, check `operations`, fix it; never resend unchanged. |
 | `upstream_unavailable` | 1 | Walmart is not answering right now. This is on Walmart's side: **the seller does not need to reconnect.** Try again in a minute. |
 | `host_unreachable` / `unknown` | 1 | MixShift's service did not answer, or an unexpected error. Retry once, then relay the message. Never loop. |

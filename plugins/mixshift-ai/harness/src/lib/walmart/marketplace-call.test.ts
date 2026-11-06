@@ -99,7 +99,10 @@ describe('marketplaceCall', () => {
     const [url, init] = fetchImpl.mock.calls[1];
     expect(url).toBe('https://svc.test/api/walmart/marketplace/call');
     expect((init as RequestInit).method).toBe('POST');
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+    const sent = JSON.parse(String((init as RequestInit).body));
+    expect(sent).not.toHaveProperty('dryRun');
+    expect(sent).not.toHaveProperty('body');
+    expect(sent).toEqual({
       operation: 'mp.sku_snapshot',
       sellerId: '1234567890',
       environment: 'production',
@@ -148,13 +151,15 @@ describe('marketplaceCall', () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, CATALOG))
-      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', status: 403, walmart: { error: 'forbidden' } }));
+      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', friendly: "Walmart Marketplace refused MixShift's access for this seller.", status: 403, correlationId: 'c1', walmart: { error: 'forbidden' }, source: 'amazon_rejected', retryable: false }));
     const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.kind).toBe('upstream_auth');
       expect(r.walmartStatus).toBe(403);
-      expect(r.friendly).toMatch(/this one read/);
+      expect(r.friendly).toMatch(/this one read \(403\)/);
+      expect(r.friendly).not.toMatch(/refused MixShift's access/);
+      expect(r.message).toBe("Walmart Marketplace refused MixShift's access for this seller.");
     }
   });
 
@@ -164,13 +169,13 @@ describe('marketplaceCall', () => {
         .fn()
         .mockResolvedValueOnce(jsonResponse(200, CATALOG))
         .mockResolvedValueOnce(
-          jsonResponse(502, { ok: false, kind: 'upstream_auth', status, reason: 'reauth_required', sellerId: '555' }),
+          jsonResponse(502, { ok: false, kind: 'upstream_auth', friendly: "Walmart no longer accepts this seller's connection to MixShift. Reconnect.", status, correlationId: 'c1', reason: 'reauth_required', sellerId: '555' }),
         );
       const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
       expect(r.ok).toBe(false);
       if (!r.ok) {
         expect(r.reason).toBe('reauth_required');
-        expect(r.friendly).toMatch(/reconnect it at https:\/\/mcp\.mixshift\.io\/walmart\/marketplace\/connect/);
+        expect(r.friendly).toMatch(/reconnect it by opening https:\/\/mcp\.mixshift\.io\/walmart\/marketplace\/connect/);
         expect(r.friendly).not.toMatch(/this one read/);
       }
     }
@@ -180,10 +185,37 @@ describe('marketplaceCall', () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, CATALOG))
-      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', status: 401 }));
+      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', friendly: "Walmart Marketplace refused MixShift's access for this seller.", status: 401 }));
     const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.friendly).not.toMatch(/this one read/);
+  });
+
+  it('never refreshes the MixShift token for a Walmart 401 inside the gateway 502 envelope', async () => {
+    const tokenProvider = vi.fn(async () => 'tok');
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, CATALOG))
+      .mockResolvedValueOnce(jsonResponse(502, { ok: false, kind: 'upstream_auth', status: 401, walmart: { error: 'x' } }));
+    const r = await marketplaceCall({ operation: 'mp.list_orders', sellerId: '555' }, injected(fetchImpl, tokenProvider));
+    expect(r.ok).toBe(false);
+    expect(tokenProvider).not.toHaveBeenCalledWith(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks failures with operationKnown so telemetry never carries mistyped text', async () => {
+    const known = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, CATALOG))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'seller_not_allowed' }));
+    const a = await marketplaceCall({ operation: 'mp.sku_snapshot', sellerId: '5' }, injected(known));
+    const typo = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, CATALOG))
+      .mockResolvedValueOnce(jsonResponse(400, { ok: false, kind: 'invalid_request', source: 'request' }));
+    const b = await marketplaceCall({ operation: 'my secret note', sellerId: '5' }, injected(typo));
+    expect(!a.ok && a.operationKnown).toBe(true);
+    expect(!b.ok && b.operationKnown).toBe(false);
   });
 
   it('treats upstream_unavailable as Walmart being down, not a reconnect', async () => {

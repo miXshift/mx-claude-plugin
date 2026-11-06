@@ -53,6 +53,8 @@ export interface MarketplaceFailure extends Omit<WalmartFailure, 'kind' | 'adver
   walmartStatus?: number;
   /** Gateway reason code. 'reauth_required' = Walmart no longer accepts the seller's connection. */
   reason?: string;
+  /** True when the operation id was found in the catalog (safe to put in telemetry). */
+  operationKnown?: boolean;
 }
 
 export interface MarketplaceSellerView {
@@ -60,6 +62,9 @@ export interface MarketplaceSellerView {
   environment: WalmartEnvironment | string;
   label: string;
   scopes?: string[];
+  /** Walmart no longer accepts this connection; the seller must reconnect. */
+  reconnectRequired?: boolean;
+  connectionExpiresAt?: string;
   [key: string]: unknown;
 }
 
@@ -164,7 +169,7 @@ export async function marketplaceCall(
   opts: MarketplaceClientOptions = {},
 ): Promise<MarketplaceCallSuccess | MarketplaceFailure> {
   const catalog = await listMarketplaceOperations(undefined, { ...opts, timeoutMs: undefined });
-  if (!catalog.ok) return catalog;
+  if (!catalog.ok) return { ...catalog, operationKnown: false };
   const known = catalog.operations.find((o) => o.id === input.operation);
   if (known?.write === true) {
     return {
@@ -174,6 +179,7 @@ export async function marketplaceCall(
         `${input.operation} changes the seller account, and the plugin only reads Walmart Marketplace data. ` +
         'Make this change in the MixShift app. Nothing was sent to Walmart.',
       sellerId: input.sellerId,
+      operationKnown: true,
     };
   }
 
@@ -186,7 +192,7 @@ export async function marketplaceCall(
     { method: 'POST', path: '/api/walmart/marketplace/call', body },
     { ...opts, timeoutMs: opts.timeoutMs ?? MARKETPLACE_CALL_TIMEOUT_MS },
   );
-  if (!r.ok) return r;
+  if (!r.ok) return { ...r, operationKnown: known !== undefined };
   const json = (r.json ?? {}) as Record<string, unknown>;
   return {
     ...json,
@@ -353,8 +359,20 @@ function toFailure(json: Record<string, unknown>, httpStatus: number): Marketpla
   const sellerId =
     typeof json.sellerId === 'string' || typeof json.sellerId === 'number' ? String(json.sellerId) : undefined;
   const fix = cleanServerText(json.fix);
+  const gatewayFriendly = typeof json.friendly === 'string' && json.friendly ? json.friendly : undefined;
+  // upstream_auth has two meanings the gateway words the same way, so the text is
+  // composed here from reason / status / Walmart's body; the gateway's own text
+  // is kept as the secondary detail.
+  const composed =
+    kind === 'upstream_auth'
+      ? upstreamAuthFriendly(reason, walmartStatus, json.walmart !== undefined)
+      : undefined;
   const friendly =
-    typeof json.friendly === 'string' && json.friendly ? json.friendly : defaultFriendly(kind, walmartStatus, { reason, hasWalmartBody: json.walmart !== undefined });
+    composed ??
+    gatewayFriendly ??
+    defaultFriendly(kind, walmartStatus, { reason, hasWalmartBody: json.walmart !== undefined });
+  const detailMessage =
+    message ?? (composed && gatewayFriendly && gatewayFriendly !== composed ? gatewayFriendly : undefined);
   return {
     ok: false,
     kind,
@@ -362,7 +380,7 @@ function toFailure(json: Record<string, unknown>, httpStatus: number): Marketpla
     httpStatus,
     ...(walmartStatus !== undefined ? { walmartStatus } : {}),
     ...(reason !== undefined ? { reason } : {}),
-    ...(message !== undefined ? { message } : {}),
+    ...(detailMessage !== undefined ? { message: detailMessage } : {}),
     ...(sellerId !== undefined ? { sellerId } : {}),
     ...(typeof json.required === 'string' ? { requiredScope: json.required } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
@@ -385,6 +403,26 @@ function statusOnlyFailure(httpStatus: number, detail?: string): MarketplaceFail
   };
 }
 
+/**
+ * upstream_auth has two meanings. reason 'reauth_required' = the token mint was
+ * refused: the connection is dead whatever the status. A refused READ (no
+ * reason, Walmart's body present, 401/403) is one permission the seller did
+ * not grant. Anything else: undefined (use the generic text).
+ */
+export function upstreamAuthFriendly(
+  reason: string | undefined,
+  walmartStatus: number | undefined,
+  hasWalmartBody: boolean | undefined,
+): string | undefined {
+  if (reason === 'reauth_required') {
+    return "Walmart no longer accepts this seller's connection to MixShift. A Seller Center admin needs to reconnect it by opening https://mcp.mixshift.io/walmart/marketplace/connect.";
+  }
+  if (!reason && hasWalmartBody && (walmartStatus === 401 || walmartStatus === 403)) {
+    return `Walmart refused this one read (${walmartStatus}): the seller has not granted MixShift that permission. The connection still works, and other reads may succeed.`;
+  }
+  return undefined;
+}
+
 export function defaultFriendly(
   kind: MarketplaceFailureKind,
   walmartStatus?: number,
@@ -402,7 +440,10 @@ export function defaultFriendly(
         'then connect the seller at https://mcp.mixshift.io/walmart/marketplace/connect.'
       );
     case 'walmart_not_configured':
-      return 'Walmart Marketplace is not set up on the MixShift service yet. Contact MixShift.';
+      return (
+        'No Walmart seller is connected to this MixShift account yet. A Seller Center admin connects one by opening ' +
+        'https://mcp.mixshift.io/walmart/marketplace/connect.'
+      );
     case 'insufficient_scope':
       return 'This sign-in is not allowed to read that Marketplace data. Ask your MixShift account admin to grant it.';
     case 'invalid_request':
@@ -415,15 +456,7 @@ export function defaultFriendly(
     case 'not_found':
       return 'Walmart has no record matching that request.';
     case 'upstream_auth':
-      // Two meanings. reason 'reauth_required' = the token mint was refused: the
-      // connection is dead whatever the status. A refused READ (no reason, Walmart's
-      // body present, 401/403) is one permission the seller did not grant.
-      if (detail.reason === 'reauth_required') {
-        return "Walmart no longer accepts this seller's connection to MixShift. A Seller Center admin needs to reconnect it at https://mcp.mixshift.io/walmart/marketplace/connect.";
-      }
-      return !detail.reason && detail.hasWalmartBody && (walmartStatus === 401 || walmartStatus === 403)
-        ? 'Walmart refused this one read for this seller: the seller has not granted that permission. The connection itself still works, and other reads may succeed.'
-        : "Walmart refused MixShift's access for this seller. Contact MixShift.";
+      return upstreamAuthFriendly(detail.reason, walmartStatus, detail.hasWalmartBody) ?? "Walmart refused MixShift's access for this seller. Contact MixShift.";
     case 'throttled':
       return 'Walmart is rate-limiting requests right now. Wait a minute, then try again.';
     case 'upstream_unavailable':

@@ -3,7 +3,7 @@ skill_id: mx-walmart-retail
 display_name: Walmart Marketplace (per-SKU sales, stock, inbound, days of supply, reorder)
 version: "0.1.0"
 description: >
-  Read your Walmart Marketplace seller account through the bundled harness
+  Beta. Read your Walmart Marketplace seller account through the bundled harness
   CLI, for the sellers connected to the signed-in MixShift account: one view
   per SKU of what is selling, what you have, what is inbound, how many days it
   will last and what to reorder (the SKU snapshot), plus orders by date
@@ -70,7 +70,7 @@ notes: >
   disconnect at any time.
 
   Failures are typed: branch on failure_kind (not_authenticated=2,
-  tenant_not_allowed=6, seller_not_allowed=7, not_found=7, throttled=8,
+  tenant_not_allowed=6, walmart_not_configured=6 (no seller connected), seller_not_allowed=7, not_found=7, throttled=8,
   insufficient_scope=11, write_refused=11, bad_request=12, upstream_auth=14,
   invalid_request=15), never on HTTP status.
 

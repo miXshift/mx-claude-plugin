@@ -190,7 +190,8 @@ function registerCall(mp: Command): void {
         );
         if (isMarketplaceFailure(result)) {
           await trackMp(EventName.WalmartMarketplaceCalled, 'failed', startedAt, root.dataDir, {
-            operation,
+            // Free text never leaves the machine: only an id the catalog knows.
+            operation: result.operationKnown === true ? operation : 'unknown_operation',
             seller_id: sellerId,
             kind: result.kind,
             ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
@@ -303,10 +304,16 @@ export function renderSellers(sellers: MarketplaceSellerView[]): string {
   if (sellers.length === 0) {
     return '_(no Walmart Marketplace sellers are connected to this MixShift account)_';
   }
-  const lines = ['| seller | id | environment | scopes |', '|---|---|---|---|'];
+  const lines = ['| seller | id | environment | scopes | note |', '|---|---|---|---|---|'];
   for (const s of sellers) {
     const scopes = Array.isArray(s.scopes) && s.scopes.length > 0 ? s.scopes.join(', ') : '';
-    lines.push(`| ${s.label} | ${s.sellerId} | ${s.environment} | ${scopes} |`);
+    const note =
+      s.reconnectRequired === true
+        ? 'RECONNECT NEEDED: https://mcp.mixshift.io/walmart/marketplace/connect'
+        : typeof s.connectionExpiresAt === 'string' && s.connectionExpiresAt
+          ? `connection expires ${s.connectionExpiresAt}`
+          : '';
+    lines.push(`| ${s.label} | ${s.sellerId} | ${s.environment} | ${scopes} | ${note} |`);
   }
   return lines.join('\n');
 }
