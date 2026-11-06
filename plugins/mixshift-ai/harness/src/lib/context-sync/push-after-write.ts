@@ -138,7 +138,20 @@ export type PushAfterWriteResult =
   | { published: false; reason: 'disabled' }
   /** Preconditions not met (unsafe/unknown slug). Nothing touched. */
   | { published: false; reason: 'skipped'; detail: string }
-  | { published: false; reason: 'failed'; detail: string }
+  | {
+      published: false;
+      reason: 'failed';
+      detail: string;
+      /**
+       * Present (true) only when the attempt ran out of its wall-clock budget
+       * rather than failing outright. The docs stay locally ahead and the
+       * next sync (the two-way autosync on the next skill step, the next
+       * write, or an explicit push) publishes them, so the notice says
+       * "still syncing", not "could not sync". Telemetry is unchanged: still
+       * reason 'failed' with detail "timed out after <n>ms".
+       */
+      timedOut?: true;
+    }
   | {
       published: true;
       pushed: number;
@@ -155,7 +168,8 @@ export type PushAfterWriteResult =
  * Safe to call from any write path: never throws, and the worst outcome of any
  * failure is "the write is durable locally and will publish on the next
  * explicit sync". Emits ONE concise user-facing line to STDERR (opt out with
- * `notify: false`) confirming the share or noting a transient sync failure; STDOUT/--json stay
+ * `notify: false`) confirming the share, noting a transient sync failure, or
+ * (on a budget timeout) saying the save is still syncing; STDOUT/--json stay
  * clean.
  */
 export async function pushAfterWrite(
@@ -304,7 +318,12 @@ async function computePushResult(
       if (raced === DEADLINE) {
         controller.abort(); // cut the budgeted fetches; a refresh dies on its own timer
         debugLog(env, `push-after-write(${brandSlug}): budget of ${budgetMs}ms exceeded`);
-        return { published: false, reason: 'failed', detail: `timed out after ${budgetMs}ms` };
+        return {
+          published: false,
+          reason: 'failed',
+          detail: `timed out after ${budgetMs}ms`,
+          timedOut: true,
+        };
       }
       if (!raced.ok) {
         debugLog(env, `push-after-write(${brandSlug}): ${raced.message}`);
@@ -406,6 +425,15 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
       // Sam made auto-publish always-on, 2026-08-04.)
       return null;
     case 'failed':
+      // A budget timeout is not a failure the user should act on: the save
+      // is durable locally and the next sync publishes it. Say so, and give
+      // the read-only way to check, instead of "could not sync".
+      if (result.timedOut) {
+        return (
+          `Your ${brandSlug} save is still syncing to your team and will finish in the background; ` +
+          `your work is saved locally. Check it with \`mixshift context status --brand ${brandSlug}\`.`
+        );
+      }
       return (
         `Could not sync ${brandSlug} to your team just now; your work is saved locally. ` +
         `Retry with \`mixshift context push --brand ${brandSlug}\`.`

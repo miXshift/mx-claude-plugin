@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-phrase-negative-discovery
 display_name: ST Phrase Negative Discovery
-version: "1.2.0"
+version: "1.2.1"
 description: >
   Discovers phrase negative candidates by decomposing the search term corpus into n-grams,
   aggregating performance per sequence, and surfacing sequences with combined spend and zero

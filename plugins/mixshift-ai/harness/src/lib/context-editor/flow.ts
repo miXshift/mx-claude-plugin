@@ -376,7 +376,14 @@ export async function applyBrandConfigEdit(
   let changedCount = 0;
   for (const edit of parsedEdits) {
     const before = getByPath(ctxObj, edit.path);
-    if (!deepEqual(before, edit.value)) {
+    // Re-entering the SAME number over a bootstrap placeholder is still a
+    // confirmation: without this a user whose real target equals the default
+    // 20% could never clear the 'default' state the Brand Context page and
+    // the skills ask them to confirm.
+    const confirmsAcosTarget =
+      edit.path === 'management.acos_target_pct' &&
+      getByPath(ctxObj, 'management.acos_target_source') === 'default';
+    if (!deepEqual(before, edit.value) || confirmsAcosTarget) {
       setNested(ctxObj, edit.path, edit.value);
       changedCount += 1;
       // An explicit user edit of the ACOS target supersedes bootstrap

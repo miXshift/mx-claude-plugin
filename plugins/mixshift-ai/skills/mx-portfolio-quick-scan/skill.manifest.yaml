@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-portfolio-quick-scan
 display_name: Portfolio Quick Scan
-version: "1.1.0"
+version: "1.1.1"
 description: >
   Multi-account daily triage producing one status card per account answering whether
   platform login is required today. Aggregates mx-daily-health-check sidecars across all

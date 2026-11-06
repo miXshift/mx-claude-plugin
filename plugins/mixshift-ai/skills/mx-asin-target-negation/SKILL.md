@@ -1,6 +1,6 @@
 ---
 name: mx-asin-target-negation
-version: 1.8.1
+version: 1.8.2
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Pulls ASIN-triggered rows for a configurable
@@ -26,6 +26,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.8.2
+    change: "An ACoS target that is only the bootstrap placeholder (management.acos_target_source: default) is named as a placeholder and confirmed with the user on the calibration card before anything is flagged against it; until then it is treated as absent."
   - version: 1.8.1
     change: "Names, not IDs: ANEG-01 now returns CampaignName as MAX(CampaignName) (a display column, grain unchanged at target/campaign) so the report's Campaign column shows the name, not the numeric CampaignID. CampaignName is denormalized + rename-variable, so it is aggregated, NOT added to GROUP BY (that would split a target's LifetimeOrders across name snapshots and defeat the negation gate). The report renders ASIN targets as `PDP Title (ASIN)` and points to `mixshift data asin-titles` for any missing titles; the raw ASIN stays visible for the apply step."
   - version: 1.8.0
@@ -125,7 +127,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 
 **Resolve the working values from `effective_config` (the `--apply` response):**
 - `pre_check_lifetime_orders`: the minimum lifetime orders at a location before an ASIN target is eligible to negate; defaults to 25 when unset.
-- `acos_target`: a whole-number percent. If absent, run observational (report ACoS as-is, do not flag vs target).
+- `acos_target`: a whole-number percent. If absent, run observational (report ACoS as-is, do not flag vs target). If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before flagging against it; until they do, treat it as absent.
 
 Never block on this step — confirm-as-is is always available.
 
@@ -412,7 +414,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/aneg-sidecar-input.json
 {
   "skill": "mx-asin-target-negation",
-  "skill_version": "1.8.1",
+  "skill_version": "1.8.2",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",

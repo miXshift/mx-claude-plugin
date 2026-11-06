@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report
-version: 1.4.0
+version: 1.4.1
 description: >
   Generates and publishes a monthly Amazon advertising performance report for a brand
   in MixShift's canonical analytical voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis,
@@ -123,7 +123,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working value (a whole-number percent) from `effective_config` (the `--apply` response):**
-- `acos_target`: reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target).
+- `acos_target`: reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target). If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before framing against it; until they do, treat it as absent.
 
 Never block on this step — confirm-as-is is always available.
 
@@ -330,7 +330,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick MPR
 // /tmp/mpr-sidecar-input.json
 {
   "skill": "mx-monthly-report",
-  "skill_version": "1.4.0",
+  "skill_version": "1.4.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",

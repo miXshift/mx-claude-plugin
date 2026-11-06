@@ -42,10 +42,11 @@ import {
   sectionBrandIdentity,
   sectionOpenGaps,
   sectionAuditChecklist,
+  isPlaceholderDefault,
   type ReportState,
   type ResolvedFieldMap,
 } from './brand-context-sections.js';
-import { resolveBrandFields } from '../brain/read.js';
+import { resolveBrandFields, type BrandFieldKey } from '../brain/read.js';
 import { validateBrandContext } from '../context/load.js';
 import type { ContextState } from './brand-context-report.js';
 import type { BucketCardOptions } from './design-system.js';
@@ -368,7 +369,7 @@ function computeSkillReadiness(
 
 function composeHeadlineJson(s: ReportState): Record<string, unknown> {
   const ctx = s.sources.context as
-    | { management?: { primary_metric?: string; acos_target_pct?: number; tacos_goal_pct?: number; attribution_window_days?: number }; accounts?: Array<{ seller_id: number; account_type: string }> }
+    | { management?: { primary_metric?: string; acos_target_pct?: number; acos_target_source?: string; tacos_goal_pct?: number; attribution_window_days?: number }; accounts?: Array<{ seller_id: number; account_type: string }> }
     | null;
   return {
     schema_version: 1,
@@ -389,6 +390,9 @@ function composeHeadlineJson(s: ReportState): Record<string, unknown> {
       ? {
           primary_metric: ctx.management?.primary_metric,
           acos_target_pct: ctx.management?.acos_target_pct,
+          // 'default' = a bootstrap placeholder nobody confirmed (warehouse
+          // had no target); never present the number as the brand's own.
+          acos_target_source: ctx.management?.acos_target_source,
           tacos_goal_pct: ctx.management?.tacos_goal_pct,
           attribution_window_days: ctx.management?.attribution_window_days,
           account_count: ctx.accounts?.length ?? 0,
@@ -429,8 +433,9 @@ function composeReviewJson(s: ReportState): Record<string, unknown> {
     })),
     skill_readiness: s.skill_readiness,
     // Per-field provenance behind the ✓ / ⊙ / ◯ markers, machine-readable for
-    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain,
-    // gap = neither). Counts let a consumer gauge confidence at a glance.
+    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain
+    // or a bootstrap placeholder, gap = neither). Counts let a consumer gauge
+    // confidence at a glance.
     confidence: composeConfidenceSummary(s),
     audit_rows: s.coverage.rows.map((r) => ({
       path: r.label.path,
@@ -445,7 +450,9 @@ function composeReviewJson(s: ReportState): Record<string, unknown> {
 
 /**
  * Reduce the resolved-field map to a compact provenance summary: per-field
- * level + counts. Mirrors the ✓ / ⊙ / ◯ the HTML shows.
+ * level + counts. Mirrors the ✓ / ⊙ / ◯ the HTML shows, including that a
+ * bootstrap placeholder (isPlaceholderDefault) is pre-filled, not confirmed:
+ * it keeps source 'context' (that is where it lives) plus `placeholder: true`.
  */
 function composeConfidenceSummary(s: ReportState): {
   confirmed: number;
@@ -458,6 +465,7 @@ function composeConfidenceSummary(s: ReportState): {
       source: 'context' | 'brain' | null;
       fetched_at?: string;
       account_wide?: boolean;
+      placeholder?: boolean;
     }
   >;
 } {
@@ -468,6 +476,7 @@ function composeConfidenceSummary(s: ReportState): {
       source: 'context' | 'brain' | null;
       fetched_at?: string;
       account_wide?: boolean;
+      placeholder?: boolean;
     }
   > = {};
   let confirmed = 0;
@@ -477,6 +486,9 @@ function composeConfidenceSummary(s: ReportState): {
     if (resolved == null) {
       gap++;
       fields[key] = { level: 'gap', source: null };
+    } else if (isPlaceholderDefault(s.resolved_fields, key as BrandFieldKey)) {
+      prefilled++;
+      fields[key] = { level: 'prefilled', source: 'context', placeholder: true };
     } else if (resolved.source === 'context') {
       confirmed++;
       fields[key] = { level: 'confirmed', source: 'context' };

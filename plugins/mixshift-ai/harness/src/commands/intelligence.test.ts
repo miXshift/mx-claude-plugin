@@ -633,6 +633,25 @@ describe('intelligence get', () => {
     expect(stderrText()).toContain('hint:');
     expect(process.exitCode).toBe(10);
   });
+
+  it('an engine_error reads as temporary, with a retry hint, and writes no artifact', async () => {
+    vi.mocked(getRunResult).mockResolvedValue({ ok: false, kind: 'engine_error', friendly: 'The engine failed.' });
+    const out = join(dataDir, 'run.json');
+    await runCli({ dataDir, json: true }, 'get', 'run-1', '--out', out);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.kind).toBe('engine_error');
+    expect(parsed.hint).toContain('temporary');
+    expect(parsed.hint).toContain('retry the same command');
+    expect(process.exitCode).toBe(1);
+    await expect(readFile(out, 'utf8')).rejects.toThrow();
+  });
+
+  it('no_data_for_period hints one retry before concluding there is no data', async () => {
+    vi.mocked(getRunResult).mockResolvedValue({ ok: false, kind: 'no_data_for_period', friendly: 'No data for the period.' });
+    await runCli({ dataDir }, 'get', 'run-1');
+    expect(stderrText()).toContain('hint: Retry once before concluding there is no data');
+    expect(process.exitCode).toBe(9);
+  });
 });
 
 // ---------------------------------------------------------------------------

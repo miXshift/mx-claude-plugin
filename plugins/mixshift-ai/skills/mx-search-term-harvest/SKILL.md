@@ -94,7 +94,7 @@ Show the user the card — it lists the field with its source, and on a brand's 
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is a shared field, it is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working ACoS ceiling (a whole-number percent) from `effective_config` (the `--apply` response):**
-- `acos_target`: if present, use it; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target).
+- `acos_target`: if present, use it; if absent, run observational (surface efficient converters on ACoS as-is, do not bar vs a target). If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before barring against it; until they do, treat it as absent.
 
 Never block on this step — confirm-as-is is always available.
 
@@ -246,7 +246,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/sth-sidecar-input.json
 {
   "skill": "mx-search-term-harvest",
-  "skill_version": "1.1.0",
+  "skill_version": "1.1.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",
@@ -292,7 +292,7 @@ Sidecars accumulate read-only for retrospective inspection. Compare the current 
 
 ---
 
-*Skill version: 1.1.0 — focused harvest extraction*
+*Skill version: 1.1.1 — focused harvest extraction*
 *Ported from upstream with full domain logic preserved*
 
 ## Telemetry (required)

@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.6.0
+version: 2.6.1
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -121,7 +121,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Cadence | monthly; "bi-weekly" or "QBR"/"quarterly" in the ask switches it | `reporting.call_cadence` in context.yaml |
 | Documents | both; "just the client one" / "just my notes" narrows it | `reporting.brief_documents`: `both`, `client_only`, `internal_only` |
 | Publish | two persistent per-brand HUB artifacts (client + internal), each period stacking in place at one stable URL; without the Artifact tool, two hub HTML files in `delivery.reports_local_dir` (else the current directory, named so) | say where to put them |
-| Targets | from brand context: `acos_target_pct`, `tacos_goal_pct`, `monthly_total_sales_target` and `quarterly_total_sales_target` as `mixshift brand context resolve <slug>` returns them (they live under `management.*` and `goals.*` in context.yaml; the resolver flattens the names and returns no `goals` block of its own); absent means observational framing, no beat/miss language | one optional question, answer recorded with `mixshift brand config <slug>` so the next run reads it |
+| Targets | from brand context: `acos_target_pct`, `tacos_goal_pct`, `monthly_total_sales_target` and `quarterly_total_sales_target` as `mixshift brand context resolve <slug>` returns them (they live under `management.*` and `goals.*` in context.yaml; the resolver flattens the names and returns no `goals` block of its own); absent means observational framing, no beat/miss language; an `acos_target_source` of `default` is a bootstrap placeholder, not the brand's own number: say so and ask the user to confirm it before any beat/miss language, treating it as absent until they do | one optional question, answer recorded with `mixshift brand config <slug>` so the next run reads it |
 | Forecast | `auto`: when the MixShift forecasting service holds a forecast for this brand that is current for the report month, it appears in the report (Step 3d); otherwise nothing forecast-related appears anywhere, the settings section says nothing about it, and nobody is asked | `reporting.forecast`: `auto`, `off` (no forecast request at all), or `require` (a missing, stale or failed forecast becomes one line in the internal companion's exceptions block) |
 | Forecast metrics | revenue; units are requested only when the revenue forecast came back current | `reporting.forecast_metrics: [revenue, units]` adds units; `[revenue]` is the default |
 | Forecast audience | both documents: in the client brief only figures marked client-safe, leading with the current model's projection and then the forecast made before the month closed; what the forecast stands on and the year-start forecast in the internal companion | `reporting.forecast_audience: internal_only` keeps it out of the client brief |
@@ -352,7 +352,11 @@ refuses the sync run with `account_too_large_use_async`: retry the same command 
 payload), and fetch with `mixshift intelligence get <runId> --out run.json` once ready;
 never cancel on time. A `poll` that reports done is not yet a success: `get` can still
 return an engine error for a run that failed terminally, and that failure degrades per the
-rule below.) Then extract typed figures per envelope, never reading the raw envelope
+rule below.) A failed `run` or `get` writes no `run.json`: never run the extracts below on a
+file this fetch did not write (an older `run.json` may still be on disk). Retry the fetch
+once, since an `engine_error` or a `no_data_for_period` can be a passing outage; if it fails
+again, say in plain words that the figures could not be fetched and why, then degrade per
+the rule below. Then extract typed figures per envelope, never reading the raw envelope
 JSON (reasoning from a 40-120KB fragment you skimmed is the failure this step exists to
 prevent):
 

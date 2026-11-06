@@ -87,9 +87,40 @@ function levelOf(resolved: ResolvedField<unknown> | null | undefined): Confidenc
   return resolved.source === 'context' ? 'confirmed' : 'prefilled';
 }
 
-/** Confidence of a REGISTERED brand field, straight from the resolver. */
+/**
+ * True when a registered field's Tier-3 value is only a bootstrap placeholder
+ * nobody confirmed: the ACoS target (and its provenance field) when
+ * `management.acos_target_source` is 'default', which bootstrap writes when
+ * the warehouse had no target and it filled in 20%. Such a value sits in
+ * context.yaml but must never read as confirmed: it renders pre-filled with
+ * PLACEHOLDER_NOTE, and review.json flags it the same way.
+ */
+export function isPlaceholderDefault(
+  fields: ResolvedFieldMap,
+  key: BrandFieldKey,
+): boolean {
+  if (key !== 'acos_target_pct' && key !== 'acos_target_source') return false;
+  return (
+    fields[key]?.source === 'context' &&
+    fields.acos_target_source?.value === 'default'
+  );
+}
+
+/** The short note shown beside a placeholder default. */
+export const PLACEHOLDER_NOTE = 'placeholder default, not from your data: confirm it';
+
+/** Confidence of a REGISTERED brand field: the resolver's tier, except that a
+ *  placeholder default is pre-filled, never confirmed. */
 function fieldConfidence(s: ReportState, key: BrandFieldKey): Confidence {
+  if (isPlaceholderDefault(s.resolved_fields, key)) return 'prefilled';
   return levelOf(s.resolved_fields[key]);
+}
+
+/** The note for a registered field: the placeholder note, else the
+ *  pre-filled fetched_at note (undefined for confirmed values and gaps). */
+function fieldNote(s: ReportState, key: BrandFieldKey): string | undefined {
+  if (isPlaceholderDefault(s.resolved_fields, key)) return PLACEHOLDER_NOTE;
+  return prefilledNote(s.resolved_fields[key]);
 }
 
 /**
@@ -113,8 +144,7 @@ function presenceConfidence(present: boolean): Confidence {
 
 /** Glyph + (for pre-filled) fetched_at note, for inline use next to a heading. */
 function markerFor(s: ReportState, key: BrandFieldKey): string {
-  const resolved = s.resolved_fields[key];
-  return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
+  return renderConfidenceMarker({ level: fieldConfidence(s, key), note: fieldNote(s, key) });
 }
 
 /** Trim an ISO timestamp to YYYY-MM-DD for compact display. */
@@ -231,19 +261,22 @@ function formatResolvedValue(key: BrandFieldKey, value: unknown): string {
 export function sectionConfidenceSummary(s: ReportState): string {
   const items: ConfidenceListItem[] = BRAND_FIELD_KEYS.map((key) => {
     const resolved = s.resolved_fields[key];
-    const level = levelOf(resolved);
+    const level = fieldConfidence(s, key);
     const value = resolved ? formatResolvedValue(key, resolved.value) : '';
     // Gaps and pre-filled values both get a set/confirm hint; confirmed ones
     // don't need one. Keep it lightweight (a single inline code snippet).
+    // A placeholder provenance row points at the target itself: setting the
+    // ACoS target is what confirms it (the editor stamps the source 'user').
+    const hintField = key === 'acos_target_source' ? 'acos_target_pct' : key;
     const hint =
       level === 'gap' || level === 'prefilled'
-        ? renderSetHint({ field: key, brand: s.brand_slug })
+        ? renderSetHint({ field: hintField, brand: s.brand_slug })
         : undefined;
     return {
       label: FIELD_LABELS[key],
       level,
       value,
-      note: prefilledNote(resolved),
+      note: fieldNote(s, key),
       hint,
     };
   });
@@ -481,9 +514,10 @@ export function sectionAccountSnapshot(s: ReportState): string {
     : formatWholePct(m.acos_target_pct, 0);
   // The primary-target scorecard tracks the metric that actually leads:
   // tacos_goal_pct on TACOS-primary accounts, acos_target_pct otherwise.
-  const primaryTargetLevel: Confidence = isTacosPrimary
-    ? fieldConfidence(s, 'tacos_goal_pct')
-    : fieldConfidence(s, 'acos_target_pct');
+  const primaryTargetKey: BrandFieldKey = isTacosPrimary ? 'tacos_goal_pct' : 'acos_target_pct';
+  const primaryTargetLevel: Confidence = fieldConfidence(s, primaryTargetKey);
+  // A bootstrap placeholder target says so right beside the number.
+  const targetIsPlaceholder = isPlaceholderDefault(s.resolved_fields, primaryTargetKey);
 
   // Scorecard labels are plain text (renderScorecard escapes them). Each
   // scorecard's per-field provenance is surfaced in the annotation row below
@@ -537,12 +571,15 @@ export function sectionAccountSnapshot(s: ReportState): string {
   // registered fields — surface their confidence as a one-line annotation
   // under the title (the scorecards themselves stay plain text).
   const targetSetHint =
-    primaryTargetLevel === 'gap'
-      ? renderSetHint({ field: isTacosPrimary ? 'tacos_goal_pct' : 'acos_target_pct', brand: s.brand_slug })
+    primaryTargetLevel === 'gap' || targetIsPlaceholder
+      ? renderSetHint({ field: primaryTargetKey, brand: s.brand_slug })
       : '';
+  const targetNote = targetIsPlaceholder
+    ? ` <span class="rc-conf-note">${escapeHtml(PLACEHOLDER_NOTE)}</span>`
+    : '';
   const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
   <span>${markerFor(s, 'primary_metric')} Primary metric: ${escapeHtml(String(m.primary_metric ?? 'not set yet'))}</span>
-  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetSetHint}</span>
+  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetNote}${targetSetHint}</span>
   <span>${markerFor(s, 'attribution_window_days')} Attribution window: ${escapeHtml(m.attribution_window_days !== undefined ? `${m.attribution_window_days}d` : 'not set yet')}</span>
   <span>${markerFor(s, 'marketplace')} Marketplace: ${escapeHtml(marketplaceDisplay(accounts))}</span>
 </div>`;

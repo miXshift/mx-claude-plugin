@@ -364,6 +364,7 @@ describe('budget', () => {
       published: false,
       reason: 'failed',
       detail: 'timed out after 50ms',
+      timedOut: true,
     });
     // The budget's AbortController actually fired against the in-flight fetch.
     expect(aborted).toBe(true);
@@ -466,6 +467,33 @@ describe('user-facing notice (stderr)', () => {
       'Could not sync acme to your team just now; your work is saved locally. ' +
         'Retry with `mixshift context push --brand acme`.\n',
     );
+  });
+
+  it('budget timeout: says the save is still syncing, never that it failed', async () => {
+    // The save is durable locally and lands on the next sync, so a slow
+    // network must not read as a failed save.
+    await makeBrandDir('acme');
+    await writeLedger('acme', SAMPLE_DOCS);
+    vi.mocked(push).mockImplementation(() => new Promise(() => {}));
+
+    const result = await pushAfterWrite('acme', {
+      dataDirOverride: testDir,
+      env: LIVE_ENV,
+      budgetMs: 20,
+    });
+
+    expect(result).toMatchObject({ published: false, reason: 'failed', timedOut: true });
+    expect(stderrText()).toBe(
+      'Your acme save is still syncing to your team and will finish in the background; ' +
+        'your work is saved locally. Check it with `mixshift context status --brand acme`.\n',
+    );
+    expect(stderrText()).not.toContain('Could not sync');
+    // Telemetry keeps its existing shape: a timeout is still counted as a
+    // failed attempt, told apart by its detail.
+    expect(vi.mocked(track).mock.calls[0]![0]).toMatchObject({
+      outcome: 'failed',
+      payload: { reason: 'failed', detail: 'timed out after 20ms' },
+    });
   });
 
   it('disabled (kill switch): silent', async () => {

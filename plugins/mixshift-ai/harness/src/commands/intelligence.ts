@@ -623,6 +623,14 @@ function hintForKind(kind: IntelligenceFailureKind): string | undefined {
       return 'Check `mixshift intelligence runs` for recent handles on this machine.';
     case 'bad_params':
       return 'See the params this insight takes: mixshift intelligence run <id> --help';
+    case 'engine_error':
+      // Usually transient (an engine or database hiccup), not a problem with
+      // the account or the params.
+      return 'This is usually a temporary engine or database failure. Wait a minute, then retry the same command.';
+    case 'no_data_for_period':
+      // A passing outage can arrive as this kind too; retrying once keeps a
+      // blip from being read as "this account has no data".
+      return 'Retry once before concluding there is no data: a brief service problem can look like an empty period. If it repeats, the period has no data.';
     default:
       return undefined;
   }

@@ -89,7 +89,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. `acos_target` is the shared brand target and is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working reference (a whole-number percent) from `effective_config` (the `--apply` response):**
-- `acos_target`: if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target).
+- `acos_target`: if absent, run observational (judge efficiency on ACoS as-is, do not flag vs a target). If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before judging against it; until they do, treat it as absent.
 
 Never block on this step — confirm-as-is is always available.
 
@@ -272,7 +272,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/stn-sidecar-input.json
 {
   "skill": "mx-search-term-negation",
-  "skill_version": "1.4.0",
+  "skill_version": "1.4.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",
@@ -323,7 +323,7 @@ Sidecars accumulate read-only for retrospective inspection. Compare the current 
 
 ---
 
-*Skill version: 1.4.0 — ported from upstream with full domain logic preserved*
+*Skill version: 1.4.1 — ported from upstream with full domain logic preserved*
 
 ## Applying negatives (optional, requires explicit user confirmation)
 
