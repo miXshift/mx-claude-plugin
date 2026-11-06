@@ -353,10 +353,13 @@ payload), and fetch with `mixshift intelligence get <runId> --out run.json` once
 never cancel on time. A `poll` that reports done is not yet a success: `get` can still
 return an engine error for a run that failed terminally, and that failure degrades per the
 rule below.) A failed `run` or `get` writes no `run.json`: never run the extracts below on a
-file this fetch did not write (an older `run.json` may still be on disk). Retry the fetch
-once, since an `engine_error` or a `no_data_for_period` can be a passing outage; if it fails
-again, say in plain words that the figures could not be fetched and why, then degrade per
-the rule below. Then extract typed figures per envelope, never reading the raw envelope
+file this fetch did not write (an older `run.json` may still be on disk). An `engine_error`
+or a `no_data_for_period` can be a passing outage, and a finished run keeps its failure (a
+second `get` on the same runId returns it again), so start one fresh run with the same
+params (`mixshift intelligence run INS-MONTHLY-01 --params-file p.json --async`, then poll
+and get). If that fails too, say in plain words that the figures could not be fetched and
+why (a second `no_data_for_period` means the period has no data), then degrade per the rule
+below. Then extract typed figures per envelope, never reading the raw envelope
 JSON (reasoning from a 40-120KB fragment you skimmed is the failure this step exists to
 prevent):
 
