@@ -228,6 +228,16 @@ export const EventName = {
   AdsProfilesListed: 'ads.profiles_listed',
   AdsOperationsListed: 'ads.operations_listed',
   AdsCalled: 'ads.called',
+  // `mixshift dsp readiness` (lib/ads/dsp-readiness.ts). Payload: ready flag,
+  // per-level check counts, line item count, the stable ids of failed checks,
+  // legacy_seller_id; on failure the kind. Never the advertiser or order id,
+  // and never Amazon's payload.
+  DspReadinessChecked: 'dsp.readiness_checked',
+  // `mixshift dsp supply-preset` (lib/ads/dsp-supply.ts): the plan and its
+  // dsp.delete_targets dry run, never the commit (that is ads.called).
+  // Payload: preset, line item / skipped / target / batch counts,
+  // legacy_seller_id; on failure kind + stage. Never an id from Amazon.
+  DspSupplyPresetPlanned: 'dsp.supply_preset_planned',
   // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
   // `ads call --propose`). Payloads carry the proposal id, operation id,
   // items count and guard counts, never the change set, rationale or evidence.
