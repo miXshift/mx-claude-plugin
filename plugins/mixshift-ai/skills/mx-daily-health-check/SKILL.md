@@ -7,7 +7,7 @@ description: >
   types, objectives, and item groups. Uses percentile-based confidence intervals
   to detect spend and ACOS anomalies requiring management attention.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: "MixShift"
   ported-from: "upstream/daily-advertising-performance-health-check"
 ---
@@ -128,7 +128,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"min_spend_to_flag":"10"},"save":true}' --json`. A shared field (`acos_target`, `tacos_target`) is proposed for brand-wide promotion (recorded for review); the DHC-specific knobs (`min_spend_to_flag`, `hero_skus`, `quiet_paused`) persist to this skill.
 
 **Resolve the working values from `effective_config` (the `--apply` response):**
-- `acos_target`: a whole-number percent (e.g. `22` = 22%). If absent, run observational (report ACoS as-is, do not flag vs target) per Step 0. Label any default in the report.
+- `acos_target`: a whole-number percent (e.g. `22` = 22%). If absent, run observational (report ACoS as-is, do not flag vs target) per Step 0. Label any default in the report. If the card's `acos_target` came from the brand context (`source: seed`) and the brand context says `acos_target_source: default`, it is only the bootstrap placeholder: say the target is a placeholder, not the brand's own number, ask the user to confirm or edit it before flagging against it, and record their answer with `mixshift brand config <brand-slug> --apply '{"action":"edit","edits":{"acos_target_pct":N}}'` (that marks it confirmed for every skill). Until they answer, treat it as absent. A value saved on this card (`source: stored`) is the user's own, never a placeholder.
 - `tacos_target`: a whole-number percent. If absent, run observational (report TACoS as-is, do not flag vs target). Label any default.
 - `min_spend_to_flag`: int dollars; if absent, default `5`. Campaigns spending less than this on the analysis day are suppressed from the exception list.
 - `hero_skus`: ASIN list; if absent, default empty (no SKUs protected).
@@ -531,7 +531,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick DHC
 // /tmp/dhc-sidecar-input.json
 {
   "skill": "mx-daily-health-check",
-  "skill_version": "0.2.0",
+  "skill_version": "0.2.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",   // T-1 (yesterday)

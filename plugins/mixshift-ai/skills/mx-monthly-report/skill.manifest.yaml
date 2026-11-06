@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-monthly-report
 display_name: Monthly Performance Report
-version: "1.4.0"
+version: "1.4.1"
 description: >
   Generates and publishes a monthly Amazon advertising performance report in canonical analytical
   voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis, item group highlights,

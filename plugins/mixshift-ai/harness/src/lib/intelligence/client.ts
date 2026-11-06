@@ -704,8 +704,8 @@ function defaultFriendly(kind: IntelligenceFailureKind): string {
       );
     case 'no_data_for_period':
       return (
-        'There is no data for the requested period. This is not an error, ' +
-        'just try a different period.'
+        'No data came back for the requested period. Retry once before concluding ' +
+        'there is none: a brief service problem can look like an empty period.'
       );
     case 'account_too_large_use_async':
       return (

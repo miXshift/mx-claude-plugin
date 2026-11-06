@@ -15,6 +15,8 @@ import type { Command } from 'commander';
 import {
   resolveBrandFields,
   BRAND_FIELD_KEYS,
+  isPlaceholderDefault,
+  PLACEHOLDER_NOTE,
   type ResolvedField,
 } from '../lib/brain/read.js';
 import { noticeIfRetired } from '../lib/context-sync/lifecycle-notice.js';
@@ -66,6 +68,11 @@ export function registerBrandContextCommands(brand: Command): void {
         if (r == null) {
           gaps++;
           lines.push(`  ◯ ${key}: (not set — skill default)`);
+        } else if (isPlaceholderDefault(fields, key)) {
+          // In context.yaml, but only the bootstrap placeholder: never "you
+          // confirmed". --json is unchanged; consumers read acos_target_source.
+          prefilled++;
+          lines.push(`  ⊙ ${key}: ${formatValue(r.value)} (${PLACEHOLDER_NOTE})`);
         } else if (r.source === 'context') {
           confirmed++;
           lines.push(`  ✓ ${key}: ${formatValue(r.value)} (you confirmed)`);

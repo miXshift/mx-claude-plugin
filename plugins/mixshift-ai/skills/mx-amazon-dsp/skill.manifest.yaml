@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.7.0"
+version: "0.7.1"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -23,7 +23,9 @@ description: >
   created paused (Amazon's rule for DSP, checked before the call), targeting
   including audiences, and existing creatives attached to line items, on Amazon's
   Campaign Management API; turning a build on is a separate confirmed edit.
-  Creating a DSP creative is NOT available. Routes through the bundled harness
+  A responsive ecommerce ad can be created too (dsp.create_ads: paused, linked
+  with dsp.create_ad_associations, cannot be deleted); every other creative type
+  stays console-only. Routes through the bundled harness
   CLI. Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 
@@ -37,7 +39,7 @@ run_kind: per_account
 cadence: on_demand
 risk_tier: 3
 allowed_tools: [file_read, file_write, ads_write]
-side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update_ad_groups, dsp.create_campaigns, dsp.create_ad_groups, dsp.create_targets, dsp.create_ad_associations, dsp.delete_targets, dsp.create_conversion_tracking_products, dsp.delete_conversion_tracking_products) via `mixshift ads call <operation> --commit`; reports still save JSON to ~/.mixshift/reports/
+side_effect_policy: write_gated   # DSP writes (dsp.update_campaigns, dsp.update_ad_groups, dsp.create_campaigns, dsp.create_ad_groups, dsp.create_targets, dsp.create_ad_associations, dsp.create_ads, dsp.delete_targets, dsp.create_conversion_tracking_products, dsp.delete_conversion_tracking_products) via `mixshift ads call <operation> --commit`; reports still save JSON to ~/.mixshift/reports/
 review_required: always                    # writes require explicit user confirmation of the exact change set
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
@@ -68,6 +70,8 @@ harness_commands:
   - mixshift ads call dsp.create_targets --path advertiserId= --body-file <file> [--commit]
   - mixshift ads call dsp.delete_targets --path advertiserId= --body-file <file> [--commit]
   - mixshift ads call dsp.create_ad_associations --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_ads --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.query_ads --path advertiserId= --body <json>
   - mixshift ads call dsp.query_campaigns --path advertiserId= --body <json>
   - mixshift ads call dsp.query_ad_groups --path advertiserId= --body <json>
   - mixshift ads call dsp.query_targets --path advertiserId= --body <json>
@@ -153,9 +157,9 @@ notes: >
 
   The /dsp/v1 account reads (campaigns, ad groups, creatives, creative
   associations, moderations, creative validation, eligible creatives) were
-  validated live 2026-08-28. Creating DSP creatives has no path, and the skill
-  says so rather than improvising one; attaching existing creatives does
-  (dsp.create_ad_associations, 0.4.0). Three traps the
+  validated live 2026-08-28. Building DSP creatives is console-only except the
+  responsive ecommerce ad (dsp.create_ads, proven 2026-11-06, 0.7.1); attaching
+  existing creatives works (dsp.create_ad_associations, 0.4.0). Three traps the
   skill body covers because each yields a confident wrong answer: a creative
   carries NO state (live-vs-paused belongs to its ASSOCIATION to a line item);
   ad-group inventoryType, creative adCreativeFormatType and creative

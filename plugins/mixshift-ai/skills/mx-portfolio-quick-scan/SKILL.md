@@ -1,6 +1,6 @@
 ---
 name: mx-portfolio-quick-scan
-version: 1.1.0
+version: 1.1.1
 description: >
   Multi-account daily triage. Produces one status card per account answering a single question:
   do I need to log into the platform today? GREEN / YELLOW / RED verdict per account based on
@@ -28,6 +28,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.1.1
+    change: "An ACoS target that is only the bootstrap placeholder (management.acos_target_source: default) counts as missing for the card's status and is labeled for the user to confirm."
   - version: 1.0.0
     change: "Initial skill — directive: multi-account triage, minimal footprint, point-in-time snapshot."
 ---
@@ -51,7 +53,7 @@ Extract the account list. Each entry provides: slug, seller_id, account_type (SC
 **Step 0c — Load Tier-3 brand context in parallel:**
 For each account in the config, read `~/.mixshift/clients/<brand-slug>/context.yaml` (schema-validated via `mixshift brand validate <brand-slug>`). Extract per-account, mechanically:
 - `accounts[].seller_id`, `accounts[].account_type`
-- `management.primary_metric`, `management.acos_target_pct`, `management.tacos_in_bottom_line`, `management.tacos_reference_line`
+- `management.primary_metric`, `management.acos_target_pct`, `management.acos_target_source`, `management.tacos_in_bottom_line`, `management.tacos_reference_line`
 - `goals.monthly_revenue_target`, `goals.quarterly_revenue_target`, `goals.report_quarterly_pacing`
 - `posture.stance`, `posture.multiplier`
 - `structural_events[]` filtered to currently active (stockouts, price tests, promos — used to downgrade RED to YELLOW)
@@ -60,7 +62,7 @@ For each account in the config, read `~/.mixshift/clients/<brand-slug>/context.y
 
 Also read `~/.mixshift/clients/<brand-slug>/narrative.md` for prose card-line guidance only. Do not extract numbers from this file.
 
-**Brand context is optional — never fail closed on it (per account).** Render each account's card from whatever context is present (Tier-2 Brand Brain as fallback); cards sharpen as context accrues but never require full brand setup. The only hard requirement per account is `seller_id` + `account_type` (from `mixshift brand add`) — without those, that account's card shows "not bootstrapped — run `mixshift brand add <slug>`". When an account is missing targets/posture, render its card in observational mode and label it ("no ACoS target configured — set with `mixshift brand config <slug>`") instead of an error card. Other accounts continue regardless. Per account, load the brand-context fields in one call via `mixshift brand context resolve <slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
+**Brand context is optional — never fail closed on it (per account).** Render each account's card from whatever context is present (Tier-2 Brand Brain as fallback); cards sharpen as context accrues but never require full brand setup. The only hard requirement per account is `seller_id` + `account_type` (from `mixshift brand add`) — without those, that account's card shows "not bootstrapped — run `mixshift brand add <slug>`". When an account is missing targets/posture, render its card in observational mode and label it ("no ACoS target configured — set with `mixshift brand config <slug>`") instead of an error card. An ACoS target whose `management.acos_target_source` is `default` is a bootstrap placeholder, not the brand's own number: treat it as missing for the card's status and label it ("placeholder ACoS target, confirm it with `mixshift brand config <slug>`"). Other accounts continue regardless. Per account, load the brand-context fields in one call via `mixshift brand context resolve <slug> --json` — each carries `{value, source, fetched_at}` (`source: context` = ✓ confirmed, `brain` = ⊙ pre-filled; `null` = use the default).
 
 ---
 
@@ -341,7 +343,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/pqs-sidecar-input.json
 {
   "skill": "mx-portfolio-quick-scan",
-  "skill_version": "1.1.0",
+  "skill_version": "1.1.1",
   "brand_slug": "portfolio",
   "run_kind": "portfolio",
   "data_date": "YYYY-MM-DD",

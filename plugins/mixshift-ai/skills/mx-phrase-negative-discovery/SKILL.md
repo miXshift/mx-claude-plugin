@@ -75,7 +75,7 @@ A phrase negative recommendation must never be issued without:
 - Data artifact: ST data pull output (JSON)
 - **Tier-3 brand context** at `~/.mixshift/clients/<brand-slug>/context.yaml` (schema-validated by `mixshift brand validate <brand-slug>`). Extract:
   - `accounts[].seller_id`
-  - `management.acos_target_pct`
+  - `management.acos_target_pct` (if `management.acos_target_source` is `default`, it is a bootstrap placeholder, not the brand's own number: say so, ask the user to confirm or edit it before flagging against it, and record their answer with `mixshift brand config <brand-slug> --apply '{"action":"edit","edits":{"acos_target_pct":N}}'`; until they answer, run observational)
   - `negation.protected_terms` — anchors that must never be exact- or phrase-negated
   - `negation.lane_rules` — per-lane `relevant`/`mismatch` term dictionaries (drives semantic clustering and brand-context filtering)
   - `brand_terms` — canonical + variant brand tokens for collision detection
@@ -323,7 +323,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/pnd-sidecar-input.json
 {
   "skill": "mx-phrase-negative-discovery",
-  "skill_version": "1.2.0",
+  "skill_version": "1.2.1",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",
@@ -367,7 +367,7 @@ Sidecars accumulate read-only for retrospective inspection. Compare the current 
 
 ---
 
-*Skill version: 1.2.0 — phrase negative discovery with full conflict detection*
+*Skill version: 1.2.1 — phrase negative discovery with full conflict detection*
 *Ported from upstream with full domain logic preserved*
 
 ## Telemetry (required)

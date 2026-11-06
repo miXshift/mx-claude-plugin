@@ -165,6 +165,34 @@ describe('percent unit bridging — whole-number context storage', () => {
     expect(raw).toMatch(/acos_target_source: user\b/);
     expect(raw).not.toMatch(/acos_target_source: default\b/);
   });
+
+  it('re-entering the placeholder value confirms it (default -> user, written)', async () => {
+    // The Brand Context page asks the user to confirm a placeholder target.
+    // A user whose real target IS 20% must be able to say so: same number,
+    // but the provenance moves to user and the file is written.
+    await writeFile(
+      join(brandDir, 'context.yaml'),
+      baseContextYaml.replace(
+        /acos_target_pct: 28/,
+        'acos_target_pct: 20\n  acos_target_source: default',
+      ),
+      'utf-8',
+    );
+    const payload = await prepareBrandConfigEdit({
+      brandSlug: 'summit',
+      brandName: 'Summit Labs',
+      dataDirOverride: testDir,
+    });
+    const result = await applyBrandConfigEdit(
+      payload,
+      { action: 'edit', edits: { acos_target_pct: '20' } },
+      { dataDirOverride: testDir },
+    );
+    expect(result.did_write).toBe(true);
+    const raw = await readFile(join(brandDir, 'context.yaml'), 'utf-8');
+    expect(raw).toMatch(/acos_target_pct: 20\b/);
+    expect(raw).toMatch(/acos_target_source: user\b/);
+  });
 });
 
 describe('applyBrandConfigEdit — confirm action', () => {

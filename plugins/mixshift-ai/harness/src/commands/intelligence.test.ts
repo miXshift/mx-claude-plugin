@@ -633,6 +633,30 @@ describe('intelligence get', () => {
     expect(stderrText()).toContain('hint:');
     expect(process.exitCode).toBe(10);
   });
+
+  it('an engine_error on get reads as temporary, points at one fresh run (not a re-get), and writes no artifact', async () => {
+    // get on a finished failed run returns the stored failure, so the only
+    // retry that can work is a new run.
+    vi.mocked(getRunResult).mockResolvedValue({ ok: false, kind: 'engine_error', friendly: 'The engine failed.' });
+    const out = join(dataDir, 'run.json');
+    await runCli({ dataDir, json: true }, 'get', 'run-1', '--out', out);
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.kind).toBe('engine_error');
+    expect(parsed.hint).toContain('temporary');
+    expect(parsed.hint).toContain('Start one fresh run');
+    expect(parsed.hint).toContain('mixshift intelligence run <id> --async');
+    expect(parsed.hint).not.toContain('retry the same command');
+    expect(process.exitCode).toBe(1);
+    await expect(readFile(out, 'utf8')).rejects.toThrow();
+  });
+
+  it('no_data_for_period hints one fresh run before concluding there is no data', async () => {
+    vi.mocked(getRunResult).mockResolvedValue({ ok: false, kind: 'no_data_for_period', friendly: 'No data for the period.' });
+    await runCli({ dataDir }, 'get', 'run-1');
+    expect(stderrText()).toContain('Start one fresh run with the same params (mixshift intelligence run <id> --async');
+    expect(stderrText()).toContain('if it comes back empty again, the period has no data');
+    expect(process.exitCode).toBe(9);
+  });
 });
 
 // ---------------------------------------------------------------------------

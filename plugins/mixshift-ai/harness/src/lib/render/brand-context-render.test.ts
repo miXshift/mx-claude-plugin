@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,7 @@ import { composeBrandContextReport } from './brand-context-composer.js';
 import {
   sectionSeasonality,
   sectionSubBrands,
+  PLACEHOLDER_NOTE,
   type ReportState,
   type ResolvedFieldMap,
 } from './brand-context-sections.js';
@@ -147,6 +148,90 @@ describe('brand-context render — provenance correctness', () => {
     expect(f.tacos_goal_pct.level).toBe('confirmed');
     expect(f.primary_metric.level).toBe('confirmed');
     expect(f.monthly_budget.level).toBe('prefilled');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A bootstrap placeholder ACoS target (management.acos_target_source:
+// default, written when the warehouse had no target) lives in context.yaml
+// but nobody confirmed it. It must never render as ✓ confirmed.
+// ---------------------------------------------------------------------------
+
+async function composeWithAcosSource(
+  source: 'default' | 'user',
+): Promise<Composed & { headline: Record<string, any> }> {
+  const slug = 'goldenbrand-sc-acos';
+  const dir = await mkdtemp(join(tmpdir(), 'mx-acos-source-'));
+  try {
+    const dest = join(dir, 'clients', slug);
+    await cp(join(DATA_DIR, 'clients', slug), dest, { recursive: true });
+    const ctxPath = join(dest, 'context.yaml');
+    const raw = await readFile(ctxPath, 'utf-8');
+    const patched = raw.replace(
+      /acos_target_pct: 22\.0/,
+      `acos_target_pct: 20\n  acos_target_source: ${source}`,
+    );
+    expect(patched).not.toBe(raw); // the fixture anchor must still match
+    await writeFile(ctxPath, patched, 'utf-8');
+    const res = await composeBrandContextReport({
+      brandSlug: slug,
+      brandName: 'Tidewell Hydration',
+      runDate: '2026-06-18',
+      theme: 'light',
+      dataDirOverride: dir,
+    });
+    const [html, reviewRaw, headlineRaw] = await Promise.all([
+      readFile(res.html_path, 'utf-8'),
+      readFile(res.review_path, 'utf-8'),
+      readFile(res.headline_path, 'utf-8'),
+    ]);
+    return {
+      html,
+      review: JSON.parse(reviewRaw),
+      headline: JSON.parse(headlineRaw),
+      verdict: res.verdict,
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+describe('brand-context render — placeholder ACoS target is never confirmed', () => {
+  it('a default-sourced target renders pre-filled with a placeholder note and a confirm hint', async () => {
+    const { html, review, headline } = await composeWithAcosSource('default');
+    const f = review.confidence.fields;
+    expect(f.acos_target_pct).toEqual({ level: 'prefilled', source: 'context', placeholder: true });
+    expect(f.acos_target_source).toEqual({ level: 'prefilled', source: 'context', placeholder: true });
+    // Other context fields are unaffected.
+    expect(f.primary_metric.level).toBe('confirmed');
+    const { confirmed, prefilled, gap } = review.confidence;
+    expect(confirmed + prefilled + gap).toBe(BRAND_FIELD_KEYS.length);
+    expect(prefilled).toBe(7); // the 5 brain-only fields + the 2 placeholder rows
+    // The page says it is a placeholder and how to confirm it.
+    expect(html).toContain(PLACEHOLDER_NOTE);
+    expect(html).toContain('set acos_target_pct for goldenbrand-sc-acos');
+    // The model-facing headline carries the source next to the number.
+    expect(headline.context_snapshot.acos_target_pct).toBe(20);
+    expect(headline.context_snapshot.acos_target_source).toBe('default');
+    // The required-field audit row warns instead of reading ok, and skill
+    // readiness never says "all required context confirmed".
+    const row = review.audit_rows.find((r: any) => r.path === 'management.acos_target_pct');
+    expect(row.status).toBe('warn');
+    expect(row.value).toContain(PLACEHOLDER_NOTE);
+    expect(html).not.toContain('All required context confirmed.');
+    for (const r of review.skill_readiness) {
+      expect(r.notes).not.toContain('All required context confirmed.');
+    }
+  });
+
+  it('a user-confirmed target stays confirmed, with no placeholder note', async () => {
+    const { html, review, headline } = await composeWithAcosSource('user');
+    const f = review.confidence.fields;
+    expect(f.acos_target_pct).toEqual({ level: 'confirmed', source: 'context' });
+    expect(html).not.toContain(PLACEHOLDER_NOTE);
+    expect(headline.context_snapshot.acos_target_source).toBe('user');
+    const row = review.audit_rows.find((r: any) => r.path === 'management.acos_target_pct');
+    expect(row.status).toBe('ok');
   });
 });
 

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-daily-health-check
 display_name: Daily Advertising Performance Health Check
-version: "0.2.0"
+version: "0.2.1"
 description: >
   Comprehensive daily exception-based analysis of advertising account performance across
   campaign types, objectives, and item groups. Uses percentile-based confidence intervals

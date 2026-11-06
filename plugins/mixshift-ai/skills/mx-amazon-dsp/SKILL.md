@@ -3,20 +3,20 @@ name: mx-amazon-dsp
 description: >
   Read and build an Amazon DSP advertiser straight from Amazon.
   REPORTING: how DSP did last year, history older than 90 days,
-  year-over-year or monthly history. ACCOUNT READS answer what is set up now:
+  year-over-year or monthly history. ACCOUNT READS: what is set up now:
   campaigns, line items, creatives, which creatives sit on which line items
   and whether they are live, approval or rejection reasons, eligible
   creatives, and which audiences a line item targets. Use it to audit a DSP
   account, explain why a creative is not delivering, or find an id. Also
-  finds which DSP advertiser a login can reach. BUILDS ARE AVAILABLE: create orders (campaigns) and line items (ad
+  finds the DSP advertiser a login can reach. BUILDS ARE AVAILABLE: create orders (campaigns) and line items (ad
   groups) in bulk from a launch plan, always paused, plus audiences, other
-  targeting, tracked products and existing creatives, with a readiness check
-  before turning an order on. EDITS: campaign budget, flights, state; line
-  item budget, dates, bids, pacing. Previewed, applied only on confirmation.
-  Console only: creating a creative, "Automatically create responsive ads".
-  No brand setup, only sign-in.
+  targeting, tracked products, existing creatives and a responsive ecommerce
+  ad (cannot be deleted), with a readiness check before going live.
+  EDITS: campaign budget, flights, state; line item budget, dates, bids,
+  pacing. Previewed; applied on confirmation. Console only: other
+  creatives, "Automatically create responsive ads". No brand setup, only sign-in.
 metadata:
-  version: "0.7.0"
+  version: "0.7.1"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -242,7 +242,9 @@ the notes before calling. The operations, used in the order below:
 | `dsp.create_targets` | **Write.** Add audiences, locations, domains and other targeting to ad groups. |
 | `dsp.delete_targets` | **Write.** Remove targets by id (up to 1,000 per call), to change a default or swap an audience. |
 | `dsp.create_ad_associations` | **Write.** Attach existing creatives to ad groups, up to 20 per call. |
+| `dsp.create_ads` | **Write.** Create a responsive ecommerce ad, the only creative type MixShift builds: created paused, no `adGroupId` on the ad, then linked with `dsp.create_ad_associations`. A DSP ad cannot be deleted. See "Order of operations". |
 | `dsp.query_campaigns` / `dsp.query_ad_groups` | Read campaigns and ad groups in the shape the creates write; check names before creating. |
+| `dsp.query_ads` | Read ads back (needs `"adProductFilter": {"include": ["AMAZON_DSP"]}`). After a 5xx or unknown outcome on `dsp.create_ads`, check here before sending again. |
 | `dsp.query_targets` | Read the targeting on ad groups, including **which audiences each line item targets**. |
 
 **The two DSP families are addressed differently, and mixing them up is the
@@ -466,11 +468,12 @@ does not exist.
 
 ### What is NOT available
 
-Building orders (campaigns), line items (ad groups), targets, tracked products
-and creative links **is** available: see "Building DSP campaigns and line
-items". Only these are **not** in the catalog:
+Building orders (campaigns), line items (ad groups), targets, tracked products,
+creative links and a responsive ecommerce ad (`dsp.create_ads`) **is**
+available: see "Building DSP campaigns and line items". Only these are **not**
+in the catalog:
 
-- Creating a DSP creative.
+- Creating any other creative type.
 - Pausing or removing a creative's placement on a line item.
 - The order setting "Automatically create responsive ads" (AutomatedREC). Amazon's
   API has no switch for it; it exists only on the console's Create order screen
@@ -555,9 +558,9 @@ is propose-only, or a teammate should approve: add `--propose` (see
 only afterward. Money changes over 25% are flagged and need the approver's
 `--acknowledge-guard`.
 
-**Still console-only.** Creating a creative, turning on "Automatically create
-responsive ads", and pausing or removing a creative's placement on a line item
-are **not** in the catalog. Say so
+**Still console-only.** Creating any creative other than a responsive ecommerce
+ad, turning on "Automatically create responsive ads", and pausing or removing a
+creative's placement on a line item are **not** in the catalog. Say so
 plainly: MixShift can show the account and tell them exactly what to change,
 and that change is made in the Amazon DSP console. Do not improvise it through
 another operation.
@@ -651,7 +654,7 @@ operations.** Build bodies from each operation's notes (`mixshift ads operations
 `"adProduct": "AMAZON_DSP"`, state is `PAUSED` / `ENABLED`, budgets nest as
 `budget.budgetValue.monetaryBudgetValue.monetaryBudget.value`, and dates are
 RFC 3339 UTC. Read what you built back with `dsp.query_campaigns`,
-`dsp.query_ad_groups` and `dsp.query_targets` (each needs
+`dsp.query_ad_groups`, `dsp.query_targets` and `dsp.query_ads` (each needs
 `"adProductFilter": {"include": ["AMAZON_DSP"]}`).
 
 **Same ids on both APIs** (verified on live accounts, October 2026). These
@@ -679,7 +682,7 @@ Work through these in order; each later step depends on an earlier one.
 
 | # | Decide or do | Rule |
 |---|---|---|
-| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. |
+| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. **A hand-built responsive ecommerce ad works from the API** (`dsp.create_ads`, proven on a test advertiser November 2026): adType `COMPONENT` with `creative.componentCreative.responsiveEcommerceSettings` (products, language, inventory types, `optimizationGoalKpi` and `supportedThirdPartySellers` are required by Amazon), created paused with no `adGroupId` on the ad, then linked to a line item with `dsp.create_ad_associations`; it goes through Amazon's moderation like any creative. It is the only creative type MixShift builds (others stay console-only) and not the console's automatic one. A DSP ad cannot be deleted, so preview it and get the user's yes first; after a 5xx or unknown outcome, read back with `dsp.query_ads` (needs `adProductFilter`) before sending again. |
 | 2 | **Media type** | Send `optimizations.primaryInventoryTypes` on the order (`AUDIO`, `DISPLAY`, `VIDEO_OLV`, `VIDEO_STV`) and match it to the line items (Display line items mean `["DISPLAY"]`). Without it the order has no media type and creatives do not populate. MixShift refuses a campaign create without it. |
 | 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
 | 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |
@@ -1136,8 +1139,9 @@ These supersede other instructions:
   `dsp.create_*`, `dsp.delete_targets`) NEVER reaches Amazon without a preview
   the user saw and explicit confirmation of that exact change set in a SEPARATE
   turn, then `--commit`. A flights list is a full replacement: omitting a flight
-  deletes it. Creating creatives and changing a creative's placement are
-  console-only: do not improvise them.
+  deletes it. Building a creative is console-only except the responsive
+  ecommerce ad (`dsp.create_ads`); do not improvise any other creative or a
+  creative's placement.
 - **Never assign or unassign a brand the user did not name; never in unattended
   runs; never in bulk.** A DSP advertiser is declared on a brand only after the
   user names that brand and confirms the dry run. Evidence from matching is a
