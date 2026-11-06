@@ -179,7 +179,7 @@ Beyond the warehouse, the plugin can also pull **live, on-demand data straight f
 
 ### Can I get data MixShift doesn't have?
 
-Two answers, depending on the source. **From the warehouse:** no, the warehouse holds whatever MixShift's ingestion pipeline pulls for you, so if a source isn't ingested, `mx-data-explore` can't see it. Open a feature request via `mixshift feedback "need data source: X"` and we'll route it to MixShift's data team. **Straight from Amazon:** often yes, the `mx-amazon-*` skills call Amazon's APIs live for any merchant you're authorized for, so you can pull reports, catalog, inventory, pricing, AMC, and DSP data the warehouse doesn't hold.
+Two answers, depending on the source. **From the warehouse:** no, the warehouse holds whatever MixShift's ingestion pipeline pulls for you, so if a source isn't ingested, `mx-data-explore` can't see it. Open a feature request via `mixshift feedback "need data source: X"` and we'll route it to MixShift's data team. **Straight from Amazon:** often yes, the `mx-amazon-*` skills call the Amazon APIs live for any merchant you're authorized for, so you can pull reports, catalog, inventory, pricing, AMC, and DSP data the warehouse doesn't hold.
 
 ### What's the data freshness?
 
@@ -196,7 +196,7 @@ The boundary is whether a skill needs a brand-context build. **Everything that n
 - `mx-walmart-ads` for Walmart ads (Walmart Connect): campaigns, reports and previewed changes, for Walmart advertisers connected to your MixShift account (beta)
 - `mx-walmart-retail` for your Walmart Marketplace seller account, read only: per-SKU sales, stock, inbound and days of supply, plus orders, items and inventory, for sellers connected to your MixShift account (beta)
 - `mx-amazon-shelf` for the Amazon shelf as a shopper at a zip sees it: Buy Box, every seller on a listing, keyword rank, the product page, who a seller is (beta; say "demo Amazon shelf")
-- `mx-featured-offer-check` for who holds your Buy Box per shopper segment and why you lose it, from Amazon's answer plus the shelf, on one page (beta; say "demo featured offer check")
+- `mx-featured-offer-check` for who holds your Buy Box per shopper segment and why you lose it, from the answer Amazon gives plus the shelf, on one page (beta; say "demo featured offer check")
 
 The **analytical PPC tier** (`mx-daily-health-check`, `mx-runaway-spend-check`, `mx-keyword-bid-health`, `mx-budget-balance`, `mx-monthly-report`, `mx-portfolio-quick-scan`, and the search-term suite) reads a one-time brand-context build per brand. These are being vetted end-to-end on real brand contexts and roll out in waves. Watch the changelog / release notes.
 

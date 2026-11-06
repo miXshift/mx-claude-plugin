@@ -36,6 +36,16 @@
  *      brand-context sync is disclosed separately from telemetry, automatic
  *      updates after an explicit first share and the kill switch are named,
  *      and opt-out copy does not claim disabled events are still queued.
+ *   7. No possessive "Amazon's" (straight or curly apostrophe) in customer-facing
+ *      copy: README.md, docs/*.md, docs/install/*.md, UPSTREAM.md, CHANGELOG.md
+ *      and the changelog.d/ fragments the next cut folds into it (the changelog
+ *      renders verbatim in `mixshift whatsnew`, on /releases and in the Discord
+ *      announce). Sam, 2026-10-23: "Amazon's X" follows the trademark rule
+ *      everywhere customers read it; write "the budget Amazon suggests", and a
+ *      proper name such as "the Amazon Ads console" is fine. The rule lived only
+ *      in CONTRIBUTING.md and changelog.d/README.md, so README and the FAQ kept
+ *      three until QA flagged them after 0.8.21. changelog.d/README.md states the
+ *      rule with the literal word and is skipped.
  *
  * Companion to check-skill-telemetry.mjs / check-version-consistency.mjs; shares
  * their conventions (skip `_`-prefixed dirs, exit-1-with-report). Prose accuracy
@@ -270,6 +280,43 @@ try {
   errors.push(
     `Cannot read shared/BRAND-CONTEXT-SCHEMA.md for the parity check (${err instanceof Error ? err.message : String(err)})`,
   );
+}
+
+// 7. No possessive "Amazon's" in customer-facing copy (see the header).
+{
+  const POSSESSIVE = /\bAmazon['\u2019]s\b/;
+  const files = ['README.md', 'UPSTREAM.md', 'CHANGELOG.md'];
+  const addDir = async (rel, skip = []) => {
+    let names = [];
+    try {
+      names = await readdir(join(repoRoot, rel));
+    } catch {
+      return; // directory absent is fine
+    }
+    for (const n of names.sort()) {
+      if (n.endsWith('.md') && !skip.includes(n)) files.push(`${rel}/${n}`);
+    }
+  };
+  await addDir('docs');
+  await addDir('docs/install');
+  await addDir('changelog.d', ['README.md']);
+  for (const rel of files) {
+    let text;
+    try {
+      text = await readFile(join(repoRoot, rel), 'utf-8');
+    } catch {
+      continue; // UPSTREAM.md and friends are optional
+    }
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (POSSESSIVE.test(line)) {
+        errors.push(
+          `${rel}:${i + 1} uses the possessive "Amazon's" in customer-facing copy. ` +
+            'Recast it ("the answer Amazon gives", "the Amazon APIs"); a proper name ' +
+            'such as "the Amazon Ads console" is fine.',
+        );
+      }
+    });
+  }
 }
 
 if (errors.length === 0) {
