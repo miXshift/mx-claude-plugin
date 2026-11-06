@@ -111,6 +111,7 @@ const CATALOG: HubGroup[] = [
     title: 'Live Walmart surfaces',
     skills: [
       { id: 'mx-walmart-ads', say: 'show my Walmart campaigns', what: 'Walmart Connect ads: campaigns, reports, previewed changes' },
+      { id: 'mx-walmart-retail', say: 'what should I reorder on Walmart', what: 'Walmart Marketplace, read only: per-SKU sales, stock, inbound, days of supply' },
     ],
   },
   {

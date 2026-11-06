@@ -41,6 +41,7 @@ import {
 import { cleanServerText, CONTRACT_WORD } from '../lib/amazon/reports.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { keyValueOption } from '../lib/cli/option-parsers.js';
+import { registerMarketplace } from './walmart-marketplace.js';
 
 interface RootOptions {
   json?: boolean;
@@ -60,6 +61,7 @@ export function registerWalmartCommands(program: Command): void {
   registerAdvertisers(ads);
   registerOperations(ads);
   registerCall(ads);
+  registerMarketplace(walmart);
 }
 
 // ---------------------------------------------------------------------------
