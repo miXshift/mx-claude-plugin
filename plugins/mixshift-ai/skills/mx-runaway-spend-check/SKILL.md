@@ -112,7 +112,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 
 **Resolve the working thresholds (whole-number percents) from `effective_config` (the `--apply` response):**
 - `pullback_threshold_pct`: if present, use it; else `acos_target × 1.5`; else (no target) `45` (45%). Label any default "default, set to sharpen".
-- `acos_target`: if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1. If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before judging against it; until they do, treat it as absent (so the pullback threshold takes the fixed fallback).
+- `acos_target`: if absent, run observational (report ACoS as-is, do not flag vs target) per Step 1. If the card's `acos_target` came from the brand context (`source: seed`) and the brand context says `acos_target_source: default`, it is only the bootstrap placeholder: say the target is a placeholder, not the brand's own number, ask the user to confirm or edit it before judging against it, and record their answer with `mixshift brand config <brand-slug> --apply '{"action":"edit","edits":{"acos_target_pct":N}}'` (that marks it confirmed for every skill). Until they answer, treat it as absent (so the pullback threshold takes the fixed fallback). A value saved on this card (`source: stored`) is the user's own, never a placeholder.
 
 Never block on this step — confirm-as-is is always available.
 

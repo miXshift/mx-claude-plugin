@@ -123,7 +123,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"acos_target":"22"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review).
 
 **Resolve the working value (a whole-number percent) from `effective_config` (the `--apply` response):**
-- `acos_target`: reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target). If it is only the bootstrap placeholder (`management.acos_target_source: default`), say the target is a placeholder, not the brand's own number, and ask the user to confirm or edit it on this card before framing against it; until they do, treat it as absent.
+- `acos_target`: reference ACoS for the efficiency narrative / beat-miss framing; if absent, run observational (report ACoS as-is, do not frame vs a target). If the card's `acos_target` came from the brand context (`source: seed`) and the brand context says `acos_target_source: default`, it is only the bootstrap placeholder: say the target is a placeholder, not the brand's own number, ask the user to confirm or edit it before framing against it, and record their answer with `mixshift brand config <brand-slug> --apply '{"action":"edit","edits":{"acos_target_pct":N}}'` (that marks it confirmed for every skill). Until they answer, treat it as absent. A value saved on this card (`source: stored`) is the user's own, never a placeholder.
 
 Never block on this step — confirm-as-is is always available.
 
