@@ -451,7 +451,7 @@ export async function checkDspReadiness(
         fix:
           addFix +
           ' If this order advertises nothing sold on Amazon, it needs an off-Amazon conversion from Events ' +
-          'manager instead: confirm that in the DSP console and treat this line as answered.',
+          'manager instead: only the user can confirm that, in the DSP console.',
       });
     }
   }

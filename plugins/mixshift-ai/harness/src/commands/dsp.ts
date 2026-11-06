@@ -229,7 +229,15 @@ function registerSupplyPreset(dsp: Command): void {
             bodyFile,
             items: res.itemsCount ?? targetIds.length,
             ...(res.auditId ? { auditId: res.auditId } : {}),
-            commit: commitCommand(selector, opts.advertiserId, bodyFile, res.auditId, root.dataDir),
+            commit: commitCommand(
+              selector,
+              opts.advertiserId,
+              bodyFile,
+              res.auditId,
+              // The same sign-in as this preview, also when it came from the
+              // environment rather than the flag.
+              root.dataDir ?? process.env.MIXSHIFT_DATA_DIR,
+            ),
           });
         }
 
