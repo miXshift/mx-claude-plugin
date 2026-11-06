@@ -1207,10 +1207,10 @@ var require_util = __commonJS({
       }
       obj2[kListeners] = null;
     }
-    function errorRequest(client, request2, err) {
+    function errorRequest(client, request3, err) {
       try {
-        request2.onError(err);
-        assert2(request2.aborted);
+        request3.onError(err);
+        assert2(request3.aborted);
       } catch (err2) {
         client.emit("error", err2);
       }
@@ -1628,10 +1628,10 @@ var require_request = __commonJS({
           channels.create.publish({ request: this });
         }
       }
-      onBodySent(chunk) {
+      onBodySent(chunk2) {
         if (this[kHandler].onBodySent) {
           try {
-            return this[kHandler].onBodySent(chunk);
+            return this[kHandler].onBodySent(chunk2);
           } catch (err) {
             this.abort(err);
           }
@@ -1674,11 +1674,11 @@ var require_request = __commonJS({
           this.abort(err);
         }
       }
-      onData(chunk) {
+      onData(chunk2) {
         assert2(!this.aborted);
         assert2(!this.completed);
         try {
-          return this[kHandler].onData(chunk);
+          return this[kHandler].onData(chunk2);
         } catch (err) {
           this.abort(err);
           return false;
@@ -1728,7 +1728,7 @@ var require_request = __commonJS({
         return this;
       }
     };
-    function processHeader(request2, key, val) {
+    function processHeader(request3, key, val) {
       if (val && (typeof val === "object" && !Array.isArray(val))) {
         throw new InvalidArgumentError2(`invalid ${key} header`);
       } else if (val === void 0) {
@@ -1768,24 +1768,24 @@ var require_request = __commonJS({
         val = `${val}`;
       }
       if (headerName === "host") {
-        if (request2.host !== null) {
+        if (request3.host !== null) {
           throw new InvalidArgumentError2("duplicate host header");
         }
         if (typeof val !== "string") {
           throw new InvalidArgumentError2("invalid host header");
         }
-        request2.host = val;
+        request3.host = val;
       } else if (headerName === "content-length") {
-        if (request2.contentLength !== null) {
+        if (request3.contentLength !== null) {
           throw new InvalidArgumentError2("duplicate content-length header");
         }
-        request2.contentLength = parseInt(val, 10);
-        if (!Number.isFinite(request2.contentLength)) {
+        request3.contentLength = parseInt(val, 10);
+        if (!Number.isFinite(request3.contentLength)) {
           throw new InvalidArgumentError2("invalid content-length header");
         }
-      } else if (request2.contentType === null && headerName === "content-type") {
-        request2.contentType = val;
-        request2.headers.push(key, val);
+      } else if (request3.contentType === null && headerName === "content-type") {
+        request3.contentType = val;
+        request3.headers.push(key, val);
       } else if (headerName === "transfer-encoding" || headerName === "keep-alive" || headerName === "upgrade") {
         throw new InvalidArgumentError2(`invalid ${headerName} header`);
       } else if (headerName === "connection") {
@@ -1794,12 +1794,12 @@ var require_request = __commonJS({
           throw new InvalidArgumentError2("invalid connection header");
         }
         if (value === "close") {
-          request2.reset = true;
+          request3.reset = true;
         }
       } else if (headerName === "expect") {
         throw new NotSupportedError("expect header not supported");
       } else {
-        request2.headers.push(key, val);
+        request3.headers.push(key, val);
       }
     }
     module.exports = Request;
@@ -1913,9 +1913,9 @@ var require_dispatcher_base = __commonJS({
       }
       close(callback) {
         if (callback === void 0) {
-          return new Promise((resolve5, reject) => {
+          return new Promise((resolve6, reject) => {
             this.close((err, data) => {
-              return err ? reject(err) : resolve5(data);
+              return err ? reject(err) : resolve6(data);
             });
           });
         }
@@ -1953,12 +1953,12 @@ var require_dispatcher_base = __commonJS({
           err = null;
         }
         if (callback === void 0) {
-          return new Promise((resolve5, reject) => {
+          return new Promise((resolve6, reject) => {
             this.destroy(err, (err2, data) => {
               return err2 ? (
                 /* istanbul ignore next: should never error */
                 reject(err2)
-              ) : resolve5(data);
+              ) : resolve6(data);
             });
           });
         }
@@ -3316,25 +3316,25 @@ var require_data_url = __commonJS({
     function isHTTPWhiteSpace(char) {
       return char === 13 || char === 10 || char === 9 || char === 32;
     }
-    function removeHTTPWhitespace(str4, leading = true, trailing = true) {
-      return removeChars(str4, leading, trailing, isHTTPWhiteSpace);
+    function removeHTTPWhitespace(str7, leading = true, trailing = true) {
+      return removeChars(str7, leading, trailing, isHTTPWhiteSpace);
     }
     function isASCIIWhitespace(char) {
       return char === 13 || char === 10 || char === 9 || char === 12 || char === 32;
     }
-    function removeASCIIWhitespace(str4, leading = true, trailing = true) {
-      return removeChars(str4, leading, trailing, isASCIIWhitespace);
+    function removeASCIIWhitespace(str7, leading = true, trailing = true) {
+      return removeChars(str7, leading, trailing, isASCIIWhitespace);
     }
-    function removeChars(str4, leading, trailing, predicate) {
+    function removeChars(str7, leading, trailing, predicate) {
       let lead = 0;
-      let trail = str4.length - 1;
+      let trail = str7.length - 1;
       if (leading) {
-        while (lead < str4.length && predicate(str4.charCodeAt(lead))) lead++;
+        while (lead < str7.length && predicate(str7.charCodeAt(lead))) lead++;
       }
       if (trailing) {
-        while (trail > 0 && predicate(str4.charCodeAt(trail))) trail--;
+        while (trail > 0 && predicate(str7.charCodeAt(trail))) trail--;
       }
-      return lead === 0 && trail === str4.length - 1 ? str4 : str4.slice(lead, trail + 1);
+      return lead === 0 && trail === str7.length - 1 ? str7 : str7.slice(lead, trail + 1);
     }
     function isomorphicDecode(input) {
       const length = input.length;
@@ -3881,11 +3881,11 @@ var require_util2 = __commonJS({
     function normalizeBinaryStringToUtf8(value) {
       return Buffer.from(value, "binary").toString("utf8");
     }
-    function requestCurrentURL(request2) {
-      return request2.urlList[request2.urlList.length - 1];
+    function requestCurrentURL(request3) {
+      return request3.urlList[request3.urlList.length - 1];
     }
-    function requestBadPort(request2) {
-      const url2 = requestCurrentURL(request2);
+    function requestBadPort(request3) {
+      const url2 = requestCurrentURL(request3);
       if (urlIsHttpHttpsScheme(url2) && badPortsSet.has(url2.port)) {
         return "blocked";
       }
@@ -3909,7 +3909,7 @@ var require_util2 = __commonJS({
     function isValidHeaderValue(potentialValue) {
       return (potentialValue[0] === "	" || potentialValue[0] === " " || potentialValue[potentialValue.length - 1] === "	" || potentialValue[potentialValue.length - 1] === " " || potentialValue.includes("\n") || potentialValue.includes("\r") || potentialValue.includes("\0")) === false;
     }
-    function setRequestReferrerPolicyOnRedirect(request2, actualResponse) {
+    function setRequestReferrerPolicyOnRedirect(request3, actualResponse) {
       const { headersList } = actualResponse;
       const policyHeader = (headersList.get("referrer-policy", true) ?? "").split(",");
       let policy = "";
@@ -3923,7 +3923,7 @@ var require_util2 = __commonJS({
         }
       }
       if (policy !== "") {
-        request2.referrerPolicy = policy;
+        request3.referrerPolicy = policy;
       }
     }
     function crossOriginResourcePolicyCheck() {
@@ -3940,33 +3940,33 @@ var require_util2 = __commonJS({
       header = httpRequest.mode;
       httpRequest.headersList.set("sec-fetch-mode", header, true);
     }
-    function appendRequestOriginHeader(request2) {
-      let serializedOrigin = request2.origin;
+    function appendRequestOriginHeader(request3) {
+      let serializedOrigin = request3.origin;
       if (serializedOrigin === "client" || serializedOrigin === void 0) {
         return;
       }
-      if (request2.responseTainting === "cors" || request2.mode === "websocket") {
-        request2.headersList.append("origin", serializedOrigin, true);
-      } else if (request2.method !== "GET" && request2.method !== "HEAD") {
-        switch (request2.referrerPolicy) {
+      if (request3.responseTainting === "cors" || request3.mode === "websocket") {
+        request3.headersList.append("origin", serializedOrigin, true);
+      } else if (request3.method !== "GET" && request3.method !== "HEAD") {
+        switch (request3.referrerPolicy) {
           case "no-referrer":
             serializedOrigin = null;
             break;
           case "no-referrer-when-downgrade":
           case "strict-origin":
           case "strict-origin-when-cross-origin":
-            if (request2.origin && urlHasHttpsScheme(request2.origin) && !urlHasHttpsScheme(requestCurrentURL(request2))) {
+            if (request3.origin && urlHasHttpsScheme(request3.origin) && !urlHasHttpsScheme(requestCurrentURL(request3))) {
               serializedOrigin = null;
             }
             break;
           case "same-origin":
-            if (!sameOrigin(request2, requestCurrentURL(request2))) {
+            if (!sameOrigin(request3, requestCurrentURL(request3))) {
               serializedOrigin = null;
             }
             break;
           default:
         }
-        request2.headersList.append("origin", serializedOrigin, true);
+        request3.headersList.append("origin", serializedOrigin, true);
       }
     }
     function coarsenTime(timestamp, crossOriginIsolatedCapability) {
@@ -4020,26 +4020,26 @@ var require_util2 = __commonJS({
         referrerPolicy: policyContainer.referrerPolicy
       };
     }
-    function determineRequestsReferrer(request2) {
-      const policy = request2.referrerPolicy;
+    function determineRequestsReferrer(request3) {
+      const policy = request3.referrerPolicy;
       assert2(policy);
       let referrerSource = null;
-      if (request2.referrer === "client") {
+      if (request3.referrer === "client") {
         const globalOrigin = getGlobalOrigin();
         if (!globalOrigin || globalOrigin.origin === "null") {
           return "no-referrer";
         }
         referrerSource = new URL(globalOrigin);
-      } else if (request2.referrer instanceof URL) {
-        referrerSource = request2.referrer;
+      } else if (request3.referrer instanceof URL) {
+        referrerSource = request3.referrer;
       }
       let referrerURL = stripURLForReferrer(referrerSource);
       const referrerOrigin = stripURLForReferrer(referrerSource, true);
       if (referrerURL.toString().length > 4096) {
         referrerURL = referrerOrigin;
       }
-      const areSameOrigin = sameOrigin(request2, referrerURL);
-      const isNonPotentiallyTrustWorthy = isURLPotentiallyTrustworthy(referrerURL) && !isURLPotentiallyTrustworthy(request2.url);
+      const areSameOrigin = sameOrigin(request3, referrerURL);
+      const isNonPotentiallyTrustWorthy = isURLPotentiallyTrustworthy(referrerURL) && !isURLPotentiallyTrustworthy(request3.url);
       switch (policy) {
         case "origin":
           return referrerOrigin != null ? referrerOrigin : stripURLForReferrer(referrerSource, true);
@@ -4050,7 +4050,7 @@ var require_util2 = __commonJS({
         case "origin-when-cross-origin":
           return areSameOrigin ? referrerURL : referrerOrigin;
         case "strict-origin-when-cross-origin": {
-          const currentURL = requestCurrentURL(request2);
+          const currentURL = requestCurrentURL(request3);
           if (sameOrigin(referrerURL, currentURL)) {
             return referrerURL;
           }
@@ -4211,7 +4211,7 @@ var require_util2 = __commonJS({
       }
       return true;
     }
-    function tryUpgradeRequestToAPotentiallyTrustworthyURL(request2) {
+    function tryUpgradeRequestToAPotentiallyTrustworthyURL(request3) {
     }
     function sameOrigin(A, B) {
       if (A.origin === B.origin && A.origin === "null") {
@@ -4225,8 +4225,8 @@ var require_util2 = __commonJS({
     function createDeferredPromise() {
       let res;
       let rej;
-      const promise2 = new Promise((resolve5, reject) => {
-        res = resolve5;
+      const promise2 = new Promise((resolve6, reject) => {
+        res = resolve6;
         rej = reject;
       });
       return { promise: promise2, resolve: res, reject: rej };
@@ -4413,15 +4413,15 @@ var require_util2 = __commonJS({
       const bytes = [];
       let byteLength = 0;
       while (true) {
-        const { done, value: chunk } = await reader.read();
+        const { done, value: chunk2 } = await reader.read();
         if (done) {
           return Buffer.concat(bytes, byteLength);
         }
-        if (!isUint8Array(chunk)) {
+        if (!isUint8Array(chunk2)) {
           throw new TypeError("Received non-Uint8Array chunk");
         }
-        bytes.push(chunk);
-        byteLength += chunk.length;
+        bytes.push(chunk2);
+        byteLength += chunk2.length;
       }
     }
     function urlIsLocal(url2) {
@@ -4524,18 +4524,18 @@ var require_util2 = __commonJS({
         super();
         this.#zlibOptions = zlibOptions;
       }
-      _transform(chunk, encoding, callback) {
+      _transform(chunk2, encoding, callback) {
         if (!this._inflateStream) {
-          if (chunk.length === 0) {
+          if (chunk2.length === 0) {
             callback();
             return;
           }
-          this._inflateStream = (chunk[0] & 15) === 8 ? zlib.createInflate(this.#zlibOptions) : zlib.createInflateRaw(this.#zlibOptions);
+          this._inflateStream = (chunk2[0] & 15) === 8 ? zlib.createInflate(this.#zlibOptions) : zlib.createInflateRaw(this.#zlibOptions);
           this._inflateStream.on("data", this.push.bind(this));
           this._inflateStream.on("end", () => this.push(null));
           this._inflateStream.on("error", (err) => this.destroy(err));
         }
-        this._inflateStream.write(chunk, encoding, callback);
+        this._inflateStream.write(chunk2, encoding, callback);
       }
       _final(callback) {
         if (this._inflateStream) {
@@ -5253,7 +5253,7 @@ var require_body = __commonJS({
         const boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, "0")}`;
         const prefix = `--${boundary}\r
 Content-Disposition: form-data`;
-        const escape = (str4) => str4.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
+        const escape = (str7) => str7.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
         const normalizeLinefeeds = (value) => value.replace(/\r?\n|\r/g, "\r\n");
         const blobParts = [];
         const rn = new Uint8Array([13, 10]);
@@ -5261,29 +5261,29 @@ Content-Disposition: form-data`;
         let hasUnknownSizeValue = false;
         for (const [name, value] of object2) {
           if (typeof value === "string") {
-            const chunk2 = textEncoder.encode(prefix + `; name="${escape(normalizeLinefeeds(name))}"\r
+            const chunk3 = textEncoder.encode(prefix + `; name="${escape(normalizeLinefeeds(name))}"\r
 \r
 ${normalizeLinefeeds(value)}\r
 `);
-            blobParts.push(chunk2);
-            length += chunk2.byteLength;
+            blobParts.push(chunk3);
+            length += chunk3.byteLength;
           } else {
-            const chunk2 = textEncoder.encode(`${prefix}; name="${escape(normalizeLinefeeds(name))}"` + (value.name ? `; filename="${escape(value.name)}"` : "") + `\r
+            const chunk3 = textEncoder.encode(`${prefix}; name="${escape(normalizeLinefeeds(name))}"` + (value.name ? `; filename="${escape(value.name)}"` : "") + `\r
 Content-Type: ${value.type || "application/octet-stream"}\r
 \r
 `);
-            blobParts.push(chunk2, value, rn);
+            blobParts.push(chunk3, value, rn);
             if (typeof value.size === "number") {
-              length += chunk2.byteLength + value.size + rn.byteLength;
+              length += chunk3.byteLength + value.size + rn.byteLength;
             } else {
               hasUnknownSizeValue = true;
             }
           }
         }
-        const chunk = textEncoder.encode(`--${boundary}--\r
+        const chunk2 = textEncoder.encode(`--${boundary}--\r
 `);
-        blobParts.push(chunk);
-        length += chunk.byteLength;
+        blobParts.push(chunk2);
+        length += chunk2.byteLength;
         if (hasUnknownSizeValue) {
           length = null;
         }
@@ -5674,11 +5674,11 @@ var require_client_h1 = __commonJS({
       }
       readMore() {
         while (!this.paused && this.ptr) {
-          const chunk = this.socket.read();
-          if (chunk === null) {
+          const chunk2 = this.socket.read();
+          if (chunk2 === null) {
             break;
           }
-          this.execute(chunk);
+          this.execute(chunk2);
         }
       }
       execute(data) {
@@ -5779,11 +5779,11 @@ var require_client_h1 = __commonJS({
           util.destroy(socket, new SocketError("bad response", util.getSocketInfo(socket)));
           return -1;
         }
-        const request2 = client[kQueue][client[kRunningIdx]];
-        if (!request2) {
+        const request3 = client[kQueue][client[kRunningIdx]];
+        if (!request3) {
           return -1;
         }
-        request2.onResponseStarted();
+        request3.onResponseStarted();
       }
       onHeaderField(buf) {
         const len = this.headers.length;
@@ -5828,9 +5828,9 @@ var require_client_h1 = __commonJS({
         assert2(!socket.destroyed);
         assert2(!this.paused);
         assert2((headers.length & 1) === 0);
-        const request2 = client[kQueue][client[kRunningIdx]];
-        assert2(request2);
-        assert2(request2.upgrade || request2.method === "CONNECT");
+        const request3 = client[kQueue][client[kRunningIdx]];
+        assert2(request3);
+        assert2(request3.upgrade || request3.method === "CONNECT");
         this.statusCode = null;
         this.statusText = "";
         this.shouldKeepAlive = null;
@@ -5847,7 +5847,7 @@ var require_client_h1 = __commonJS({
         client[kQueue][client[kRunningIdx]++] = null;
         client.emit("disconnect", client[kUrl], [client], new InformationalError("upgrade"));
         try {
-          request2.onUpgrade(statusCode, headers, socket);
+          request3.onUpgrade(statusCode, headers, socket);
         } catch (err) {
           util.destroy(socket, err);
         }
@@ -5862,8 +5862,8 @@ var require_client_h1 = __commonJS({
           util.destroy(socket, new SocketError("bad response", util.getSocketInfo(socket)));
           return -1;
         }
-        const request2 = client[kQueue][client[kRunningIdx]];
-        if (!request2) {
+        const request3 = client[kQueue][client[kRunningIdx]];
+        if (!request3) {
           return -1;
         }
         assert2(!this.upgrade);
@@ -5872,23 +5872,23 @@ var require_client_h1 = __commonJS({
           util.destroy(socket, new SocketError("bad response", util.getSocketInfo(socket)));
           return -1;
         }
-        if (upgrade && !request2.upgrade) {
+        if (upgrade && !request3.upgrade) {
           util.destroy(socket, new SocketError("bad upgrade", util.getSocketInfo(socket)));
           return -1;
         }
         assert2(this.timeoutType === TIMEOUT_HEADERS);
         this.statusCode = statusCode;
         this.shouldKeepAlive = shouldKeepAlive || // Override llhttp value which does not allow keepAlive for HEAD.
-        request2.method === "HEAD" && !socket[kReset] && this.connection.toLowerCase() === "keep-alive";
+        request3.method === "HEAD" && !socket[kReset] && this.connection.toLowerCase() === "keep-alive";
         if (this.statusCode >= 200) {
-          const bodyTimeout = request2.bodyTimeout != null ? request2.bodyTimeout : client[kBodyTimeout];
+          const bodyTimeout = request3.bodyTimeout != null ? request3.bodyTimeout : client[kBodyTimeout];
           this.setTimeout(bodyTimeout, TIMEOUT_BODY);
         } else if (this.timeout) {
           if (this.timeout.refresh) {
             this.timeout.refresh();
           }
         }
-        if (request2.method === "CONNECT") {
+        if (request3.method === "CONNECT") {
           assert2(client[kRunning] === 1);
           this.upgrade = true;
           return 2;
@@ -5919,11 +5919,11 @@ var require_client_h1 = __commonJS({
         } else {
           socket[kReset] = true;
         }
-        const pause = request2.onHeaders(statusCode, headers, this.resume, statusText) === false;
-        if (request2.aborted) {
+        const pause = request3.onHeaders(statusCode, headers, this.resume, statusText) === false;
+        if (request3.aborted) {
           return -1;
         }
-        if (request2.method === "HEAD") {
+        if (request3.method === "HEAD") {
           return 1;
         }
         if (statusCode < 200) {
@@ -5940,8 +5940,8 @@ var require_client_h1 = __commonJS({
         if (socket.destroyed) {
           return -1;
         }
-        const request2 = client[kQueue][client[kRunningIdx]];
-        assert2(request2);
+        const request3 = client[kQueue][client[kRunningIdx]];
+        assert2(request3);
         assert2(this.timeoutType === TIMEOUT_BODY);
         if (this.timeout) {
           if (this.timeout.refresh) {
@@ -5954,7 +5954,7 @@ var require_client_h1 = __commonJS({
           return -1;
         }
         this.bytesRead += buf.length;
-        if (request2.onData(buf) === false) {
+        if (request3.onData(buf) === false) {
           return constants.ERROR.PAUSED;
         }
       }
@@ -5968,8 +5968,8 @@ var require_client_h1 = __commonJS({
         }
         assert2(statusCode >= 100);
         assert2((this.headers.length & 1) === 0);
-        const request2 = client[kQueue][client[kRunningIdx]];
-        assert2(request2);
+        const request3 = client[kQueue][client[kRunningIdx]];
+        assert2(request3);
         this.statusCode = null;
         this.statusText = "";
         this.bytesRead = 0;
@@ -5981,11 +5981,11 @@ var require_client_h1 = __commonJS({
         if (statusCode < 200) {
           return;
         }
-        if (request2.method !== "HEAD" && contentLength && bytesRead !== parseInt(contentLength, 10)) {
+        if (request3.method !== "HEAD" && contentLength && bytesRead !== parseInt(contentLength, 10)) {
           util.destroy(socket, new ResponseContentLengthMismatchError());
           return -1;
         }
-        request2.onComplete(headers);
+        request3.onComplete(headers);
         client[kQueue][client[kRunningIdx]++] = null;
         socket[kSocketUsed] = true;
         if (socket[kWriting]) {
@@ -6084,13 +6084,13 @@ var require_client_h1 = __commonJS({
           assert2(client2[kPending] === 0);
           const requests = client2[kQueue].splice(client2[kRunningIdx]);
           for (let i = 0; i < requests.length; i++) {
-            const request2 = requests[i];
-            util.errorRequest(client2, request2, err);
+            const request3 = requests[i];
+            util.errorRequest(client2, request3, err);
           }
         } else if (client2[kRunning] > 0 && err.code !== "UND_ERR_INFO") {
-          const request2 = client2[kQueue][client2[kRunningIdx]];
+          const request3 = client2[kQueue][client2[kRunningIdx]];
           client2[kQueue][client2[kRunningIdx]++] = null;
-          util.errorRequest(client2, request2, err);
+          util.errorRequest(client2, request3, err);
         }
         client2[kPendingIdx] = client2[kRunningIdx];
         assert2(client2[kRunning] === 0);
@@ -6120,18 +6120,18 @@ var require_client_h1 = __commonJS({
         get destroyed() {
           return socket.destroyed;
         },
-        busy(request2) {
+        busy(request3) {
           if (socket[kWriting] || socket[kReset] || socket[kBlocking] || socket[kIdleSocketValidation] === 1) {
             return true;
           }
-          if (request2) {
-            if (client[kRunning] > 0 && !request2.idempotent) {
+          if (request3) {
+            if (client[kRunning] > 0 && !request3.idempotent) {
               return true;
             }
-            if (client[kRunning] > 0 && (request2.upgrade || request2.method === "CONNECT")) {
+            if (client[kRunning] > 0 && (request3.upgrade || request3.method === "CONNECT")) {
               return true;
             }
-            if (client[kRunning] > 0 && util.bodyLength(request2.body) !== 0 && (util.isStream(request2.body) || util.isAsyncIterable(request2.body) || util.isFormDataLike(request2.body))) {
+            if (client[kRunning] > 0 && util.bodyLength(request3.body) !== 0 && (util.isStream(request3.body) || util.isAsyncIterable(request3.body) || util.isFormDataLike(request3.body))) {
               return true;
             }
           }
@@ -6198,8 +6198,8 @@ var require_client_h1 = __commonJS({
           }
         } else if (client[kRunning] > 0 && socket[kParser].statusCode < 200) {
           if (socket[kParser].timeoutType !== TIMEOUT_HEADERS) {
-            const request2 = client[kQueue][client[kRunningIdx]];
-            const headersTimeout = request2.headersTimeout != null ? request2.headersTimeout : client[kHeadersTimeout];
+            const request3 = client[kQueue][client[kRunningIdx]];
+            const headersTimeout = request3.headersTimeout != null ? request3.headersTimeout : client[kHeadersTimeout];
             socket[kParser].setTimeout(headersTimeout, TIMEOUT_HEADERS);
           }
         }
@@ -6208,21 +6208,21 @@ var require_client_h1 = __commonJS({
     function shouldSendContentLength(method) {
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
-    function writeH1(client, request2) {
-      const { method, path: path2, host, upgrade, blocking, reset } = request2;
-      let { body, headers, contentLength } = request2;
+    function writeH1(client, request3) {
+      const { method, path: path2, host, upgrade, blocking, reset } = request3;
+      let { body, headers, contentLength } = request3;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
       if (util.isFormDataLike(body)) {
         if (!extractBody) {
           extractBody = require_body().extractBody;
         }
         const [bodyStream, contentType] = extractBody(body);
-        if (request2.contentType == null) {
+        if (request3.contentType == null) {
           headers.push("content-type", contentType);
         }
         body = bodyStream.stream;
         contentLength = bodyStream.length;
-      } else if (util.isBlobLike(body) && request2.contentType == null && body.type) {
+      } else if (util.isBlobLike(body) && request3.contentType == null && body.type) {
         headers.push("content-type", body.type);
       }
       if (body && typeof body.read === "function") {
@@ -6231,14 +6231,14 @@ var require_client_h1 = __commonJS({
       const bodyLength = util.bodyLength(body);
       contentLength = bodyLength ?? contentLength;
       if (contentLength === null) {
-        contentLength = request2.contentLength;
+        contentLength = request3.contentLength;
       }
       if (contentLength === 0 && !expectsPayload) {
         contentLength = null;
       }
-      if (shouldSendContentLength(method) && contentLength > 0 && request2.contentLength !== null && request2.contentLength !== contentLength) {
+      if (shouldSendContentLength(method) && contentLength > 0 && request3.contentLength !== null && request3.contentLength !== contentLength) {
         if (client[kStrictContentLength]) {
-          util.errorRequest(client, request2, new RequestContentLengthMismatchError());
+          util.errorRequest(client, request3, new RequestContentLengthMismatchError());
           return false;
         }
         process.emitWarning(new RequestContentLengthMismatchError());
@@ -6246,19 +6246,19 @@ var require_client_h1 = __commonJS({
       const socket = client[kSocket];
       clearIdleSocketValidation(socket);
       const abort = (err) => {
-        if (request2.aborted || request2.completed) {
+        if (request3.aborted || request3.completed) {
           return;
         }
-        util.errorRequest(client, request2, err || new RequestAbortedError());
+        util.errorRequest(client, request3, err || new RequestAbortedError());
         util.destroy(body);
         util.destroy(socket, new InformationalError("aborted"));
       };
       try {
-        request2.onConnect(abort);
+        request3.onConnect(abort);
       } catch (err) {
-        util.errorRequest(client, request2, err);
+        util.errorRequest(client, request3, err);
       }
-      if (request2.aborted) {
+      if (request3.aborted) {
         return false;
       }
       if (method === "HEAD") {
@@ -6309,37 +6309,37 @@ upgrade: ${upgrade}\r
         }
       }
       if (channels.sendHeaders.hasSubscribers) {
-        channels.sendHeaders.publish({ request: request2, headers: header, socket });
+        channels.sendHeaders.publish({ request: request3, headers: header, socket });
       }
       if (!body || bodyLength === 0) {
-        writeBuffer(abort, null, client, request2, socket, contentLength, header, expectsPayload);
+        writeBuffer(abort, null, client, request3, socket, contentLength, header, expectsPayload);
       } else if (util.isBuffer(body)) {
-        writeBuffer(abort, body, client, request2, socket, contentLength, header, expectsPayload);
+        writeBuffer(abort, body, client, request3, socket, contentLength, header, expectsPayload);
       } else if (util.isBlobLike(body)) {
         if (typeof body.stream === "function") {
-          writeIterable(abort, body.stream(), client, request2, socket, contentLength, header, expectsPayload);
+          writeIterable(abort, body.stream(), client, request3, socket, contentLength, header, expectsPayload);
         } else {
-          writeBlob(abort, body, client, request2, socket, contentLength, header, expectsPayload);
+          writeBlob(abort, body, client, request3, socket, contentLength, header, expectsPayload);
         }
       } else if (util.isStream(body)) {
-        writeStream(abort, body, client, request2, socket, contentLength, header, expectsPayload);
+        writeStream(abort, body, client, request3, socket, contentLength, header, expectsPayload);
       } else if (util.isIterable(body)) {
-        writeIterable(abort, body, client, request2, socket, contentLength, header, expectsPayload);
+        writeIterable(abort, body, client, request3, socket, contentLength, header, expectsPayload);
       } else {
         assert2(false);
       }
       return true;
     }
-    function writeStream(abort, body, client, request2, socket, contentLength, header, expectsPayload) {
+    function writeStream(abort, body, client, request3, socket, contentLength, header, expectsPayload) {
       assert2(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
       let finished = false;
-      const writer = new AsyncWriter({ abort, socket, request: request2, contentLength, client, expectsPayload, header });
-      const onData = function(chunk) {
+      const writer = new AsyncWriter({ abort, socket, request: request3, contentLength, client, expectsPayload, header });
+      const onData = function(chunk2) {
         if (finished) {
           return;
         }
         try {
-          if (!writer.write(chunk) && this.pause) {
+          if (!writer.write(chunk2) && this.pause) {
             this.pause();
           }
         } catch (err) {
@@ -6399,7 +6399,7 @@ upgrade: ${upgrade}\r
         setImmediate(onClose);
       }
     }
-    function writeBuffer(abort, body, client, request2, socket, contentLength, header, expectsPayload) {
+    function writeBuffer(abort, body, client, request3, socket, contentLength, header, expectsPayload) {
       try {
         if (!body) {
           if (contentLength === 0) {
@@ -6419,18 +6419,18 @@ upgrade: ${upgrade}\r
 `, "latin1");
           socket.write(body);
           socket.uncork();
-          request2.onBodySent(body);
-          if (!expectsPayload && request2.reset !== false) {
+          request3.onBodySent(body);
+          if (!expectsPayload && request3.reset !== false) {
             socket[kReset] = true;
           }
         }
-        request2.onRequestSent();
+        request3.onRequestSent();
         client[kResume]();
       } catch (err) {
         abort(err);
       }
     }
-    async function writeBlob(abort, body, client, request2, socket, contentLength, header, expectsPayload) {
+    async function writeBlob(abort, body, client, request3, socket, contentLength, header, expectsPayload) {
       assert2(contentLength === body.size, "blob body must have content length");
       try {
         if (contentLength != null && contentLength !== body.size) {
@@ -6443,9 +6443,9 @@ upgrade: ${upgrade}\r
 `, "latin1");
         socket.write(buffer);
         socket.uncork();
-        request2.onBodySent(buffer);
-        request2.onRequestSent();
-        if (!expectsPayload && request2.reset !== false) {
+        request3.onBodySent(buffer);
+        request3.onRequestSent();
+        if (!expectsPayload && request3.reset !== false) {
           socket[kReset] = true;
         }
         client[kResume]();
@@ -6453,7 +6453,7 @@ upgrade: ${upgrade}\r
         abort(err);
       }
     }
-    async function writeIterable(abort, body, client, request2, socket, contentLength, header, expectsPayload) {
+    async function writeIterable(abort, body, client, request3, socket, contentLength, header, expectsPayload) {
       assert2(contentLength !== 0 || client[kRunning] === 0, "iterator body cannot be pipelined");
       let callback = null;
       function onDrain() {
@@ -6463,22 +6463,22 @@ upgrade: ${upgrade}\r
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve5, reject) => {
+      const waitForDrain = () => new Promise((resolve6, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve5;
+          callback = resolve6;
         }
       });
       socket.on("close", onDrain).on("drain", onDrain);
-      const writer = new AsyncWriter({ abort, socket, request: request2, contentLength, client, expectsPayload, header });
+      const writer = new AsyncWriter({ abort, socket, request: request3, contentLength, client, expectsPayload, header });
       try {
-        for await (const chunk of body) {
+        for await (const chunk2 of body) {
           if (socket[kError]) {
             throw socket[kError];
           }
-          if (!writer.write(chunk)) {
+          if (!writer.write(chunk2)) {
             await waitForDrain();
           }
         }
@@ -6490,9 +6490,9 @@ upgrade: ${upgrade}\r
       }
     }
     var AsyncWriter = class {
-      constructor({ abort, socket, request: request2, contentLength, client, expectsPayload, header }) {
+      constructor({ abort, socket, request: request3, contentLength, client, expectsPayload, header }) {
         this.socket = socket;
-        this.request = request2;
+        this.request = request3;
         this.contentLength = contentLength;
         this.client = client;
         this.bytesWritten = 0;
@@ -6501,15 +6501,15 @@ upgrade: ${upgrade}\r
         this.abort = abort;
         socket[kWriting] = true;
       }
-      write(chunk) {
-        const { socket, request: request2, contentLength, client, bytesWritten, expectsPayload, header } = this;
+      write(chunk2) {
+        const { socket, request: request3, contentLength, client, bytesWritten, expectsPayload, header } = this;
         if (socket[kError]) {
           throw socket[kError];
         }
         if (socket.destroyed) {
           return false;
         }
-        const len = Buffer.byteLength(chunk);
+        const len = Buffer.byteLength(chunk2);
         if (!len) {
           return true;
         }
@@ -6521,7 +6521,7 @@ upgrade: ${upgrade}\r
         }
         socket.cork();
         if (bytesWritten === 0) {
-          if (!expectsPayload && request2.reset !== false) {
+          if (!expectsPayload && request3.reset !== false) {
             socket[kReset] = true;
           }
           if (contentLength === null) {
@@ -6539,9 +6539,9 @@ ${len.toString(16)}\r
 `, "latin1");
         }
         this.bytesWritten += len;
-        const ret = socket.write(chunk);
+        const ret = socket.write(chunk2);
         socket.uncork();
-        request2.onBodySent(chunk);
+        request3.onBodySent(chunk2);
         if (!ret) {
           if (socket[kParser].timeout && socket[kParser].timeoutType === TIMEOUT_HEADERS) {
             if (socket[kParser].timeout.refresh) {
@@ -6552,8 +6552,8 @@ ${len.toString(16)}\r
         return ret;
       }
       end() {
-        const { socket, contentLength, client, bytesWritten, expectsPayload, header, request: request2 } = this;
-        request2.onRequestSent();
+        const { socket, contentLength, client, bytesWritten, expectsPayload, header, request: request3 } = this;
+        request3.onRequestSent();
         socket[kWriting] = false;
         if (socket[kError]) {
           throw socket[kError];
@@ -6693,8 +6693,8 @@ var require_client_h2 = __commonJS({
           assert2(client2[kPending] === 0);
           const requests = client2[kQueue].splice(client2[kRunningIdx]);
           for (let i = 0; i < requests.length; i++) {
-            const request2 = requests[i];
-            util.errorRequest(client2, request2, err);
+            const request3 = requests[i];
+            util.errorRequest(client2, request3, err);
           }
         }
       });
@@ -6788,9 +6788,9 @@ var require_client_h2 = __commonJS({
       }
       util.destroy(this[kSocket], err);
       if (client[kRunningIdx] < client[kQueue].length) {
-        const request2 = client[kQueue][client[kRunningIdx]];
+        const request3 = client[kQueue][client[kRunningIdx]];
         client[kQueue][client[kRunningIdx]++] = null;
-        util.errorRequest(client, request2, err);
+        util.errorRequest(client, request3, err);
         client[kPendingIdx] = client[kRunningIdx];
       }
       assert2(client[kRunning] === 0);
@@ -6800,12 +6800,12 @@ var require_client_h2 = __commonJS({
     function shouldSendContentLength(method) {
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
-    function writeH2(client, request2) {
+    function writeH2(client, request3) {
       const session = client[kHTTP2Session];
-      const { method, path: path2, host, upgrade, expectContinue, signal, headers: reqHeaders } = request2;
-      let { body } = request2;
+      const { method, path: path2, host, upgrade, expectContinue, signal, headers: reqHeaders } = request3;
+      let { body } = request3;
       if (upgrade) {
-        util.errorRequest(client, request2, new Error("Upgrade not supported for H2"));
+        util.errorRequest(client, request3, new Error("Upgrade not supported for H2"));
         return false;
       }
       const headers = {};
@@ -6829,11 +6829,11 @@ var require_client_h2 = __commonJS({
       headers[HTTP2_HEADER_AUTHORITY] = host || `${hostname4}${port ? `:${port}` : ""}`;
       headers[HTTP2_HEADER_METHOD] = method;
       const abort = (err) => {
-        if (request2.aborted || request2.completed) {
+        if (request3.aborted || request3.completed) {
           return;
         }
         err = err || new RequestAbortedError();
-        util.errorRequest(client, request2, err);
+        util.errorRequest(client, request3, err);
         if (stream != null) {
           util.destroy(stream, err);
         }
@@ -6842,23 +6842,23 @@ var require_client_h2 = __commonJS({
         client[kResume]();
       };
       try {
-        request2.onConnect(abort);
+        request3.onConnect(abort);
       } catch (err) {
-        util.errorRequest(client, request2, err);
+        util.errorRequest(client, request3, err);
       }
-      if (request2.aborted) {
+      if (request3.aborted) {
         return false;
       }
       if (method === "CONNECT") {
         session.ref();
         stream = session.request(headers, { endStream: false, signal });
         if (stream.id && !stream.pending) {
-          request2.onUpgrade(null, null, stream);
+          request3.onUpgrade(null, null, stream);
           ++session[kOpenStreams];
           client[kQueue][client[kRunningIdx]++] = null;
         } else {
           stream.once("ready", () => {
-            request2.onUpgrade(null, null, stream);
+            request3.onUpgrade(null, null, stream);
             ++session[kOpenStreams];
             client[kQueue][client[kRunningIdx]++] = null;
           });
@@ -6884,14 +6884,14 @@ var require_client_h2 = __commonJS({
         contentLength = bodyStream.length;
       }
       if (contentLength == null) {
-        contentLength = request2.contentLength;
+        contentLength = request3.contentLength;
       }
       if (contentLength === 0 || !expectsPayload) {
         contentLength = null;
       }
-      if (shouldSendContentLength(method) && contentLength > 0 && request2.contentLength != null && request2.contentLength !== contentLength) {
+      if (shouldSendContentLength(method) && contentLength > 0 && request3.contentLength != null && request3.contentLength !== contentLength) {
         if (client[kStrictContentLength]) {
-          util.errorRequest(client, request2, new RequestContentLengthMismatchError());
+          util.errorRequest(client, request3, new RequestContentLengthMismatchError());
           return false;
         }
         process.emitWarning(new RequestContentLengthMismatchError());
@@ -6916,25 +6916,25 @@ var require_client_h2 = __commonJS({
       ++session[kOpenStreams];
       stream.once("response", (headers2) => {
         const { [HTTP2_HEADER_STATUS]: statusCode, ...realHeaders } = headers2;
-        request2.onResponseStarted();
-        if (request2.aborted) {
+        request3.onResponseStarted();
+        if (request3.aborted) {
           const err = new RequestAbortedError();
-          util.errorRequest(client, request2, err);
+          util.errorRequest(client, request3, err);
           util.destroy(stream, err);
           return;
         }
-        if (request2.onHeaders(Number(statusCode), parseH2Headers(realHeaders), stream.resume.bind(stream), "") === false) {
+        if (request3.onHeaders(Number(statusCode), parseH2Headers(realHeaders), stream.resume.bind(stream), "") === false) {
           stream.pause();
         }
-        stream.on("data", (chunk) => {
-          if (request2.onData(chunk) === false) {
+        stream.on("data", (chunk2) => {
+          if (request3.onData(chunk2) === false) {
             stream.pause();
           }
         });
       });
       stream.once("end", () => {
         if (stream.state?.state == null || stream.state.state < 6) {
-          request2.onComplete([]);
+          request3.onComplete([]);
         }
         if (session[kOpenStreams] === 0) {
           session.unref();
@@ -6964,7 +6964,7 @@ var require_client_h2 = __commonJS({
             stream,
             null,
             client,
-            request2,
+            request3,
             client[kSocket],
             contentLength,
             expectsPayload
@@ -6975,7 +6975,7 @@ var require_client_h2 = __commonJS({
             stream,
             body,
             client,
-            request2,
+            request3,
             client[kSocket],
             contentLength,
             expectsPayload
@@ -6987,7 +6987,7 @@ var require_client_h2 = __commonJS({
               stream,
               body.stream(),
               client,
-              request2,
+              request3,
               client[kSocket],
               contentLength,
               expectsPayload
@@ -6998,7 +6998,7 @@ var require_client_h2 = __commonJS({
               stream,
               body,
               client,
-              request2,
+              request3,
               client[kSocket],
               contentLength,
               expectsPayload
@@ -7012,7 +7012,7 @@ var require_client_h2 = __commonJS({
             stream,
             body,
             client,
-            request2,
+            request3,
             contentLength
           );
         } else if (util.isIterable(body)) {
@@ -7021,7 +7021,7 @@ var require_client_h2 = __commonJS({
             stream,
             body,
             client,
-            request2,
+            request3,
             client[kSocket],
             contentLength,
             expectsPayload
@@ -7031,7 +7031,7 @@ var require_client_h2 = __commonJS({
         }
       }
     }
-    function writeBuffer(abort, h2stream, body, client, request2, socket, contentLength, expectsPayload) {
+    function writeBuffer(abort, h2stream, body, client, request3, socket, contentLength, expectsPayload) {
       try {
         if (body != null && util.isBuffer(body)) {
           assert2(contentLength === body.byteLength, "buffer body must have content length");
@@ -7039,18 +7039,18 @@ var require_client_h2 = __commonJS({
           h2stream.write(body);
           h2stream.uncork();
           h2stream.end();
-          request2.onBodySent(body);
+          request3.onBodySent(body);
         }
         if (!expectsPayload) {
           socket[kReset] = true;
         }
-        request2.onRequestSent();
+        request3.onRequestSent();
         client[kResume]();
       } catch (error51) {
         abort(error51);
       }
     }
-    function writeStream(abort, socket, expectsPayload, h2stream, body, client, request2, contentLength) {
+    function writeStream(abort, socket, expectsPayload, h2stream, body, client, request3, contentLength) {
       assert2(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
       const pipe2 = pipeline2(
         body,
@@ -7061,7 +7061,7 @@ var require_client_h2 = __commonJS({
             abort(err);
           } else {
             util.removeAllListeners(pipe2);
-            request2.onRequestSent();
+            request3.onRequestSent();
             if (!expectsPayload) {
               socket[kReset] = true;
             }
@@ -7070,11 +7070,11 @@ var require_client_h2 = __commonJS({
         }
       );
       util.addListener(pipe2, "data", onPipeData);
-      function onPipeData(chunk) {
-        request2.onBodySent(chunk);
+      function onPipeData(chunk2) {
+        request3.onBodySent(chunk2);
       }
     }
-    async function writeBlob(abort, h2stream, body, client, request2, socket, contentLength, expectsPayload) {
+    async function writeBlob(abort, h2stream, body, client, request3, socket, contentLength, expectsPayload) {
       assert2(contentLength === body.size, "blob body must have content length");
       try {
         if (contentLength != null && contentLength !== body.size) {
@@ -7085,8 +7085,8 @@ var require_client_h2 = __commonJS({
         h2stream.write(buffer);
         h2stream.uncork();
         h2stream.end();
-        request2.onBodySent(buffer);
-        request2.onRequestSent();
+        request3.onBodySent(buffer);
+        request3.onRequestSent();
         if (!expectsPayload) {
           socket[kReset] = true;
         }
@@ -7095,7 +7095,7 @@ var require_client_h2 = __commonJS({
         abort(err);
       }
     }
-    async function writeIterable(abort, h2stream, body, client, request2, socket, contentLength, expectsPayload) {
+    async function writeIterable(abort, h2stream, body, client, request3, socket, contentLength, expectsPayload) {
       assert2(contentLength !== 0 || client[kRunning] === 0, "iterator body cannot be pipelined");
       let callback = null;
       function onDrain() {
@@ -7105,28 +7105,28 @@ var require_client_h2 = __commonJS({
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve5, reject) => {
+      const waitForDrain = () => new Promise((resolve6, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve5;
+          callback = resolve6;
         }
       });
       h2stream.on("close", onDrain).on("drain", onDrain);
       try {
-        for await (const chunk of body) {
+        for await (const chunk2 of body) {
           if (socket[kError]) {
             throw socket[kError];
           }
-          const res = h2stream.write(chunk);
-          request2.onBodySent(chunk);
+          const res = h2stream.write(chunk2);
+          request3.onBodySent(chunk2);
           if (!res) {
             await waitForDrain();
           }
         }
         h2stream.end();
-        request2.onRequestSent();
+        request3.onRequestSent();
         if (!expectsPayload) {
           socket[kReset] = true;
         }
@@ -7233,10 +7233,10 @@ var require_redirect_handler = __commonJS({
           this.opts.body = null;
         }
       }
-      onData(chunk) {
+      onData(chunk2) {
         if (this.location) {
         } else {
-          return this.handler.onData(chunk);
+          return this.handler.onData(chunk2);
         }
       }
       onComplete(trailers) {
@@ -7248,9 +7248,9 @@ var require_redirect_handler = __commonJS({
           this.handler.onComplete(trailers);
         }
       }
-      onBodySent(chunk) {
+      onBodySent(chunk2) {
         if (this.handler.onBodySent) {
-          this.handler.onBodySent(chunk);
+          this.handler.onBodySent(chunk2);
         }
       }
     };
@@ -7573,10 +7573,10 @@ var require_client = __commonJS({
       }
       [kDispatch](opts, handler) {
         const origin = opts.origin || this[kUrl].origin;
-        const request2 = new Request(origin, opts, handler);
-        this[kQueue].push(request2);
+        const request3 = new Request(origin, opts, handler);
+        this[kQueue].push(request3);
         if (this[kResuming]) {
-        } else if (util.bodyLength(request2.body) == null && util.isIterable(request2.body)) {
+        } else if (util.bodyLength(request3.body) == null && util.isIterable(request3.body)) {
           this[kResuming] = 1;
           queueMicrotask(() => resume(this));
         } else {
@@ -7588,27 +7588,27 @@ var require_client = __commonJS({
         return this[kNeedDrain] < 2;
       }
       async [kClose]() {
-        return new Promise((resolve5) => {
+        return new Promise((resolve6) => {
           if (this[kSize]) {
-            this[kClosedResolve] = resolve5;
+            this[kClosedResolve] = resolve6;
           } else {
-            resolve5(null);
+            resolve6(null);
           }
         });
       }
       async [kDestroy](err) {
-        return new Promise((resolve5) => {
+        return new Promise((resolve6) => {
           const requests = this[kQueue].splice(this[kPendingIdx]);
           for (let i = 0; i < requests.length; i++) {
-            const request2 = requests[i];
-            util.errorRequest(this, request2, err);
+            const request3 = requests[i];
+            util.errorRequest(this, request3, err);
           }
           const callback = () => {
             if (this[kClosedResolve]) {
               this[kClosedResolve]();
               this[kClosedResolve] = null;
             }
-            resolve5(null);
+            resolve6(null);
           };
           if (this[kHTTPContext]) {
             this[kHTTPContext].destroy(err, callback);
@@ -7626,8 +7626,8 @@ var require_client = __commonJS({
         assert2(client[kPendingIdx] === client[kRunningIdx]);
         const requests = client[kQueue].splice(client[kRunningIdx]);
         for (let i = 0; i < requests.length; i++) {
-          const request2 = requests[i];
-          util.errorRequest(client, request2, err);
+          const request3 = requests[i];
+          util.errorRequest(client, request3, err);
         }
         assert2(client[kSize] === 0);
       }
@@ -7659,7 +7659,7 @@ var require_client = __commonJS({
         });
       }
       try {
-        const socket = await new Promise((resolve5, reject) => {
+        const socket = await new Promise((resolve6, reject) => {
           client[kConnector]({
             host,
             hostname: hostname4,
@@ -7671,7 +7671,7 @@ var require_client = __commonJS({
             if (err) {
               reject(err);
             } else {
-              resolve5(socket2);
+              resolve6(socket2);
             }
           });
         });
@@ -7730,8 +7730,8 @@ var require_client = __commonJS({
         if (err.code === "ERR_TLS_CERT_ALTNAME_INVALID") {
           assert2(client[kRunning] === 0);
           while (client[kPending] > 0 && client[kQueue][client[kPendingIdx]].servername === client[kServerName]) {
-            const request2 = client[kQueue][client[kPendingIdx]++];
-            util.errorRequest(client, request2, err);
+            const request3 = client[kQueue][client[kPendingIdx]++];
+            util.errorRequest(client, request3, err);
           }
         } else {
           onError(client, err);
@@ -7788,12 +7788,12 @@ var require_client = __commonJS({
         if (client[kRunning] >= (getPipelining(client) || 1)) {
           return;
         }
-        const request2 = client[kQueue][client[kPendingIdx]];
-        if (client[kUrl].protocol === "https:" && client[kServerName] !== request2.servername) {
+        const request3 = client[kQueue][client[kPendingIdx]];
+        if (client[kUrl].protocol === "https:" && client[kServerName] !== request3.servername) {
           if (client[kRunning] > 0) {
             return;
           }
-          client[kServerName] = request2.servername;
+          client[kServerName] = request3.servername;
           client[kHTTPContext]?.destroy(new InformationalError("servername changed"), () => {
             client[kHTTPContext] = null;
             resume(client);
@@ -7809,10 +7809,10 @@ var require_client = __commonJS({
         if (client[kHTTPContext].destroyed) {
           return;
         }
-        if (client[kHTTPContext].busy(request2)) {
+        if (client[kHTTPContext].busy(request3)) {
           return;
         }
-        if (!request2.aborted && client[kHTTPContext].write(request2)) {
+        if (!request3.aborted && client[kHTTPContext].write(request3)) {
           client[kPendingIdx]++;
         } else {
           client[kQueue].splice(client[kPendingIdx], 1);
@@ -8007,8 +8007,8 @@ var require_pool_base = __commonJS({
         if (this[kQueue].isEmpty()) {
           await Promise.all(this[kClients].map((c) => c.close()));
         } else {
-          await new Promise((resolve5) => {
-            this[kClosedResolve] = resolve5;
+          await new Promise((resolve6) => {
+            this[kClosedResolve] = resolve6;
           });
         }
       }
@@ -8854,8 +8854,8 @@ var require_retry_handler = __commonJS({
           this.abort = abort;
         }
       }
-      onBodySent(chunk) {
-        if (this.handler.onBodySent) return this.handler.onBodySent(chunk);
+      onBodySent(chunk2) {
+        if (this.handler.onBodySent) return this.handler.onBodySent(chunk2);
       }
       static [kRetryHandlerDefaultRetry](err, { state, opts }, cb) {
         const { statusCode, code, headers } = err;
@@ -9001,9 +9001,9 @@ var require_retry_handler = __commonJS({
         this.abort(err);
         return false;
       }
-      onData(chunk) {
-        this.start += chunk.length;
-        return this.handler.onData(chunk);
+      onData(chunk2) {
+        this.start += chunk2.length;
+        return this.handler.onData(chunk2);
       }
       onComplete(rawTrailers) {
         this.retryCount = 0;
@@ -9167,12 +9167,12 @@ var require_readable = __commonJS({
       removeListener(ev, ...args) {
         return this.off(ev, ...args);
       }
-      push(chunk) {
-        if (this[kConsume] && chunk !== null) {
-          consumePush(this[kConsume], chunk);
-          return this[kReading] ? super.push(chunk) : true;
+      push(chunk2) {
+        if (this[kConsume] && chunk2 !== null) {
+          consumePush(this[kConsume], chunk2);
+          return this[kReading] ? super.push(chunk2) : true;
         }
-        return super.push(chunk);
+        return super.push(chunk2);
       }
       // https://fetch.spec.whatwg.org/#dom-body-text
       async text() {
@@ -9223,7 +9223,7 @@ var require_readable = __commonJS({
         if (this._readableState.closeEmitted) {
           return null;
         }
-        return await new Promise((resolve5, reject) => {
+        return await new Promise((resolve6, reject) => {
           if (this[kContentLength] > limit) {
             this.destroy(new AbortError());
           }
@@ -9236,10 +9236,10 @@ var require_readable = __commonJS({
             if (signal?.aborted) {
               reject(signal.reason ?? new AbortError());
             } else {
-              resolve5(null);
+              resolve6(null);
             }
-          }).on("error", noop).on("data", function(chunk) {
-            limit -= chunk.length;
+          }).on("error", noop).on("data", function(chunk2) {
+            limit -= chunk2.length;
             if (limit <= 0) {
               this.destroy();
             }
@@ -9255,7 +9255,7 @@ var require_readable = __commonJS({
     }
     async function consume(stream, type) {
       assert2(!stream[kConsume]);
-      return new Promise((resolve5, reject) => {
+      return new Promise((resolve6, reject) => {
         if (isUnusable(stream)) {
           const rState = stream._readableState;
           if (rState.destroyed && rState.closeEmitted === false) {
@@ -9272,7 +9272,7 @@ var require_readable = __commonJS({
             stream[kConsume] = {
               type,
               stream,
-              resolve: resolve5,
+              resolve: resolve6,
               reject,
               length: 0,
               body: []
@@ -9301,8 +9301,8 @@ var require_readable = __commonJS({
           consumePush(consume2, state.buffer[n]);
         }
       } else {
-        for (const chunk of state.buffer) {
-          consumePush(consume2, chunk);
+        for (const chunk2 of state.buffer) {
+          consumePush(consume2, chunk2);
         }
       }
       if (state.endEmitted) {
@@ -9335,34 +9335,34 @@ var require_readable = __commonJS({
       const buffer = new Uint8Array(Buffer.allocUnsafeSlow(length).buffer);
       let offset = 0;
       for (let i = 0; i < chunks.length; ++i) {
-        const chunk = chunks[i];
-        buffer.set(chunk, offset);
-        offset += chunk.length;
+        const chunk2 = chunks[i];
+        buffer.set(chunk2, offset);
+        offset += chunk2.length;
       }
       return buffer;
     }
     function consumeEnd(consume2) {
-      const { type, body, resolve: resolve5, stream, length } = consume2;
+      const { type, body, resolve: resolve6, stream, length } = consume2;
       try {
         if (type === "text") {
-          resolve5(chunksDecode(body, length));
+          resolve6(chunksDecode(body, length));
         } else if (type === "json") {
-          resolve5(JSON.parse(chunksDecode(body, length)));
+          resolve6(JSON.parse(chunksDecode(body, length)));
         } else if (type === "arrayBuffer") {
-          resolve5(chunksConcat(body, length).buffer);
+          resolve6(chunksConcat(body, length).buffer);
         } else if (type === "blob") {
-          resolve5(new Blob(body, { type: stream[kContentType] }));
+          resolve6(new Blob(body, { type: stream[kContentType] }));
         } else if (type === "bytes") {
-          resolve5(chunksConcat(body, length));
+          resolve6(chunksConcat(body, length));
         }
         consumeFinish(consume2);
       } catch (err) {
         stream.destroy(err);
       }
     }
-    function consumePush(consume2, chunk) {
-      consume2.length += chunk.length;
-      consume2.body.push(chunk);
+    function consumePush(consume2, chunk2) {
+      consume2.length += chunk2.length;
+      consume2.body.push(chunk2);
     }
     function consumeFinish(consume2, err) {
       if (consume2.body === null) {
@@ -9398,9 +9398,9 @@ var require_util3 = __commonJS({
       let chunks = [];
       let length = 0;
       try {
-        for await (const chunk of body) {
-          chunks.push(chunk);
-          length += chunk.length;
+        for await (const chunk2 of body) {
+          chunks.push(chunk2);
+          length += chunk2.length;
           if (length > CHUNK_LIMIT) {
             chunks = [];
             length = 0;
@@ -9576,8 +9576,8 @@ var require_api_request = __commonJS({
           }
         }
       }
-      onData(chunk) {
-        return this.res.push(chunk);
+      onData(chunk2) {
+        return this.res.push(chunk2);
       }
       onComplete(trailers) {
         util.parseHeaders(trailers, this.trailers);
@@ -9608,11 +9608,11 @@ var require_api_request = __commonJS({
         }
       }
     };
-    function request2(opts, callback) {
+    function request3(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve5, reject) => {
-          request2.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve5(data);
+        return new Promise((resolve6, reject) => {
+          request3.call(this, opts, (err, data) => {
+            return err ? reject(err) : resolve6(data);
           });
         });
       }
@@ -9626,7 +9626,7 @@ var require_api_request = __commonJS({
         queueMicrotask(() => callback(err, { opaque }));
       }
     }
-    module.exports = request2;
+    module.exports = request3;
     module.exports.RequestHandler = RequestHandler;
   }
 });
@@ -9801,9 +9801,9 @@ var require_api_stream = __commonJS({
         const needDrain = res.writableNeedDrain !== void 0 ? res.writableNeedDrain : res._writableState?.needDrain;
         return needDrain !== true;
       }
-      onData(chunk) {
+      onData(chunk2) {
         const { res } = this;
-        return res ? res.write(chunk) : true;
+        return res ? res.write(chunk2) : true;
       }
       onComplete(trailers) {
         const { res } = this;
@@ -9835,9 +9835,9 @@ var require_api_stream = __commonJS({
     };
     function stream(opts, factory, callback) {
       if (callback === void 0) {
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           stream.call(this, opts, factory, (err, data) => {
-            return err ? reject(err) : resolve5(data);
+            return err ? reject(err) : resolve6(data);
           });
         });
       }
@@ -9941,9 +9941,9 @@ var require_api_pipeline = __commonJS({
               body.resume();
             }
           },
-          write: (chunk, encoding, callback) => {
+          write: (chunk2, encoding, callback) => {
             const { req } = this;
-            if (req.push(chunk, encoding) || req._readableState.destroyed) {
+            if (req.push(chunk2, encoding) || req._readableState.destroyed) {
               callback();
             } else {
               req[kResume] = callback;
@@ -10009,9 +10009,9 @@ var require_api_pipeline = __commonJS({
         if (!body || typeof body.on !== "function") {
           throw new InvalidReturnValueError("expected Readable");
         }
-        body.on("data", (chunk) => {
+        body.on("data", (chunk2) => {
           const { ret, body: body2 } = this;
-          if (!ret.push(chunk) && body2.pause) {
+          if (!ret.push(chunk2) && body2.pause) {
             body2.pause();
           }
         }).on("error", (err) => {
@@ -10028,9 +10028,9 @@ var require_api_pipeline = __commonJS({
         });
         this.body = body;
       }
-      onData(chunk) {
+      onData(chunk2) {
         const { res } = this;
-        return res.push(chunk);
+        return res.push(chunk2);
       }
       onComplete(trailers) {
         const { res } = this;
@@ -10122,9 +10122,9 @@ var require_api_upgrade = __commonJS({
     };
     function upgrade(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           upgrade.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve5(data);
+            return err ? reject(err) : resolve6(data);
           });
         });
       }
@@ -10216,9 +10216,9 @@ var require_api_connect = __commonJS({
     };
     function connect(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve6, reject) => {
           connect.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve5(data);
+            return err ? reject(err) : resolve6(data);
           });
         });
       }
@@ -10908,8 +10908,8 @@ var require_pending_interceptors_formatter = __commonJS({
     module.exports = class PendingInterceptorsFormatter {
       constructor({ disableColors } = {}) {
         this.transform = new Transform2({
-          transform(chunk, _enc, cb) {
-            cb(null, chunk);
+          transform(chunk2, _enc, cb) {
+            cb(null, chunk2);
           }
         });
         this.logger = new Console({
@@ -11246,8 +11246,8 @@ var require_dump = __commonJS({
         err = this.#reason ?? err;
         this.#handler.onError(err);
       }
-      onData(chunk) {
-        this.#size = this.#size + chunk.length;
+      onData(chunk2) {
+        this.#size = this.#size + chunk2.length;
         if (this.#size >= this.#maxSize) {
           this.#dumped = true;
           if (this.#aborted) {
@@ -11292,7 +11292,7 @@ var require_dns = __commonJS({
   "node_modules/undici/lib/interceptor/dns.js"(exports, module) {
     "use strict";
     var { isIP } = __require("node:net");
-    var { lookup } = __require("node:dns");
+    var { lookup: lookup3 } = __require("node:dns");
     var DecoratorHandler = require_decorator_handler();
     var { InvalidArgumentError: InvalidArgumentError2, InformationalError } = require_errors();
     var maxInt = Math.pow(2, 31) - 1;
@@ -11382,7 +11382,7 @@ var require_dns = __commonJS({
         }
       }
       #defaultLookup(origin, opts, cb) {
-        lookup(
+        lookup3(
           origin.hostname,
           {
             all: true,
@@ -12533,7 +12533,7 @@ var require_request2 = __commonJS({
         webidl.argumentLengthCheck(arguments, 1, prefix);
         input = webidl.converters.RequestInfo(input, prefix, "input");
         init = webidl.converters.RequestInit(init, prefix, "init");
-        let request2 = null;
+        let request3 = null;
         let fallbackMode = null;
         const baseUrl = environmentSettingsObject.settingsObject.baseUrl;
         let signal = null;
@@ -12550,18 +12550,18 @@ var require_request2 = __commonJS({
               "Request cannot be constructed from a URL that includes credentials: " + input
             );
           }
-          request2 = makeRequest({ urlList: [parsedURL] });
+          request3 = makeRequest({ urlList: [parsedURL] });
           fallbackMode = "cors";
         } else {
           this[kDispatcher] = init.dispatcher || input[kDispatcher];
           assert2(input instanceof _Request);
-          request2 = input[kState];
+          request3 = input[kState];
           signal = input[kSignal];
         }
         const origin = environmentSettingsObject.settingsObject.origin;
         let window = "client";
-        if (request2.window?.constructor?.name === "EnvironmentSettingsObject" && sameOrigin(request2.window, origin)) {
-          window = request2.window;
+        if (request3.window?.constructor?.name === "EnvironmentSettingsObject" && sameOrigin(request3.window, origin)) {
+          window = request3.window;
         }
         if (init.window != null) {
           throw new TypeError(`'window' option '${window}' must be null`);
@@ -12569,66 +12569,66 @@ var require_request2 = __commonJS({
         if ("window" in init) {
           window = "no-window";
         }
-        request2 = makeRequest({
+        request3 = makeRequest({
           // URL request’s URL.
           // undici implementation note: this is set as the first item in request's urlList in makeRequest
           // method request’s method.
-          method: request2.method,
+          method: request3.method,
           // header list A copy of request’s header list.
           // undici implementation note: headersList is cloned in makeRequest
-          headersList: request2.headersList,
+          headersList: request3.headersList,
           // unsafe-request flag Set.
-          unsafeRequest: request2.unsafeRequest,
+          unsafeRequest: request3.unsafeRequest,
           // client This’s relevant settings object.
           client: environmentSettingsObject.settingsObject,
           // window window.
           window,
           // priority request’s priority.
-          priority: request2.priority,
+          priority: request3.priority,
           // origin request’s origin. The propagation of the origin is only significant for navigation requests
           // being handled by a service worker. In this scenario a request can have an origin that is different
           // from the current client.
-          origin: request2.origin,
+          origin: request3.origin,
           // referrer request’s referrer.
-          referrer: request2.referrer,
+          referrer: request3.referrer,
           // referrer policy request’s referrer policy.
-          referrerPolicy: request2.referrerPolicy,
+          referrerPolicy: request3.referrerPolicy,
           // mode request’s mode.
-          mode: request2.mode,
+          mode: request3.mode,
           // credentials mode request’s credentials mode.
-          credentials: request2.credentials,
+          credentials: request3.credentials,
           // cache mode request’s cache mode.
-          cache: request2.cache,
+          cache: request3.cache,
           // redirect mode request’s redirect mode.
-          redirect: request2.redirect,
+          redirect: request3.redirect,
           // integrity metadata request’s integrity metadata.
-          integrity: request2.integrity,
+          integrity: request3.integrity,
           // keepalive request’s keepalive.
-          keepalive: request2.keepalive,
+          keepalive: request3.keepalive,
           // reload-navigation flag request’s reload-navigation flag.
-          reloadNavigation: request2.reloadNavigation,
+          reloadNavigation: request3.reloadNavigation,
           // history-navigation flag request’s history-navigation flag.
-          historyNavigation: request2.historyNavigation,
+          historyNavigation: request3.historyNavigation,
           // URL list A clone of request’s URL list.
-          urlList: [...request2.urlList]
+          urlList: [...request3.urlList]
         });
         const initHasKey = Object.keys(init).length !== 0;
         if (initHasKey) {
-          if (request2.mode === "navigate") {
-            request2.mode = "same-origin";
+          if (request3.mode === "navigate") {
+            request3.mode = "same-origin";
           }
-          request2.reloadNavigation = false;
-          request2.historyNavigation = false;
-          request2.origin = "client";
-          request2.referrer = "client";
-          request2.referrerPolicy = "";
-          request2.url = request2.urlList[request2.urlList.length - 1];
-          request2.urlList = [request2.url];
+          request3.reloadNavigation = false;
+          request3.historyNavigation = false;
+          request3.origin = "client";
+          request3.referrer = "client";
+          request3.referrerPolicy = "";
+          request3.url = request3.urlList[request3.urlList.length - 1];
+          request3.urlList = [request3.url];
         }
         if (init.referrer !== void 0) {
           const referrer = init.referrer;
           if (referrer === "") {
-            request2.referrer = "no-referrer";
+            request3.referrer = "no-referrer";
           } else {
             let parsedReferrer;
             try {
@@ -12637,14 +12637,14 @@ var require_request2 = __commonJS({
               throw new TypeError(`Referrer "${referrer}" is not a valid URL.`, { cause: err });
             }
             if (parsedReferrer.protocol === "about:" && parsedReferrer.hostname === "client" || origin && !sameOrigin(parsedReferrer, environmentSettingsObject.settingsObject.baseUrl)) {
-              request2.referrer = "client";
+              request3.referrer = "client";
             } else {
-              request2.referrer = parsedReferrer;
+              request3.referrer = parsedReferrer;
             }
           }
         }
         if (init.referrerPolicy !== void 0) {
-          request2.referrerPolicy = init.referrerPolicy;
+          request3.referrerPolicy = init.referrerPolicy;
         }
         let mode;
         if (init.mode !== void 0) {
@@ -12659,33 +12659,33 @@ var require_request2 = __commonJS({
           });
         }
         if (mode != null) {
-          request2.mode = mode;
+          request3.mode = mode;
         }
         if (init.credentials !== void 0) {
-          request2.credentials = init.credentials;
+          request3.credentials = init.credentials;
         }
         if (init.cache !== void 0) {
-          request2.cache = init.cache;
+          request3.cache = init.cache;
         }
-        if (request2.cache === "only-if-cached" && request2.mode !== "same-origin") {
+        if (request3.cache === "only-if-cached" && request3.mode !== "same-origin") {
           throw new TypeError(
             "'only-if-cached' can be set only with 'same-origin' mode"
           );
         }
         if (init.redirect !== void 0) {
-          request2.redirect = init.redirect;
+          request3.redirect = init.redirect;
         }
         if (init.integrity != null) {
-          request2.integrity = String(init.integrity);
+          request3.integrity = String(init.integrity);
         }
         if (init.keepalive !== void 0) {
-          request2.keepalive = Boolean(init.keepalive);
+          request3.keepalive = Boolean(init.keepalive);
         }
         if (init.method !== void 0) {
           let method = init.method;
           const mayBeNormalized = normalizedMethodRecords[method];
           if (mayBeNormalized !== void 0) {
-            request2.method = mayBeNormalized;
+            request3.method = mayBeNormalized;
           } else {
             if (!isValidHTTPToken(method)) {
               throw new TypeError(`'${method}' is not a valid HTTP method.`);
@@ -12695,9 +12695,9 @@ var require_request2 = __commonJS({
               throw new TypeError(`'${method}' HTTP method is unsupported.`);
             }
             method = normalizedMethodRecordsBase[upperCase] ?? method;
-            request2.method = method;
+            request3.method = method;
           }
-          if (!patchMethodWarning && request2.method === "patch") {
+          if (!patchMethodWarning && request3.method === "patch") {
             process.emitWarning("Using `patch` is highly likely to result in a `405 Method Not Allowed`. `PATCH` is much more likely to succeed.", {
               code: "UNDICI-FETCH-patch"
             });
@@ -12707,7 +12707,7 @@ var require_request2 = __commonJS({
         if (init.signal !== void 0) {
           signal = init.signal;
         }
-        this[kState] = request2;
+        this[kState] = request3;
         const ac = new AbortController();
         this[kSignal] = ac.signal;
         if (signal != null) {
@@ -12735,12 +12735,12 @@ var require_request2 = __commonJS({
           }
         }
         this[kHeaders] = new Headers(kConstruct);
-        setHeadersList(this[kHeaders], request2.headersList);
+        setHeadersList(this[kHeaders], request3.headersList);
         setHeadersGuard(this[kHeaders], "request");
         if (mode === "no-cors") {
-          if (!corsSafeListedMethodsSet.has(request2.method)) {
+          if (!corsSafeListedMethodsSet.has(request3.method)) {
             throw new TypeError(
-              `'${request2.method} is unsupported in no-cors mode.`
+              `'${request3.method} is unsupported in no-cors mode.`
             );
           }
           setHeadersGuard(this[kHeaders], "request-no-cors");
@@ -12759,14 +12759,14 @@ var require_request2 = __commonJS({
           }
         }
         const inputBody = input instanceof _Request ? input[kState].body : null;
-        if ((init.body != null || inputBody != null) && (request2.method === "GET" || request2.method === "HEAD")) {
+        if ((init.body != null || inputBody != null) && (request3.method === "GET" || request3.method === "HEAD")) {
           throw new TypeError("Request with GET/HEAD method cannot have body.");
         }
         let initBody = null;
         if (init.body != null) {
           const [extractedBody, contentType] = extractBody(
             init.body,
-            request2.keepalive
+            request3.keepalive
           );
           initBody = extractedBody;
           if (contentType && !getHeadersList(this[kHeaders]).contains("content-type", true)) {
@@ -12778,12 +12778,12 @@ var require_request2 = __commonJS({
           if (initBody != null && init.duplex == null) {
             throw new TypeError("RequestInit: duplex option is required when sending a body.");
           }
-          if (request2.mode !== "same-origin" && request2.mode !== "cors") {
+          if (request3.mode !== "same-origin" && request3.mode !== "cors") {
             throw new TypeError(
               'If request is made from ReadableStream, mode should be "same-origin" or "cors"'
             );
           }
-          request2.useCORSPreflightFlag = true;
+          request3.useCORSPreflightFlag = true;
         }
         let finalBody = inputOrInitBody;
         if (initBody == null && inputBody != null) {
@@ -13012,21 +13012,21 @@ var require_request2 = __commonJS({
         headersList: init.headersList ? new HeadersList(init.headersList) : new HeadersList()
       };
     }
-    function cloneRequest(request2) {
-      const newRequest = makeRequest({ ...request2, body: null });
-      if (request2.body != null) {
-        newRequest.body = cloneBody(newRequest, request2.body);
+    function cloneRequest(request3) {
+      const newRequest = makeRequest({ ...request3, body: null });
+      if (request3.body != null) {
+        newRequest.body = cloneBody(newRequest, request3.body);
       }
       return newRequest;
     }
     function fromInnerRequest(innerRequest, signal, guard) {
-      const request2 = new Request(kConstruct);
-      request2[kState] = innerRequest;
-      request2[kSignal] = signal;
-      request2[kHeaders] = new Headers(kConstruct);
-      setHeadersList(request2[kHeaders], innerRequest.headersList);
-      setHeadersGuard(request2[kHeaders], guard);
-      return request2;
+      const request3 = new Request(kConstruct);
+      request3[kState] = innerRequest;
+      request3[kSignal] = signal;
+      request3[kHeaders] = new Headers(kConstruct);
+      setHeadersList(request3[kHeaders], innerRequest.headersList);
+      setHeadersGuard(request3[kHeaders], guard);
+      return request3;
     }
     Object.defineProperties(Request.prototype, {
       method: kEnumerableProperty,
@@ -13268,14 +13268,14 @@ var require_fetch = __commonJS({
         p.reject(e);
         return p.promise;
       }
-      const request2 = requestObject[kState];
+      const request3 = requestObject[kState];
       if (requestObject.signal.aborted) {
-        abortFetch(p, request2, null, requestObject.signal.reason);
+        abortFetch(p, request3, null, requestObject.signal.reason);
         return p.promise;
       }
-      const globalObject = request2.client.globalObject;
+      const globalObject = request3.client.globalObject;
       if (globalObject?.constructor?.name === "ServiceWorkerGlobalScope") {
-        request2.serviceWorkers = "none";
+        request3.serviceWorkers = "none";
       }
       let responseObject = null;
       let locallyAborted = false;
@@ -13287,7 +13287,7 @@ var require_fetch = __commonJS({
           assert2(controller != null);
           controller.abort(requestObject.signal.reason);
           const realResponse = responseObject?.deref();
-          abortFetch(p, request2, realResponse, requestObject.signal.reason);
+          abortFetch(p, request3, realResponse, requestObject.signal.reason);
         }
       );
       const processResponse = (response) => {
@@ -13295,7 +13295,7 @@ var require_fetch = __commonJS({
           return;
         }
         if (response.aborted) {
-          abortFetch(p, request2, responseObject, controller.serializedAbortReason);
+          abortFetch(p, request3, responseObject, controller.serializedAbortReason);
           return;
         }
         if (response.type === "error") {
@@ -13307,7 +13307,7 @@ var require_fetch = __commonJS({
         p = null;
       };
       controller = fetching({
-        request: request2,
+        request: request3,
         processResponseEndOfBody: handleFetchDone,
         processResponse,
         dispatcher: requestObject[kDispatcher]
@@ -13348,12 +13348,12 @@ var require_fetch = __commonJS({
       );
     }
     var markResourceTiming = performance.markResourceTiming;
-    function abortFetch(p, request2, responseObject, error51) {
+    function abortFetch(p, request3, responseObject, error51) {
       if (p) {
         p.reject(error51);
       }
-      if (request2.body != null && isReadable(request2.body?.stream)) {
-        request2.body.stream.cancel(error51).catch((err) => {
+      if (request3.body != null && isReadable(request3.body?.stream)) {
+        request3.body.stream.cancel(error51).catch((err) => {
           if (err.code === "ERR_INVALID_STATE") {
             return;
           }
@@ -13374,7 +13374,7 @@ var require_fetch = __commonJS({
       }
     }
     function fetching({
-      request: request2,
+      request: request3,
       processRequestBodyChunkLength,
       processRequestEndOfBody,
       processResponse,
@@ -13387,9 +13387,9 @@ var require_fetch = __commonJS({
       assert2(dispatcher);
       let taskDestination = null;
       let crossOriginIsolatedCapability = false;
-      if (request2.client != null) {
-        taskDestination = request2.client.globalObject;
-        crossOriginIsolatedCapability = request2.client.crossOriginIsolatedCapability;
+      if (request3.client != null) {
+        taskDestination = request3.client.globalObject;
+        crossOriginIsolatedCapability = request3.client.crossOriginIsolatedCapability;
       }
       const currentTime = coarsenedSharedCurrentTime(crossOriginIsolatedCapability);
       const timingInfo = createOpaqueTimingInfo({
@@ -13397,7 +13397,7 @@ var require_fetch = __commonJS({
       });
       const fetchParams = {
         controller: new Fetch(dispatcher),
-        request: request2,
+        request: request3,
         timingInfo,
         processRequestBodyChunkLength,
         processRequestEndOfBody,
@@ -13407,32 +13407,32 @@ var require_fetch = __commonJS({
         taskDestination,
         crossOriginIsolatedCapability
       };
-      assert2(!request2.body || request2.body.stream);
-      if (request2.window === "client") {
-        request2.window = request2.client?.globalObject?.constructor?.name === "Window" ? request2.client : "no-window";
+      assert2(!request3.body || request3.body.stream);
+      if (request3.window === "client") {
+        request3.window = request3.client?.globalObject?.constructor?.name === "Window" ? request3.client : "no-window";
       }
-      if (request2.origin === "client") {
-        request2.origin = request2.client.origin;
+      if (request3.origin === "client") {
+        request3.origin = request3.client.origin;
       }
-      if (request2.policyContainer === "client") {
-        if (request2.client != null) {
-          request2.policyContainer = clonePolicyContainer(
-            request2.client.policyContainer
+      if (request3.policyContainer === "client") {
+        if (request3.client != null) {
+          request3.policyContainer = clonePolicyContainer(
+            request3.client.policyContainer
           );
         } else {
-          request2.policyContainer = makePolicyContainer();
+          request3.policyContainer = makePolicyContainer();
         }
       }
-      if (!request2.headersList.contains("accept", true)) {
+      if (!request3.headersList.contains("accept", true)) {
         const value = "*/*";
-        request2.headersList.append("accept", value, true);
+        request3.headersList.append("accept", value, true);
       }
-      if (!request2.headersList.contains("accept-language", true)) {
-        request2.headersList.append("accept-language", "*", true);
+      if (!request3.headersList.contains("accept-language", true)) {
+        request3.headersList.append("accept-language", "*", true);
       }
-      if (request2.priority === null) {
+      if (request3.priority === null) {
       }
-      if (subresourceSet.has(request2.destination)) {
+      if (subresourceSet.has(request3.destination)) {
       }
       mainFetch(fetchParams).catch((err) => {
         fetchParams.controller.terminate(err);
@@ -13440,50 +13440,50 @@ var require_fetch = __commonJS({
       return fetchParams.controller;
     }
     async function mainFetch(fetchParams, recursive = false) {
-      const request2 = fetchParams.request;
+      const request3 = fetchParams.request;
       let response = null;
-      if (request2.localURLsOnly && !urlIsLocal(requestCurrentURL(request2))) {
+      if (request3.localURLsOnly && !urlIsLocal(requestCurrentURL(request3))) {
         response = makeNetworkError("local URLs only");
       }
-      tryUpgradeRequestToAPotentiallyTrustworthyURL(request2);
-      if (requestBadPort(request2) === "blocked") {
+      tryUpgradeRequestToAPotentiallyTrustworthyURL(request3);
+      if (requestBadPort(request3) === "blocked") {
         response = makeNetworkError("bad port");
       }
-      if (request2.referrerPolicy === "") {
-        request2.referrerPolicy = request2.policyContainer.referrerPolicy;
+      if (request3.referrerPolicy === "") {
+        request3.referrerPolicy = request3.policyContainer.referrerPolicy;
       }
-      if (request2.referrer !== "no-referrer") {
-        request2.referrer = determineRequestsReferrer(request2);
+      if (request3.referrer !== "no-referrer") {
+        request3.referrer = determineRequestsReferrer(request3);
       }
       if (response === null) {
         response = await (async () => {
-          const currentURL = requestCurrentURL(request2);
+          const currentURL = requestCurrentURL(request3);
           if (
             // - request’s current URL’s origin is same origin with request’s origin,
             //   and request’s response tainting is "basic"
-            sameOrigin(currentURL, request2.url) && request2.responseTainting === "basic" || // request’s current URL’s scheme is "data"
+            sameOrigin(currentURL, request3.url) && request3.responseTainting === "basic" || // request’s current URL’s scheme is "data"
             currentURL.protocol === "data:" || // - request’s mode is "navigate" or "websocket"
-            (request2.mode === "navigate" || request2.mode === "websocket")
+            (request3.mode === "navigate" || request3.mode === "websocket")
           ) {
-            request2.responseTainting = "basic";
+            request3.responseTainting = "basic";
             return await schemeFetch(fetchParams);
           }
-          if (request2.mode === "same-origin") {
+          if (request3.mode === "same-origin") {
             return makeNetworkError('request mode cannot be "same-origin"');
           }
-          if (request2.mode === "no-cors") {
-            if (request2.redirect !== "follow") {
+          if (request3.mode === "no-cors") {
+            if (request3.redirect !== "follow") {
               return makeNetworkError(
                 'redirect mode cannot be "follow" for "no-cors" request'
               );
             }
-            request2.responseTainting = "opaque";
+            request3.responseTainting = "opaque";
             return await schemeFetch(fetchParams);
           }
-          if (!urlIsHttpHttpsScheme(requestCurrentURL(request2))) {
+          if (!urlIsHttpHttpsScheme(requestCurrentURL(request3))) {
             return makeNetworkError("URL scheme must be a HTTP(S) scheme");
           }
-          request2.responseTainting = "cors";
+          request3.responseTainting = "cors";
           return await httpFetch(fetchParams);
         })();
       }
@@ -13491,13 +13491,13 @@ var require_fetch = __commonJS({
         return response;
       }
       if (response.status !== 0 && !response.internalResponse) {
-        if (request2.responseTainting === "cors") {
+        if (request3.responseTainting === "cors") {
         }
-        if (request2.responseTainting === "basic") {
+        if (request3.responseTainting === "basic") {
           response = filterResponse(response, "basic");
-        } else if (request2.responseTainting === "cors") {
+        } else if (request3.responseTainting === "cors") {
           response = filterResponse(response, "cors");
-        } else if (request2.responseTainting === "opaque") {
+        } else if (request3.responseTainting === "opaque") {
           response = filterResponse(response, "opaque");
         } else {
           assert2(false);
@@ -13505,26 +13505,26 @@ var require_fetch = __commonJS({
       }
       let internalResponse = response.status === 0 ? response : response.internalResponse;
       if (internalResponse.urlList.length === 0) {
-        internalResponse.urlList.push(...request2.urlList);
+        internalResponse.urlList.push(...request3.urlList);
       }
-      if (!request2.timingAllowFailed) {
+      if (!request3.timingAllowFailed) {
         response.timingAllowPassed = true;
       }
-      if (response.type === "opaque" && internalResponse.status === 206 && internalResponse.rangeRequested && !request2.headers.contains("range", true)) {
+      if (response.type === "opaque" && internalResponse.status === 206 && internalResponse.rangeRequested && !request3.headers.contains("range", true)) {
         response = internalResponse = makeNetworkError();
       }
-      if (response.status !== 0 && (request2.method === "HEAD" || request2.method === "CONNECT" || nullBodyStatus.includes(internalResponse.status))) {
+      if (response.status !== 0 && (request3.method === "HEAD" || request3.method === "CONNECT" || nullBodyStatus.includes(internalResponse.status))) {
         internalResponse.body = null;
         fetchParams.controller.dump = true;
       }
-      if (request2.integrity) {
+      if (request3.integrity) {
         const processBodyError = (reason) => fetchFinale(fetchParams, makeNetworkError(reason));
-        if (request2.responseTainting === "opaque" || response.body == null) {
+        if (request3.responseTainting === "opaque" || response.body == null) {
           processBodyError(response.error);
           return;
         }
         const processBody = (bytes) => {
-          if (!bytesMatch(bytes, request2.integrity)) {
+          if (!bytesMatch(bytes, request3.integrity)) {
             processBodyError("integrity mismatch");
             return;
           }
@@ -13540,8 +13540,8 @@ var require_fetch = __commonJS({
       if (isCancelled(fetchParams) && fetchParams.request.redirectCount === 0) {
         return Promise.resolve(makeAppropriateNetworkError(fetchParams));
       }
-      const { request: request2 } = fetchParams;
-      const { protocol: scheme } = requestCurrentURL(request2);
+      const { request: request3 } = fetchParams;
+      const { protocol: scheme } = requestCurrentURL(request3);
       switch (scheme) {
         case "about:": {
           return Promise.resolve(makeNetworkError("about scheme is not supported"));
@@ -13550,19 +13550,19 @@ var require_fetch = __commonJS({
           if (!resolveObjectURL) {
             resolveObjectURL = __require("node:buffer").resolveObjectURL;
           }
-          const blobURLEntry = requestCurrentURL(request2);
+          const blobURLEntry = requestCurrentURL(request3);
           if (blobURLEntry.search.length !== 0) {
             return Promise.resolve(makeNetworkError("NetworkError when attempting to fetch resource."));
           }
           const blob = resolveObjectURL(blobURLEntry.toString());
-          if (request2.method !== "GET" || !isBlobLike(blob)) {
+          if (request3.method !== "GET" || !isBlobLike(blob)) {
             return Promise.resolve(makeNetworkError("invalid method"));
           }
           const response = makeResponse();
           const fullLength = blob.size;
           const serializedFullLength = isomorphicEncode(`${fullLength}`);
           const type = blob.type;
-          if (!request2.headersList.contains("range", true)) {
+          if (!request3.headersList.contains("range", true)) {
             const bodyWithType = extractBody(blob);
             response.statusText = "OK";
             response.body = bodyWithType[0];
@@ -13570,7 +13570,7 @@ var require_fetch = __commonJS({
             response.headersList.set("content-type", type, true);
           } else {
             response.rangeRequested = true;
-            const rangeHeader = request2.headersList.get("range", true);
+            const rangeHeader = request3.headersList.get("range", true);
             const rangeValue = simpleRangeHeaderValue(rangeHeader, true);
             if (rangeValue === "failure") {
               return Promise.resolve(makeNetworkError("failed to fetch the data URL"));
@@ -13601,7 +13601,7 @@ var require_fetch = __commonJS({
           return Promise.resolve(response);
         }
         case "data:": {
-          const currentURL = requestCurrentURL(request2);
+          const currentURL = requestCurrentURL(request3);
           const dataURLStruct = dataURLProcessor(currentURL);
           if (dataURLStruct === "failure") {
             return Promise.resolve(makeNetworkError("failed to fetch the data URL"));
@@ -13690,41 +13690,41 @@ var require_fetch = __commonJS({
       }
     }
     async function httpFetch(fetchParams) {
-      const request2 = fetchParams.request;
+      const request3 = fetchParams.request;
       let response = null;
       let actualResponse = null;
       const timingInfo = fetchParams.timingInfo;
-      if (request2.serviceWorkers === "all") {
+      if (request3.serviceWorkers === "all") {
       }
       if (response === null) {
-        if (request2.redirect === "follow") {
-          request2.serviceWorkers = "none";
+        if (request3.redirect === "follow") {
+          request3.serviceWorkers = "none";
         }
         actualResponse = response = await httpNetworkOrCacheFetch(fetchParams);
-        if (request2.responseTainting === "cors" && corsCheck(request2, response) === "failure") {
+        if (request3.responseTainting === "cors" && corsCheck(request3, response) === "failure") {
           return makeNetworkError("cors failure");
         }
-        if (TAOCheck(request2, response) === "failure") {
-          request2.timingAllowFailed = true;
+        if (TAOCheck(request3, response) === "failure") {
+          request3.timingAllowFailed = true;
         }
       }
-      if ((request2.responseTainting === "opaque" || response.type === "opaque") && crossOriginResourcePolicyCheck(
-        request2.origin,
-        request2.client,
-        request2.destination,
+      if ((request3.responseTainting === "opaque" || response.type === "opaque") && crossOriginResourcePolicyCheck(
+        request3.origin,
+        request3.client,
+        request3.destination,
         actualResponse
       ) === "blocked") {
         return makeNetworkError("blocked");
       }
       if (redirectStatusSet.has(actualResponse.status)) {
-        if (request2.redirect !== "manual") {
+        if (request3.redirect !== "manual") {
           fetchParams.controller.connection.destroy(void 0, false);
         }
-        if (request2.redirect === "error") {
+        if (request3.redirect === "error") {
           response = makeNetworkError("unexpected redirect");
-        } else if (request2.redirect === "manual") {
+        } else if (request3.redirect === "manual") {
           response = actualResponse;
-        } else if (request2.redirect === "follow") {
+        } else if (request3.redirect === "follow") {
           response = await httpRedirectFetch(fetchParams, response);
         } else {
           assert2(false);
@@ -13734,13 +13734,13 @@ var require_fetch = __commonJS({
       return response;
     }
     function httpRedirectFetch(fetchParams, response) {
-      const request2 = fetchParams.request;
+      const request3 = fetchParams.request;
       const actualResponse = response.internalResponse ? response.internalResponse : response;
       let locationURL;
       try {
         locationURL = responseLocationURL(
           actualResponse,
-          requestCurrentURL(request2).hash
+          requestCurrentURL(request3).hash
         );
         if (locationURL == null) {
           return response;
@@ -13751,63 +13751,63 @@ var require_fetch = __commonJS({
       if (!urlIsHttpHttpsScheme(locationURL)) {
         return Promise.resolve(makeNetworkError("URL scheme must be a HTTP(S) scheme"));
       }
-      if (request2.redirectCount === 20) {
+      if (request3.redirectCount === 20) {
         return Promise.resolve(makeNetworkError("redirect count exceeded"));
       }
-      request2.redirectCount += 1;
-      if (request2.mode === "cors" && (locationURL.username || locationURL.password) && !sameOrigin(request2, locationURL)) {
+      request3.redirectCount += 1;
+      if (request3.mode === "cors" && (locationURL.username || locationURL.password) && !sameOrigin(request3, locationURL)) {
         return Promise.resolve(makeNetworkError('cross origin not allowed for request mode "cors"'));
       }
-      if (request2.responseTainting === "cors" && (locationURL.username || locationURL.password)) {
+      if (request3.responseTainting === "cors" && (locationURL.username || locationURL.password)) {
         return Promise.resolve(makeNetworkError(
           'URL cannot contain credentials for request mode "cors"'
         ));
       }
-      if (actualResponse.status !== 303 && request2.body != null && request2.body.source == null) {
+      if (actualResponse.status !== 303 && request3.body != null && request3.body.source == null) {
         return Promise.resolve(makeNetworkError());
       }
-      if ([301, 302].includes(actualResponse.status) && request2.method === "POST" || actualResponse.status === 303 && !GET_OR_HEAD.includes(request2.method)) {
-        request2.method = "GET";
-        request2.body = null;
+      if ([301, 302].includes(actualResponse.status) && request3.method === "POST" || actualResponse.status === 303 && !GET_OR_HEAD.includes(request3.method)) {
+        request3.method = "GET";
+        request3.body = null;
         for (const headerName of requestBodyHeader) {
-          request2.headersList.delete(headerName);
+          request3.headersList.delete(headerName);
         }
       }
-      if (!sameOrigin(requestCurrentURL(request2), locationURL)) {
-        request2.headersList.delete("authorization", true);
-        request2.headersList.delete("proxy-authorization", true);
-        request2.headersList.delete("cookie", true);
-        request2.headersList.delete("host", true);
+      if (!sameOrigin(requestCurrentURL(request3), locationURL)) {
+        request3.headersList.delete("authorization", true);
+        request3.headersList.delete("proxy-authorization", true);
+        request3.headersList.delete("cookie", true);
+        request3.headersList.delete("host", true);
       }
-      if (request2.body != null) {
-        assert2(request2.body.source != null);
-        request2.body = safelyExtractBody(request2.body.source)[0];
+      if (request3.body != null) {
+        assert2(request3.body.source != null);
+        request3.body = safelyExtractBody(request3.body.source)[0];
       }
       const timingInfo = fetchParams.timingInfo;
       timingInfo.redirectEndTime = timingInfo.postRedirectStartTime = coarsenedSharedCurrentTime(fetchParams.crossOriginIsolatedCapability);
       if (timingInfo.redirectStartTime === 0) {
         timingInfo.redirectStartTime = timingInfo.startTime;
       }
-      request2.urlList.push(locationURL);
-      setRequestReferrerPolicyOnRedirect(request2, actualResponse);
+      request3.urlList.push(locationURL);
+      setRequestReferrerPolicyOnRedirect(request3, actualResponse);
       return mainFetch(fetchParams, true);
     }
     async function httpNetworkOrCacheFetch(fetchParams, isAuthenticationFetch = false, isNewConnectionFetch = false) {
-      const request2 = fetchParams.request;
+      const request3 = fetchParams.request;
       let httpFetchParams = null;
       let httpRequest = null;
       let response = null;
       const httpCache = null;
       const revalidatingFlag = false;
-      if (request2.window === "no-window" && request2.redirect === "error") {
+      if (request3.window === "no-window" && request3.redirect === "error") {
         httpFetchParams = fetchParams;
-        httpRequest = request2;
+        httpRequest = request3;
       } else {
-        httpRequest = cloneRequest(request2);
+        httpRequest = cloneRequest(request3);
         httpFetchParams = { ...fetchParams };
         httpFetchParams.request = httpRequest;
       }
-      const includeCredentials = request2.credentials === "include" || request2.credentials === "same-origin" && request2.responseTainting === "basic";
+      const includeCredentials = request3.credentials === "include" || request3.credentials === "same-origin" && request3.responseTainting === "basic";
       const contentLength = httpRequest.body ? httpRequest.body.length : null;
       let contentLengthHeaderValue = null;
       if (httpRequest.body == null && ["POST", "PUT"].includes(httpRequest.method)) {
@@ -13884,7 +13884,7 @@ var require_fetch = __commonJS({
       }
       response.requestIncludesCredentials = includeCredentials;
       if (response.status === 407) {
-        if (request2.window === "no-window") {
+        if (request3.window === "no-window") {
           return makeNetworkError();
         }
         if (isCancelled(fetchParams)) {
@@ -13896,7 +13896,7 @@ var require_fetch = __commonJS({
         // response’s status is 421
         response.status === 421 && // isNewConnectionFetch is false
         !isNewConnectionFetch && // request’s body is null, or request’s body is non-null and request’s body’s source is non-null
-        (request2.body == null || request2.body.source != null)
+        (request3.body == null || request3.body.source != null)
       ) {
         if (isCancelled(fetchParams)) {
           return makeAppropriateNetworkError(fetchParams);
@@ -13926,21 +13926,21 @@ var require_fetch = __commonJS({
           }
         }
       };
-      const request2 = fetchParams.request;
+      const request3 = fetchParams.request;
       let response = null;
       const timingInfo = fetchParams.timingInfo;
       const httpCache = null;
       if (httpCache == null) {
-        request2.cache = "no-store";
+        request3.cache = "no-store";
       }
       const newConnection = forceNewConnection ? "yes" : "no";
-      if (request2.mode === "websocket") {
+      if (request3.mode === "websocket") {
       } else {
       }
       let requestBody = null;
-      if (request2.body == null && fetchParams.processRequestEndOfBody) {
+      if (request3.body == null && fetchParams.processRequestEndOfBody) {
         queueMicrotask(() => fetchParams.processRequestEndOfBody());
-      } else if (request2.body != null) {
+      } else if (request3.body != null) {
         const processBodyChunk = async function* (bytes) {
           if (isCancelled(fetchParams)) {
             return;
@@ -13968,7 +13968,7 @@ var require_fetch = __commonJS({
         };
         requestBody = (async function* () {
           try {
-            for await (const bytes of request2.body.stream) {
+            for await (const bytes of request3.body.stream) {
               yield* processBodyChunk(bytes);
             }
             processEndOfBody();
@@ -14078,17 +14078,17 @@ var require_fetch = __commonJS({
       }
       return response;
       function dispatch({ body }) {
-        const url2 = requestCurrentURL(request2);
+        const url2 = requestCurrentURL(request3);
         const agent = fetchParams.controller.dispatcher;
-        return new Promise((resolve5, reject) => agent.dispatch(
+        return new Promise((resolve6, reject) => agent.dispatch(
           {
             path: url2.pathname + url2.search,
             origin: url2.origin,
-            method: request2.method,
-            body: agent.isMockActive ? request2.body && (request2.body.source || request2.body.stream) : body,
-            headers: request2.headersList.entries,
+            method: request3.method,
+            body: agent.isMockActive ? request3.body && (request3.body.source || request3.body.stream) : body,
+            headers: request3.headersList.entries,
             maxRedirections: 0,
-            upgrade: request2.mode === "websocket" ? "websocket" : void 0
+            upgrade: request3.mode === "websocket" ? "websocket" : void 0
           },
           {
             body: null,
@@ -14119,8 +14119,8 @@ var require_fetch = __commonJS({
               location = headersList.get("location", true);
               this.body = new Readable2({ read: resume });
               const decoders = [];
-              const willFollow = location && request2.redirect === "follow" && redirectStatusSet.has(status);
-              if (request2.method !== "HEAD" && request2.method !== "CONNECT" && !nullBodyStatus.includes(status) && !willFollow) {
+              const willFollow = location && request3.redirect === "follow" && redirectStatusSet.has(status);
+              if (request3.method !== "HEAD" && request3.method !== "CONNECT" && !nullBodyStatus.includes(status) && !willFollow) {
                 const contentEncoding = headersList.get("content-encoding", true);
                 const codings = contentEncoding ? contentEncoding.toLowerCase().split(",") : [];
                 const maxContentEncodings = 5;
@@ -14156,7 +14156,7 @@ var require_fetch = __commonJS({
                 }
               }
               const onError = this.onError.bind(this);
-              resolve5({
+              resolve6({
                 status,
                 statusText,
                 headersList,
@@ -14168,11 +14168,11 @@ var require_fetch = __commonJS({
               });
               return true;
             },
-            onData(chunk) {
+            onData(chunk2) {
               if (fetchParams.controller.dump) {
                 return;
               }
-              const bytes = chunk;
+              const bytes = chunk2;
               timingInfo.encodedBodySize += bytes.byteLength;
               return this.body.push(bytes);
             },
@@ -14202,7 +14202,7 @@ var require_fetch = __commonJS({
               for (let i = 0; i < rawHeaders.length; i += 2) {
                 headersList.append(bufferToLowerCasedHeaderName(rawHeaders[i]), rawHeaders[i + 1].toString("latin1"), true);
               }
-              resolve5({
+              resolve6({
                 status,
                 statusText: STATUS_CODES[status],
                 headersList,
@@ -14699,8 +14699,8 @@ var require_util4 = __commonJS({
           }
           dataURL += ";base64,";
           const decoder = new StringDecoder("latin1");
-          for (const chunk of bytes) {
-            dataURL += btoa2(decoder.write(chunk));
+          for (const chunk2 of bytes) {
+            dataURL += btoa2(decoder.write(chunk2));
           }
           dataURL += btoa2(decoder.end());
           return dataURL;
@@ -14728,8 +14728,8 @@ var require_util4 = __commonJS({
         case "BinaryString": {
           let binaryString = "";
           const decoder = new StringDecoder("latin1");
-          for (const chunk of bytes) {
-            binaryString += decoder.write(chunk);
+          for (const chunk2 of bytes) {
+            binaryString += decoder.write(chunk2);
           }
           binaryString += decoder.end();
           return binaryString;
@@ -15103,31 +15103,31 @@ var require_cache = __commonJS({
         webidl.util.markAsUncloneable(this);
         this.#relevantRequestResponseList = arguments[1];
       }
-      async match(request2, options = {}) {
+      async match(request3, options = {}) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.match";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        request2 = webidl.converters.RequestInfo(request2, prefix, "request");
+        request3 = webidl.converters.RequestInfo(request3, prefix, "request");
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
-        const p = this.#internalMatchAll(request2, options, 1);
+        const p = this.#internalMatchAll(request3, options, 1);
         if (p.length === 0) {
           return;
         }
         return p[0];
       }
-      async matchAll(request2 = void 0, options = {}) {
+      async matchAll(request3 = void 0, options = {}) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.matchAll";
-        if (request2 !== void 0) request2 = webidl.converters.RequestInfo(request2, prefix, "request");
+        if (request3 !== void 0) request3 = webidl.converters.RequestInfo(request3, prefix, "request");
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
-        return this.#internalMatchAll(request2, options);
+        return this.#internalMatchAll(request3, options);
       }
-      async add(request2) {
+      async add(request3) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.add";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        request2 = webidl.converters.RequestInfo(request2, prefix, "request");
-        const requests = [request2];
+        request3 = webidl.converters.RequestInfo(request3, prefix, "request");
+        const requests = [request3];
         const responseArrayPromise = this.addAll(requests);
         return await responseArrayPromise;
       }
@@ -15137,19 +15137,19 @@ var require_cache = __commonJS({
         webidl.argumentLengthCheck(arguments, 1, prefix);
         const responsePromises = [];
         const requestList = [];
-        for (let request2 of requests) {
-          if (request2 === void 0) {
+        for (let request3 of requests) {
+          if (request3 === void 0) {
             throw webidl.errors.conversionFailed({
               prefix,
               argument: "Argument 1",
               types: ["undefined is not allowed"]
             });
           }
-          request2 = webidl.converters.RequestInfo(request2);
-          if (typeof request2 === "string") {
+          request3 = webidl.converters.RequestInfo(request3);
+          if (typeof request3 === "string") {
             continue;
           }
-          const r = request2[kState];
+          const r = request3[kState];
           if (!urlIsHttpHttpsScheme(r.url) || r.method !== "GET") {
             throw webidl.errors.exception({
               header: prefix,
@@ -15158,8 +15158,8 @@ var require_cache = __commonJS({
           }
         }
         const fetchControllers = [];
-        for (const request2 of requests) {
-          const r = new Request(request2)[kState];
+        for (const request3 of requests) {
+          const r = new Request(request3)[kState];
           if (!urlIsHttpHttpsScheme(r.url)) {
             throw webidl.errors.exception({
               header: prefix,
@@ -15236,17 +15236,17 @@ var require_cache = __commonJS({
         });
         return cacheJobPromise.promise;
       }
-      async put(request2, response) {
+      async put(request3, response) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.put";
         webidl.argumentLengthCheck(arguments, 2, prefix);
-        request2 = webidl.converters.RequestInfo(request2, prefix, "request");
+        request3 = webidl.converters.RequestInfo(request3, prefix, "request");
         response = webidl.converters.Response(response, prefix, "response");
         let innerRequest = null;
-        if (request2 instanceof Request) {
-          innerRequest = request2[kState];
+        if (request3 instanceof Request) {
+          innerRequest = request3[kState];
         } else {
-          innerRequest = new Request(request2)[kState];
+          innerRequest = new Request(request3)[kState];
         }
         if (!urlIsHttpHttpsScheme(innerRequest.url) || innerRequest.method !== "GET") {
           throw webidl.errors.exception({
@@ -15317,21 +15317,21 @@ var require_cache = __commonJS({
         });
         return cacheJobPromise.promise;
       }
-      async delete(request2, options = {}) {
+      async delete(request3, options = {}) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.delete";
         webidl.argumentLengthCheck(arguments, 1, prefix);
-        request2 = webidl.converters.RequestInfo(request2, prefix, "request");
+        request3 = webidl.converters.RequestInfo(request3, prefix, "request");
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
         let r = null;
-        if (request2 instanceof Request) {
-          r = request2[kState];
+        if (request3 instanceof Request) {
+          r = request3[kState];
           if (r.method !== "GET" && !options.ignoreMethod) {
             return false;
           }
         } else {
-          assert2(typeof request2 === "string");
-          r = new Request(request2)[kState];
+          assert2(typeof request3 === "string");
+          r = new Request(request3)[kState];
         }
         const operations = [];
         const operation = {
@@ -15363,25 +15363,25 @@ var require_cache = __commonJS({
        * @param {import('../../types/cache').CacheQueryOptions} options
        * @returns {Promise<readonly Request[]>}
        */
-      async keys(request2 = void 0, options = {}) {
+      async keys(request3 = void 0, options = {}) {
         webidl.brandCheck(this, _Cache);
         const prefix = "Cache.keys";
-        if (request2 !== void 0) request2 = webidl.converters.RequestInfo(request2, prefix, "request");
+        if (request3 !== void 0) request3 = webidl.converters.RequestInfo(request3, prefix, "request");
         options = webidl.converters.CacheQueryOptions(options, prefix, "options");
         let r = null;
-        if (request2 !== void 0) {
-          if (request2 instanceof Request) {
-            r = request2[kState];
+        if (request3 !== void 0) {
+          if (request3 instanceof Request) {
+            r = request3[kState];
             if (r.method !== "GET" && !options.ignoreMethod) {
               return [];
             }
-          } else if (typeof request2 === "string") {
-            r = new Request(request2)[kState];
+          } else if (typeof request3 === "string") {
+            r = new Request(request3)[kState];
           }
         }
         const promise2 = createDeferredPromise();
         const requests = [];
-        if (request2 === void 0) {
+        if (request3 === void 0) {
           for (const requestResponse of this.#relevantRequestResponseList) {
             requests.push(requestResponse[0]);
           }
@@ -15393,9 +15393,9 @@ var require_cache = __commonJS({
         }
         queueMicrotask(() => {
           const requestList = [];
-          for (const request3 of requests) {
+          for (const request4 of requests) {
             const requestObject = fromInnerRequest(
-              request3,
+              request4,
               new AbortController().signal,
               "immutable"
             );
@@ -15513,9 +15513,9 @@ var require_cache = __commonJS({
        * @param {import('../../types/cache').CacheQueryOptions | undefined} options
        * @returns {boolean}
        */
-      #requestMatchesCachedItem(requestQuery, request2, response = null, options) {
+      #requestMatchesCachedItem(requestQuery, request3, response = null, options) {
         const queryURL = new URL(requestQuery.url);
-        const cachedURL = new URL(request2.url);
+        const cachedURL = new URL(request3.url);
         if (options?.ignoreSearch) {
           cachedURL.search = "";
           queryURL.search = "";
@@ -15531,7 +15531,7 @@ var require_cache = __commonJS({
           if (fieldValue === "*") {
             return false;
           }
-          const requestValue = request2.headersList.get(fieldValue);
+          const requestValue = request3.headersList.get(fieldValue);
           const queryValue = requestQuery.headersList.get(fieldValue);
           if (requestValue !== queryValue) {
             return false;
@@ -15539,20 +15539,20 @@ var require_cache = __commonJS({
         }
         return true;
       }
-      #internalMatchAll(request2, options, maxResponses = Infinity) {
+      #internalMatchAll(request3, options, maxResponses = Infinity) {
         let r = null;
-        if (request2 !== void 0) {
-          if (request2 instanceof Request) {
-            r = request2[kState];
+        if (request3 !== void 0) {
+          if (request3 instanceof Request) {
+            r = request3[kState];
             if (r.method !== "GET" && !options.ignoreMethod) {
               return [];
             }
-          } else if (typeof request2 === "string") {
-            r = new Request(request2)[kState];
+          } else if (typeof request3 === "string") {
+            r = new Request(request3)[kState];
           }
         }
         const responses = [];
-        if (request2 === void 0) {
+        if (request3 === void 0) {
           for (const requestResponse of this.#relevantRequestResponseList) {
             responses.push(requestResponse[1]);
           }
@@ -15641,21 +15641,21 @@ var require_cachestorage = __commonJS({
         }
         webidl.util.markAsUncloneable(this);
       }
-      async match(request2, options = {}) {
+      async match(request3, options = {}) {
         webidl.brandCheck(this, _CacheStorage);
         webidl.argumentLengthCheck(arguments, 1, "CacheStorage.match");
-        request2 = webidl.converters.RequestInfo(request2);
+        request3 = webidl.converters.RequestInfo(request3);
         options = webidl.converters.MultiCacheQueryOptions(options);
         if (options.cacheName != null) {
           if (this.#caches.has(options.cacheName)) {
             const cacheList = this.#caches.get(options.cacheName);
             const cache = new Cache(kConstruct, cacheList);
-            return await cache.match(request2, options);
+            return await cache.match(request3, options);
           }
         } else {
           for (const cacheList of this.#caches.values()) {
             const cache = new Cache(kConstruct, cacheList);
-            const response = await cache.match(request2, options);
+            const response = await cache.match(request3, options);
             if (response !== void 0) {
               return response;
             }
@@ -16098,9 +16098,9 @@ var require_cookies = __commonJS({
       webidl.argumentLengthCheck(arguments, 2, "setCookie");
       webidl.brandCheck(headers, Headers, { strict: false });
       cookie = webidl.converters.Cookie(cookie);
-      const str4 = stringify(cookie);
-      if (str4) {
-        headers.append("Set-Cookie", str4);
+      const str7 = stringify(cookie);
+      if (str7) {
+        headers.append("Set-Cookie", str7);
       }
     }
     webidl.converters.DeleteCookieAttributes = webidl.dictionaryConverter([
@@ -16797,7 +16797,7 @@ var require_connection = __commonJS({
     function establishWebSocketConnection(url2, protocols, client, ws, onEstablish, options) {
       const requestURL = url2;
       requestURL.protocol = url2.protocol === "ws:" ? "http:" : "https:";
-      const request2 = makeRequest({
+      const request3 = makeRequest({
         urlList: [requestURL],
         client,
         serviceWorkers: "none",
@@ -16809,18 +16809,18 @@ var require_connection = __commonJS({
       });
       if (options.headers) {
         const headersList = getHeadersList(new Headers(options.headers));
-        request2.headersList = headersList;
+        request3.headersList = headersList;
       }
       const keyValue = crypto.randomBytes(16).toString("base64");
-      request2.headersList.append("sec-websocket-key", keyValue);
-      request2.headersList.append("sec-websocket-version", "13");
+      request3.headersList.append("sec-websocket-key", keyValue);
+      request3.headersList.append("sec-websocket-version", "13");
       for (const protocol of protocols) {
-        request2.headersList.append("sec-websocket-protocol", protocol);
+        request3.headersList.append("sec-websocket-protocol", protocol);
       }
       const permessageDeflate = "permessage-deflate; client_max_window_bits";
-      request2.headersList.append("sec-websocket-extensions", permessageDeflate);
+      request3.headersList.append("sec-websocket-extensions", permessageDeflate);
       const controller = fetching({
-        request: request2,
+        request: request3,
         useParallelQueue: true,
         dispatcher: options.dispatcher,
         processResponse(response) {
@@ -16857,7 +16857,7 @@ var require_connection = __commonJS({
           }
           const secProtocol = response.headersList.get("Sec-WebSocket-Protocol");
           if (secProtocol !== null) {
-            const requestProtocols = getDecodeSplit("sec-websocket-protocol", request2.headersList);
+            const requestProtocols = getDecodeSplit("sec-websocket-protocol", request3.headersList);
             if (!requestProtocols.includes(secProtocol)) {
               failWebsocketConnection(ws, "Protocol was not set in the opening handshake.");
               return;
@@ -16904,8 +16904,8 @@ var require_connection = __commonJS({
         ws[kReadyState] = states.CLOSING;
       }
     }
-    function onSocketData(chunk) {
-      if (!this.ws[kByteParser].write(chunk)) {
+    function onSocketData(chunk2) {
+      if (!this.ws[kByteParser].write(chunk2)) {
         this.pause();
       }
     }
@@ -16983,7 +16983,7 @@ var require_permessage_deflate = __commonJS({
        * @param {boolean} fin Final fragment flag
        * @param {Function} callback Callback function
        */
-      decompress(chunk, fin, callback) {
+      decompress(chunk2, fin, callback) {
         if (!this.#inflate) {
           let windowBits = Z_DEFAULT_WINDOWBITS;
           if (this.#options.serverMaxWindowBits) {
@@ -17016,7 +17016,7 @@ var require_permessage_deflate = __commonJS({
             callback(err);
           });
         }
-        this.#inflate.write(chunk);
+        this.#inflate.write(chunk2);
         if (fin) {
           this.#inflate.write(tail);
         }
@@ -17095,9 +17095,9 @@ var require_receiver = __commonJS({
        * @param {Buffer} chunk
        * @param {() => void} callback
        */
-      _write(chunk, _, callback) {
-        this.#buffers.push(chunk);
-        this.#byteOffset += chunk.length;
+      _write(chunk2, _, callback) {
+        this.#buffers.push(chunk2);
+        this.#byteOffset += chunk2.length;
         this.#loop = true;
         this.run(callback);
       }
@@ -17894,8 +17894,8 @@ var require_util8 = __commonJS({
       return true;
     }
     function delay(ms) {
-      return new Promise((resolve5) => {
-        setTimeout(resolve5, ms).unref();
+      return new Promise((resolve6) => {
+        setTimeout(resolve6, ms).unref();
       });
     }
     module.exports = {
@@ -17965,15 +17965,15 @@ var require_eventsource_stream = __commonJS({
        * @param {Function} callback
        * @returns {void}
        */
-      _transform(chunk, _encoding, callback) {
-        if (chunk.length === 0) {
+      _transform(chunk2, _encoding, callback) {
+        if (chunk2.length === 0) {
           callback();
           return;
         }
         if (this.buffer) {
-          this.buffer = Buffer.concat([this.buffer, chunk]);
+          this.buffer = Buffer.concat([this.buffer, chunk2]);
         } else {
-          this.buffer = chunk;
+          this.buffer = chunk2;
         }
         if (this.checkBOM) {
           switch (this.buffer.length) {
@@ -19124,14 +19124,14 @@ var require_help = __commonJS({
        * @return {string}
        *
        */
-      wrap(str4, width, indent, minColumnWidth = 40) {
+      wrap(str7, width, indent, minColumnWidth = 40) {
         const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
         const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str4.match(manualIndent)) return str4;
+        if (str7.match(manualIndent)) return str7;
         const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str4;
-        const leadingStr = str4.slice(0, indent);
-        const columnText = str4.slice(indent).replace("\r\n", "\n");
+        if (columnWidth < minColumnWidth) return str7;
+        const leadingStr = str7.slice(0, indent);
+        const columnText = str7.slice(indent).replace("\r\n", "\n");
         const indentString = " ".repeat(indent);
         const zeroWidthSpace = "\u200B";
         const breaks = `\\s${zeroWidthSpace}`;
@@ -19400,9 +19400,9 @@ var require_option = __commonJS({
         return option.negate === (negativeValue === value);
       }
     };
-    function camelcase(str4) {
-      return str4.split("-").reduce((str5, word) => {
-        return str5 + word[0].toUpperCase() + word.slice(1);
+    function camelcase(str7) {
+      return str7.split("-").reduce((str8, word) => {
+        return str8 + word[0].toUpperCase() + word.slice(1);
       });
     }
     function splitOptionFlags(flags) {
@@ -19556,11 +19556,11 @@ var require_command = __commonJS({
         this._showHelpAfterError = false;
         this._showSuggestionAfterError = true;
         this._outputConfiguration = {
-          writeOut: (str4) => process5.stdout.write(str4),
-          writeErr: (str4) => process5.stderr.write(str4),
+          writeOut: (str7) => process5.stdout.write(str7),
+          writeErr: (str7) => process5.stderr.write(str7),
           getOutHelpWidth: () => process5.stdout.isTTY ? process5.stdout.columns : void 0,
           getErrHelpWidth: () => process5.stderr.isTTY ? process5.stderr.columns : void 0,
-          outputError: (str4, write) => write(str4)
+          outputError: (str7, write) => write(str7)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -21196,18 +21196,18 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str4, flags, description) {
-        if (str4 === void 0) return this._version;
-        this._version = str4;
+      version(str7, flags, description) {
+        if (str7 === void 0) return this._version;
+        this._version = str7;
         flags = flags || "-V, --version";
         description = description || "output the version number";
         const versionOption = this.createOption(flags, description);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str4}
+          this._outputConfiguration.writeOut(`${str7}
 `);
-          this._exit(0, "commander.version", str4);
+          this._exit(0, "commander.version", str7);
         });
         return this;
       }
@@ -21218,10 +21218,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {object} [argsDescription]
        * @return {(string|Command)}
        */
-      description(str4, argsDescription) {
-        if (str4 === void 0 && argsDescription === void 0)
+      description(str7, argsDescription) {
+        if (str7 === void 0 && argsDescription === void 0)
           return this._description;
-        this._description = str4;
+        this._description = str7;
         if (argsDescription) {
           this._argsDescription = argsDescription;
         }
@@ -21233,9 +21233,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      summary(str4) {
-        if (str4 === void 0) return this._summary;
-        this._summary = str4;
+      summary(str7) {
+        if (str7 === void 0) return this._summary;
+        this._summary = str7;
         return this;
       }
       /**
@@ -21283,8 +21283,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      usage(str4) {
-        if (str4 === void 0) {
+      usage(str7) {
+        if (str7 === void 0) {
           if (this._usage) return this._usage;
           const args = this.registeredArguments.map((arg) => {
             return humanReadableArgName(arg);
@@ -21295,7 +21295,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             this.registeredArguments.length ? args : []
           ).join(" ");
         }
-        this._usage = str4;
+        this._usage = str7;
         return this;
       }
       /**
@@ -21304,9 +21304,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      name(str4) {
-        if (str4 === void 0) return this._name;
-        this._name = str4;
+      name(str7) {
+        if (str7 === void 0) return this._name;
+        this._name = str7;
         return this;
       }
       /**
@@ -21607,10 +21607,10 @@ var require_identity = __commonJS({
     var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
     var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
-    var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
+    var isMap3 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
-    var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
-    var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
+    var isScalar3 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
+    var isSeq3 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
     function isCollection(node) {
       if (node && typeof node === "object")
         switch (node[NODE_TYPE]) {
@@ -21631,7 +21631,7 @@ var require_identity = __commonJS({
         }
       return false;
     }
-    var hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
+    var hasAnchor = (node) => (isScalar3(node) || isCollection(node)) && !!node.anchor;
     exports.ALIAS = ALIAS;
     exports.DOC = DOC;
     exports.MAP = MAP;
@@ -21643,11 +21643,11 @@ var require_identity = __commonJS({
     exports.isAlias = isAlias;
     exports.isCollection = isCollection;
     exports.isDocument = isDocument;
-    exports.isMap = isMap;
+    exports.isMap = isMap3;
     exports.isNode = isNode;
     exports.isPair = isPair;
-    exports.isScalar = isScalar;
-    exports.isSeq = isSeq;
+    exports.isScalar = isScalar3;
+    exports.isSeq = isSeq3;
   }
 });
 
@@ -22539,13 +22539,13 @@ var require_Collection = __commonJS({
 var require_stringifyComment = __commonJS({
   "node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
-    var stringifyComment = (str4) => str4.replace(/^(?!$)(?: $)?/gm, "#");
+    var stringifyComment = (str7) => str7.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
       if (/^\n+$/.test(comment))
         return comment.substring(1);
       return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
     }
-    var lineComment = (str4, indent, comment) => str4.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str4.endsWith(" ") ? "" : " ") + comment;
+    var lineComment = (str7, indent, comment) => str7.endsWith("\n") ? indentComment(comment, indent) : comment.includes("\n") ? "\n" + indentComment(comment, indent) : (str7.endsWith(" ") ? "" : " ") + comment;
     exports.indentComment = indentComment;
     exports.lineComment = lineComment;
     exports.stringifyComment = stringifyComment;
@@ -22699,16 +22699,16 @@ var require_stringifyString = __commonJS({
       lineWidth: ctx.options.lineWidth,
       minContentWidth: ctx.options.minContentWidth
     });
-    var containsDocumentMarker = (str4) => /^(%|---|\.\.\.)/m.test(str4);
-    function lineLengthOverLimit(str4, lineWidth, indentLength) {
+    var containsDocumentMarker = (str7) => /^(%|---|\.\.\.)/m.test(str7);
+    function lineLengthOverLimit(str7, lineWidth, indentLength) {
       if (!lineWidth || lineWidth < 0)
         return false;
       const limit = lineWidth - indentLength;
-      const strLen = str4.length;
+      const strLen = str7.length;
       if (strLen <= limit)
         return false;
       for (let i = 0, start2 = 0; i < strLen; ++i) {
-        if (str4[i] === "\n") {
+        if (str7[i] === "\n") {
           if (i - start2 > limit)
             return true;
           start2 = i + 1;
@@ -22725,11 +22725,11 @@ var require_stringifyString = __commonJS({
       const { implicitKey } = ctx;
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
-      let str4 = "";
+      let str7 = "";
       let start2 = 0;
       for (let i = 0, ch = json3[i]; ch; ch = json3[++i]) {
         if (ch === " " && json3[i + 1] === "\\" && json3[i + 2] === "n") {
-          str4 += json3.slice(start2, i) + "\\ ";
+          str7 += json3.slice(start2, i) + "\\ ";
           i += 1;
           start2 = i;
           ch = "\\";
@@ -22738,38 +22738,38 @@ var require_stringifyString = __commonJS({
           switch (json3[i + 1]) {
             case "u":
               {
-                str4 += json3.slice(start2, i);
+                str7 += json3.slice(start2, i);
                 const code = json3.substr(i + 2, 4);
                 switch (code) {
                   case "0000":
-                    str4 += "\\0";
+                    str7 += "\\0";
                     break;
                   case "0007":
-                    str4 += "\\a";
+                    str7 += "\\a";
                     break;
                   case "000b":
-                    str4 += "\\v";
+                    str7 += "\\v";
                     break;
                   case "001b":
-                    str4 += "\\e";
+                    str7 += "\\e";
                     break;
                   case "0085":
-                    str4 += "\\N";
+                    str7 += "\\N";
                     break;
                   case "00a0":
-                    str4 += "\\_";
+                    str7 += "\\_";
                     break;
                   case "2028":
-                    str4 += "\\L";
+                    str7 += "\\L";
                     break;
                   case "2029":
-                    str4 += "\\P";
+                    str7 += "\\P";
                     break;
                   default:
                     if (code.substr(0, 2) === "00")
-                      str4 += "\\x" + code.substr(2);
+                      str7 += "\\x" + code.substr(2);
                     else
-                      str4 += json3.substr(i, 6);
+                      str7 += json3.substr(i, 6);
                 }
                 i += 5;
                 start2 = i + 1;
@@ -22779,14 +22779,14 @@ var require_stringifyString = __commonJS({
               if (implicitKey || json3[i + 2] === '"' || json3.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str4 += json3.slice(start2, i) + "\n\n";
+                str7 += json3.slice(start2, i) + "\n\n";
                 while (json3[i + 2] === "\\" && json3[i + 3] === "n" && json3[i + 4] !== '"') {
-                  str4 += "\n";
+                  str7 += "\n";
                   i += 2;
                 }
-                str4 += indent;
+                str7 += indent;
                 if (json3[i + 2] === " ")
-                  str4 += "\\";
+                  str7 += "\\";
                 i += 1;
                 start2 = i + 1;
               }
@@ -22795,8 +22795,8 @@ var require_stringifyString = __commonJS({
               i += 1;
           }
       }
-      str4 = start2 ? str4 + json3.slice(start2) : json3;
-      return implicitKey ? str4 : foldFlowLines.foldFlowLines(str4, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
+      str7 = start2 ? str7 + json3.slice(start2) : json3;
+      return implicitKey ? str7 : foldFlowLines.foldFlowLines(str7, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
       if (ctx.options.singleQuote === false || ctx.implicitKey && value.includes("\n") || /[ \t]\n|\n[ \t]/.test(value))
@@ -22924,15 +22924,15 @@ ${indent}${start2}${value}${end}`;
           return quotedString(value, ctx);
         }
       }
-      const str4 = value.replace(/\n+/g, `$&
+      const str7 = value.replace(/\n+/g, `$&
 ${indent}`);
       if (actualString) {
-        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str4);
+        const test = (tag) => tag.default && tag.tag !== "tag:yaml.org,2002:str" && tag.test?.test(str7);
         const { compat, tags } = ctx.doc.schema;
         if (tags.some(test) || compat?.some(test))
           return quotedString(value, ctx);
       }
-      return implicitKey ? str4 : foldFlowLines.foldFlowLines(str4, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
+      return implicitKey ? str7 : foldFlowLines.foldFlowLines(str7, indent, foldFlowLines.FOLD_FLOW, getFoldOptions(ctx, false));
     }
     function stringifyString(item, ctx, onComment, onChompKeep) {
       const { implicitKey, inFlow } = ctx;
@@ -23084,11 +23084,11 @@ var require_stringify = __commonJS({
       const props = stringifyProps(node, tagObj, ctx);
       if (props.length > 0)
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
-      const str4 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
+      const str7 = typeof tagObj.stringify === "function" ? tagObj.stringify(node, ctx, onComment, onChompKeep) : identity.isScalar(node) ? stringifyString.stringifyString(node, ctx, onComment, onChompKeep) : node.toString(ctx, onComment, onChompKeep);
       if (!props)
-        return str4;
-      return identity.isScalar(node) || str4[0] === "{" || str4[0] === "[" ? `${props} ${str4}` : `${props}
-${ctx.indent}${str4}`;
+        return str7;
+      return identity.isScalar(node) || str7[0] === "{" || str7[0] === "[" ? `${props} ${str7}` : `${props}
+${ctx.indent}${str7}`;
     }
     exports.createStringifyContext = createStringifyContext;
     exports.stringify = stringify;
@@ -23123,8 +23123,8 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str4 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
-      if (!explicitKey && !ctx.inFlow && str4.length > 1024) {
+      let str7 = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      if (!explicitKey && !ctx.inFlow && str7.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
         explicitKey = true;
@@ -23133,27 +23133,27 @@ var require_stringifyPair = __commonJS({
         if (allNullValues || value == null) {
           if (keyCommentDone && onComment)
             onComment();
-          return str4 === "" ? "?" : explicitKey ? `? ${str4}` : str4;
+          return str7 === "" ? "?" : explicitKey ? `? ${str7}` : str7;
         }
       } else if (allNullValues && !simpleKeys || value == null && explicitKey) {
-        str4 = `? ${str4}`;
+        str7 = `? ${str7}`;
         if (keyComment && !keyCommentDone) {
-          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
+          str7 += stringifyComment.lineComment(str7, ctx.indent, commentString(keyComment));
         } else if (chompKeep && onChompKeep)
           onChompKeep();
-        return str4;
+        return str7;
       }
       if (keyCommentDone)
         keyComment = null;
       if (explicitKey) {
         if (keyComment)
-          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
-        str4 = `? ${str4}
+          str7 += stringifyComment.lineComment(str7, ctx.indent, commentString(keyComment));
+        str7 = `? ${str7}
 ${indent}:`;
       } else {
-        str4 = `${str4}:`;
+        str7 = `${str7}:`;
         if (keyComment)
-          str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(keyComment));
+          str7 += stringifyComment.lineComment(str7, ctx.indent, commentString(keyComment));
       }
       let vsb, vcb, valueComment;
       if (identity.isNode(value)) {
@@ -23169,7 +23169,7 @@ ${indent}:`;
       }
       ctx.implicitKey = false;
       if (!explicitKey && !keyComment && identity.isScalar(value))
-        ctx.indentAtStart = str4.length + 1;
+        ctx.indentAtStart = str7.length + 1;
       chompKeep = false;
       if (!indentSeq && indentStep.length >= 2 && !ctx.inFlow && !explicitKey && identity.isSeq(value) && !value.flow && !value.tag && !value.anchor) {
         ctx.indent = ctx.indent.substring(2);
@@ -23213,16 +23213,16 @@ ${ctx.indent}`;
       } else if (valueStr === "" || valueStr[0] === "\n") {
         ws = "";
       }
-      str4 += ws + valueStr;
+      str7 += ws + valueStr;
       if (ctx.inFlow) {
         if (valueCommentDone && onComment)
           onComment();
       } else if (valueComment && !valueCommentDone) {
-        str4 += stringifyComment.lineComment(str4, ctx.indent, commentString(valueComment));
+        str7 += stringifyComment.lineComment(str7, ctx.indent, commentString(valueComment));
       } else if (chompKeep && onChompKeep) {
         onChompKeep();
       }
-      return str4;
+      return str7;
     }
     exports.stringifyPair = stringifyPair;
   }
@@ -23449,31 +23449,31 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str5 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str8 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
-          str5 += stringifyComment.lineComment(str5, itemIndent, commentString(comment2));
+          str8 += stringifyComment.lineComment(str8, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
           chompKeep = false;
-        lines.push(blockItemPrefix + str5);
+        lines.push(blockItemPrefix + str8);
       }
-      let str4;
+      let str7;
       if (lines.length === 0) {
-        str4 = flowChars.start + flowChars.end;
+        str7 = flowChars.start + flowChars.end;
       } else {
-        str4 = lines[0];
+        str7 = lines[0];
         for (let i = 1; i < lines.length; ++i) {
           const line = lines[i];
-          str4 += line ? `
+          str7 += line ? `
 ${indent}${line}` : "\n";
         }
       }
       if (comment) {
-        str4 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
+        str7 += "\n" + stringifyComment.indentComment(commentString(comment), indent);
         if (onComment)
           onComment();
       } else if (chompKeep && onChompKeep)
         onChompKeep();
-      return str4;
+      return str7;
     }
     function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
       const { indent, indentStep, flowCollectionPadding: fcPadding, options: { commentString } } = ctx;
@@ -23516,21 +23516,21 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str4 = stringify.stringify(item, itemCtx, () => comment = null);
-        reqNewline || (reqNewline = lines.length > linesAtValue || str4.includes("\n"));
+        let str7 = stringify.stringify(item, itemCtx, () => comment = null);
+        reqNewline || (reqNewline = lines.length > linesAtValue || str7.includes("\n"));
         if (i < items.length - 1) {
-          str4 += ",";
+          str7 += ",";
         } else if (ctx.options.trailingComma) {
           if (ctx.options.lineWidth > 0) {
-            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str4.length + 2) > ctx.options.lineWidth);
+            reqNewline || (reqNewline = lines.reduce((sum, line) => sum + line.length + 2, 2) + (str7.length + 2) > ctx.options.lineWidth);
           }
           if (reqNewline) {
-            str4 += ",";
+            str7 += ",";
           }
         }
         if (comment)
-          str4 += stringifyComment.lineComment(str4, itemIndent, commentString(comment));
-        lines.push(str4);
+          str7 += stringifyComment.lineComment(str7, itemIndent, commentString(comment));
+        lines.push(str7);
         linesAtValue = lines.length;
       }
       const { start: start2, end } = flowChars;
@@ -23542,11 +23542,11 @@ ${indent}${line}` : "\n";
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str4 = start2;
+          let str7 = start2;
           for (const line of lines)
-            str4 += line ? `
+            str7 += line ? `
 ${indentStep}${indent}${line}` : "\n";
-          return `${str4}
+          return `${str7}
 ${indent}${end}`;
         } else {
           return `${start2}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
@@ -23575,7 +23575,7 @@ var require_YAMLMap = __commonJS({
     var identity = require_identity();
     var Pair = require_Pair();
     var Scalar = require_Scalar();
-    function findPair(items, key) {
+    function findPair3(items, key) {
       const k = identity.isScalar(key) ? key.value : key;
       for (const it of items) {
         if (identity.isPair(it)) {
@@ -23636,7 +23636,7 @@ var require_YAMLMap = __commonJS({
           _pair = new Pair.Pair(pair, pair?.value);
         } else
           _pair = new Pair.Pair(pair.key, pair.value);
-        const prev = findPair(this.items, _pair.key);
+        const prev = findPair3(this.items, _pair.key);
         const sortEntries = this.schema?.sortMapEntries;
         if (prev) {
           if (!overwrite)
@@ -23656,19 +23656,19 @@ var require_YAMLMap = __commonJS({
         }
       }
       delete(key) {
-        const it = findPair(this.items, key);
+        const it = findPair3(this.items, key);
         if (!it)
           return false;
         const del = this.items.splice(this.items.indexOf(it), 1);
         return del.length > 0;
       }
       get(key, keepScalar) {
-        const it = findPair(this.items, key);
+        const it = findPair3(this.items, key);
         const node = it?.value;
         return (!keepScalar && identity.isScalar(node) ? node.value : node) ?? void 0;
       }
       has(key) {
-        return !!findPair(this.items, key);
+        return !!findPair3(this.items, key);
       }
       set(key, value) {
         this.add(new Pair.Pair(key, value), true);
@@ -23705,7 +23705,7 @@ var require_YAMLMap = __commonJS({
       }
     };
     exports.YAMLMap = YAMLMap;
-    exports.findPair = findPair;
+    exports.findPair = findPair3;
   }
 });
 
@@ -23878,7 +23878,7 @@ var require_string = __commonJS({
       identify: (value) => typeof value === "string",
       default: true,
       tag: "tag:yaml.org,2002:str",
-      resolve: (str4) => str4,
+      resolve: (str7) => str7,
       stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
         return stringifyString.stringifyString(item, ctx, onComment, onChompKeep);
@@ -23916,7 +23916,7 @@ var require_bool = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:bool",
       test: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/,
-      resolve: (str4) => new Scalar.Scalar(str4[0] === "t" || str4[0] === "T"),
+      resolve: (str7) => new Scalar.Scalar(str7[0] === "t" || str7[0] === "T"),
       stringify({ source, value }, ctx) {
         if (source && boolTag.test.test(source)) {
           const sv = source[0] === "t" || source[0] === "T";
@@ -23968,7 +23968,7 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str4) => str4.slice(-3).toLowerCase() === "nan" ? NaN : str4[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str7) => str7.slice(-3).toLowerCase() === "nan" ? NaN : str7[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -23977,7 +23977,7 @@ var require_float = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/,
-      resolve: (str4) => parseFloat(str4),
+      resolve: (str7) => parseFloat(str7),
       stringify(node) {
         const num4 = Number(node.value);
         return isFinite(num4) ? num4.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -23988,11 +23988,11 @@ var require_float = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
-      resolve(str4) {
-        const node = new Scalar.Scalar(parseFloat(str4));
-        const dot = str4.indexOf(".");
-        if (dot !== -1 && str4[str4.length - 1] === "0")
-          node.minFractionDigits = str4.length - dot - 1;
+      resolve(str7) {
+        const node = new Scalar.Scalar(parseFloat(str7));
+        const dot = str7.indexOf(".");
+        if (dot !== -1 && str7[str7.length - 1] === "0")
+          node.minFractionDigits = str7.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -24009,7 +24009,7 @@ var require_int = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    var intResolve = (str4, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str4) : parseInt(str4.substring(offset), radix);
+    var intResolve = (str7, offset, radix, { intAsBigInt }) => intAsBigInt ? BigInt(str7) : parseInt(str7.substring(offset), radix);
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value) && value >= 0)
@@ -24022,7 +24022,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^0o[0-7]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 2, 8, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 2, 8, opt),
       stringify: (node) => intStringify(node, 8, "0o")
     };
     var int2 = {
@@ -24030,7 +24030,7 @@ var require_int = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 0, 10, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24039,7 +24039,7 @@ var require_int = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^0x[0-9a-fA-F]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 2, 16, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24092,7 +24092,7 @@ var require_schema2 = __commonJS({
         identify: (value) => typeof value === "string",
         default: true,
         tag: "tag:yaml.org,2002:str",
-        resolve: (str4) => str4,
+        resolve: (str7) => str7,
         stringify: stringifyJSON
       },
       {
@@ -24109,7 +24109,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:bool",
         test: /^true$|^false$/,
-        resolve: (str4) => str4 === "true",
+        resolve: (str7) => str7 === "true",
         stringify: stringifyJSON
       },
       {
@@ -24117,7 +24117,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:int",
         test: /^-?(?:0|[1-9][0-9]*)$/,
-        resolve: (str4, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str4) : parseInt(str4, 10),
+        resolve: (str7, _onError, { intAsBigInt }) => intAsBigInt ? BigInt(str7) : parseInt(str7, 10),
         stringify: ({ value }) => intIdentify(value) ? value.toString() : JSON.stringify(value)
       },
       {
@@ -24125,7 +24125,7 @@ var require_schema2 = __commonJS({
         default: true,
         tag: "tag:yaml.org,2002:float",
         test: /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$/,
-        resolve: (str4) => parseFloat(str4),
+        resolve: (str7) => parseFloat(str7),
         stringify: stringifyJSON
       }
     ];
@@ -24133,9 +24133,9 @@ var require_schema2 = __commonJS({
       default: true,
       tag: "",
       test: /^/,
-      resolve(str4, onError) {
-        onError(`Unresolved plain scalar ${JSON.stringify(str4)}`);
-        return str4;
+      resolve(str7, onError) {
+        onError(`Unresolved plain scalar ${JSON.stringify(str7)}`);
+        return str7;
       }
     };
     var schema = [map2.map, seq.seq].concat(jsonScalars, jsonError);
@@ -24167,10 +24167,10 @@ var require_binary = __commonJS({
         if (typeof node_buffer.Buffer === "function") {
           return node_buffer.Buffer.from(src, "base64");
         } else if (typeof atob === "function") {
-          const str4 = atob(src.replace(/[\n\r]/g, ""));
-          const buffer = new Uint8Array(str4.length);
-          for (let i = 0; i < str4.length; ++i)
-            buffer[i] = str4.charCodeAt(i);
+          const str7 = atob(src.replace(/[\n\r]/g, ""));
+          const buffer = new Uint8Array(str7.length);
+          for (let i = 0; i < str7.length; ++i)
+            buffer[i] = str7.charCodeAt(i);
           return buffer;
         } else {
           onError("This environment does not support reading binary tags; either Buffer or atob is required");
@@ -24181,28 +24181,28 @@ var require_binary = __commonJS({
         if (!value)
           return "";
         const buf = value;
-        let str4;
+        let str7;
         if (typeof node_buffer.Buffer === "function") {
-          str4 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
+          str7 = buf instanceof node_buffer.Buffer ? buf.toString("base64") : node_buffer.Buffer.from(buf.buffer).toString("base64");
         } else if (typeof btoa === "function") {
           let s = "";
           for (let i = 0; i < buf.length; ++i)
             s += String.fromCharCode(buf[i]);
-          str4 = btoa(s);
+          str7 = btoa(s);
         } else {
           throw new Error("This environment does not support writing binary tags; either Buffer or btoa is required");
         }
         type ?? (type = Scalar.Scalar.BLOCK_LITERAL);
         if (type !== Scalar.Scalar.QUOTE_DOUBLE) {
           const lineWidth = Math.max(ctx.options.lineWidth - ctx.indent.length, ctx.options.minContentWidth);
-          const n = Math.ceil(str4.length / lineWidth);
+          const n = Math.ceil(str7.length / lineWidth);
           const lines = new Array(n);
           for (let i = 0, o = 0; i < n; ++i, o += lineWidth) {
-            lines[i] = str4.substr(o, lineWidth);
+            lines[i] = str7.substr(o, lineWidth);
           }
-          str4 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
+          str7 = lines.join(type === Scalar.Scalar.BLOCK_LITERAL ? "\n" : " ");
         }
-        return stringifyString.stringifyString({ comment, type, value: str4 }, ctx, onComment, onChompKeep);
+        return stringifyString.stringifyString({ comment, type, value: str7 }, ctx, onComment, onChompKeep);
       }
     };
     exports.binary = binary;
@@ -24408,7 +24408,7 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/,
-      resolve: (str4) => str4.slice(-3).toLowerCase() === "nan" ? NaN : str4[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
+      resolve: (str7) => str7.slice(-3).toLowerCase() === "nan" ? NaN : str7[0] === "-" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY,
       stringify: stringifyNumber.stringifyNumber
     };
     var floatExp = {
@@ -24417,7 +24417,7 @@ var require_float2 = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "EXP",
       test: /^[-+]?(?:[0-9][0-9_]*)?(?:\.[0-9_]*)?[eE][-+]?[0-9]+$/,
-      resolve: (str4) => parseFloat(str4.replace(/_/g, "")),
+      resolve: (str7) => parseFloat(str7.replace(/_/g, "")),
       stringify(node) {
         const num4 = Number(node.value);
         return isFinite(num4) ? num4.toExponential() : stringifyNumber.stringifyNumber(node);
@@ -24428,11 +24428,11 @@ var require_float2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:float",
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
-      resolve(str4) {
-        const node = new Scalar.Scalar(parseFloat(str4.replace(/_/g, "")));
-        const dot = str4.indexOf(".");
+      resolve(str7) {
+        const node = new Scalar.Scalar(parseFloat(str7.replace(/_/g, "")));
+        const dot = str7.indexOf(".");
         if (dot !== -1) {
-          const f = str4.substring(dot + 1).replace(/_/g, "");
+          const f = str7.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -24452,34 +24452,34 @@ var require_int2 = __commonJS({
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
-    function intResolve(str4, offset, radix, { intAsBigInt }) {
-      const sign = str4[0];
+    function intResolve(str7, offset, radix, { intAsBigInt }) {
+      const sign = str7[0];
       if (sign === "-" || sign === "+")
         offset += 1;
-      str4 = str4.substring(offset).replace(/_/g, "");
+      str7 = str7.substring(offset).replace(/_/g, "");
       if (intAsBigInt) {
         switch (radix) {
           case 2:
-            str4 = `0b${str4}`;
+            str7 = `0b${str7}`;
             break;
           case 8:
-            str4 = `0o${str4}`;
+            str7 = `0o${str7}`;
             break;
           case 16:
-            str4 = `0x${str4}`;
+            str7 = `0x${str7}`;
             break;
         }
-        const n2 = BigInt(str4);
+        const n2 = BigInt(str7);
         return sign === "-" ? BigInt(-1) * n2 : n2;
       }
-      const n = parseInt(str4, radix);
+      const n = parseInt(str7, radix);
       return sign === "-" ? -1 * n : n;
     }
     function intStringify(node, radix, prefix) {
       const { value } = node;
       if (intIdentify(value)) {
-        const str4 = value.toString(radix);
-        return value < 0 ? "-" + prefix + str4.substr(1) : prefix + str4;
+        const str7 = value.toString(radix);
+        return value < 0 ? "-" + prefix + str7.substr(1) : prefix + str7;
       }
       return stringifyNumber.stringifyNumber(node);
     }
@@ -24489,7 +24489,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "BIN",
       test: /^[-+]?0b[0-1_]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 2, 2, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 2, 2, opt),
       stringify: (node) => intStringify(node, 2, "0b")
     };
     var intOct = {
@@ -24498,7 +24498,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "OCT",
       test: /^[-+]?0[0-7_]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 1, 8, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 1, 8, opt),
       stringify: (node) => intStringify(node, 8, "0")
     };
     var int2 = {
@@ -24506,7 +24506,7 @@ var require_int2 = __commonJS({
       default: true,
       tag: "tag:yaml.org,2002:int",
       test: /^[-+]?[0-9][0-9_]*$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 0, 10, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 0, 10, opt),
       stringify: stringifyNumber.stringifyNumber
     };
     var intHex = {
@@ -24515,7 +24515,7 @@ var require_int2 = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "HEX",
       test: /^[-+]?0x[0-9a-fA-F_]+$/,
-      resolve: (str4, _onError, opt) => intResolve(str4, 2, 16, opt),
+      resolve: (str7, _onError, opt) => intResolve(str7, 2, 16, opt),
       stringify: (node) => intStringify(node, 16, "0x")
     };
     exports.int = int2;
@@ -24619,9 +24619,9 @@ var require_timestamp = __commonJS({
   "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
-    function parseSexagesimal(str4, asBigInt) {
-      const sign = str4[0];
-      const parts = sign === "-" || sign === "+" ? str4.substring(1) : str4;
+    function parseSexagesimal(str7, asBigInt) {
+      const sign = str7[0];
+      const parts = sign === "-" || sign === "+" ? str7.substring(1) : str7;
       const num4 = (n) => asBigInt ? BigInt(n) : Number(n);
       const res = parts.replace(/_/g, "").split(":").reduce((res2, p) => res2 * num4(60) + num4(p), num4(0));
       return sign === "-" ? num4(-1) * res : res;
@@ -24658,7 +24658,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:int",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+$/,
-      resolve: (str4, _onError, { intAsBigInt }) => parseSexagesimal(str4, intAsBigInt),
+      resolve: (str7, _onError, { intAsBigInt }) => parseSexagesimal(str7, intAsBigInt),
       stringify: stringifySexagesimal
     };
     var floatTime = {
@@ -24667,7 +24667,7 @@ var require_timestamp = __commonJS({
       tag: "tag:yaml.org,2002:float",
       format: "TIME",
       test: /^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*$/,
-      resolve: (str4) => parseSexagesimal(str4, false),
+      resolve: (str7) => parseSexagesimal(str7, false),
       stringify: stringifySexagesimal
     };
     var timestamp = {
@@ -24678,8 +24678,8 @@ var require_timestamp = __commonJS({
       // may be omitted altogether, resulting in a date format. In such a case, the time part is
       // assumed to be 00:00:00Z (start of day, UTC).
       test: RegExp("^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})(?:(?:t|T|[ \\t]+)([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}(\\.[0-9]+)?)(?:[ \\t]*(Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$"),
-      resolve(str4) {
-        const match = str4.match(timestamp.test);
+      resolve(str7) {
+        const match = str7.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
         const [, year, month, day, hour, minute, second] = match.map(Number);
@@ -25753,9 +25753,9 @@ var require_resolve_flow_collection = __commonJS({
     var blockMsg = "Block collections are not allowed within flow collections";
     var isBlock = (token) => token && (token.type === "block-map" || token.type === "block-seq");
     function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onError, tag) {
-      const isMap = fc.start.source === "{";
-      const fcName = isMap ? "flow map" : "flow sequence";
-      const NodeClass = tag?.nodeClass ?? (isMap ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
+      const isMap3 = fc.start.source === "{";
+      const fcName = isMap3 ? "flow map" : "flow sequence";
+      const NodeClass = tag?.nodeClass ?? (isMap3 ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
       const coll = new NodeClass(ctx.schema);
       coll.flow = true;
       const atRoot = ctx.atRoot;
@@ -25791,7 +25791,7 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap3 && ctx.options.strict && utilContainsNewline.containsNewline(key))
             onError(
               key,
               // checked by containsNewline()
@@ -25831,7 +25831,7 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep2 && !props.found) {
+        if (!isMap3 && !sep2 && !props.found) {
           const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
@@ -25854,7 +25854,7 @@ var require_resolve_flow_collection = __commonJS({
             startOnNewline: false
           });
           if (valueProps.found) {
-            if (!isMap && !props.found && ctx.options.strict) {
+            if (!isMap3 && !props.found && ctx.options.strict) {
               if (sep2)
                 for (const st of sep2) {
                   if (st === valueProps.found)
@@ -25886,7 +25886,7 @@ var require_resolve_flow_collection = __commonJS({
           const pair = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
             pair.srcToken = collItem;
-          if (isMap) {
+          if (isMap3) {
             const map2 = coll;
             if (utilMapIncludes.mapIncludes(ctx, map2.items, keyNode))
               onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -25902,7 +25902,7 @@ var require_resolve_flow_collection = __commonJS({
           offset = valueNode ? valueNode.range[2] : valueProps.end;
         }
       }
-      const expectedEnd = isMap ? "}" : "]";
+      const expectedEnd = isMap3 ? "}" : "]";
       const [ce, ...ee] = fc.end;
       let cePos = offset;
       if (ce?.source === expectedEnd)
@@ -27188,7 +27188,7 @@ var require_cst = __commonJS({
     var FLOW_END = "";
     var SCALAR = "";
     var isCollection = (token) => !!token && "items" in token;
-    var isScalar = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
+    var isScalar3 = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
     function prettyToken(token) {
       switch (token) {
         case BOM:
@@ -27272,7 +27272,7 @@ var require_cst = __commonJS({
     exports.FLOW_END = FLOW_END;
     exports.SCALAR = SCALAR;
     exports.isCollection = isCollection;
-    exports.isScalar = isScalar;
+    exports.isScalar = isScalar3;
     exports.prettyToken = prettyToken;
     exports.tokenType = tokenType;
   }
@@ -28802,7 +28802,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument2(source, options = {}) {
+    function parseDocument4(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -28828,7 +28828,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument2(src, options);
+      const doc = parseDocument4(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -28864,7 +28864,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse4;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument2;
+    exports.parseDocument = parseDocument4;
     exports.stringify = stringify;
   }
 });
@@ -29300,14 +29300,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str4 = "";
+  let str7 = "";
   for (let i = 0; i < length; i++) {
-    str4 += chars[Math.floor(Math.random() * chars.length)];
+    str7 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str4;
+  return str7;
 }
-function esc(str4) {
-  return JSON.stringify(str4);
+function esc(str7) {
+  return JSON.stringify(str7);
 }
 function slugify(input) {
   return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -29351,8 +29351,8 @@ function numKeys(data) {
   }
   return keyCount;
 }
-function escapeRegex(str4) {
-  return str4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str7) {
+  return str7.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
@@ -44317,6 +44317,14 @@ function warnDspShapeOnce(key) {
 `
   );
 }
+function warnAmcShapeOnce(key) {
+  if (warnedAmcShapes.has(key)) return;
+  warnedAmcShapes.add(key);
+  process.stderr.write(
+    `[warn] context.yaml: ignoring an invalid ${key}. Write the AMC instance id as a quoted string of letters and digits, e.g. ${AMC_ID_FORM} (or amc_instance_ids: ["amcabc123xyz"]).
+`
+  );
+}
 function normalizeLegacyTacosFields(raw) {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return raw;
@@ -44335,7 +44343,7 @@ function normalizeLegacyTacosFields(raw) {
   delete normalizedMgmt.tacos_target_pct;
   return { ...obj2, management: normalizedMgmt };
 }
-var DSP_ID_FORM, warnedDspShapes, isDspId, dspAdvertiserIdSchema, dspAdvertiserIdsSchema, accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
+var DSP_ID_FORM, warnedDspShapes, isDspId, AMC_ID_FORM, warnedAmcShapes, isAmcId, amcInstanceIdSchema, amcInstanceIdsSchema, dspAdvertiserIdSchema, dspAdvertiserIdsSchema, accountSchema, sourcesSchema, managementSchema, postureSchema, bidHealthSchema, goalsSchema, RESERVED_EVENT_KINDS, structuralEventTypeSchema, eventDateSchema, structuralEventSchema, derivedLabelMapSchema, SAFE_BUCKET_LABEL, derivedLabelsForSellerSchema, campaignStructureSchema, negationSchema, subBrandSchema, bindingLabelSourceSchema, bindingLabelSchema, bindingKindSchema, bindingSchema, captureRateCalibrationSchema, skillConfigSchema, contextSchema;
 var init_schema2 = __esm({
   "src/lib/context/schema.ts"() {
     "use strict";
@@ -44343,6 +44351,25 @@ var init_schema2 = __esm({
     DSP_ID_FORM = 'dsp_advertiser_id: "123456789012345678"';
     warnedDspShapes = /* @__PURE__ */ new Set();
     isDspId = (v) => typeof v === "string" && /^\d{1,64}$/.test(v);
+    AMC_ID_FORM = 'amc_instance_id: "amcabc123xyz"';
+    warnedAmcShapes = /* @__PURE__ */ new Set();
+    isAmcId = (v) => typeof v === "string" && /^[A-Za-z0-9]{1,64}$/.test(v);
+    amcInstanceIdSchema = external_exports.unknown().transform((v) => {
+      if (v === void 0 || v === null) return void 0;
+      if (isAmcId(v)) return v;
+      warnAmcShapeOnce("amc_instance_id");
+      return void 0;
+    });
+    amcInstanceIdsSchema = external_exports.unknown().transform((v) => {
+      if (v === void 0 || v === null) return void 0;
+      if (!Array.isArray(v)) {
+        warnAmcShapeOnce("amc_instance_ids");
+        return void 0;
+      }
+      const kept = v.filter(isAmcId);
+      if (kept.length !== v.length) warnAmcShapeOnce("amc_instance_ids");
+      return kept;
+    });
     dspAdvertiserIdSchema = external_exports.unknown().transform((v) => {
       if (v === void 0 || v === null) return void 0;
       if (isDspId(v)) return v;
@@ -44379,7 +44406,9 @@ var init_schema2 = __esm({
       // brand that declares its advertiser (and on none when two brands claim it),
       // so until one is declared a brand's DSP changes stay unassigned.
       dsp_advertiser_id: dspAdvertiserIdSchema.optional(),
-      dsp_advertiser_ids: dspAdvertiserIdsSchema.optional()
+      dsp_advertiser_ids: dspAdvertiserIdsSchema.optional(),
+      amc_instance_id: amcInstanceIdSchema.optional(),
+      amc_instance_ids: amcInstanceIdsSchema.optional()
     });
     sourcesSchema = external_exports.object({
       ad_metrics: external_exports.string().min(1),
@@ -50057,27 +50086,27 @@ var require_umd = __commonJS({
         }
         Long.fromBits = fromBits;
         var pow_dbl = Math.pow;
-        function fromString(str4, unsigned, radix) {
-          if (str4.length === 0) throw Error("empty string");
+        function fromString(str7, unsigned, radix) {
+          if (str7.length === 0) throw Error("empty string");
           if (typeof unsigned === "number") {
             radix = unsigned;
             unsigned = false;
           } else {
             unsigned = !!unsigned;
           }
-          if (str4 === "NaN" || str4 === "Infinity" || str4 === "+Infinity" || str4 === "-Infinity")
+          if (str7 === "NaN" || str7 === "Infinity" || str7 === "+Infinity" || str7 === "-Infinity")
             return unsigned ? UZERO : ZERO;
           radix = radix || 10;
           if (radix < 2 || 36 < radix) throw RangeError("radix");
           var p;
-          if ((p = str4.indexOf("-")) > 0) throw Error("interior hyphen");
+          if ((p = str7.indexOf("-")) > 0) throw Error("interior hyphen");
           else if (p === 0) {
-            return fromString(str4.substring(1), unsigned, radix).neg();
+            return fromString(str7.substring(1), unsigned, radix).neg();
           }
           var radixToPower = fromNumber(pow_dbl(radix, 8));
           var result = ZERO;
-          for (var i = 0; i < str4.length; i += 8) {
-            var size = Math.min(8, str4.length - i), value = parseInt(str4.substring(i, i + size), radix);
+          for (var i = 0; i < str7.length; i += 8) {
+            var size = Math.min(8, str7.length - i), value = parseInt(str7.substring(i, i + size), radix);
             if (size < 8) {
               var power = fromNumber(pow_dbl(radix, size));
               result = result.mul(power).add(fromNumber(value));
@@ -50693,12 +50722,12 @@ var require_bom_handling = __commonJS({
       this.encoder = encoder;
       this.addBOM = true;
     }
-    PrependBOMWrapper.prototype.write = function(str4) {
+    PrependBOMWrapper.prototype.write = function(str7) {
       if (this.addBOM) {
-        str4 = BOMChar + str4;
+        str7 = BOMChar + str7;
         this.addBOM = false;
       }
-      return this.encoder.write(str4);
+      return this.encoder.write(str7);
     };
     PrependBOMWrapper.prototype.end = function() {
       return this.encoder.end();
@@ -50797,31 +50826,31 @@ var require_internal = __commonJS({
     function InternalEncoder(options, codec2) {
       this.enc = codec2.enc;
     }
-    InternalEncoder.prototype.write = function(str4) {
-      return Buffer2.from(str4, this.enc);
+    InternalEncoder.prototype.write = function(str7) {
+      return Buffer2.from(str7, this.enc);
     };
     InternalEncoder.prototype.end = function() {
     };
     function InternalEncoderBase64(options, codec2) {
       this.prevStr = "";
     }
-    InternalEncoderBase64.prototype.write = function(str4) {
-      str4 = this.prevStr + str4;
-      var completeQuads = str4.length - str4.length % 4;
-      this.prevStr = str4.slice(completeQuads);
-      str4 = str4.slice(0, completeQuads);
-      return Buffer2.from(str4, "base64");
+    InternalEncoderBase64.prototype.write = function(str7) {
+      str7 = this.prevStr + str7;
+      var completeQuads = str7.length - str7.length % 4;
+      this.prevStr = str7.slice(completeQuads);
+      str7 = str7.slice(0, completeQuads);
+      return Buffer2.from(str7, "base64");
     };
     InternalEncoderBase64.prototype.end = function() {
       return Buffer2.from(this.prevStr, "base64");
     };
     function InternalEncoderCesu8(options, codec2) {
     }
-    InternalEncoderCesu8.prototype.write = function(str4) {
-      var buf = Buffer2.alloc(str4.length * 3);
+    InternalEncoderCesu8.prototype.write = function(str7) {
+      var buf = Buffer2.alloc(str7.length * 3);
       var bufIdx = 0;
-      for (var i = 0; i < str4.length; i++) {
-        var charCode = str4.charCodeAt(i);
+      for (var i = 0; i < str7.length; i++) {
+        var charCode = str7.charCodeAt(i);
         if (charCode < 128) {
           buf[bufIdx++] = charCode;
         } else if (charCode < 2048) {
@@ -50902,25 +50931,25 @@ var require_internal = __commonJS({
     function InternalEncoderUtf8(options, codec2) {
       this.highSurrogate = "";
     }
-    InternalEncoderUtf8.prototype.write = function(str4) {
+    InternalEncoderUtf8.prototype.write = function(str7) {
       if (this.highSurrogate) {
-        str4 = this.highSurrogate + str4;
+        str7 = this.highSurrogate + str7;
         this.highSurrogate = "";
       }
-      if (str4.length > 0) {
-        var charCode = str4.charCodeAt(str4.length - 1);
+      if (str7.length > 0) {
+        var charCode = str7.charCodeAt(str7.length - 1);
         if (charCode >= 55296 && charCode < 56320) {
-          this.highSurrogate = str4[str4.length - 1];
-          str4 = str4.slice(0, str4.length - 1);
+          this.highSurrogate = str7[str7.length - 1];
+          str7 = str7.slice(0, str7.length - 1);
         }
       }
-      return Buffer2.from(str4, this.enc);
+      return Buffer2.from(str7, this.enc);
     };
     InternalEncoderUtf8.prototype.end = function() {
       if (this.highSurrogate) {
-        var str4 = this.highSurrogate;
+        var str7 = this.highSurrogate;
         this.highSurrogate = "";
-        return Buffer2.from(str4, this.enc);
+        return Buffer2.from(str7, this.enc);
       }
     };
   }
@@ -50947,8 +50976,8 @@ var require_utf32 = __commonJS({
       this.isLE = codec2.isLE;
       this.highSurrogate = 0;
     }
-    Utf32Encoder.prototype.write = function(str4) {
-      var src = Buffer2.from(str4, "ucs2");
+    Utf32Encoder.prototype.write = function(str7) {
+      var src = Buffer2.from(str7, "ucs2");
       var dst = Buffer2.alloc(src.length * 2);
       var write32 = this.isLE ? dst.writeUInt32LE : dst.writeUInt32BE;
       var offset = 0;
@@ -51069,8 +51098,8 @@ var require_utf32 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder(options.defaultEncoding || "utf-32le", options);
     }
-    Utf32AutoEncoder.prototype.write = function(str4) {
-      return this.encoder.write(str4);
+    Utf32AutoEncoder.prototype.write = function(str7) {
+      return this.encoder.write(str7);
     };
     Utf32AutoEncoder.prototype.end = function() {
       return this.encoder.end();
@@ -51170,8 +51199,8 @@ var require_utf16 = __commonJS({
     Utf16BECodec.prototype.bomAware = true;
     function Utf16BEEncoder() {
     }
-    Utf16BEEncoder.prototype.write = function(str4) {
-      var buf = Buffer2.from(str4, "ucs2");
+    Utf16BEEncoder.prototype.write = function(str7) {
+      var buf = Buffer2.from(str7, "ucs2");
       for (var i = 0; i < buf.length; i += 2) {
         var tmp = buf[i];
         buf[i] = buf[i + 1];
@@ -51220,8 +51249,8 @@ var require_utf16 = __commonJS({
       }
       this.encoder = codec2.iconv.getEncoder("utf-16le", options);
     }
-    Utf16Encoder.prototype.write = function(str4) {
-      return this.encoder.write(str4);
+    Utf16Encoder.prototype.write = function(str7) {
+      return this.encoder.write(str7);
     };
     Utf16Encoder.prototype.end = function() {
       return this.encoder.end();
@@ -51317,9 +51346,9 @@ var require_utf7 = __commonJS({
     function Utf7Encoder(options, codec2) {
       this.iconv = codec2.iconv;
     }
-    Utf7Encoder.prototype.write = function(str4) {
-      return Buffer2.from(str4.replace(nonDirectChars, function(chunk) {
-        return "+" + (chunk === "+" ? "" : this.iconv.encode(chunk, "utf16-be").toString("base64").replace(/=+$/, "")) + "-";
+    Utf7Encoder.prototype.write = function(str7) {
+      return Buffer2.from(str7.replace(nonDirectChars, function(chunk2) {
+        return "+" + (chunk2 === "+" ? "" : this.iconv.encode(chunk2, "utf16-be").toString("base64").replace(/=+$/, "")) + "-";
       }.bind(this)));
     };
     Utf7Encoder.prototype.end = function() {
@@ -51402,14 +51431,14 @@ var require_utf7 = __commonJS({
       this.base64Accum = Buffer2.alloc(6);
       this.base64AccumIdx = 0;
     }
-    Utf7IMAPEncoder.prototype.write = function(str4) {
+    Utf7IMAPEncoder.prototype.write = function(str7) {
       var inBase64 = this.inBase64;
       var base64Accum = this.base64Accum;
       var base64AccumIdx = this.base64AccumIdx;
-      var buf = Buffer2.alloc(str4.length * 5 + 10);
+      var buf = Buffer2.alloc(str7.length * 5 + 10);
       var bufIdx = 0;
-      for (var i2 = 0; i2 < str4.length; i2++) {
-        var uChar = str4.charCodeAt(i2);
+      for (var i2 = 0; i2 < str7.length; i2++) {
+        var uChar = str7.charCodeAt(i2);
         if (uChar >= 32 && uChar <= 126) {
           if (inBase64) {
             if (base64AccumIdx > 0) {
@@ -51550,10 +51579,10 @@ var require_sbcs_codec = __commonJS({
     function SBCSEncoder(options, codec2) {
       this.encodeBuf = codec2.encodeBuf;
     }
-    SBCSEncoder.prototype.write = function(str4) {
-      var buf = Buffer2.alloc(str4.length);
-      for (var i = 0; i < str4.length; i++) {
-        buf[i] = this.encodeBuf[str4.charCodeAt(i)];
+    SBCSEncoder.prototype.write = function(str7) {
+      var buf = Buffer2.alloc(str7.length);
+      for (var i = 0; i < str7.length; i++) {
+        buf[i] = this.encodeBuf[str7.charCodeAt(i)];
       }
       return buf;
     };
@@ -52305,12 +52334,12 @@ var require_dbcs_codec = __commonJS({
       }
       return node;
     };
-    DBCSCodec.prototype._addDecodeChunk = function(chunk) {
-      var curAddr = parseInt(chunk[0], 16);
+    DBCSCodec.prototype._addDecodeChunk = function(chunk2) {
+      var curAddr = parseInt(chunk2[0], 16);
       var writeTable = this._getDecodeTrieNode(curAddr);
       curAddr = curAddr & 255;
-      for (var k = 1; k < chunk.length; k++) {
-        var part = chunk[k];
+      for (var k = 1; k < chunk2.length; k++) {
+        var part = chunk2[k];
         if (typeof part === "string") {
           for (var l = 0; l < part.length; ) {
             var code = part.charCodeAt(l++);
@@ -52319,7 +52348,7 @@ var require_dbcs_codec = __commonJS({
               if (codeTrail >= 56320 && codeTrail < 57344) {
                 writeTable[curAddr++] = 65536 + (code - 55296) * 1024 + (codeTrail - 56320);
               } else {
-                throw new Error("Incorrect surrogate pair in " + this.encodingName + " at chunk " + chunk[0]);
+                throw new Error("Incorrect surrogate pair in " + this.encodingName + " at chunk " + chunk2[0]);
               }
             } else if (code > 4080 && code <= 4095) {
               var len = 4095 - code + 2;
@@ -52339,11 +52368,11 @@ var require_dbcs_codec = __commonJS({
             writeTable[curAddr++] = charCode++;
           }
         } else {
-          throw new Error("Incorrect type '" + typeof part + "' given in " + this.encodingName + " at chunk " + chunk[0]);
+          throw new Error("Incorrect type '" + typeof part + "' given in " + this.encodingName + " at chunk " + chunk2[0]);
         }
       }
       if (curAddr > 255) {
-        throw new Error("Incorrect chunk in " + this.encodingName + " at addr " + chunk[0] + ": too long" + curAddr);
+        throw new Error("Incorrect chunk in " + this.encodingName + " at addr " + chunk2[0] + ": too long" + curAddr);
       }
     };
     DBCSCodec.prototype._getEncodeBucket = function(uCode) {
@@ -52427,8 +52456,8 @@ var require_dbcs_codec = __commonJS({
       this.defaultCharSingleByte = codec2.defCharSB;
       this.gb18030 = codec2.gb18030;
     }
-    DBCSEncoder.prototype.write = function(str4) {
-      var newBuf = Buffer2.alloc(str4.length * (this.gb18030 ? 4 : 3));
+    DBCSEncoder.prototype.write = function(str7) {
+      var newBuf = Buffer2.alloc(str7.length * (this.gb18030 ? 4 : 3));
       var leadSurrogate = this.leadSurrogate;
       var seqObj = this.seqObj;
       var nextChar = -1;
@@ -52436,8 +52465,8 @@ var require_dbcs_codec = __commonJS({
       var j = 0;
       while (true) {
         if (nextChar === -1) {
-          if (i2 == str4.length) break;
-          var uCode = str4.charCodeAt(i2++);
+          if (i2 == str7.length) break;
+          var uCode = str7.charCodeAt(i2++);
         } else {
           var uCode = nextChar;
           nextChar = -1;
@@ -54184,12 +54213,12 @@ var require_streams = __commonJS({
       IconvLiteEncoderStream.prototype = Object.create(Transform2.prototype, {
         constructor: { value: IconvLiteEncoderStream }
       });
-      IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done) {
-        if (typeof chunk !== "string") {
+      IconvLiteEncoderStream.prototype._transform = function(chunk2, encoding, done) {
+        if (typeof chunk2 !== "string") {
           return done(new Error("Iconv encoding stream needs strings as its input."));
         }
         try {
-          var res = this.conv.write(chunk);
+          var res = this.conv.write(chunk2);
           if (res && res.length) this.push(res);
           done();
         } catch (e) {
@@ -54208,8 +54237,8 @@ var require_streams = __commonJS({
       IconvLiteEncoderStream.prototype.collect = function(cb) {
         var chunks = [];
         this.on("error", cb);
-        this.on("data", function(chunk) {
-          chunks.push(chunk);
+        this.on("data", function(chunk2) {
+          chunks.push(chunk2);
         });
         this.on("end", function() {
           cb(null, Buffer2.concat(chunks));
@@ -54225,12 +54254,12 @@ var require_streams = __commonJS({
       IconvLiteDecoderStream.prototype = Object.create(Transform2.prototype, {
         constructor: { value: IconvLiteDecoderStream }
       });
-      IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done) {
-        if (!Buffer2.isBuffer(chunk) && !(chunk instanceof Uint8Array)) {
+      IconvLiteDecoderStream.prototype._transform = function(chunk2, encoding, done) {
+        if (!Buffer2.isBuffer(chunk2) && !(chunk2 instanceof Uint8Array)) {
           return done(new Error("Iconv decoding stream needs buffers as its input."));
         }
         try {
-          var res = this.conv.write(chunk);
+          var res = this.conv.write(chunk2);
           if (res && res.length) this.push(res, this.encoding);
           done();
         } catch (e) {
@@ -54249,8 +54278,8 @@ var require_streams = __commonJS({
       IconvLiteDecoderStream.prototype.collect = function(cb) {
         var res = "";
         this.on("error", cb);
-        this.on("data", function(chunk) {
-          res += chunk;
+        this.on("data", function(chunk2) {
+          res += chunk2;
         });
         this.on("end", function() {
           cb(null, res);
@@ -54275,10 +54304,10 @@ var require_lib3 = __commonJS({
     module.exports.encodings = null;
     module.exports.defaultCharUnicode = "\uFFFD";
     module.exports.defaultCharSingleByte = "?";
-    module.exports.encode = function encode3(str4, encoding, options) {
-      str4 = "" + (str4 || "");
+    module.exports.encode = function encode3(str7, encoding, options) {
+      str7 = "" + (str7 || "");
       var encoder = module.exports.getEncoder(encoding, options);
-      var res = encoder.write(str4);
+      var res = encoder.write(str7);
       var trail = encoder.end();
       return trail && trail.length > 0 ? Buffer2.concat([res, trail]) : res;
     };
@@ -54762,14 +54791,14 @@ var require_packet = __commonJS({
           }
           return new Date(y, m - 1, d, H, M, S, ms);
         }
-        let str4 = this.readDateTimeString(6, "T", null);
-        if (!str4) {
+        let str7 = this.readDateTimeString(6, "T", null);
+        if (!str7) {
           return INVALID_DATE;
         }
-        if (str4.length === 10) {
-          str4 += "T00:00:00";
+        if (str7.length === 10) {
+          str7 += "T00:00:00";
         }
-        return new Date(str4 + timezone);
+        return new Date(str7 + timezone);
       }
       readDateTimeString(decimals, timeSep, columnType) {
         const length = this.readInt8();
@@ -54780,37 +54809,37 @@ var require_packet = __commonJS({
         let M = 0;
         let S = 0;
         let ms = 0;
-        let str4;
+        let str7;
         if (length > 3) {
           y = this.readInt16();
           m = this.readInt8();
           d = this.readInt8();
-          str4 = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
+          str7 = [leftPad(4, y), leftPad(2, m), leftPad(2, d)].join("-");
         }
         if (length > 6) {
           H = this.readInt8();
           M = this.readInt8();
           S = this.readInt8();
-          str4 += `${timeSep || " "}${[
+          str7 += `${timeSep || " "}${[
             leftPad(2, H),
             leftPad(2, M),
             leftPad(2, S)
           ].join(":")}`;
         } else if (columnType === Types.DATETIME) {
-          str4 += " 00:00:00";
+          str7 += " 00:00:00";
         }
         if (length > 10) {
           ms = this.readInt32();
-          str4 += ".";
+          str7 += ".";
           if (decimals) {
             ms = leftPad(6, ms);
             if (ms.length > decimals) {
               ms = ms.substring(0, decimals);
             }
           }
-          str4 += ms;
+          str7 += ms;
         }
-        return str4;
+        return str7;
       }
       // TIME - value as a string, Can be negative
       readTimeString(convertTtoMs) {
@@ -54909,20 +54938,20 @@ var require_packet = __commonJS({
           this.offset++;
           sign = -1;
         }
-        let str4;
+        let str7;
         const numDigits = end - this.offset;
         if (supportBigNumbers) {
           if (numDigits >= 15) {
-            str4 = this.readString(end - this.offset, "binary");
-            result = parseInt(str4, 10);
+            str7 = this.readString(end - this.offset, "binary");
+            result = parseInt(str7, 10);
             if (Number.isSafeInteger(sign * result)) {
               return sign * result;
             }
-            return sign === -1 ? `-${str4}` : str4;
+            return sign === -1 ? `-${str7}` : str7;
           }
           if (numDigits > 16) {
-            str4 = this.readString(end - this.offset);
-            return sign === -1 ? `-${str4}` : str4;
+            str7 = this.readString(end - this.offset);
+            return sign === -1 ? `-${str7}` : str7;
           }
         }
         if (this.buffer[this.offset] === plus) {
@@ -55108,14 +55137,14 @@ var require_packet = __commonJS({
         );
       }
       parseDateTime(timezone) {
-        const str4 = this.readLengthCodedString("binary");
-        if (str4 === null) {
+        const str7 = this.readLengthCodedString("binary");
+        if (str7 === null) {
           return null;
         }
         if (!timezone || timezone === "local") {
-          return new Date(str4);
+          return new Date(str7);
         }
-        return /* @__PURE__ */ new Date(`${str4}${timezone}`);
+        return /* @__PURE__ */ new Date(`${str7}${timezone}`);
       }
       parseFloat(len) {
         if (len === null) {
@@ -55125,9 +55154,9 @@ var require_packet = __commonJS({
           return 0;
         }
         if (len > 17) {
-          const str4 = this.buffer.toString("utf8", this.offset, this.offset + len);
+          const str7 = this.buffer.toString("utf8", this.offset, this.offset + len);
           this.offset += len;
-          return Number.parseFloat(str4);
+          return Number.parseFloat(str7);
         }
         let result = 0;
         const end = this.offset + len;
@@ -55148,9 +55177,9 @@ var require_packet = __commonJS({
             this.offset++;
           } else if (charCode === exponent || charCode === exponentCapital) {
             const start2 = end - len;
-            const str4 = this.buffer.toString("utf8", start2, end);
+            const str7 = this.buffer.toString("utf8", start2, end);
             this.offset = end;
-            return Number.parseFloat(str4);
+            return Number.parseFloat(str7);
           } else {
             result *= 10;
             result += this.buffer[this.offset] - 48;
@@ -55343,8 +55372,8 @@ var require_packet = __commonJS({
         }
         return 9;
       }
-      static lengthCodedStringLength(str4, encoding) {
-        const buf = StringParser.encode(str4, encoding);
+      static lengthCodedStringLength(str7, encoding) {
+        const buf = StringParser.encode(str7, encoding);
         const slen = buf.length;
         return _Packet.lengthCodedNumberLength(slen) + slen;
       }
@@ -55413,18 +55442,18 @@ var require_packet_parser = __commonJS({
         packet.numPackets = numPackets;
         this.onPacket(packet);
       }
-      executeStart(chunk) {
+      executeStart(chunk2) {
         let start2 = 0;
-        const end = chunk.length;
+        const end = chunk2.length;
         while (end - start2 >= 3) {
-          this.length = readPacketLength(chunk, start2);
+          this.length = readPacketLength(chunk2, start2);
           if (end - start2 >= this.length + this.packetHeaderLength) {
-            const sequenceId = chunk[start2 + 3];
+            const sequenceId = chunk2[start2 + 3];
             if (this.length < MAX_PACKET_LENGTH && this.largePacketParts.length === 0) {
               this.onPacket(
                 new Packet(
                   sequenceId,
-                  chunk,
+                  chunk2,
                   start2,
                   start2 + this.packetHeaderLength + this.length
                 )
@@ -55434,7 +55463,7 @@ var require_packet_parser = __commonJS({
                 this.firstPacketSequenceId = sequenceId;
               }
               this.largePacketParts.push(
-                chunk.slice(
+                chunk2.slice(
                   start2 + this.packetHeaderLength,
                   start2 + this.packetHeaderLength + this.length
                 )
@@ -55445,7 +55474,7 @@ var require_packet_parser = __commonJS({
             }
             start2 += this.packetHeaderLength + this.length;
           } else {
-            this.buffer = [chunk.slice(start2 + 3, end)];
+            this.buffer = [chunk2.slice(start2 + 3, end)];
             this.bufferLength = end - start2 - 3;
             this.execute = _PacketParser.prototype.executePayload;
             return;
@@ -55453,18 +55482,18 @@ var require_packet_parser = __commonJS({
         }
         if (end - start2 > 0) {
           this.headerLen = end - start2;
-          this.length = chunk[start2];
+          this.length = chunk2[start2];
           if (this.headerLen === 2) {
-            this.length = chunk[start2] + (chunk[start2 + 1] << 8);
+            this.length = chunk2[start2] + (chunk2[start2 + 1] << 8);
             this.execute = _PacketParser.prototype.executeHeader3;
           } else {
             this.execute = _PacketParser.prototype.executeHeader2;
           }
         }
       }
-      executePayload(chunk) {
+      executePayload(chunk2) {
         let start2 = 0;
-        const end = chunk.length;
+        const end = chunk2.length;
         const remainingPayload = this.length - this.bufferLength + this.packetHeaderLength - 3;
         if (end - start2 >= remainingPayload) {
           const payload = Buffer.allocUnsafe(this.length + this.packetHeaderLength);
@@ -55473,7 +55502,7 @@ var require_packet_parser = __commonJS({
             this.buffer[i].copy(payload, offset);
             offset += this.buffer[i].length;
           }
-          chunk.copy(payload, offset, start2, start2 + remainingPayload);
+          chunk2.copy(payload, offset, start2, start2 + remainingPayload);
           const sequenceId = payload[3];
           if (this.length < MAX_PACKET_LENGTH && this.largePacketParts.length === 0) {
             this.onPacket(
@@ -55503,28 +55532,28 @@ var require_packet_parser = __commonJS({
           this.execute = _PacketParser.prototype.executeStart;
           start2 += remainingPayload;
           if (end - start2 > 0) {
-            return this.execute(chunk.slice(start2, end));
+            return this.execute(chunk2.slice(start2, end));
           }
         } else {
-          this.buffer.push(chunk);
-          this.bufferLength += chunk.length;
+          this.buffer.push(chunk2);
+          this.bufferLength += chunk2.length;
         }
         return null;
       }
-      executeHeader2(chunk) {
-        this.length += chunk[0] << 8;
-        if (chunk.length > 1) {
-          this.length += chunk[1] << 16;
+      executeHeader2(chunk2) {
+        this.length += chunk2[0] << 8;
+        if (chunk2.length > 1) {
+          this.length += chunk2[1] << 16;
           this.execute = _PacketParser.prototype.executePayload;
-          return this.executePayload(chunk.slice(2));
+          return this.executePayload(chunk2.slice(2));
         }
         this.execute = _PacketParser.prototype.executeHeader3;
         return null;
       }
-      executeHeader3(chunk) {
-        this.length += chunk[0] << 16;
+      executeHeader3(chunk2) {
+        this.length += chunk2[0] << 16;
         this.execute = _PacketParser.prototype.executePayload;
-        return this.executePayload(chunk.slice(1));
+        return this.executePayload(chunk2.slice(1));
       }
     };
     module.exports = PacketParser;
@@ -57927,8 +57956,8 @@ var require_mysql_native_password = __commonJS({
 var require_mysql_clear_password = __commonJS({
   "node_modules/mysql2/lib/auth_plugins/mysql_clear_password.js"(exports, module) {
     "use strict";
-    function bufferFromStr(str4) {
-      return Buffer.from(`${str4}\0`);
+    function bufferFromStr(str7) {
+      return Buffer.from(`${str7}\0`);
     }
     var create_mysql_clear_password_plugin = (pluginOptions) => function mysql_clear_password_plugin({ connection, command }) {
       const password = command.password || pluginOptions.password || connection.config.password;
@@ -58929,9 +58958,9 @@ var require_charsets = __commonJS({
 var require_helpers = __commonJS({
   "node_modules/mysql2/lib/helpers.js"(exports) {
     "use strict";
-    function srcEscape(str4) {
+    function srcEscape(str7) {
       return JSON.stringify({
-        [str4]: 1
+        [str7]: 1
       }).slice(1, -3);
     }
     exports.srcEscape = srcEscape;
@@ -58989,8 +59018,8 @@ ${msg2}:
 var require_is_property = __commonJS({
   "node_modules/is-property/is-property.js"(exports, module) {
     "use strict";
-    function isProperty(str4) {
-      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str4);
+    function isProperty(str7) {
+      return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str7);
     }
     module.exports = isProperty;
   }
@@ -59078,10 +59107,10 @@ var require_generate_function = __commonJS({
       var lines = [];
       var indent = 0;
       var vars = {};
-      var push2 = function(str4) {
+      var push2 = function(str7) {
         var spaces = "";
         while (spaces.length < indent * 2) spaces += "  ";
-        lines.push(spaces + str4);
+        lines.push(spaces + str7);
       };
       var pushLine = function(line2) {
         if (INDENT_END.test(line2.trim()[0]) && INDENT_START.test(line2[line2.length - 1])) {
@@ -61511,7 +61540,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join35(tree) {
+      function join36(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61537,7 +61566,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join35(parse4(query));
+        tree = join36(parse4(query));
         if (cache) {
           cache.set(query, tree);
         }
@@ -61546,8 +61575,8 @@ var require_named_placeholders = __commonJS({
       compile.parse = parse4;
       return compile;
     }
-    function toNumbered(q, params) {
-      const tree = parse4(q);
+    function toNumbered(q3, params) {
+      const tree = parse4(q3);
       const paramsArr = [];
       if (tree.length === 1) {
         return [tree[0], paramsArr];
@@ -61694,11 +61723,11 @@ var require_connection2 = __commonJS({
             const config2 = this.config;
             tracePromise(
               connectChannel,
-              () => new Promise((resolve5, reject) => {
+              () => new Promise((resolve6, reject) => {
                 let onConnect, onError;
                 onConnect = (param) => {
                   this.removeListener("error", onError);
-                  resolve5(param);
+                  resolve6(param);
                 };
                 onError = (err) => {
                   this.removeListener("connect", onConnect);
@@ -61835,7 +61864,7 @@ var require_connection2 = __commonJS({
       writePacket(packet) {
         const MAX_PACKET_LENGTH = 16777215;
         const length = packet.length();
-        let chunk, offset, header;
+        let chunk2, offset, header;
         if (length < MAX_PACKET_LENGTH) {
           packet.writeHeader(this.sequenceId);
           if (this.config.debug) {
@@ -61858,20 +61887,20 @@ var require_connection2 = __commonJS({
             );
           }
           for (offset = 4; offset < 4 + length; offset += MAX_PACKET_LENGTH) {
-            chunk = packet.buffer.slice(offset, offset + MAX_PACKET_LENGTH);
-            if (chunk.length === MAX_PACKET_LENGTH) {
+            chunk2 = packet.buffer.slice(offset, offset + MAX_PACKET_LENGTH);
+            if (chunk2.length === MAX_PACKET_LENGTH) {
               header = Buffer.from([255, 255, 255, this.sequenceId]);
             } else {
               header = Buffer.from([
-                chunk.length & 255,
-                chunk.length >> 8 & 255,
-                chunk.length >> 16 & 255,
+                chunk2.length & 255,
+                chunk2.length >> 8 & 255,
+                chunk2.length >> 16 & 255,
                 this.sequenceId
               ]);
             }
             this._bumpSequenceId(1);
             this.write(header);
-            this.write(chunk);
+            this.write(chunk2);
           }
         }
       }
@@ -62123,9 +62152,9 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(queryChannel)) {
           tracePromise(
             queryChannel,
-            () => new Promise((resolve5, reject) => {
+            () => new Promise((resolve6, reject) => {
               cmdQuery.once("error", reject);
-              cmdQuery.once("end", () => resolve5());
+              cmdQuery.once("end", () => resolve6());
               this.addCommand(cmdQuery);
             }),
             () => {
@@ -62272,12 +62301,12 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(executeChannel)) {
           tracePromise(
             executeChannel,
-            () => new Promise((resolve5, reject) => {
+            () => new Promise((resolve6, reject) => {
               prepareAndExecute((err) => {
                 executeCommand.emit("error", err);
               });
               executeCommand.once("error", reject);
-              executeCommand.once("end", () => resolve5());
+              executeCommand.once("end", () => resolve6());
             }),
             () => {
               const server = getServerContext(this.config);
@@ -62544,13 +62573,13 @@ var require_make_done_cb = __commonJS({
   "node_modules/mysql2/lib/promise/make_done_cb.js"(exports, module) {
     "use strict";
     var { applyCapturedStack } = require_capture_local_err();
-    function makeDoneCb(resolve5, reject, stackHolder) {
+    function makeDoneCb(resolve6, reject, stackHolder) {
       return function(err, rows, fields) {
         if (err) {
           applyCapturedStack(err, stackHolder);
           reject(err);
         } else {
-          resolve5([rows, fields]);
+          resolve6([rows, fields]);
         }
       };
     }
@@ -62574,8 +62603,8 @@ var require_prepared_statement_info = __commonJS({
         const stackHolder = captureStackHolder(
           _PromisePreparedStatementInfo.prototype.execute
         );
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           if (parameters) {
             s.execute(parameters, done);
           } else {
@@ -62584,9 +62613,9 @@ var require_prepared_statement_info = __commonJS({
         });
       }
       close() {
-        return new this.Promise((resolve5) => {
+        return new this.Promise((resolve6) => {
           this.statement.close();
-          resolve5();
+          resolve6();
         });
       }
     };
@@ -62659,8 +62688,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           if (params !== void 0) {
             c.query(query, params, done);
           } else {
@@ -62676,8 +62705,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           if (params !== void 0) {
             c.execute(query, params, done);
           } else {
@@ -62686,8 +62715,8 @@ var require_connection3 = __commonJS({
         });
       }
       end() {
-        return new this.Promise((resolve5) => {
-          this.connection.end(resolve5);
+        return new this.Promise((resolve6) => {
+          this.connection.end(resolve6);
         });
       }
       async [Symbol.asyncDispose]() {
@@ -62700,16 +62729,16 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.beginTransaction
         );
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           c.beginTransaction(done);
         });
       }
       commit() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.commit);
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           c.commit(done);
         });
       }
@@ -62718,21 +62747,21 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.rollback
         );
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           c.rollback(done);
         });
       }
       ping() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.ping);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           c.ping((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5(true);
+              resolve6(true);
             }
           });
         });
@@ -62740,13 +62769,13 @@ var require_connection3 = __commonJS({
       reset() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.reset);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           c.reset((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5();
+              resolve6();
             }
           });
         });
@@ -62754,13 +62783,13 @@ var require_connection3 = __commonJS({
       connect() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.connect);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           c.connect((err, param) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5(param);
+              resolve6(param);
             }
           });
         });
@@ -62769,7 +62798,7 @@ var require_connection3 = __commonJS({
         const c = this.connection;
         const promiseImpl = this.Promise;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.prepare);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           c.prepare(options, (err, statement) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
@@ -62779,7 +62808,7 @@ var require_connection3 = __commonJS({
                 statement,
                 promiseImpl
               );
-              resolve5(wrappedStatement);
+              resolve6(wrappedStatement);
             }
           });
         });
@@ -62789,13 +62818,13 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.changeUser
         );
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           c.changeUser(options, (err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5();
+              resolve6();
             }
           });
         });
@@ -63262,12 +63291,12 @@ var require_pool3 = __commonJS({
       }
       getConnection() {
         const corePool = this.pool;
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           corePool.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve5(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve6(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63283,8 +63312,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           if (args !== void 0) {
             corePool.query(sql, args, done);
           } else {
@@ -63300,8 +63329,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           if (args) {
             corePool.execute(sql, args, done);
           } else {
@@ -63312,13 +63341,13 @@ var require_pool3 = __commonJS({
       end() {
         const corePool = this.pool;
         const stackHolder = captureStackHolder(_PromisePool.prototype.end);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           corePool.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5();
+              resolve6();
             }
           });
         });
@@ -63750,12 +63779,12 @@ var require_pool_cluster2 = __commonJS({
       }
       getConnection() {
         const corePoolNamespace = this.poolNamespace;
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           corePoolNamespace.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve5(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve6(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63770,8 +63799,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           corePoolNamespace.query(sql, values, done);
         });
       }
@@ -63785,8 +63814,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           corePoolNamespace.execute(sql, values, done);
         });
       }
@@ -63825,9 +63854,9 @@ var require_promise = __commonJS({
           "no Promise implementation available.Use promise-enabled node version or pass userland Promise implementation as parameter, for example: { Promise: require('bluebird') }"
         );
       }
-      return new thePromise((resolve5, reject) => {
+      return new thePromise((resolve6, reject) => {
         coreConnection.once("connect", () => {
-          resolve5(new PromiseConnection(coreConnection, thePromise));
+          resolve6(new PromiseConnection(coreConnection, thePromise));
         });
         coreConnection.once("error", (err) => {
           applyCapturedStack(err, stackHolder);
@@ -63854,7 +63883,7 @@ var require_promise = __commonJS({
       }
       getConnection(pattern, selector) {
         const corePoolCluster = this.poolCluster;
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           corePoolCluster.getConnection(
             pattern,
             selector,
@@ -63862,7 +63891,7 @@ var require_promise = __commonJS({
               if (err) {
                 reject(err);
               } else {
-                resolve5(new PromisePoolConnection(coreConnection, this.Promise));
+                resolve6(new PromisePoolConnection(coreConnection, this.Promise));
               }
             }
           );
@@ -63876,8 +63905,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           corePoolCluster.query(sql, args, done);
         });
       }
@@ -63891,8 +63920,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve5, reject) => {
-          const done = makeDoneCb(resolve5, reject, stackHolder);
+        return new this.Promise((resolve6, reject) => {
+          const done = makeDoneCb(resolve6, reject, stackHolder);
           corePoolCluster.execute(sql, args, done);
         });
       }
@@ -63905,13 +63934,13 @@ var require_promise = __commonJS({
       end() {
         const corePoolCluster = this.poolCluster;
         const stackHolder = captureStackHolder(_PromisePoolCluster.prototype.end);
-        return new this.Promise((resolve5, reject) => {
+        return new this.Promise((resolve6, reject) => {
           corePoolCluster.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve5();
+              resolve6();
             }
           });
         });
@@ -63974,6 +64003,36 @@ var require_promise = __commonJS({
     exports.clearParserCache = function() {
       parserCache.clearCache();
     };
+  }
+});
+
+// src/lib/auth/refusal-copy.ts
+function isScopeRefusalReason(v) {
+  return v === "member_ceiling" || v === "role" || v === "credential_kind";
+}
+function insufficientScopeCopy(reason, scopes) {
+  const raw = Array.isArray(scopes) ? scopes : typeof scopes === "string" ? [scopes] : [];
+  const list2 = raw.filter((s) => typeof s === "string" && /^[a-z0-9:_-]{1,64}$/i.test(s));
+  const need = list2.length > 0 ? ` (${list2.join(" ")})` : "";
+  switch (reason) {
+    case "member_ceiling":
+      return `Your organization has turned this permission off for you${need}. Please ${ASK_ADMIN} if you need it.`;
+    case "role":
+      return `Your role in your organization does not include this${need}. Please ${ASK_ADMIN} if you need it.`;
+    case "credential_kind":
+      return `This kind of credential cannot do this${need}. Sign in as yourself with \`mixshift auth login\`, or have an admin issue a credential that includes it.`;
+    default:
+      return `This sign-in is not allowed to do this${need}. The permission may be off for you in your organization, so ${ASK_ADMIN}. For a service credential, the scope has to be granted when the credential is created. \`mixshift auth status\` shows what you are signed in as.`;
+  }
+}
+function reverifyCopy() {
+  return "Your sign-in needs to be re-verified. Run `mixshift auth login` to sign in again, with Google if your organization uses it.";
+}
+var ASK_ADMIN;
+var init_refusal_copy = __esm({
+  "src/lib/auth/refusal-copy.ts"() {
+    "use strict";
+    ASK_ADMIN = "ask your organization admin";
   }
 });
 
@@ -64263,7 +64322,8 @@ async function parseRefresh401Body(res) {
 }
 function buildAuthRequiredError(body) {
   if (body?.error === "session_expired" || body?.error === "session_revoked") {
-    return new Error(`AUTH REQUIRED: ${body.message ?? SESSION_EXPIRED_FALLBACK_MESSAGE}`);
+    const fallback = body.reason === "reverify" ? reverifyCopy() : SESSION_EXPIRED_FALLBACK_MESSAGE;
+    return new Error(`AUTH REQUIRED: ${body.message ?? fallback}`);
   }
   return new Error(SESSION_EXPIRED_FALLBACK_MESSAGE);
 }
@@ -64391,6 +64451,7 @@ var init_credentials = __esm({
     "use strict";
     init_resolve();
     init_format_error();
+    init_refusal_copy();
     init_schema3();
     REFRESH_SAFETY_MARGIN_MS = 6e4;
     REFRESH_REQUEST_TIMEOUT_MS = 3e4;
@@ -65116,7 +65177,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
     ...setAside.length ? { dead_lettered: setAside.length, set_aside: setAside } : {},
     ...requeue.length ? { requeued: requeue.length } : {}
   });
-  const fail4 = async (unsent, err) => {
+  const fail6 = async (unsent, err) => {
     await claim.release([...unsent, ...requeue]);
     return { status: "failed", events_sent: sentCount, ...summary(), error: errText(err) };
   };
@@ -65144,7 +65205,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       };
     }
     if (allRefusedStreak >= 2) {
-      return fail4(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
+      return fail6(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
     }
     const refusedBefore = setAside.length + requeue.length;
     const batch = events.slice(i, i + batch_size);
@@ -65153,7 +65214,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       sentCount += batch.length;
       allRefusedStreak = 0;
     } catch (err) {
-      if (!isPermanentRejection(err)) return fail4(recs(i), err);
+      if (!isPermanentRejection(err)) return fail6(recs(i), err);
       for (let j = 0; j < batch.length; j++) {
         const one = batch[j];
         if (j > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
@@ -65171,7 +65232,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
           sentCount++;
         } catch (rowErr) {
           if (!isPermanentRejection(rowErr)) {
-            return fail4([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
+            return fail6([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
           }
           await putAside(one.rec, rowErr.status, rowErr.message);
         }
@@ -65452,6 +65513,16 @@ var init_events = __esm({
       AdsProfilesListed: "ads.profiles_listed",
       AdsOperationsListed: "ads.operations_listed",
       AdsCalled: "ads.called",
+      // `mixshift dsp readiness` (lib/ads/dsp-readiness.ts). Payload: ready flag,
+      // per-level check counts, line item count, the stable ids of failed checks,
+      // legacy_seller_id; on failure the kind. Never the advertiser or order id,
+      // and never Amazon's payload.
+      DspReadinessChecked: "dsp.readiness_checked",
+      // `mixshift dsp supply-preset` (lib/ads/dsp-supply.ts): the plan and its
+      // dsp.delete_targets dry run, never the commit (that is ads.called).
+      // Payload: preset, line item / skipped / target / batch counts,
+      // legacy_seller_id; on failure kind + stage. Never an id from Amazon.
+      DspSupplyPresetPlanned: "dsp.supply_preset_planned",
       // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
       // `ads call --propose`). Payloads carry the proposal id, operation id,
       // items count and guard counts, never the change set, rationale or evidence.
@@ -65466,6 +65537,12 @@ var init_events = __esm({
       WalmartAdsAdvertisersListed: "walmart.ads.advertisers_listed",
       WalmartAdsOperationsListed: "walmart.ads.operations_listed",
       WalmartAdsCalled: "walmart.ads.called",
+      // Walmart Marketplace (seller) reads (lib/walmart/marketplace-call.ts +
+      // `mixshift walmart marketplace`). Operation id + seller id + environment +
+      // outcome; never the payload (orders and inventory are the seller's data).
+      WalmartMarketplaceSellersListed: "walmart.marketplace.sellers_listed",
+      WalmartMarketplaceOperationsListed: "walmart.marketplace.operations_listed",
+      WalmartMarketplaceCalled: "walmart.marketplace.called",
       // Shelf data surface (lib/shelf/client.ts + `mixshift shelf`). Call kind,
       // country, whether a zip was given, surface/page, fresh, observed age,
       // outcome and duration; never the subject (an ASIN, a keyword or a seller
@@ -65524,8 +65601,10 @@ var init_events = __esm({
       // Report Max forecast (`mixshift report extract` on a FCT-TRACK-01 answer;
       // lib/report-contract/forecast-telemetry.ts). forecast_extracted: once per
       // extraction, payload {state, reason?, metric, month, scope_id?, vintage?,
-      // figures, derived, claims, sections, client_safe (COUNTS), check_findings?
-      // (count, only when --check ran), expect_month (bool)}. forecast_failed
+      // figures, derived, claims, sections, client_safe (COUNTS), unplaced_claims?
+      // (count of claim ids this version could not place, kept internal only; only
+      // when > 0), check_findings? (count, only when --check ran), expect_month
+      // (bool)}. forecast_failed
       // (error_class forecast_month_mismatch | unrecognised_figures |
       // check_findings | not_a_forecast_answer | extract_error): the forecast was
       // withheld for a defect or the forecast path errored; same identifying
@@ -65547,6 +65626,14 @@ var init_events = __esm({
       ContextPushCompleted: "context_sync.push_completed",
       ContextSyncCompleted: "context_sync.sync_completed",
       ContextMigrateCompleted: "context_sync.migrate_completed",
+      // `mixshift context dsp-advertiser show|assign` (mx-ops#205). Payload: state
+      // or result, and counts only. Never the advertiser id or a brand slug.
+      ContextDspAdvertiserShown: "context_sync.dsp_advertiser_shown",
+      ContextDspAdvertiserAssigned: "context_sync.dsp_advertiser_assigned",
+      // `mixshift context amc-instance show|assign|unassign` (D-193). Payload: state
+      // or result, and counts only. Never the instance id or a brand slug.
+      ContextAmcInstanceShown: "context_sync.amc_instance_shown",
+      ContextAmcInstanceAssigned: "context_sync.amc_instance_assigned",
       // One row per autosync invocation, tagged payload.trigger: the implicit
       // resolveBrandFields preflight emits for attempts that clear the guards
       // ('preflight'; throttled/early-skip stays silent so the per-skill-step
@@ -66143,9 +66230,9 @@ function checkColumns(sql, catalog2) {
     if (tok.v.startsWith("_") && (next?.t === "num" || next?.t === "id" && toks[k + 2]?.t === "str")) continue;
     if (windowNames.has(tok.l)) continue;
     if (prev?.t === "p" && prev.v === ".") {
-      const q = toks[k - 2];
-      if (!q || q.t !== "id") return { verdict: "skipped", reason: "unparseable" };
-      if (q.l !== tableName && q.l !== alias) return { verdict: "skipped", reason: "unknown_qualifier" };
+      const q3 = toks[k - 2];
+      if (!q3 || q3.t !== "id") return { verdict: "skipped", reason: "unparseable" };
+      if (q3.l !== tableName && q3.l !== alias) return { verdict: "skipped", reason: "unknown_qualifier" };
     } else {
       if (isKeyword(tok.l)) continue;
       if (prev?.t === "id" && NAME_AFTER.has(prev.l)) continue;
@@ -66770,8 +66857,8 @@ function unknownColumnTable(text, sql, shapeTable) {
   const col = /unknown column '([^']+)'/i.exec(text)?.[1];
   if (col && col.includes(".")) {
     const parts = col.split(".");
-    const q = parts[parts.length - 2].toLowerCase();
-    const resolved = refs.get(q);
+    const q3 = parts[parts.length - 2].toLowerCase();
+    const resolved = refs.get(q3);
     return resolved ? { table: resolved, candidates: [] } : { candidates: tables };
   }
   if (tables.length > 1) return { candidates: tables };
@@ -68134,11 +68221,15 @@ var init_brand_grouping = __esm({
 // src/lib/context-sync/client.ts
 var client_exports = {};
 __export(client_exports, {
+  AMC_LOOKUP_TIMEOUT_MS: () => AMC_LOOKUP_TIMEOUT_MS,
   ASSIGNMENT_TIMEOUT_MS: () => ASSIGNMENT_TIMEOUT_MS,
   CORPUS_TIMEOUT_MS: () => CORPUS_TIMEOUT_MS,
+  DSP_LOOKUP_TIMEOUT_MS: () => DSP_LOOKUP_TIMEOUT_MS,
   LIFECYCLE_TIMEOUT_MS: () => LIFECYCLE_TIMEOUT_MS,
   TEXT_DOC_TIMEOUT_MS: () => TEXT_DOC_TIMEOUT_MS,
+  amcLookupResultFrom: () => amcLookupResultFrom,
   createContextSyncClient: () => createContextSyncClient,
+  dspLookupResultFrom: () => dspLookupResultFrom,
   lifecycleResultFrom: () => lifecycleResultFrom
 });
 function createContextSyncClient(options = {}) {
@@ -68261,6 +68352,34 @@ function createContextSyncClient(options = {}) {
       } catch (err) {
         return failureFromException(err);
       }
+    },
+    async lookupDspAdvertiser(advertiserId) {
+      try {
+        const res = await authedRequest(
+          "GET",
+          `/api/context/dsp-advertisers?id=${encodeURIComponent(advertiserId)}`,
+          void 0,
+          DSP_LOOKUP_TIMEOUT_MS
+        );
+        const json3 = await parseEnvelope(res);
+        return dspLookupResultFrom(json3, res.status, advertiserId);
+      } catch (err) {
+        return failureFromException(err);
+      }
+    },
+    async lookupAmcInstance(instanceId) {
+      try {
+        const res = await authedRequest(
+          "GET",
+          `/api/context/amc-instances?id=${encodeURIComponent(instanceId)}`,
+          void 0,
+          AMC_LOOKUP_TIMEOUT_MS
+        );
+        const json3 = await parseEnvelope(res);
+        return amcLookupResultFrom(json3, res.status, instanceId);
+      } catch (err) {
+        return failureFromException(err);
+      }
     }
   };
 }
@@ -68315,6 +68434,61 @@ function lifecycleResultFrom(json3, httpStatus, requestedSlug) {
     http_status: httpStatus
   };
 }
+function dspLookupResultFrom(json3, httpStatus, advertiserId) {
+  if (httpStatus >= 200 && httpStatus < 300 && json3.ok === true && Array.isArray(json3.advertisers)) {
+    const entry = json3.advertisers.find(
+      (a) => typeof a === "object" && a !== null && a.advertiser_id === advertiserId
+    );
+    if (!entry) {
+      const m = "The MixShift service answered the DSP advertiser lookup without an entry for this advertiser.";
+      return { ok: false, kind: "unknown", message: m, friendly: m, http_status: httpStatus };
+    }
+    if (!Array.isArray(entry.brands) || !entry.brands.every((b) => typeof b === "string" && b.length > 0)) {
+      return {
+        ok: false,
+        kind: "unknown",
+        message: "The MixShift service answered the DSP advertiser lookup in a shape this plugin does not recognize.",
+        friendly: "The MixShift service answered the DSP advertiser lookup in a shape this plugin does not recognize.",
+        http_status: httpStatus
+      };
+    }
+    return { ok: true, advertiser_id: advertiserId, brands: [...new Set(entry.brands)].sort() };
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    const friendly = "This MixShift service does not support the DSP advertiser lookup yet. Nothing was changed. Try again after the service is updated.";
+    return { ok: false, kind: "unsupported", message: friendly, friendly, http_status: httpStatus };
+  }
+  const base2 = failureFromEnvelope(json3, httpStatus);
+  return {
+    ok: false,
+    kind: base2.kind,
+    message: base2.message,
+    friendly: base2.friendly,
+    http_status: httpStatus
+  };
+}
+function amcLookupResultFrom(json3, httpStatus, instanceId) {
+  if (httpStatus >= 200 && httpStatus < 300 && json3.ok === true && Array.isArray(json3.instances)) {
+    const entry = json3.instances.find(
+      (a) => typeof a === "object" && a !== null && a.instance_id === instanceId
+    );
+    if (!entry) {
+      const m = "The MixShift service answered the AMC instance lookup without an entry for this instance.";
+      return { ok: false, kind: "unknown", message: m, friendly: m, http_status: httpStatus };
+    }
+    if (!Array.isArray(entry.brands) || !entry.brands.every((b) => typeof b === "string" && b.length > 0)) {
+      const m = "The MixShift service answered the AMC instance lookup in a shape this plugin does not recognize.";
+      return { ok: false, kind: "unknown", message: m, friendly: m, http_status: httpStatus };
+    }
+    return { ok: true, instance_id: instanceId, brands: [...new Set(entry.brands)].sort() };
+  }
+  if (httpStatus === 404 || httpStatus === 405) {
+    const friendly = "This MixShift service does not support the AMC instance lookup yet. Nothing was changed. Try again after the service is updated.";
+    return { ok: false, kind: "unsupported", message: friendly, friendly, http_status: httpStatus };
+  }
+  const base2 = failureFromEnvelope(json3, httpStatus);
+  return { ok: false, kind: base2.kind, message: base2.message, friendly: base2.friendly, http_status: httpStatus };
+}
 function lifecycleFailure(kind, friendly, httpStatus) {
   return { ok: false, kind, message: friendly, friendly, http_status: httpStatus };
 }
@@ -68360,7 +68534,7 @@ function failureFromException(err) {
   const message = err instanceof Error ? err.message : String(err);
   return { ok: false, kind: "unknown", message, friendly: message };
 }
-var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, LIFECYCLE_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
+var TEXT_DOC_TIMEOUT_MS, CORPUS_TIMEOUT_MS, ASSIGNMENT_TIMEOUT_MS, LIFECYCLE_TIMEOUT_MS, DSP_LOOKUP_TIMEOUT_MS, AMC_LOOKUP_TIMEOUT_MS, ContextSyncNetworkError, KNOWN_FAILURE_KINDS;
 var init_client2 = __esm({
   "src/lib/context-sync/client.ts"() {
     "use strict";
@@ -68372,6 +68546,8 @@ var init_client2 = __esm({
     CORPUS_TIMEOUT_MS = 12e4;
     ASSIGNMENT_TIMEOUT_MS = 2e3;
     LIFECYCLE_TIMEOUT_MS = 15e3;
+    DSP_LOOKUP_TIMEOUT_MS = 15e3;
+    AMC_LOOKUP_TIMEOUT_MS = 15e3;
     ContextSyncNetworkError = class extends Error {
       /** Sandbox-aware, doctor-pointing text classified from the raw fetch
        *  failure at the point it was thrown (see authedRequest's doFetch) —
@@ -68999,6 +69175,7 @@ async function push(brandSlug, options = {}) {
   const reports = [...built.issues];
   let stateChanged = built.stateDirty;
   for (const pair of built.pairs) {
+    if (options.onlyKeys && !options.onlyKeys.includes(pair.key)) continue;
     if (pair.collision) {
       reports.push(collisionReport(pair));
       continue;
@@ -69205,8 +69382,8 @@ async function raceDeadline(op, ms) {
   try {
     return await Promise.race([
       op,
-      new Promise((resolve5) => {
-        timer = setTimeout(() => resolve5(DEADLINE), ms);
+      new Promise((resolve6) => {
+        timer = setTimeout(() => resolve6(DEADLINE), ms);
         timer.unref?.();
       })
     ]);
@@ -69858,7 +70035,12 @@ async function computePushResult(brandSlug, options, env) {
       if (raced === DEADLINE) {
         controller.abort();
         debugLog(env, `push-after-write(${brandSlug}): budget of ${budgetMs}ms exceeded`);
-        return { published: false, reason: "failed", detail: `timed out after ${budgetMs}ms` };
+        return {
+          published: false,
+          reason: "failed",
+          detail: `timed out after ${budgetMs}ms`,
+          timedOut: true
+        };
       }
       if (!raced.ok) {
         debugLog(env, `push-after-write(${brandSlug}): ${raced.message}`);
@@ -69908,6 +70090,9 @@ function noticeLineFor(brandSlug, result) {
     case "skipped":
       return null;
     case "failed":
+      if (result.timedOut) {
+        return `Your ${brandSlug} save took longer than usual to reach your team and should go up on the next sync; your work is saved locally. Check with \`mixshift context status --brand ${brandSlug}\`.`;
+      }
       return `Could not sync ${brandSlug} to your team just now; your work is saved locally. Retry with \`mixshift context push --brand ${brandSlug}\`.`;
   }
 }
@@ -73088,10 +73273,10 @@ async function loadCatalog() {
 }
 async function getQueryEntry(id) {
   const cat = await loadCatalog();
-  const entry = cat.queries.find((q) => q.id === id);
+  const entry = cat.queries.find((q3) => q3.id === id);
   if (!entry) {
     throw new Error(
-      `SQL library has no entry for "${id}". Known IDs: ${cat.queries.slice(0, 8).map((q) => q.id).join(", ")}... (${cat.queries.length} total)`
+      `SQL library has no entry for "${id}". Known IDs: ${cat.queries.slice(0, 8).map((q3) => q3.id).join(", ")}... (${cat.queries.length} total)`
     );
   }
   return entry;
@@ -74565,7 +74750,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
   let manifestElapsedMs = 0;
   let liveManifestFetchSucceeded = false;
   let seedManifestBrands;
-  async function finish(result) {
+  async function finish4(result) {
     if (pastGuards && ledgerState) {
       const succeeded = result.ran && result.errors === 0;
       const finishedAt = options.now ? options.now() : /* @__PURE__ */ new Date();
@@ -74771,7 +74956,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
         if (!liveManifestFetchSucceeded) {
           await maybeNoticeUnreachable(brandSlug, options, env);
         }
-        return await finish({
+        return await finish4({
           ran: false,
           reason: "failed",
           detail: `timed out after ${raceMs}ms`
@@ -74782,7 +74967,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
         if (raced.kind === "host_unreachable") {
           await maybeNoticeUnreachable(brandSlug, options, env);
         }
-        return await finish({ ran: false, reason: "failed", detail: raced.message });
+        return await finish4({ ran: false, reason: "failed", detail: raced.message });
       }
       const pulled = raced.reports.filter((r) => r.action === "pulled").length;
       const pushed = raced.reports.filter((r) => r.action === "pushed").length;
@@ -74800,7 +74985,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
           env
         });
       }
-      return await finish({
+      return await finish4({
         ran: true,
         pulled,
         pushed,
@@ -74823,7 +75008,7 @@ async function maybeAutoSync(brandSlug, options = {}) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     debugLog2(env, `autosync(${brandSlug}): swallowed error: ${message}`);
-    return await finish({ ran: false, reason: "failed", detail: message });
+    return await finish4({ ran: false, reason: "failed", detail: message });
   }
 }
 function debugLog2(env, message) {
@@ -75152,6 +75337,11 @@ var BRAND_FIELD_REGISTRY = {
 var BRAND_FIELD_KEYS = Object.keys(
   BRAND_FIELD_REGISTRY
 );
+function isPlaceholderDefault(fields, key) {
+  if (key !== "acos_target_pct" && key !== "acos_target_source") return false;
+  return fields[key]?.source === "context" && fields.acos_target_source?.value === "default";
+}
+var PLACEHOLDER_NOTE = "placeholder default, not from your data: confirm it";
 function getByPath(obj2, path2) {
   return path2.split(".").reduce((acc, seg) => {
     if (acc == null || typeof acc !== "object") return void 0;
@@ -76060,6 +76250,9 @@ Resolved brand context for ${slug}:`];
       if (r == null) {
         gaps++;
         lines.push(`  \u25EF ${key}: (not set \u2014 skill default)`);
+      } else if (isPlaceholderDefault(fields, key)) {
+        prefilled++;
+        lines.push(`  \u2299 ${key}: ${formatValue(r.value)} (${PLACEHOLDER_NOTE})`);
       } else if (r.source === "context") {
         confirmed++;
         lines.push(`  \u2713 ${key}: ${formatValue(r.value)} (you confirmed)`);
@@ -76707,7 +76900,8 @@ async function applyBrandConfigEdit(payload, decision, opts) {
   let changedCount = 0;
   for (const edit of parsedEdits) {
     const before = getByPath2(ctxObj, edit.path);
-    if (!deepEqual(before, edit.value)) {
+    const confirmsAcosTarget = edit.path === "management.acos_target_pct" && getByPath2(ctxObj, "management.acos_target_source") === "default";
+    if (!deepEqual(before, edit.value) || confirmsAcosTarget) {
       setNested(ctxObj, edit.path, edit.value);
       changedCount += 1;
       if (edit.path === "management.acos_target_pct") {
@@ -77140,11 +77334,14 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
   let recommended_total = 0;
   let stale_count = 0;
   let open_gaps_count = 0;
+  let placeholder_count = 0;
   for (const label of labels) {
     const value = context ? resolveAuditPath(context, label.path) : void 0;
     const isPresent2 = !isAuditMissing(value);
     const isStale2 = !!(label.fresh_check && isPresent2 && typeof value === "string" && isStaleDate(value, now));
     if (isStale2) stale_count += 1;
+    const isPlaceholder = isPresent2 && label.path === "management.acos_target_pct" && getNested(context, "management.acos_target_source") === "default";
+    if (isPlaceholder) placeholder_count += 1;
     if (label.tier === "required") {
       required_total += 1;
       if (isPresent2) required_present += 1;
@@ -77155,16 +77352,17 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
     let status;
     if (!isPresent2) {
       status = label.tier === "required" ? "miss" : label.tier === "recommended" ? "warn" : "muted";
-    } else if (isStale2) {
+    } else if (isStale2 || isPlaceholder) {
       status = "warn";
     } else {
       status = "ok";
     }
+    const display = formatAuditValue(label, value, isPresent2, isStale2);
     rows.push({
       label,
       value,
       status,
-      display: formatAuditValue(label, value, isPresent2, isStale2),
+      display: isPlaceholder ? `${display} (${PLACEHOLDER_NOTE})` : display,
       is_stale: isStale2
     });
     if (label.path === "open_gaps" && Array.isArray(value)) {
@@ -77178,7 +77376,8 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
     recommended_present,
     recommended_total,
     stale_count,
-    open_gaps_count
+    open_gaps_count,
+    placeholder_count
   };
 }
 function resolveAuditPath(obj2, path2) {
@@ -77367,7 +77566,12 @@ function levelOf(resolved) {
   return resolved.source === "context" ? "confirmed" : "prefilled";
 }
 function fieldConfidence(s, key) {
+  if (isPlaceholderDefault(s.resolved_fields, key)) return "prefilled";
   return levelOf(s.resolved_fields[key]);
+}
+function fieldNote(s, key) {
+  if (isPlaceholderDefault(s.resolved_fields, key)) return PLACEHOLDER_NOTE;
+  return prefilledNote(s.resolved_fields[key]);
 }
 function prefilledNote(resolved) {
   if (resolved == null || resolved.source !== "brain") return void 0;
@@ -77378,8 +77582,7 @@ function presenceConfidence(present) {
   return present ? "confirmed" : "gap";
 }
 function markerFor(s, key) {
-  const resolved = s.resolved_fields[key];
-  return renderConfidenceMarker({ level: levelOf(resolved), note: prefilledNote(resolved) });
+  return renderConfidenceMarker({ level: fieldConfidence(s, key), note: fieldNote(s, key) });
 }
 function shortDate(v) {
   return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
@@ -77460,14 +77663,15 @@ function formatResolvedValue(key, value) {
 function sectionConfidenceSummary(s) {
   const items = BRAND_FIELD_KEYS.map((key) => {
     const resolved = s.resolved_fields[key];
-    const level = levelOf(resolved);
+    const level = fieldConfidence(s, key);
     const value = resolved ? formatResolvedValue(key, resolved.value) : "";
-    const hint = level === "gap" || level === "prefilled" ? renderSetHint({ field: key, brand: s.brand_slug }) : void 0;
+    const hintField = key === "acos_target_source" ? "acos_target_pct" : key;
+    const hint = level === "gap" || level === "prefilled" ? renderSetHint({ field: hintField, brand: s.brand_slug }) : void 0;
     return {
       label: FIELD_LABELS[key],
       level,
       value,
-      note: prefilledNote(resolved),
+      note: fieldNote(s, key),
       hint
     };
   });
@@ -77595,7 +77799,9 @@ function sectionAccountSnapshot(s) {
   const isTacosPrimary = m.primary_metric === "TACOS";
   const primaryLabel = isTacosPrimary ? "TACoS goal" : "ACoS target";
   const primaryValue = isTacosPrimary ? formatWholePct(m.tacos_goal_pct, 0) : formatWholePct(m.acos_target_pct, 0);
-  const primaryTargetLevel = isTacosPrimary ? fieldConfidence(s, "tacos_goal_pct") : fieldConfidence(s, "acos_target_pct");
+  const primaryTargetKey = isTacosPrimary ? "tacos_goal_pct" : "acos_target_pct";
+  const primaryTargetLevel = fieldConfidence(s, primaryTargetKey);
+  const targetIsPlaceholder = isPlaceholderDefault(s.resolved_fields, primaryTargetKey);
   const scorecards = renderScorecardRow([
     { label: "Accounts", value: formatInt(accounts.length) },
     {
@@ -77635,10 +77841,11 @@ function sectionAccountSnapshot(s) {
       role: a.role ?? "primary"
     }))
   );
-  const targetSetHint = primaryTargetLevel === "gap" ? renderSetHint({ field: isTacosPrimary ? "tacos_goal_pct" : "acos_target_pct", brand: s.brand_slug }) : "";
+  const targetSetHint = primaryTargetLevel === "gap" || targetIsPlaceholder ? renderSetHint({ field: primaryTargetKey, brand: s.brand_slug }) : "";
+  const targetNote = targetIsPlaceholder ? ` <span class="rc-conf-note">${escapeHtml(PLACEHOLDER_NOTE)}</span>` : "";
   const annot = `<div style="margin-bottom: 12px; color: var(--rc-text-sub); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
   <span>${markerFor(s, "primary_metric")} Primary metric: ${escapeHtml(String(m.primary_metric ?? "not set yet"))}</span>
-  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetSetHint}</span>
+  <span>${renderConfidenceMarker({ level: primaryTargetLevel })} ${escapeHtml(primaryLabel)}: ${escapeHtml(primaryValue)}${targetNote}${targetSetHint}</span>
   <span>${markerFor(s, "attribution_window_days")} Attribution window: ${escapeHtml(m.attribution_window_days !== void 0 ? `${m.attribution_window_days}d` : "not set yet")}</span>
   <span>${markerFor(s, "marketplace")} Marketplace: ${escapeHtml(marketplaceDisplay(accounts))}</span>
 </div>`;
@@ -77761,15 +77968,15 @@ function sectionSeasonality(s) {
     { key: "window", label: "Window" },
     { key: "notes", label: "Notes" }
   ];
-  const str4 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
+  const str7 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" ? String(v) : null;
   const brandRows = brandEvents.map((e) => {
-    const start2 = str4(e.start);
-    const end = str4(e.end);
-    const activeThrough = str4(e.active_through);
+    const start2 = str7(e.start);
+    const end = str7(e.end);
+    const activeThrough = str7(e.active_through);
     return {
-      event: str4(e.id) ?? "(unnamed event)",
+      event: str7(e.id) ?? "(unnamed event)",
       window: start2 ? `${start2}${end ? ` to ${end}` : " (open-ended)"}` : activeThrough ? `through ${activeThrough}` : end ? `until ${end}` : "\u2014",
-      notes: [str4(e.type)?.replace(/_/g, " "), str4(e.interpretation)].filter(Boolean).join(": ")
+      notes: [str7(e.type)?.replace(/_/g, " "), str7(e.interpretation)].filter(Boolean).join(": ")
     };
   });
   const genericTentpoles = [
@@ -78120,8 +78327,9 @@ function computeSkillReadiness(sources, coverage, resolvedFields, brainPresent) 
   const bootstrapped = Array.isArray(ctx?.accounts) && ctx.accounts.length > 0 || brainPresent;
   const requiredOk = coverage.required_present === coverage.required_total;
   const tier = requiredOk ? "context" : brainPresent ? "brain" : ctx ? "partial" : "defaults";
-  const readyNote = tier === "context" ? "All required context confirmed." : tier === "brain" ? "Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen." : tier === "partial" ? "Partial context; unset fields fall back to skill defaults." : "No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.";
-  const readyTone = tier === "context" ? "complete" : "partial";
+  const hasPlaceholder = (coverage.placeholder_count ?? 0) > 0;
+  const readyNote = tier === "context" ? hasPlaceholder ? "Required context is filled in, but the ACoS target is a placeholder default: confirm it." : "All required context confirmed." : tier === "brain" ? "Running from the brand brain plus skill defaults; confirm context or set OCL knobs to sharpen." : tier === "partial" ? "Partial context; unset fields fall back to skill defaults." : "No brain or context yet; runs on skill defaults. Run `mixshift brand brain fetch` to sharpen.";
+  const readyTone = tier === "context" && !hasPlaceholder ? "complete" : "partial";
   const notBootstrapped = {
     status: "Blocked",
     tone: "missing",
@@ -78167,6 +78375,9 @@ function composeHeadlineJson(s) {
     context_snapshot: ctx ? {
       primary_metric: ctx.management?.primary_metric,
       acos_target_pct: ctx.management?.acos_target_pct,
+      // 'default' = a bootstrap placeholder nobody confirmed (warehouse
+      // had no target); never present the number as the brand's own.
+      acos_target_source: ctx.management?.acos_target_source,
       tacos_goal_pct: ctx.management?.tacos_goal_pct,
       attribution_window_days: ctx.management?.attribution_window_days,
       account_count: ctx.accounts?.length ?? 0,
@@ -78201,8 +78412,9 @@ function composeReviewJson(s) {
     })),
     skill_readiness: s.skill_readiness,
     // Per-field provenance behind the ✓ / ⊙ / ◯ markers, machine-readable for
-    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain,
-    // gap = neither). Counts let a consumer gauge confidence at a glance.
+    // downstream skills (confirmed = Tier-3 context, prefilled = Tier-2 brain
+    // or a bootstrap placeholder, gap = neither). Counts let a consumer gauge
+    // confidence at a glance.
     confidence: composeConfidenceSummary(s),
     audit_rows: s.coverage.rows.map((r) => ({
       path: r.label.path,
@@ -78223,6 +78435,9 @@ function composeConfidenceSummary(s) {
     if (resolved == null) {
       gap++;
       fields[key] = { level: "gap", source: null };
+    } else if (isPlaceholderDefault(s.resolved_fields, key)) {
+      prefilled++;
+      fields[key] = { level: "prefilled", source: "context", placeholder: true };
     } else if (resolved.source === "context") {
       confirmed++;
       fields[key] = { level: "confirmed", source: "context" };
@@ -82345,7 +82560,7 @@ function wrapAnsi(string4, columns, options) {
 
 // node_modules/@inquirer/core/dist/lib/utils.js
 function breakLines(content, width) {
-  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str4) => str4.trimEnd())).join("\n");
+  return content.split("\n").flatMap((line) => wrapAnsi(line, width, { trim: false, hard: true }).split("\n").map((str7) => str7.trimEnd())).join("\n");
 }
 function readlineWidth() {
   return (0, import_cli_width.default)({ defaultWidth: 80, output: readline().output });
@@ -82692,13 +82907,13 @@ var PromisePolyfill = class extends Promise {
   // Available starting from Node 22
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers
   static withResolver() {
-    let resolve5;
+    let resolve6;
     let reject;
     const promise2 = new Promise((res, rej) => {
-      resolve5 = res;
+      resolve6 = res;
       reject = rej;
     });
-    return { promise: promise2, resolve: resolve5, reject };
+    return { promise: promise2, resolve: resolve6, reject };
   }
 };
 
@@ -82735,7 +82950,7 @@ function createPrompt(view) {
     });
     output.mute();
     const screen = new ScreenManager(rl);
-    const { promise: promise2, resolve: resolve5, reject } = PromisePolyfill.withResolver();
+    const { promise: promise2, resolve: resolve6, reject } = PromisePolyfill.withResolver();
     const cancel = () => reject(new CancelPromptError());
     if (signal) {
       const abort = () => reject(new AbortPromptError({ cause: signal.reason }));
@@ -82766,7 +82981,7 @@ function createPrompt(view) {
           try {
             const nextView = view(config2, (value) => {
               if (effectsSettled) {
-                resolve5(value);
+                resolve6(value);
               } else {
                 pendingDone = { value };
               }
@@ -82789,7 +83004,7 @@ function createPrompt(view) {
           if (pendingDone !== null) {
             const { value } = pendingDone;
             pendingDone = null;
-            resolve5(value);
+            resolve6(value);
           }
         });
       };
@@ -83352,9 +83567,9 @@ var defaultOpenBrowser = async (url2) => {
     stdio: "ignore",
     shell: true
   });
-  await new Promise((resolve5, reject) => {
+  await new Promise((resolve6, reject) => {
     child.once("error", reject);
-    setImmediate(() => resolve5());
+    setImmediate(() => resolve6());
   });
   child.unref();
 };
@@ -83512,7 +83727,7 @@ function buildLoginUrl(opts, pkce, redirectUri) {
   return `${opts.apiBase}/login?${params.toString()}`;
 }
 function startCallbackServer(expectedState) {
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve6, reject) => {
     let resolveCallback = () => {
     };
     let rejectCallback = () => {
@@ -83584,14 +83799,14 @@ function startCallbackServer(expectedState) {
         reject(new Error("Could not determine local callback port"));
         return;
       }
-      resolve5({ server, port: addr.port, callbackPromise });
+      resolve6({ server, port: addr.port, callbackPromise });
     });
     server.on("error", (err) => reject(err));
   });
 }
 function closeServer(server) {
-  return new Promise((resolve5) => {
-    server.close(() => resolve5());
+  return new Promise((resolve6) => {
+    server.close(() => resolve6());
   });
 }
 function respondHtml(res, status, body) {
@@ -83622,18 +83837,20 @@ async function exchangeAuthCode(apiBase, authCode, codeVerifier) {
   }
   return await res.json();
 }
-async function runDeviceLogin(opts) {
-  const init = await deviceInit(opts);
-  process.stdout.write(
-    `
+function deviceLoginInstructions(loginUrl, code) {
+  return `
 MixShift device-code login
   1. Open this URL in any browser:
-     ${init.loginUrl}
-  2. Sign in and confirm the device on the page.
-  3. This terminal continues automatically once you're done.
+     ${loginUrl}
+  2. If the page asks for a code, type: ${code}
+  3. Sign in and confirm the device on the page.
+  4. This terminal continues automatically once you're done.
 
-`
-  );
+`;
+}
+async function runDeviceLogin(opts) {
+  const init = await deviceInit(opts);
+  process.stdout.write(deviceLoginInstructions(init.loginUrl, init.deviceCode));
   const startedAt = Date.now();
   while (Date.now() - startedAt < DEVICE_POLL_TIMEOUT_MS) {
     await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL_MS));
@@ -83833,6 +84050,93 @@ async function summarizeAuth(dataDirOverride) {
     };
   }
   return { signedIn: false, kind: "none" };
+}
+
+// src/lib/auth/identity.ts
+init_credentials();
+var IDENTITY_TIMEOUT_MS = 3e3;
+var FRESH_MARGIN_MS = 5e3;
+var str = (v) => typeof v === "string" && v.trim() !== "" ? v.trim() : void 0;
+async function getJson(url2, token, fetchImpl, timeoutMs) {
+  const res = await fetchImpl(url2, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  let json3 = null;
+  try {
+    json3 = await res.json();
+  } catch {
+    json3 = null;
+  }
+  return { status: res.status, json: json3 };
+}
+function parseIdentity(me, manifest) {
+  const m = me && typeof me === "object" ? me : {};
+  const out2 = { read: true };
+  if (typeof m.verified === "boolean") out2.verified = m.verified;
+  const org = str(m.org);
+  if (org) out2.org = org;
+  const mf = manifest && typeof manifest === "object" ? manifest : {};
+  const mfOrg = mf.org && typeof mf.org === "object" ? mf.org : {};
+  const mfPerson = mf.person && typeof mf.person === "object" ? mf.person : {};
+  const orgName = str(mfOrg.name);
+  if (orgName) out2.org_name = orgName;
+  if (typeof mfOrg.registered === "boolean") out2.org_registered = mfOrg.registered;
+  const role = str(mfPerson.role_name) ?? str(mfPerson.role);
+  if (role && role.toLowerCase() !== "unknown") out2.role = role;
+  if (Array.isArray(mfPerson.denied_scopes)) {
+    const denied = mfPerson.denied_scopes.filter((s) => typeof s === "string" && s !== "");
+    if (denied.length > 0) out2.denied_scopes = denied;
+  }
+  return out2;
+}
+async function fetchIdentity(dataDirOverride, fetchImpl = fetch, timeoutMs = IDENTITY_TIMEOUT_MS) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const d = credentials?.datahub;
+    if (!d?.api_base || !d.access_token) return { read: false, ended: true, reason: "no saved sign-in" };
+    if (!(Date.parse(d.expires_at) - Date.now() > FRESH_MARGIN_MS)) {
+      return { read: false, deferred: true, reason: "the saved access token has expired" };
+    }
+    const base2 = d.api_base.replace(/\/+$/, "");
+    const [me, manifest] = await Promise.all([
+      getJson(`${base2}/v1/me`, d.access_token, fetchImpl, timeoutMs),
+      getJson(`${base2}/v1/manifest?surface=plugin`, d.access_token, fetchImpl, timeoutMs).catch(() => null)
+    ]);
+    if (me.status < 200 || me.status >= 300) {
+      return {
+        read: false,
+        reason: me.status === 401 ? "the service answered 401; run `mixshift auth login` if this keeps happening" : `the service answered ${me.status}`
+      };
+    }
+    return parseIdentity(me.json, manifest && manifest.status >= 200 && manifest.status < 300 ? manifest.json : null);
+  } catch {
+    return { read: false, reason: "the service could not be reached" };
+  }
+}
+function formatIdentityLines(who, id) {
+  if (!id.read) {
+    if (id.ended) return ["Your sign-in ended. Run `mixshift auth login` to sign in again."];
+    return [
+      id.deferred ? `Signed in as ${who} (identity: shown after your next MixShift call refreshes the sign-in)` : `Signed in as ${who} (your identity could not be read: ${id.reason})`
+    ];
+  }
+  const registered = id.org_registered !== false;
+  const orgName = registered ? id.org_name : void 0;
+  const role = registered ? id.role : void 0;
+  let line;
+  if (id.verified === true) {
+    const bits = `verified member${orgName ? ` of ${orgName}` : ""}${role ? `, ${role}` : ""}`;
+    line = `Signed in as ${who} (${bits})`;
+  } else {
+    const bits = [orgName, orgName && id.org_registered === true ? role : void 0].filter(Boolean).join(", ");
+    line = bits ? `Signed in as ${who} (${bits})` : `Signed in as ${who}`;
+  }
+  const lines = [line];
+  if (id.denied_scopes && id.denied_scopes.length > 0) {
+    lines.push(`Not allowed for you: ${id.denied_scopes.join(", ")} (set by your organization; ask an org admin)`);
+  }
+  return lines;
 }
 
 // src/lib/auth/setup-code.ts
@@ -84074,7 +84378,7 @@ function registerLoginSubcommand(auth) {
     "Sign in to the MixShift warehouse via the mx-legacy-auth MCP service. Opens a browser (PKCE) or falls back to a device-code flow when no browser is available. Recommended over `auth setup` for new installs \u2014 no IP whitelist, no raw MySQL credentials."
   ).option(
     "--person-label <email>",
-    "Your work email \u2014 attributes this session to you in the admin view. Required because one tenant credential is shared across many employees; person_label lets admins see who did what."
+    'Your work email. A prefill hint for the sign-in page, not your identity: if your organization uses member sign-in, you choose "Sign in with Google" there and the sign-in itself proves who you are. On a shared login it is the typed name admins see against your actions. Still required here.'
   ).option(
     "--device-label <label>",
     "Friendly device name shown on the login confirmation page (default: this machine's hostname)."
@@ -84146,7 +84450,7 @@ async function promptPersonLabel() {
     );
   }
   return dist_default5({
-    message: "Your work email (for per-employee session attribution; not auth):",
+    message: "Your work email (a prefill hint; on a shared login it is the name your actions are recorded under):",
     required: true,
     validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? true : "Use email format (e.g. alice@acmeco.com)"
   });
@@ -84367,7 +84671,11 @@ function renderAuthStatus(r, a) {
       r.credential === "human" ? "Not signed in (saved sign-in expired)." : r.credential === "unreadable" ? "Not signed in (the saved sign-in file cannot be read)." : "Not signed in."
     );
   } else if (r.credential === "human") {
-    out2.push(`Signed in (human sign-in) as ${r.actor ?? "?"}`);
+    if (r.identity) {
+      out2.push(...formatIdentityLines(r.actor ?? "?", r.identity));
+    } else {
+      out2.push(`Signed in (human sign-in) as ${r.actor ?? "?"}`);
+    }
     if (r.tenant_login && r.tenant_login !== r.actor) out2.push(`  tenant login: ${r.tenant_login}`);
     out2.push(`  service: ${r.service ?? "?"}`);
     if (r.access_expired) {
@@ -84388,11 +84696,14 @@ function renderAuthStatus(r, a) {
 }
 function registerStatusSubcommand(auth) {
   auth.command("status").description(
-    "Show whether you are signed in, as whom, the tenant login, and when the access token expires. Read-only: reads the local credentials file only. It never signs in, prompts, contacts the sign-in service, or refreshes your session."
+    'Show whether you are signed in, as whom (your organization and role, and "verified member" when you signed in as yourself), the tenant login, and when the access token expires. Read-only: it never signs in, prompts, refreshes your session or writes credentials. While the saved access token is fresh it asks the service who you are (GET /v1/me, 3 s limit); if that fails or the token has expired, status still works and says so.'
   ).action(async (_opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const summary = await summarizeAuth(root.dataDir);
     const report = buildAuthStatusReport(summary);
+    if (report.signed_in && report.credential === "human") {
+      report.identity = await fetchIdentity(root.dataDir);
+    }
     if (root.json) {
       process.stdout.write(JSON.stringify(report, null, 2) + "\n");
     } else {
@@ -84405,7 +84716,7 @@ function registerDeviceInitSubcommand(auth) {
     "Initialize a device-code sign-in flow. Returns {device_code, login_url, expires_at} as JSON and exits immediately. The chat skill orchestrates the wait via `auth device-poll`. Humans should use `auth login` instead."
   ).option(
     "--person-label <email>",
-    "Self-attested per-employee actor email (required)."
+    "Your work email. A prefill hint for the sign-in page (required); a member sign-in proves identity on the page itself."
   ).option("--device-label <label>", "Device hostname-style label.").option("--client-id <slug>", "Surface-attribution client_id.").option("--api-base <url>", "mx-legacy-auth service URL.").action(async (opts, _cmd) => {
     try {
       if (!opts.personLabel) {
@@ -84439,7 +84750,7 @@ function registerDevicePollSubcommand(auth) {
     "Poll a device-code sign-in flow for up to --max-wait-ms (default 30s). Returns {state, result?} as JSON. On approved, persists tokens + runs post-login discovery. Used by the chat skill after the user completes sign-in in their browser."
   ).option(
     "--person-label <email>",
-    "Self-attested per-employee actor email (must match device-init)."
+    "Your work email, as given to device-init (a prefill hint, must match)."
   ).option("--device-label <label>", "Device label (match device-init).").option("--client-id <slug>", "client_id (match device-init).").option("--api-base <url>", "mx-legacy-auth service URL.").option(
     "--max-wait-ms <ms>",
     "Maximum wall-clock time to keep polling before returning pending.",
@@ -85027,17 +85338,17 @@ async function writePrefetchArtifacts(input) {
       run_date: input.run_date,
       generated_at_utc: (/* @__PURE__ */ new Date()).toISOString(),
       meta: input.meta ?? {},
-      queries: input.query_outputs.map((q) => ({
-        id: q.id,
-        params: q.params,
-        display_sql: q.display_sql,
-        ...q.purpose ? { purpose: q.purpose } : {},
-        ...q.revision ? { revision: q.revision } : {},
-        ...q.applied_params ? { applied_params: q.applied_params } : {},
-        ...q.used_dispatch ? { used_dispatch: q.used_dispatch } : {},
-        duration_ms: q.duration_ms,
-        row_count: q.rows.length,
-        rows: q.rows
+      queries: input.query_outputs.map((q3) => ({
+        id: q3.id,
+        params: q3.params,
+        display_sql: q3.display_sql,
+        ...q3.purpose ? { purpose: q3.purpose } : {},
+        ...q3.revision ? { revision: q3.revision } : {},
+        ...q3.applied_params ? { applied_params: q3.applied_params } : {},
+        ...q3.used_dispatch ? { used_dispatch: q3.used_dispatch } : {},
+        duration_ms: q3.duration_ms,
+        row_count: q3.rows.length,
+        rows: q3.rows
       }))
     },
     null,
@@ -85073,13 +85384,13 @@ function renderDataMarkdown(input) {
   ].join("\n");
   let body = "";
   let truncated = false;
-  for (const q of input.query_outputs) {
-    const section = renderQuerySection(q);
+  for (const q3 of input.query_outputs) {
+    const section = renderQuerySection(q3);
     if (!truncated && Buffer.byteLength(header + body + section, "utf-8") <= DATA_MD_BYTE_CAP) {
       body += section;
     } else {
       truncated = true;
-      body += `## ${q.id}
+      body += `## ${q3.id}
 
 _Row data omitted (markdown cap exceeded \u2014 see data.json)._
 
@@ -85093,29 +85404,29 @@ _Row data omitted (markdown cap exceeded \u2014 see data.json)._
   }
   return header + body;
 }
-function renderQuerySection(q) {
+function renderQuerySection(q3) {
   const lines = [];
-  lines.push(`## ${q.id}`);
+  lines.push(`## ${q3.id}`);
   lines.push("");
-  if (q.purpose) lines.push(`- **Purpose**: ${q.purpose}`);
-  lines.push(`- **Rows**: ${q.rows.length}`);
-  lines.push(`- **Duration**: ${q.duration_ms} ms`);
-  if (q.revision) lines.push(`- **Query revision**: ${q.revision}`);
-  if (q.applied_params) lines.push(`- **Applied params**: ${q.applied_params.join(", ")}`);
-  if (q.used_dispatch === "derived_labels") {
+  if (q3.purpose) lines.push(`- **Purpose**: ${q3.purpose}`);
+  lines.push(`- **Rows**: ${q3.rows.length}`);
+  lines.push(`- **Duration**: ${q3.duration_ms} ms`);
+  if (q3.revision) lines.push(`- **Query revision**: ${q3.revision}`);
+  if (q3.applied_params) lines.push(`- **Applied params**: ${q3.applied_params.join(", ")}`);
+  if (q3.used_dispatch === "derived_labels") {
     lines.push(
       "- **Grouping**: from the CONFIRMED derived labels for this brand, not the warehouse column. Rows whose label the account never filled in were grouped by the scheme the user approved. Say so when presenting this table."
     );
   }
-  if (Object.keys(q.params).length > 0) {
-    lines.push(`- **Params**: \`${JSON.stringify(q.params)}\``);
+  if (Object.keys(q3.params).length > 0) {
+    lines.push(`- **Params**: \`${JSON.stringify(q3.params)}\``);
   }
   lines.push("");
-  if (q.rows.length === 0) {
+  if (q3.rows.length === 0) {
     lines.push("_No rows returned._");
     lines.push("");
   } else {
-    lines.push(renderRowsTable(q.rows));
+    lines.push(renderRowsTable(q3.rows));
   }
   lines.push("");
   return lines.join("\n");
@@ -85451,9 +85762,9 @@ function renderResult2(result, json3) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return;
   }
-  const okCount = result.queries.filter((q) => q.status === "ok").length;
-  const failedCount = result.queries.filter((q) => q.status === "failed").length;
-  const deferredCount = result.queries.filter((q) => q.status === "deferred").length;
+  const okCount = result.queries.filter((q3) => q3.status === "ok").length;
+  const failedCount = result.queries.filter((q3) => q3.status === "failed").length;
+  const deferredCount = result.queries.filter((q3) => q3.status === "deferred").length;
   const countsLine = `${okCount} ok` + (failedCount > 0 ? `, ${failedCount} failed` : "") + (deferredCount > 0 ? `, ${deferredCount} deferred` : "");
   process.stdout.write(
     `
@@ -85508,7 +85819,7 @@ function renderResult2(result, json3) {
     for (const w of result.lens_warnings) process.stdout.write(`    \u26A0 ${w}
 `);
   }
-  const failures = result.queries.filter((q) => q.status === "failed");
+  const failures = result.queries.filter((q3) => q3.status === "failed");
   if (failures.length > 0) {
     process.stdout.write("\n  Failed queries:\n");
     for (const f of failures) {
@@ -85516,7 +85827,7 @@ function renderResult2(result, json3) {
 `);
     }
   }
-  const deferrals = result.queries.filter((q) => q.status === "deferred");
+  const deferrals = result.queries.filter((q3) => q3.status === "deferred");
   if (deferrals.length > 0) {
     process.stdout.write("\n  Deferred queries (skill provides params on follow-up):\n");
     for (const d of deferrals) {
@@ -85989,10 +86300,10 @@ function createCsvFileSink(outPath) {
   }
   function waitDrain(s) {
     if (!s.writableNeedDrain) return Promise.resolve();
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       const onDrain = () => {
         cleanup();
-        resolve5();
+        resolve6();
       };
       const onError = (err) => {
         cleanup();
@@ -86017,7 +86328,7 @@ function createCsvFileSink(outPath) {
     if (!stream || closed) return Promise.resolve();
     const s = stream;
     closed = true;
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       if (streamError) {
         s.destroy();
         reject(streamError);
@@ -86029,7 +86340,7 @@ function createCsvFileSink(outPath) {
       };
       const onFinish = () => {
         cleanup();
-        resolve5();
+        resolve6();
       };
       const onError = (err) => {
         cleanup();
@@ -87586,9 +87897,10 @@ function renderWelcome(args) {
   lines.push("\u2501\u2501 Step 1 \u2014 Sign in to MixShift \u2501\u2501");
   lines.push("");
   lines.push("  Sign in so the plugin can read your Amazon ads + retail data.");
-  lines.push("  You'll need your MixShift account (the same email + password");
-  lines.push("  you use to log into MixShift). Your credentials stay in your");
-  lines.push("  browser; the plugin only holds a token after.");
+  lines.push("  You'll need your MixShift account. If your organization uses member");
+  lines.push('  sign-in, choose "Sign in with Google" (or "Continue as <you>" when');
+  lines.push("  already signed in on the web); otherwise use your team login as before.");
+  lines.push("  Your credentials stay in your browser; the plugin only holds a token after.");
   lines.push("");
   for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split("\n")) {
     lines.push(l ? `  ${l}` : l);
@@ -87757,7 +88069,7 @@ function renderWelcomeChat(args) {
   lines.push("### Step 1 \u2014 Sign in to MixShift");
   lines.push("");
   lines.push(
-    "Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account (the same email + password you use to log into MixShift). Your credentials stay in your browser; the plugin only holds a token after."
+    `Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before. Your credentials stay in your browser; the plugin only holds a token after.`
   );
   lines.push("");
   lines.push(NO_ACCOUNT_CHAT);
@@ -90098,6 +90410,7 @@ import { mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
 // src/lib/amazon/reports.ts
 init_credentials();
 init_intent();
+init_refusal_copy();
 import { createWriteStream as createWriteStream2 } from "node:fs";
 import { mkdir as mkdir28, rename as rename21 } from "node:fs/promises";
 import { dirname as dirname33 } from "node:path";
@@ -90471,9 +90784,9 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
     out2 = createWriteStream2(outPath);
     const source = Readable.fromWeb(res.body);
     const monitor = new Transform({
-      transform(chunk, _enc, cb) {
+      transform(chunk2, _enc, cb) {
         armStall();
-        cb(null, chunk);
+        cb(null, chunk2);
       }
     });
     if (document.compressionAlgorithm === "GZIP") {
@@ -90506,8 +90819,8 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
 }
 function closeWritable(out2) {
   if (out2.closed) return Promise.resolve();
-  return new Promise((resolve5) => {
-    out2.once("close", () => resolve5());
+  return new Promise((resolve6) => {
+    out2.once("close", () => resolve6());
     if (!out2.destroyed) out2.destroy();
   });
 }
@@ -90598,8 +90911,8 @@ async function readCapped(res, cap2) {
   if (body && typeof body[Symbol.asyncIterator] === "function") {
     const chunks = [];
     let total = 0;
-    for await (const chunk of body) {
-      total += chunk.byteLength;
+    for await (const chunk2 of body) {
+      total += chunk2.byteLength;
       if (total > cap2) {
         try {
           await body.cancel();
@@ -90607,7 +90920,7 @@ async function readCapped(res, cap2) {
         }
         throw new DocumentTooLargeError(total);
       }
-      chunks.push(Buffer.from(chunk));
+      chunks.push(Buffer.from(chunk2));
     }
     return Buffer.concat(chunks);
   }
@@ -90931,6 +91244,13 @@ function classifyAmazonError(text) {
   }
   return "other";
 }
+var STALE_SCOPE_CLAIM = /delegated user sessions? hold/i;
+function scopeRefusalFriendly(json3, serverFriendly) {
+  const scopes = json3.required_scopes ?? json3.required_scope ?? json3.required;
+  if (isScopeRefusalReason(json3.reason)) return insufficientScopeCopy(json3.reason, scopes);
+  if (serverFriendly !== void 0 && !STALE_SCOPE_CLAIM.test(serverFriendly)) return serverFriendly;
+  return insufficientScopeCopy(void 0, scopes);
+}
 function toReportFailure(json3, httpStatus, surface) {
   const rawKind = typeof json3.kind === "string" ? json3.kind : "";
   const recognized = KNOWN_KINDS.has(rawKind);
@@ -90949,7 +91269,7 @@ function toReportFailure(json3, httpStatus, surface) {
   const message = typeof json3.message === "string" ? json3.message : issues?.detail;
   const proposalId = cleanProposalToken(json3.proposalId);
   const proposalStatus = cleanProposalToken(json3.proposalStatus)?.toUpperCase();
-  const friendly = kind === "proposal_not_approved" && proposalStatus !== void 0 ? proposalNotApprovedText(proposalStatus) : serverFriendly ?? defaultFriendly(kind, surface);
+  const friendly = kind === "proposal_not_approved" && proposalStatus !== void 0 ? proposalNotApprovedText(proposalStatus) : kind === "insufficient_scope" ? scopeRefusalFriendly(json3, serverFriendly) : serverFriendly ?? defaultFriendly(kind, surface);
   return {
     ok: false,
     kind,
@@ -91120,7 +91440,7 @@ function defaultFriendly(kind, surface) {
     case "ads_not_configured":
       return "The Amazon Ads API isn't enabled on the MixShift service yet. Contact MixShift ops.";
     case "insufficient_scope":
-      return "This credential lacks a scope this call requires (writes need ads:write). Signed-in user sessions hold it; machine credentials must be issued with it explicitly by a MixShift admin.";
+      return insufficientScopeCopy();
     case "reauth_required":
       return "This Amazon merchant needs to be re-authorized in MixShift before this call can run. Until someone re-connects the account in the MixShift app, every call against it will fail the same way, so do not retry this one or run the rest of a change set against it.";
     case "merchant_inactive":
@@ -93139,7 +93459,7 @@ function renderAmazonReason(text) {
   return `${body}${generic}
 `;
 }
-function emitChunkFailure(failure3, json3, chunk, totalChunks, completedRunIds) {
+function emitChunkFailure(failure3, json3, chunk2, totalChunks, completedRunIds) {
   if (json3) {
     writeJson3({
       status: "error",
@@ -93154,13 +93474,13 @@ function emitChunkFailure(failure3, json3, chunk, totalChunks, completedRunIds) 
       amazon_error: failure3.amazonError,
       candidates: failure3.candidates,
       ...failureContractJson(failure3),
-      chunk,
+      chunk: chunk2,
       chunks: totalChunks,
       run_ids: completedRunIds
     });
   } else {
     process.stderr.write(`
-\u2717 [SQP chunk ${chunk}/${totalChunks}] ${failure3.friendly}
+\u2717 [SQP chunk ${chunk2}/${totalChunks}] ${failure3.friendly}
 `);
     if (failure3.amazonError) process.stderr.write(renderAmazonReason(failure3.amazonError));
     for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
@@ -93177,15 +93497,15 @@ function emitChunkFailure(failure3, json3, chunk, totalChunks, completedRunIds) 
   }
   process.exitCode = exitCodeForKind(failure3.kind);
 }
-function emitChunkTimeout(json3, chunk, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
-  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk}/${totalChunks} (last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at Amazon and its run handle is still valid. Resume it with \`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second copy behind the one you are already waiting on and makes the wait longer. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
+function emitChunkTimeout(json3, chunk2, totalChunks, runId, lastStatus, completedRunIds, maxWaitMs) {
+  const msg2 = `Timed out after ${Math.round(maxWaitMs / 1e3)}s waiting for SQP chunk ${chunk2}/${totalChunks} (last status: ${lastStatus}). This is a wait, not a failure: the chunk is still queued at Amazon and its run handle is still valid. Resume it with \`mixshift amazon report poll ${runId}\`. Do NOT re-run this window, which queues a second copy behind the one you are already waiting on and makes the wait longer. ${completedRunIds.length} chunk(s) completed before this one${completedRunIds.length > 0 ? `: ${completedRunIds.join(", ")}` : ""}.`;
   if (json3) {
     writeJson3({
       status: "error",
       failure_kind: "timeout",
       run_id: runId,
       run_ids: completedRunIds,
-      chunk,
+      chunk: chunk2,
       chunks: totalChunks,
       report_status: lastStatus,
       message: msg2
@@ -93513,9 +93833,9 @@ async function listProposals(input = {}, opts = {}) {
   const qs = new URLSearchParams();
   if (input.status) qs.set("status", input.status);
   if (input.limit !== void 0) qs.set("limit", String(input.limit));
-  const q = qs.toString();
+  const q3 = qs.toString();
   const r = await amazonRequest(
-    { method: "GET", path: `/api/amazon/ads/proposals${q ? `?${q}` : ""}`, surface: "ads" },
+    { method: "GET", path: `/api/amazon/ads/proposals${q3 ? `?${q3}` : ""}`, surface: "ads" },
     { ...opts, timeoutMs: opts.timeoutMs ?? SHORT_TIMEOUT_MS }
   );
   if (!r.ok) return r;
@@ -93723,14 +94043,17 @@ init_deadline();
 var ADS_EMIT_TIMEOUT_MS = 2e3;
 var ENTITY_IDS_CAP = 50;
 var BEFORE_SUMMARY_MAX_CHARS = 2e3;
+function isAmcOperation(operation) {
+  return operation.startsWith("amc.");
+}
 function isDspOperation(operation) {
   return operation.startsWith("dsp.");
 }
 async function emitAdsCommitEvent(input, options = {}) {
   const env = options.env ?? process.env;
   try {
-    if (isDspOperation(input.operation)) {
-      debugLog4(env, `ads-emit: ${input.operation} is advertiser-scoped; the server records it`);
+    if (isDspOperation(input.operation) || isAmcOperation(input.operation)) {
+      debugLog4(env, `ads-emit: ${input.operation} is advertiser- or instance-scoped; the server records it`);
       return { posted: false, reason: "server_recorded" };
     }
     const brandSlug = await resolveBrandSlugForSeller(
@@ -94576,6 +94899,890 @@ function mdCell2(s) {
   return s.replaceAll("|", "\\|");
 }
 
+// src/lib/ads/dsp-readiness.ts
+var DSP = { include: ["AMAZON_DSP"] };
+var RETAIL_KPIS = /* @__PURE__ */ new Set(["ROAS", "ROAS_PROMOTED", "RETURN_ON_AD_SPEND", "TOTAL_RETURN_ON_AD_SPEND"]);
+var DEPRECATED_KPIS = /* @__PURE__ */ new Set([
+  "COST_PER_ACTION",
+  "RETURN_ON_AD_SPEND",
+  "TOTAL_RETURN_ON_AD_SPEND",
+  "COMBINED_RETURN_ON_AD_SPEND"
+]);
+var DEFAULT_TARGET_TYPES = /* @__PURE__ */ new Set([
+  "DAYPART",
+  "DEVICE",
+  "INVENTORY_SOURCE",
+  "DOMAIN",
+  "THIRD_PARTY",
+  "VIDEO_AD_FORMAT",
+  "BRAND_SAFETY_TIER",
+  "UNTYPED"
+]);
+var INVENTORY_TO_MEDIA = {
+  DISPLAY: "DISPLAY",
+  AUDIO: "AUDIO",
+  ONLINE_VIDEO: "VIDEO_OLV",
+  STREAMING_TV: "VIDEO_STV"
+};
+var MAX_PAGES = 20;
+var CM_AD_GROUP_FILTER_MAX = 20;
+var V1_AD_GROUP_CHUNK = 50;
+var TRACKED_PRODUCTS_PAGE = 1e4;
+function asRec(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+}
+function str2(v) {
+  if (typeof v === "string" && v.length > 0) return v;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return void 0;
+}
+function chunk(xs, n) {
+  const out2 = [];
+  for (let i = 0; i < xs.length; i += n) out2.push(xs.slice(i, i + n));
+  return out2;
+}
+async function pageAll(call, input, listKey, where) {
+  const rows = [];
+  let token;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const req = { ...input };
+    if (token) {
+      if (where === "body") req.body = { ...asRec(input.body) ?? {}, nextToken: token };
+      else req.query = { ...input.query ?? {}, nextToken: token };
+    }
+    const res = await call(req);
+    if (isReportFailure(res)) return res;
+    const payload = asRec(res.payload) ?? {};
+    const list2 = payload[listKey];
+    if (Array.isArray(list2)) rows.push(...list2);
+    token = str2(payload.nextToken);
+    if (!token) return { ok: true, rows, truncated: false };
+  }
+  return { ok: true, rows, truncated: true };
+}
+function readFailureText(f) {
+  return f.friendly || f.message || f.kind;
+}
+function approvalOf(moderation, association) {
+  const experiences = [];
+  const statuses = [];
+  const reasons = [];
+  const exps = moderation?.adExperiences ?? association?.adExperiences;
+  if (Array.isArray(exps)) {
+    for (const e of exps) {
+      const r = asRec(e);
+      if (!r) continue;
+      const name = str2(r.adExperience);
+      if (name) experiences.push(name);
+      const s = str2(r.associationModerationStatus);
+      if (s) statuses.push(s.toUpperCase());
+      const rs = r.associationModerationReasons;
+      if (Array.isArray(rs)) {
+        for (const x of rs) {
+          const xr = asRec(x);
+          const text = str2(xr?.reason) ?? str2(xr?.reasonDescription) ?? str2(xr?.description) ?? str2(x);
+          if (text) reasons.push(text);
+        }
+      }
+    }
+  }
+  if (statuses.length === 0) {
+    const s = str2(association?.creativeAssociationStatus)?.toUpperCase();
+    if (s) statuses.push(s);
+  }
+  const base2 = { reasons, experiences, raw: [...new Set(statuses)] };
+  if (statuses.includes("APPROVED")) return { status: "APPROVED", exceptions: false, ...base2 };
+  if (statuses.includes("APPROVED_WITH_EXCEPTIONS")) return { status: "APPROVED", exceptions: true, ...base2 };
+  if (statuses.some((s) => s === "PENDING" || s === "IN_REVIEW" || s === "PENDING_REVIEW")) {
+    return { status: "PENDING", exceptions: false, ...base2 };
+  }
+  if (statuses.some((s) => s === "REJECTED" || s === "DISAPPROVED")) {
+    return { status: "REJECTED", exceptions: false, ...base2 };
+  }
+  return { status: "UNKNOWN", exceptions: false, ...base2 };
+}
+function fmtCounts(m) {
+  const parts = Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`);
+  return parts.length ? parts.join(", ") : "none";
+}
+async function checkDspReadiness(call, advertiserId, campaignId) {
+  const path2 = { advertiserId };
+  const checks = [];
+  const add = (c) => {
+    checks.push(c);
+  };
+  const campRes = await call({
+    operation: "dsp.query_campaigns",
+    pathParams: path2,
+    body: { adProductFilter: DSP, campaignIdFilter: { include: [campaignId] }, maxResults: 10 }
+  });
+  if (isReportFailure(campRes)) return campRes;
+  const campaigns = asRec(campRes.payload)?.campaigns;
+  const campaign = Array.isArray(campaigns) ? campaigns.map(asRec).find((c) => str2(c?.campaignId) === campaignId) : void 0;
+  const report = {
+    ok: true,
+    advertiserId,
+    campaignId,
+    lineItems: [],
+    checks,
+    ready: false,
+    counts: { pass: 0, fail: 0, warn: 0, confirm: 0, unchecked: 0 }
+  };
+  if (!campaign) {
+    add({
+      id: "campaign",
+      level: "fail",
+      label: "Order found",
+      detail: `No DSP order ${campaignId} under advertiser ${advertiserId}.`,
+      fix: "Check the order id (dsp.query_campaigns lists the advertiser's orders) and the advertiser id."
+    });
+    return finish(report);
+  }
+  report.campaignName = str2(campaign.name);
+  report.campaignState = str2(campaign.state);
+  const optimizations = asRec(campaign.optimizations) ?? {};
+  const goal = asRec(optimizations.goalSettings) ?? {};
+  const kpi = str2(goal.kpi);
+  report.kpi = kpi;
+  const media = Array.isArray(optimizations.primaryInventoryTypes) ? optimizations.primaryInventoryTypes.map(str2).filter((x) => !!x) : [];
+  report.primaryInventoryTypes = media;
+  add({
+    id: "campaign",
+    level: report.campaignState === "ENABLED" ? "warn" : "pass",
+    label: "Order found",
+    detail: `${report.campaignName ?? "(no name)"} (${campaignId}), state ${report.campaignState ?? "unknown"}` + (report.campaignState === "ENABLED" ? "; it is already switched on" : "")
+  });
+  const agRes = await pageAll(
+    call,
+    {
+      operation: "dsp.query_ad_groups",
+      pathParams: path2,
+      body: { adProductFilter: DSP, campaignIdFilter: { include: [campaignId] }, maxResults: 100 }
+    },
+    "adGroups",
+    "body"
+  );
+  const adGroups = isReportFailure(agRes) ? [] : agRes.rows.map(asRec).filter((r) => !!r && !!str2(r.adGroupId)).filter((r) => str2(r.campaignId) === void 0 || str2(r.campaignId) === campaignId);
+  report.lineItems = adGroups.map((g) => ({
+    adGroupId: str2(g.adGroupId),
+    ...str2(g.name) ? { name: str2(g.name) } : {},
+    ...str2(g.state) ? { state: str2(g.state) } : {},
+    ...str2(g.inventoryType) ? { inventoryType: str2(g.inventoryType) } : {},
+    targetsByType: {},
+    negativeTargets: 0
+  }));
+  if (media.length === 0) {
+    add({
+      id: "media_type",
+      level: "fail",
+      label: "Media type set",
+      detail: "The order has no media type (optimizations.primaryInventoryTypes is empty).",
+      fix: 'Without a media type creatives do not populate on the order. Set it to match the line items (Display line items mean ["DISPLAY"]).'
+    });
+  } else {
+    const mismatched = report.lineItems.filter((li) => {
+      const need = li.inventoryType ? INVENTORY_TO_MEDIA[li.inventoryType] : void 0;
+      return need !== void 0 && !media.includes(need);
+    });
+    const unmapped = report.lineItems.filter((li) => !li.inventoryType || !INVENTORY_TO_MEDIA[li.inventoryType]);
+    add({
+      id: "media_type",
+      level: mismatched.length ? "fail" : unmapped.length ? "warn" : "pass",
+      label: "Media type set",
+      detail: `Order media type ${media.join(", ")}` + (mismatched.length ? `; does not cover line item ${mismatched.map((m) => `${m.adGroupId} (${m.inventoryType})`).join(", ")}` : "") + (unmapped.length ? `; could not match line item ${unmapped.map((m) => `${m.adGroupId} (${m.inventoryType ?? "no inventory type"})`).join(", ")} to a media type, check it by hand` : ""),
+      ...mismatched.length ? { fix: "Make the order media type match its line items, or move those line items to an order that does." } : {}
+    });
+  }
+  add({
+    id: "goal_kpi",
+    level: !kpi ? "warn" : DEPRECATED_KPIS.has(kpi) ? "warn" : "pass",
+    label: "Goal KPI",
+    detail: kpi ? `${kpi}${DEPRECATED_KPIS.has(kpi) ? " (deprecated by Amazon; check the order in the console)" : ""}` : "The order shows no goal KPI."
+  });
+  const tpRes = await pageAll(
+    call,
+    {
+      operation: "dsp.list_conversion_tracking_products",
+      pathParams: { ...path2, campaignId },
+      query: { maxResults: TRACKED_PRODUCTS_PAGE }
+    },
+    "productTrackingList",
+    "query"
+  );
+  const retail = kpi !== void 0 && RETAIL_KPIS.has(kpi);
+  if (isReportFailure(tpRes)) {
+    add({
+      id: "tracked_products",
+      level: "unchecked",
+      label: "Tracked products present",
+      detail: `Could not read the order's tracked products: ${readFailureText(tpRes)}`
+    });
+  } else {
+    const asins = tpRes.rows.map((r) => str2(asRec(r)?.productId)).filter((x) => !!x);
+    report.trackedProducts = asins.length;
+    const sample = asins.slice(0, 5).join(", ") + (asins.length > 5 ? ", ..." : "");
+    const addFix = "Add the advertised ASINs with dsp.create_conversion_tracking_products, then read them back with dsp.list_conversion_tracking_products.";
+    if (asins.length > 0) {
+      add({
+        id: "tracked_products",
+        level: "pass",
+        label: "Tracked products present",
+        detail: `${asins.length}${tpRes.truncated ? "+" : ""} tracked: ${sample}`
+      });
+    } else if (retail) {
+      add({
+        id: "tracked_products",
+        level: "fail",
+        label: "Tracked products present",
+        detail: `None, and the goal ${kpi} optimizes toward retail sales: Amazon refuses to activate it (CONVERSION_TRACKING_REQUIRED).`,
+        fix: addFix
+      });
+    } else if (kpi && /OFF_AMAZON/.test(kpi)) {
+      add({
+        id: "tracked_products",
+        level: "warn",
+        label: "Tracked products present",
+        detail: "None. An order that advertises products sold on Amazon needs them before it can be switched on.",
+        fix: addFix
+      });
+    } else {
+      add({
+        id: "tracked_products",
+        level: "fail",
+        label: "Tracked products present",
+        detail: `None${kpi ? ` (goal ${kpi})` : " (and the order shows no goal KPI)"}. Amazon refuses to switch on an order that advertises products sold on Amazon until it tracks them (CONVERSION_TRACKING_REQUIRED).`,
+        fix: addFix + " If this order advertises nothing sold on Amazon, it needs an off-Amazon conversion from Events manager instead: only the user can confirm that, in the DSP console."
+      });
+    }
+  }
+  if (kpi && /OFF_AMAZON/.test(kpi)) {
+    add({
+      id: "off_amazon_conversion",
+      level: "confirm",
+      label: "Off-Amazon conversion on the order",
+      detail: `The goal ${kpi} needs an off-Amazon conversion from Events manager on this order.`,
+      fix: "Confirm it in the DSP console; the API cannot read it."
+    });
+  }
+  if (isReportFailure(agRes)) {
+    add({
+      id: "line_items",
+      level: "unchecked",
+      label: "Line items",
+      detail: `Could not read the order's line items: ${readFailureText(agRes)}`
+    });
+    add(automatedRec(void 0));
+    return finish(report);
+  }
+  add({
+    id: "line_items",
+    level: report.lineItems.length === 0 ? "fail" : agRes.truncated ? "unchecked" : "pass",
+    label: "Line items",
+    detail: report.lineItems.length === 0 ? "The order has no line items." : `${report.lineItems.length} line item(s)${agRes.truncated ? " (read stopped early)" : ""}`,
+    ...report.lineItems.length === 0 ? { fix: "Create line items with dsp.create_ad_groups." } : {}
+  });
+  if (report.lineItems.length === 0) {
+    add(automatedRec(void 0));
+    return finish(report);
+  }
+  const ids = report.lineItems.map((l) => l.adGroupId);
+  const byId = new Map(report.lineItems.map((l) => [l.adGroupId, l]));
+  const targetFailures = /* @__PURE__ */ new Map();
+  const targetTruncated = /* @__PURE__ */ new Set();
+  for (const part of chunk(ids, CM_AD_GROUP_FILTER_MAX)) {
+    const tRes = await pageAll(
+      call,
+      {
+        operation: "dsp.query_targets",
+        pathParams: path2,
+        body: { adProductFilter: DSP, adGroupIdFilter: { include: part }, maxResults: 500 }
+      },
+      "targets",
+      "body"
+    );
+    if (isReportFailure(tRes)) {
+      for (const id of part) targetFailures.set(id, readFailureText(tRes));
+      continue;
+    }
+    if (tRes.truncated) for (const id of part) targetTruncated.add(id);
+    for (const row of tRes.rows) {
+      const t = asRec(row);
+      const li = t ? byId.get(str2(t.adGroupId) ?? "") : void 0;
+      if (!t || !li) continue;
+      if (t.negative === true) {
+        li.negativeTargets += 1;
+        continue;
+      }
+      const type = str2(t.targetType) ?? "UNTYPED";
+      li.targetsByType[type] = (li.targetsByType[type] ?? 0) + 1;
+      if (type === "INVENTORY_SOURCE") {
+        const src = asRec(asRec(t.targetDetails)?.inventorySourceTarget);
+        const kind = str2(src?.inventorySourceType);
+        li.supply ??= { amazon: 0, publisherDirect: 0, thirdPartyExchange: 0, other: 0 };
+        if (kind === "AMAZON") li.supply.amazon += 1;
+        else if (kind === "APD") li.supply.publisherDirect += 1;
+        else if (kind === "THIRD_PARTY_EXCHANGE") li.supply.thirdPartyExchange += 1;
+        else li.supply.other += 1;
+      }
+    }
+  }
+  for (const li of report.lineItems) {
+    const label = `Targeting on line item ${li.name ? `"${li.name}" ` : ""}${li.adGroupId}`;
+    const failed = targetFailures.get(li.adGroupId);
+    if (failed) {
+      add({ id: "targeting", adGroupId: li.adGroupId, level: "unchecked", label, detail: `Could not read targets: ${failed}` });
+      continue;
+    }
+    const intended = Object.entries(li.targetsByType).filter(([t]) => !DEFAULT_TARGET_TYPES.has(t));
+    const supply = li.supply ? `; supply: Amazon ${li.supply.amazon}, Publisher Direct ${li.supply.publisherDirect}, third-party exchanges ${li.supply.thirdPartyExchange}` + (li.supply.other ? `, other ${li.supply.other}` : "") : "";
+    add({
+      id: "targeting",
+      adGroupId: li.adGroupId,
+      level: targetTruncated.has(li.adGroupId) ? "unchecked" : intended.length ? "pass" : "fail",
+      label,
+      detail: (intended.length ? `intended: ${fmtCounts(Object.fromEntries(intended))}` : `only Amazon's defaults (${fmtCounts(li.targetsByType)})`) + (li.negativeTargets ? `; ${li.negativeTargets} exclusion(s)` : "") + supply + (targetTruncated.has(li.adGroupId) ? "; read stopped early" : ""),
+      ...intended.length ? {} : { fix: "Add the planned audiences or other targeting with dsp.create_targets." }
+    });
+    const thirdParty = li.targetsByType.THIRD_PARTY ?? 0;
+    if (thirdParty > 0) {
+      add({
+        id: "third_party",
+        adGroupId: li.adGroupId,
+        level: "warn",
+        label: `Third-party trackers on line item ${li.adGroupId}`,
+        detail: `${thirdParty} THIRD_PARTY target(s).`,
+        fix: "If this line item targets an AMC audience that forbids third-party trackers, remove them with dsp.delete_targets before switching on."
+      });
+    }
+  }
+  const assoc = [];
+  const mods = [];
+  let creativeReadError;
+  let creativeTruncated = false;
+  for (const part of chunk(ids, V1_AD_GROUP_CHUNK)) {
+    const body = { adGroupIdFilter: { include: part }, maxResults: 100 };
+    const aRes = await pageAll(
+      call,
+      { operation: "dsp.list_creative_associations", pathParams: path2, body },
+      "associations",
+      "body"
+    );
+    const mRes = await pageAll(
+      call,
+      { operation: "dsp.list_association_moderations", pathParams: path2, body },
+      "associationStatuses",
+      "body"
+    );
+    if (isReportFailure(aRes)) creativeReadError ??= readFailureText(aRes);
+    else {
+      assoc.push(...aRes.rows.map(asRec).filter((r) => !!r));
+      creativeTruncated ||= aRes.truncated;
+    }
+    if (isReportFailure(mRes)) creativeReadError ??= readFailureText(mRes);
+    else {
+      mods.push(...mRes.rows.map(asRec).filter((r) => !!r));
+      creativeTruncated ||= mRes.truncated;
+    }
+  }
+  const bare = creativeReadError ? [] : ids.filter((id) => !assoc.some((a) => str2(a.adGroupId) === id));
+  const eligible = /* @__PURE__ */ new Map();
+  let eligibleError;
+  for (const part of chunk(bare, V1_AD_GROUP_CHUNK)) {
+    const eRes = await pageAll(
+      call,
+      {
+        operation: "dsp.list_eligible_creatives",
+        pathParams: path2,
+        body: { adGroupIdFilter: { include: part }, maxResults: 100 }
+      },
+      "adCreatives",
+      "body"
+    );
+    if (isReportFailure(eRes)) {
+      eligibleError ??= readFailureText(eRes);
+      continue;
+    }
+    for (const row of eRes.rows) {
+      const c = asRec(row);
+      const cid = str2(c?.adCreativeId);
+      const groups = Array.isArray(c?.eligibleAdGroupIds) ? c?.eligibleAdGroupIds : [];
+      if (!cid) continue;
+      for (const g of groups) {
+        const gid = str2(g);
+        if (!gid) continue;
+        const list2 = eligible.get(gid) ?? [];
+        list2.push(cid);
+        eligible.set(gid, list2);
+      }
+    }
+  }
+  const responsive = [];
+  for (const li of report.lineItems) {
+    const label = `Approved creative on line item ${li.adGroupId}`;
+    if (creativeReadError) {
+      add({
+        id: "creative",
+        adGroupId: li.adGroupId,
+        level: "unchecked",
+        label,
+        detail: `Could not read creative attachments: ${creativeReadError}`
+      });
+      continue;
+    }
+    const mine = assoc.filter((a) => str2(a.adGroupId) === li.adGroupId);
+    if (mine.length === 0) {
+      const el = eligible.get(li.adGroupId) ?? [];
+      add({
+        id: "creative",
+        adGroupId: li.adGroupId,
+        level: "fail",
+        label,
+        detail: "No creative attached" + (eligibleError ? ` (could not list eligible creatives: ${eligibleError})` : el.length ? `; ${el.length} eligible: ${el.slice(0, 5).join(", ")}${el.length > 5 ? ", ..." : ""}` : "; no eligible creative found for it"),
+        fix: el.length ? "Attach one with dsp.create_ad_associations (adId = the creative id), then wait for approval." : "Build a creative in the DSP console that fits the line item, then attach it."
+      });
+      continue;
+    }
+    const judged = mine.map((a) => {
+      const cid = str2(a.adCreativeId) ?? "?";
+      const mod = mods.find((m) => str2(m.adGroupId) === li.adGroupId && str2(m.adCreativeId) === cid);
+      const ap = approvalOf(mod, a);
+      if (ap.experiences.includes("RESPONSIVE_ECOMMERCE")) responsive.push(cid);
+      return { cid, state: str2(a.state), ...ap };
+    });
+    const live = judged.filter((j) => j.status === "APPROVED" && j.state === "ACTIVE");
+    const approvedPaused = judged.filter((j) => j.status === "APPROVED" && j.state !== "ACTIVE");
+    const pending = judged.filter((j) => j.status === "PENDING");
+    const rejected = judged.filter((j) => j.status === "REJECTED");
+    const describe3 = (js) => js.map((j) => j.cid).join(", ");
+    if (live.length) {
+      const clean = live.filter((j) => !j.exceptions);
+      const partial2 = live.filter((j) => j.exceptions);
+      const partialReasons = [...new Set(partial2.flatMap((j) => j.reasons))].slice(0, 2);
+      add({
+        id: "creative",
+        adGroupId: li.adGroupId,
+        level: creativeTruncated ? "unchecked" : clean.length ? "pass" : "warn",
+        label,
+        detail: (clean.length ? `approved: ${describe3(clean)}` : "") + (clean.length && partial2.length ? "; " : "") + (partial2.length ? `approved with exceptions: ${describe3(partial2)}` + (partialReasons.length ? ` (${partialReasons.join("; ")})` : "") : "") + (pending.length ? `; still pending: ${describe3(pending)}` : "") + (rejected.length ? `; rejected: ${describe3(rejected)}` : ""),
+        ...clean.length ? {} : { fix: "It can serve where it is approved; some of the targeted supply is still reviewing it." }
+      });
+    } else if (approvedPaused.length) {
+      add({
+        id: "creative",
+        adGroupId: li.adGroupId,
+        level: "fail",
+        label,
+        detail: "approved but the attachment is not active: " + approvedPaused.map((j) => `${j.cid} (${j.state ?? "state unknown"})`).join(", "),
+        fix: "Switch the creative attachment on, or the line item has nothing to serve."
+      });
+    } else {
+      const reasons = rejected.flatMap((r) => r.reasons).slice(0, 3);
+      add({
+        id: "creative",
+        adGroupId: li.adGroupId,
+        level: "fail",
+        label,
+        detail: (pending.length ? `moderation pending: ${describe3(pending)}` : "") + (pending.length && rejected.length ? "; " : "") + (rejected.length ? `rejected: ${describe3(rejected)}${reasons.length ? ` (${reasons.join("; ")})` : ""}` : "") + (!pending.length && !rejected.length ? `attached, approval not recognized: ${judged.map((j) => `${j.cid} (${j.raw.join(", ") || "no status"})`).join(", ")}` : ""),
+        fix: pending.length ? "Wait for Amazon's review (dsp.list_association_moderations) before switching on." : "Fix or replace the rejected creative in the DSP console, then attach it again."
+      });
+    }
+  }
+  add(automatedRec(responsive));
+  return finish(report);
+}
+function automatedRec(responsive) {
+  const seen = responsive && responsive.length ? [...new Set(responsive)] : [];
+  return {
+    id: "automated_rec",
+    level: "confirm",
+    label: "Automatically created responsive ad (only if the user chose it)",
+    detail: seen.length ? `A responsive ecommerce creative is attached (${seen.join(", ")}); it may be the automatic one.` : "The API cannot show whether the order has Amazon's automatically created responsive ad.",
+    fix: "Confirm it on the order in the DSP console. It can only be switched on when the order is created in the console; an order without it is rebuilt there."
+  };
+}
+function finish(report) {
+  const counts = { pass: 0, fail: 0, warn: 0, confirm: 0, unchecked: 0 };
+  for (const c of report.checks) counts[c.level] += 1;
+  report.counts = counts;
+  report.ready = counts.fail === 0 && counts.unchecked === 0;
+  return report;
+}
+var MARK = {
+  pass: "PASS",
+  fail: "FAIL",
+  warn: "WARN",
+  confirm: "CONFIRM",
+  unchecked: "NOT CHECKED"
+};
+function renderReadiness(r) {
+  const lines = [];
+  lines.push(
+    `DSP order ${r.campaignId}${r.campaignName ? ` "${r.campaignName}"` : ""} on advertiser ${r.advertiserId}`
+  );
+  lines.push("");
+  for (const c of r.checks) {
+    lines.push(`[${MARK[c.level]}] ${c.label}: ${c.detail}`);
+    if (c.fix && c.level !== "pass") lines.push(`        ${c.fix}`);
+  }
+  lines.push("");
+  lines.push(
+    r.ready ? `Ready to switch on, apart from ${r.counts.confirm} item(s) to confirm in the console` + (r.counts.warn ? ` and ${r.counts.warn} warning(s)` : "") + ". Amazon can still refuse the activation; read its answer per item." : `NOT ready: ${r.counts.fail} failed` + (r.counts.unchecked ? `, ${r.counts.unchecked} could not be checked` : "") + ". Do not switch this order on until they pass."
+  );
+  return lines.join("\n");
+}
+
+// src/lib/ads/dsp-supply.ts
+var SUPPLY_PRESETS = ["amazon-direct"];
+var DELETE_TARGETS_MAX = 1e3;
+var FILTER_MAX = 100;
+var MAX_PAGES2 = 50;
+var asRec2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : void 0;
+var str3 = (v) => typeof v === "string" && v.length > 0 ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : void 0;
+async function planSupplyPreset(call, advertiserId, adGroupIds, preset = "amazon-direct") {
+  const ids = [...new Set(adGroupIds)];
+  const lines = new Map(
+    ids.map((id) => [id, { adGroupId: id, amazon: 0, publisherDirect: 0, thirdPartyExchange: 0, other: 0, remove: [] }])
+  );
+  for (let i = 0; i < ids.length; i += FILTER_MAX) {
+    const part = ids.slice(i, i + FILTER_MAX);
+    let token;
+    let done = false;
+    for (let page = 0; page < MAX_PAGES2; page += 1) {
+      const res = await call({
+        operation: "dsp.query_targets",
+        pathParams: { advertiserId },
+        body: {
+          adProductFilter: { include: ["AMAZON_DSP"] },
+          adGroupIdFilter: { include: part },
+          targetTypeFilter: { include: ["INVENTORY_SOURCE"] },
+          maxResults: 500,
+          ...token ? { nextToken: token } : {}
+        }
+      });
+      if (isReportFailure(res)) return res;
+      const payload = asRec2(res.payload) ?? {};
+      const rows = Array.isArray(payload.targets) ? payload.targets : [];
+      for (const row of rows) {
+        const t = asRec2(row);
+        if (!t || t.negative === true || str3(t.targetType) !== "INVENTORY_SOURCE") continue;
+        const line = lines.get(str3(t.adGroupId) ?? "");
+        const targetId = str3(t.targetId);
+        if (!line || !targetId) continue;
+        const kind = str3(asRec2(asRec2(t.targetDetails)?.inventorySourceTarget)?.inventorySourceType);
+        if (kind === "AMAZON") line.amazon += 1;
+        else if (kind === "APD") line.publisherDirect += 1;
+        else if (kind === "THIRD_PARTY_EXCHANGE") {
+          line.thirdPartyExchange += 1;
+          line.remove.push(targetId);
+        } else line.other += 1;
+      }
+      token = str3(payload.nextToken);
+      if (!token) {
+        done = true;
+        break;
+      }
+    }
+    if (!done) {
+      return {
+        ok: false,
+        kind: "invalid_request",
+        friendly: "The line items have more inventory source targets than one plan reads; nothing was planned.",
+        message: `dsp.query_targets still had pages after ${MAX_PAGES2}. Run the preset on fewer line items at a time.`
+      };
+    }
+  }
+  for (const line of lines.values()) {
+    const kept = line.amazon + line.publisherDirect;
+    if (line.thirdPartyExchange === 0 && kept === 0 && line.other === 0) {
+      line.skipped = "no inventory source targets found (wrong id, or not a line item on this advertiser)";
+      line.remove = [];
+    } else if (kept === 0 && line.thirdPartyExchange > 0) {
+      line.skipped = "no Amazon or Publisher Direct source to keep; removing its exchanges would leave no supply targeting";
+      line.remove = [];
+    } else if (line.thirdPartyExchange === 0 && line.other > 0) {
+      line.skipped = `could not classify ${line.other} inventory source(s); nothing planned, check them by hand`;
+    } else if (line.thirdPartyExchange === 0) {
+      line.skipped = "already Amazon and Publisher Direct only";
+    }
+  }
+  const targetIds = [...new Set([...lines.values()].flatMap((l) => l.remove))];
+  const batches = [];
+  for (let i = 0; i < targetIds.length; i += DELETE_TARGETS_MAX) batches.push(targetIds.slice(i, i + DELETE_TARGETS_MAX));
+  return { ok: true, preset, advertiserId, lines: [...lines.values()], targetIds, batches };
+}
+function renderSupplyPlan(plan) {
+  const out2 = [];
+  out2.push(`Supply preset "${plan.preset}" (keep Amazon owned and Publisher Direct; remove third-party exchanges)`);
+  out2.push(`advertiser ${plan.advertiserId}`);
+  out2.push("");
+  for (const l of plan.lines) {
+    out2.push(
+      `line item ${l.adGroupId}: Amazon ${l.amazon}, Publisher Direct ${l.publisherDirect}, third-party exchanges ${l.thirdPartyExchange}` + (l.other ? `, other ${l.other} (kept)` : "") + (l.skipped ? ` -> left alone: ${l.skipped}` : ` -> remove ${l.remove.length}`)
+    );
+  }
+  out2.push("");
+  out2.push(
+    plan.targetIds.length ? `${plan.targetIds.length} target(s) to remove in ${plan.batches.length} call(s).` : "Nothing to remove."
+  );
+  return out2.join("\n");
+}
+
+// src/commands/dsp.ts
+init_resolve();
+init_telemetry();
+import { mkdir as mkdir31, writeFile as writeFile28 } from "node:fs/promises";
+import { join as join26, resolve as resolve2 } from "node:path";
+var EXIT_NOT_READY2 = 3;
+var NUMERIC_ID = /^\d{1,30}$/;
+function registerDspCommands(program3) {
+  const dsp = program3.command("dsp").description("Amazon DSP checks built on the Ads API (reads and dry-run previews; never commits).");
+  dsp.command("readiness <campaignId>").description(
+    `Check one DSP order before switching it on: media type, goal KPI, tracked products, targeting and an approved creative on every line item. Read-only; exits ${EXIT_NOT_READY2} when the order is not ready.`
+  ).option("--advertiser-id <id>", "DSP advertiser id (the Amazon-Ads-AccountId of the order)").option("--profile-id <id>", "Ads profileId from `ads profiles`").option(
+    "--legacy-seller-id <id>",
+    "exact per-marketplace seller record id (picks the stored authorization and the region)"
+  ).option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").action(async (campaignId, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const json3 = !!root.json;
+    const startedAt = Date.now();
+    try {
+      if (!opts.advertiserId) {
+        return usage("--advertiser-id is required (the DSP advertiser that owns the order).", json3);
+      }
+      if (!NUMERIC_ID.test(opts.advertiserId)) {
+        return usage("--advertiser-id must be the numeric DSP advertiser id.", json3);
+      }
+      if (!NUMERIC_ID.test(campaignId)) {
+        return usage("<campaignId> must be the numeric DSP order (campaign) id.", json3);
+      }
+      const call = (input) => adsCall(
+        {
+          ...input,
+          profileId: opts.profileId,
+          legacySellerId: opts.legacySellerId,
+          sellerId: opts.sellerId,
+          marketplace: opts.marketplace
+        },
+        { dataDirOverride: root.dataDir }
+      );
+      const result = await checkDspReadiness(call, opts.advertiserId, campaignId);
+      if (isReportFailure(result)) {
+        await trackReadiness("failed", startedAt, root.dataDir, {
+          kind: result.kind,
+          ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {},
+          ...failureContractTelemetry(result)
+        });
+        return emitFailure6(result, json3);
+      }
+      await trackReadiness("ok", startedAt, root.dataDir, {
+        ready: result.ready,
+        line_items: result.lineItems.length,
+        pass: result.counts.pass,
+        fail: result.counts.fail,
+        warn: result.counts.warn,
+        confirm: result.counts.confirm,
+        unchecked: result.counts.unchecked,
+        // Stable check ids only (e.g. "creative", "tracked_products"): which
+        // gates real orders trip, never what Amazon said about them.
+        failed_checks: [...new Set(result.checks.filter((c) => c.level === "fail").map((c) => c.id))],
+        ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {}
+      });
+      if (json3) {
+        process.stdout.write(JSON.stringify({ status: "ok", ...result }, null, 2) + "\n");
+      } else {
+        process.stdout.write(renderReadiness(result) + "\n");
+      }
+      process.exitCode = result.ready ? 0 : EXIT_NOT_READY2;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+      else process.stderr.write(`error: ${message}
+`);
+      process.exitCode = 1;
+    }
+  });
+  registerSupplyPreset(dsp);
+}
+function registerSupplyPreset(dsp) {
+  dsp.command("supply-preset <adGroupIds...>").description(
+    'Plan and preview removing third-party exchange supply from DSP line items, keeping Amazon owned inventory and Amazon Publisher Direct ("Amazon O&O + Publisher Direct only"). Writes the dsp.delete_targets body to a file and runs its dry run; nothing changes until that is committed.'
+  ).option("--advertiser-id <id>", "DSP advertiser id that owns the line items").option("--preset <name>", `supply preset (${SUPPLY_PRESETS.join(", ")})`, "amazon-direct").option("--out-dir <dir>", "where to write the delete body files (default: <data dir>/dsp)").option("--profile-id <id>", "Ads profileId from `ads profiles`").option("--legacy-seller-id <id>", "exact per-marketplace seller record id").option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").action(async (adGroupIds, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const json3 = !!root.json;
+    const startedAt = Date.now();
+    try {
+      if (!opts.advertiserId || !NUMERIC_ID.test(opts.advertiserId)) {
+        return usage("--advertiser-id is required: the numeric DSP advertiser id.", json3);
+      }
+      const bad = adGroupIds.find((id) => !NUMERIC_ID.test(id));
+      if (bad !== void 0) return usage(`line item id "${bad}" is not a numeric DSP ad group id.`, json3);
+      if (!SUPPLY_PRESETS.includes(opts.preset)) {
+        return usage(`--preset must be one of: ${SUPPLY_PRESETS.join(", ")}.`, json3);
+      }
+      const selector = {
+        profileId: opts.profileId,
+        legacySellerId: opts.legacySellerId,
+        sellerId: opts.sellerId,
+        marketplace: opts.marketplace
+      };
+      const call = (input) => adsCall({ ...input, ...selector }, { dataDirOverride: root.dataDir });
+      const plan = await planSupplyPreset(call, opts.advertiserId, adGroupIds, opts.preset);
+      if (isReportFailure(plan)) {
+        await trackSupply("failed", startedAt, root.dataDir, { kind: plan.kind, stage: "plan" });
+        return emitFailure6(plan, json3);
+      }
+      const outDir = resolve2(opts.outDir ?? join26(resolveDataDir(root.dataDir), "dsp"));
+      const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+      const previews = [];
+      if (plan.batches.length) await mkdir31(outDir, { recursive: true });
+      for (const [i, targetIds] of plan.batches.entries()) {
+        const bodyFile = join26(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
+        await writeFile28(bodyFile, JSON.stringify({ targetIds }, null, 2) + "\n", "utf8");
+        const res = await adsCall(
+          {
+            operation: "dsp.delete_targets",
+            pathParams: { advertiserId: opts.advertiserId },
+            body: { targetIds },
+            dryRun: true,
+            ...selector
+          },
+          { dataDirOverride: root.dataDir }
+        );
+        if (isReportFailure(res)) {
+          await trackSupply("failed", startedAt, root.dataDir, { kind: res.kind, stage: "preview" });
+          return emitFailure6(res, json3);
+        }
+        if (res.dryRun !== true) {
+          await trackSupply("failed", startedAt, root.dataDir, { kind: "not_a_dry_run", stage: "preview" });
+          const message = "The service did not answer the preview as a dry run. Stopped; check the line items with `mixshift dsp supply-preset` again (or dsp.query_targets) before doing anything else." + (res.auditId ? ` audit: ${res.auditId}` : "");
+          if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+          else process.stderr.write(`error: ${message}
+`);
+          process.exitCode = 1;
+          return;
+        }
+        previews.push({
+          bodyFile,
+          items: res.itemsCount ?? targetIds.length,
+          ...res.auditId ? { auditId: res.auditId } : {},
+          commit: commitCommand(
+            selector,
+            opts.advertiserId,
+            bodyFile,
+            res.auditId,
+            // The same sign-in as this preview, also when it came from the
+            // environment rather than the flag.
+            root.dataDir ?? process.env.MIXSHIFT_DATA_DIR
+          )
+        });
+      }
+      await trackSupply("ok", startedAt, root.dataDir, {
+        preset: plan.preset,
+        line_items: plan.lines.length,
+        skipped: plan.lines.filter((l) => l.skipped).length,
+        targets: plan.targetIds.length,
+        batches: plan.batches.length,
+        ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {}
+      });
+      if (json3) {
+        process.stdout.write(JSON.stringify({ status: "ok", ...plan, previews }, null, 2) + "\n");
+        return;
+      }
+      process.stdout.write(renderSupplyPlan(plan) + "\n");
+      for (const p of previews) {
+        process.stdout.write(
+          `
+DRY RUN dsp.delete_targets: ${p.items} target(s) validated, nothing removed.` + (p.auditId ? ` audit: ${p.auditId}` : "") + `
+  body: ${p.bodyFile}
+  After the user confirms, apply with:
+    ${p.commit}
+`
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+      else process.stderr.write(`error: ${message}
+`);
+      process.exitCode = 1;
+    }
+  });
+}
+function shellQuote(s) {
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(s)) return s;
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+function commitCommand(selector, advertiserId, bodyFile, auditId, dataDir) {
+  const parts = ["mixshift"];
+  if (dataDir) parts.push(`--data-dir ${shellQuote(resolve2(dataDir))}`);
+  parts.push("ads call dsp.delete_targets");
+  if (selector.profileId) parts.push(`--profile-id ${shellQuote(selector.profileId)}`);
+  if (selector.legacySellerId) parts.push(`--legacy-seller-id ${shellQuote(selector.legacySellerId)}`);
+  if (selector.sellerId) parts.push(`--seller-id ${shellQuote(selector.sellerId)}`);
+  if (selector.marketplace) parts.push(`--marketplace ${shellQuote(selector.marketplace)}`);
+  parts.push(`--path advertiserId=${advertiserId}`, `--body-file ${shellQuote(bodyFile)}`, "--commit");
+  if (auditId && /^[A-Za-z0-9_-]{1,128}$/.test(auditId)) parts.push(`--proposal-id ${auditId}`);
+  return parts.join(" ");
+}
+async function trackSupply(outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: EventName.DspSupplyPresetPlanned,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function usage(message, json3) {
+  if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
+}
+async function trackReadiness(outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: EventName.DspReadinessChecked,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function emitFailure6(failure3, json3) {
+  if (json3) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          status: "error",
+          failure_kind: failure3.kind,
+          message: failure3.friendly,
+          detail: failure3.message,
+          http_status: failure3.httpStatus,
+          amazon_error_code: failure3.amazonErrorCode,
+          ...failureContractJson(failure3)
+        },
+        null,
+        2
+      ) + "\n"
+    );
+  } else {
+    process.stderr.write(`
+\u2717 ${failure3.friendly}
+`);
+    if (failure3.message) process.stderr.write(`  ${failure3.message}
+`);
+    for (const line of failureContractLines(failure3)) process.stderr.write(`${line}
+`);
+  }
+  process.exitCode = exitCodeForKind(failure3.kind);
+}
+
 // src/commands/walmart.ts
 import { readFile as readFile44 } from "node:fs/promises";
 
@@ -94899,69 +96106,354 @@ function safeJsonPreview2(json3) {
 
 // src/commands/walmart.ts
 init_telemetry();
-function registerWalmartCommands(program3) {
-  const walmart = program3.command("walmart").description("Call Walmart APIs for the Walmart accounts connected to your MixShift account.");
-  const ads = walmart.command("ads").description(
-    "Walmart Connect (Walmart ads): Sponsored Search and Display campaigns, ad groups, keywords, reports, and audited writes (preview by default, --commit to apply)."
-  );
-  registerAdvertisers(ads);
-  registerOperations3(ads);
-  registerCall3(ads);
+
+// src/lib/walmart/marketplace-call.ts
+init_credentials();
+init_intent();
+var MARKETPLACE_CALL_TIMEOUT_MS = 15e4;
+function isMarketplaceFailure(x) {
+  return x.ok === false;
 }
-function registerAdvertisers(ads) {
-  ads.command("advertisers").description("List the Walmart advertisers connected to your MixShift account.").action(async (_opts, cmd) => {
+function exitCodeForMarketplaceKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    case "walmart_not_configured":
+    case "tenant_not_allowed":
+      return 6;
+    case "seller_not_allowed":
+    case "not_found":
+      return 7;
+    case "throttled":
+      return 8;
+    case "insufficient_scope":
+    case "write_refused":
+      return 11;
+    case "bad_request":
+      return 12;
+    case "upstream_auth":
+      return 14;
+    case "invalid_request":
+      return 15;
+    default:
+      return 1;
+  }
+}
+async function listMarketplaceSellers(opts = {}) {
+  const r = await request(
+    { method: "GET", path: "/api/walmart/marketplace/sellers" },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const raw = r.json.sellers;
+  return { ok: true, sellers: Array.isArray(raw) ? raw : [] };
+}
+async function listMarketplaceOperations(family, opts = {}) {
+  const qs = family ? `?family=${encodeURIComponent(family)}` : "";
+  const r = await request(
+    { method: "GET", path: `/api/walmart/marketplace/operations${qs}` },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 3e4 }
+  );
+  if (!r.ok) return r;
+  const body = r.json;
+  return {
+    ok: true,
+    families: Array.isArray(body.families) ? body.families.map(String) : [],
+    operations: Array.isArray(body.operations) ? body.operations : []
+  };
+}
+async function marketplaceCall(input, opts = {}) {
+  const catalog2 = await listMarketplaceOperations(void 0, { ...opts, timeoutMs: void 0 });
+  if (!catalog2.ok) return { ...catalog2, operationKnown: false };
+  const known = catalog2.operations.find((o) => o.id === input.operation);
+  if (known?.write === true) {
+    return {
+      ok: false,
+      kind: "write_refused",
+      friendly: `${input.operation} changes the seller account, and the plugin only reads Walmart Marketplace data. Make this change in the MixShift app. Nothing was sent to Walmart.`,
+      sellerId: input.sellerId,
+      operationKnown: true
+    };
+  }
+  const body = { operation: input.operation, sellerId: input.sellerId };
+  if (input.environment) body.environment = input.environment;
+  if (input.query && Object.keys(input.query).length > 0) body.query = input.query;
+  if (input.path && Object.keys(input.path).length > 0) body.path = input.path;
+  const r = await request(
+    { method: "POST", path: "/api/walmart/marketplace/call", body },
+    { ...opts, timeoutMs: opts.timeoutMs ?? MARKETPLACE_CALL_TIMEOUT_MS }
+  );
+  if (!r.ok) return { ...r, operationKnown: known !== void 0 };
+  const json3 = r.json ?? {};
+  return {
+    ...json3,
+    ok: true,
+    operation: typeof json3.operation === "string" ? json3.operation : input.operation,
+    sellerId: String(json3.sellerId ?? input.sellerId),
+    environment: String(json3.environment ?? input.environment ?? "")
+  };
+}
+async function request(spec, opts) {
+  const resolved = await resolveBaseAndToken3(opts);
+  if ("ok" in resolved) return resolved;
+  const { apiBase, tokenProvider } = resolved;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 3e4;
+  const doFetch = async (bearer) => {
+    try {
+      const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
+        method: spec.method,
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          ...spec.body ? { "Content-Type": "application/json" } : {},
+          ...intentHeader()
+        },
+        body: spec.body ? JSON.stringify(spec.body) : void 0,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return { res: res2 };
+    } catch (err) {
+      const name = typeof err === "object" && err !== null ? err.name : void 0;
+      return { networkError: err instanceof Error ? err.message : String(err), timedOut: name === "TimeoutError" };
+    }
+  };
+  const networkFailure = (a) => ({
+    ok: false,
+    kind: "host_unreachable",
+    friendly: a.timedOut ? `MixShift did not answer within ${Math.ceil(timeoutMs / 1e3)} seconds. This read changes nothing, so it is safe to try again.` : "The MixShift service is unreachable. Check your network or try again in a minute.",
+    message: a.networkError
+  });
+  let token;
+  try {
+    token = await tokenProvider(false);
+  } catch (err) {
+    return sessionFailureFromError3(err);
+  }
+  let attempt = await doFetch(token);
+  if ("networkError" in attempt) return networkFailure(attempt);
+  let res = attempt.res;
+  if (res.status === 401) {
+    try {
+      token = await tokenProvider(true);
+    } catch (err) {
+      return sessionFailureFromError3(err);
+    }
+    attempt = await doFetch(token);
+    if ("networkError" in attempt) return networkFailure(attempt);
+    res = attempt.res;
+    if (res.status === 401) {
+      return {
+        ok: false,
+        kind: "session_expired",
+        friendly: "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate.",
+        httpStatus: 401
+      };
+    }
+  }
+  let json3;
+  try {
+    json3 = await res.json();
+  } catch {
+    return statusOnlyFailure3(res.status);
+  }
+  if (typeof json3 === "object" && json3 !== null && json3.ok === false) {
+    return toFailure(json3, res.status);
+  }
+  if (!res.ok) return statusOnlyFailure3(res.status, safeJsonPreview3(json3));
+  return { ok: true, json: json3, httpStatus: res.status };
+}
+async function resolveBaseAndToken3(opts) {
+  let apiBase = opts.apiBaseOverride;
+  if (!apiBase) {
+    const { credentials } = await loadCredentials(opts.dataDirOverride);
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
+      return {
+        ok: false,
+        kind: "not_authenticated",
+        friendly: 'You\'re not signed in to MixShift. Run `mixshift auth login` (or say "sign in to MixShift" in chat) first.'
+      };
+    }
+    apiBase = base2;
+  }
+  const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
+  return { apiBase, tokenProvider };
+}
+var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
+  "seller_not_allowed",
+  "tenant_not_allowed",
+  "walmart_not_configured",
+  "insufficient_scope",
+  "invalid_request",
+  "bad_request",
+  "not_found",
+  "upstream_auth",
+  "throttled",
+  "upstream_unavailable",
+  "unknown"
+]);
+function walmartStatusOf(json3) {
+  for (const key of ["walmartStatus", "walmart_status", "upstreamStatus", "status"]) {
+    const v = json3[key];
+    if (typeof v === "number" && Number.isInteger(v) && v >= 100 && v <= 599) return v;
+  }
+  return void 0;
+}
+function toFailure(json3, httpStatus) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
+  const recognized = KNOWN_KINDS3.has(rawKind);
+  const source = cleanServerText(json3.source);
+  const kind = recognized ? rawKind : httpStatus === 429 ? "throttled" : httpStatus === 400 ? source === "request" ? "invalid_request" : "bad_request" : "unknown";
+  const walmartStatus = walmartStatusOf(json3);
+  const reason = cleanServerText(json3.reason);
+  const issues = parseRouteIssues(json3.issues);
+  const message = typeof json3.message === "string" ? json3.message : issues?.detail;
+  const sellerId = typeof json3.sellerId === "string" || typeof json3.sellerId === "number" ? String(json3.sellerId) : void 0;
+  const fix = cleanServerText(json3.fix);
+  const gatewayFriendly = typeof json3.friendly === "string" && json3.friendly ? json3.friendly : void 0;
+  const composed = kind === "upstream_auth" ? upstreamAuthFriendly(reason, walmartStatus, json3.walmart !== void 0) : void 0;
+  const friendly = composed ?? gatewayFriendly ?? defaultFriendly3(kind, walmartStatus, { reason, hasWalmartBody: json3.walmart !== void 0 });
+  const detailMessage = message ?? (composed && gatewayFriendly && gatewayFriendly !== composed ? gatewayFriendly : void 0);
+  return {
+    ok: false,
+    kind,
+    friendly,
+    httpStatus,
+    ...walmartStatus !== void 0 ? { walmartStatus } : {},
+    ...reason !== void 0 ? { reason } : {},
+    ...detailMessage !== void 0 ? { message: detailMessage } : {},
+    ...sellerId !== void 0 ? { sellerId } : {},
+    ...typeof json3.required === "string" ? { requiredScope: json3.required } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...source !== void 0 ? { source } : {},
+    ...typeof json3.retryable === "boolean" ? { retryable: json3.retryable } : {},
+    ...fix !== void 0 ? { fix } : {},
+    ...issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {},
+    ...json3.walmart !== void 0 ? { walmartResponse: json3.walmart } : {}
+  };
+}
+function statusOnlyFailure3(httpStatus, detail) {
+  const kind = httpStatus === 429 ? "throttled" : httpStatus === 400 ? "bad_request" : "unknown";
+  return {
+    ok: false,
+    kind,
+    friendly: defaultFriendly3(kind),
+    message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
+    httpStatus
+  };
+}
+function upstreamAuthFriendly(reason, walmartStatus, hasWalmartBody) {
+  if (reason === "reauth_required") {
+    return "Walmart no longer accepts this seller's connection to MixShift. A Seller Center admin needs to reconnect it by opening https://mcp.mixshift.io/walmart/marketplace/connect.";
+  }
+  if (!reason && hasWalmartBody && (walmartStatus === 401 || walmartStatus === 403)) {
+    return `Walmart refused this one read (${walmartStatus}): the seller has not granted MixShift that permission. The connection still works, and other reads may succeed.`;
+  }
+  return void 0;
+}
+function defaultFriendly3(kind, walmartStatus, detail = {}) {
+  switch (kind) {
+    case "seller_not_allowed":
+      return "That Walmart seller is not connected to this MixShift account. Run `mixshift walmart marketplace sellers` for the ones that are, or have a Seller Center admin connect it at https://mcp.mixshift.io/walmart/marketplace/connect.";
+    case "tenant_not_allowed":
+      return "Walmart Marketplace is not enabled for this MixShift account yet. Ask MixShift (support@mixshift.io) to turn it on, then connect the seller at https://mcp.mixshift.io/walmart/marketplace/connect.";
+    case "walmart_not_configured":
+      return "No Walmart seller is connected to this MixShift account yet. A Seller Center admin connects one by opening https://mcp.mixshift.io/walmart/marketplace/connect.";
+    case "insufficient_scope":
+      return "This sign-in is not allowed to read that Marketplace data. Ask your MixShift account admin to grant it.";
+    case "invalid_request":
+      return "MixShift refused this request before sending anything to Walmart: something in it has to change. Run `mixshift walmart marketplace operations` for the operation list and its parameters.";
+    case "bad_request":
+      return "Walmart rejected the request. Check the operation notes for the required parameters.";
+    case "not_found":
+      return "Walmart has no record matching that request.";
+    case "upstream_auth":
+      return upstreamAuthFriendly(detail.reason, walmartStatus, detail.hasWalmartBody) ?? "Walmart refused MixShift's access for this seller. Contact MixShift.";
+    case "throttled":
+      return "Walmart is rate-limiting requests right now. Wait a minute, then try again.";
+    case "upstream_unavailable":
+      return "Walmart did not answer in time. This is on Walmart's side and the seller does not need to reconnect. Try again in a minute.";
+    default:
+      return "The Walmart Marketplace request failed unexpectedly. Try again shortly.";
+  }
+}
+function sessionFailureFromError3(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const expired = /expired|refresh/i.test(message);
+  return {
+    ok: false,
+    kind: expired ? "session_expired" : "not_authenticated",
+    friendly: expired ? "Your MixShift session expired. Run `mixshift auth login` to re-authenticate." : "You're not signed in to MixShift. Run `mixshift auth login` first.",
+    message
+  };
+}
+function safeJsonPreview3(json3) {
+  try {
+    const s = JSON.stringify(json3);
+    return s.length > 300 ? s.slice(0, 300) + "..." : s;
+  } catch {
+    return String(json3);
+  }
+}
+
+// src/commands/walmart-marketplace.ts
+init_telemetry();
+function registerMarketplace(walmart) {
+  const mp = walmart.command("marketplace").description(
+    "Walmart Marketplace (seller API) reads: orders, items, inventory, and the per-SKU snapshot. Read only: changes are made in the MixShift app."
+  );
+  registerSellers(mp);
+  registerOperations3(mp);
+  registerCall3(mp);
+}
+function registerSellers(mp) {
+  mp.command("sellers").description("List the Walmart Marketplace sellers connected to your MixShift account.").action(async (_opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
-      const result = await listWalmartAdvertisers({ dataDirOverride: root.dataDir });
-      if (isWalmartFailure(result)) {
-        await trackWalmart(EventName.WalmartAdsAdvertisersListed, "failed", startedAt, root.dataDir, {
+      const result = await listMarketplaceSellers({ dataDirOverride: root.dataDir });
+      if (isMarketplaceFailure(result)) {
+        await trackMp(EventName.WalmartMarketplaceSellersListed, "failed", startedAt, root.dataDir, {
           kind: result.kind,
           ...result.httpStatus ? { http_status: result.httpStatus } : {}
         });
-        return emitFailure6(result, !!root.json);
+        return emitFailure7(result, !!root.json);
       }
-      await trackWalmart(EventName.WalmartAdsAdvertisersListed, "ok", startedAt, root.dataDir, {
-        count: result.advertisers.length,
-        // Which advertisers, not just how many: ids and link attributes only.
-        sample: result.advertisers.slice(0, 25).map((a) => ({
-          advertiser_id: a.advertiserId,
-          api: a.api,
-          environment: a.environment,
-          access: a.access
-        })),
-        truncated: result.advertisers.length > 25
+      await trackMp(EventName.WalmartMarketplaceSellersListed, "ok", startedAt, root.dataDir, {
+        count: result.sellers.length,
+        sample: result.sellers.slice(0, 25).map((s) => ({ seller_id: s.sellerId, environment: s.environment })),
+        truncated: result.sellers.length > 25
       });
       if (root.json) {
-        writeJson5({ status: "ok", count: result.advertisers.length, advertisers: result.advertisers });
+        writeJson5({ status: "ok", count: result.sellers.length, sellers: result.sellers });
       } else {
         process.stderr.write(`
-\u2713 ${result.advertisers.length} advertiser(s)
+\u2713 ${result.sellers.length} seller(s)
 
 `);
-        process.stdout.write(renderAdvertisers(result.advertisers) + "\n");
+        process.stdout.write(renderSellers(result.sellers) + "\n");
       }
-      return;
     } catch (err) {
       emitError12(err, !!root.json);
     }
   });
 }
-function registerOperations3(ads) {
-  ads.command("operations").description(
-    "Browse the callable Walmart Connect operations. Read the notes before calling: they carry required params, body shapes, and Walmart quirks."
+function registerOperations3(mp) {
+  mp.command("operations").description(
+    "Browse the Walmart Marketplace operations. Read the notes before calling: they carry required parameters and Walmart quirks. Operations marked WRITE are not callable from the plugin."
   ).option("--family <name>", "filter to one family (see the families list)").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
-      const result = await listWalmartOperations(opts.family, { dataDirOverride: root.dataDir });
-      if (isWalmartFailure(result)) {
-        await trackWalmart(EventName.WalmartAdsOperationsListed, "failed", startedAt, root.dataDir, {
+      const result = await listMarketplaceOperations(opts.family, { dataDirOverride: root.dataDir });
+      if (isMarketplaceFailure(result)) {
+        await trackMp(EventName.WalmartMarketplaceOperationsListed, "failed", startedAt, root.dataDir, {
           kind: result.kind
         });
-        return emitFailure6(result, !!root.json);
+        return emitFailure7(result, !!root.json);
       }
-      await trackWalmart(EventName.WalmartAdsOperationsListed, "ok", startedAt, root.dataDir, {
+      await trackMp(EventName.WalmartMarketplaceOperationsListed, "ok", startedAt, root.dataDir, {
         count: result.operations.length,
         ...opts.family ? { family: opts.family } : {}
       });
@@ -94979,13 +96471,283 @@ function registerOperations3(ads) {
 `);
         process.stdout.write(renderOperations3(result.operations, result.families) + "\n");
       }
-      return;
     } catch (err) {
       emitError12(err, !!root.json);
     }
   });
 }
-function registerCall3(ads) {
+function parseJsonObject(flag, raw) {
+  if (raw === void 0 || raw === "") return void 0;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`${flag} must be a JSON object, e.g. ${flag} '{"sku":"ABC-1"}'.`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${flag} must be a JSON object, e.g. ${flag} '{"sku":"ABC-1"}'.`);
+  }
+  return parsed;
+}
+function registerCall3(mp) {
+  mp.command("call <operation>").description(
+    "Execute one cataloged Walmart Marketplace READ for one seller. Run `walmart marketplace operations` first for the id and its notes. Write operations are refused: changes are made in the MixShift app."
+  ).option("--seller <id>", "seller id from `walmart marketplace sellers` (required)").option("--environment <env>", "sandbox or production, when the seller is connected in both").option("--query <json>", `query parameters as a JSON object, e.g. '{"sku":"ABC-1"}'`).option("--path <json>", "path parameters as a JSON object").action(async (operation, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const sellerId = opts.seller?.trim();
+      if (!sellerId) {
+        return emitError12(
+          new Error("--seller is required. Run `mixshift walmart marketplace sellers` for the ids you can use."),
+          !!root.json
+        );
+      }
+      if (opts.environment && opts.environment !== "sandbox" && opts.environment !== "production") {
+        return emitError12(new Error("--environment must be sandbox or production."), !!root.json);
+      }
+      const query = parseJsonObject("--query", opts.query);
+      const path2 = parseJsonObject("--path", opts.path);
+      const result = await marketplaceCall(
+        {
+          operation,
+          sellerId,
+          ...opts.environment ? { environment: opts.environment } : {},
+          ...query ? { query } : {},
+          ...path2 ? { path: path2 } : {}
+        },
+        { dataDirOverride: root.dataDir }
+      );
+      if (isMarketplaceFailure(result)) {
+        await trackMp(EventName.WalmartMarketplaceCalled, "failed", startedAt, root.dataDir, {
+          // Free text never leaves the machine: only an id the catalog knows.
+          operation: result.operationKnown === true ? operation : "unknown_operation",
+          seller_id: sellerId,
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {},
+          ...result.walmartStatus ? { walmart_status: result.walmartStatus } : {},
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+          // Parameter NAMES only, never values.
+          ...query ? { query_keys: Object.keys(query).sort() } : {}
+        });
+        return emitFailure7(result, !!root.json);
+      }
+      await trackMp(EventName.WalmartMarketplaceCalled, "ok", startedAt, root.dataDir, {
+        operation,
+        seller_id: result.sellerId,
+        environment: result.environment,
+        ...typeof result.status === "number" ? { walmart_status: result.status } : {}
+      });
+      const { ok: _ok, status: walmartStatus, ...rest } = result;
+      if (root.json) {
+        writeJson5({ status: "ok", ...rest, ...walmartStatus !== void 0 ? { walmart_status: walmartStatus } : {} });
+        return;
+      }
+      process.stderr.write(`
+\u2713 ${result.operation} (seller ${result.sellerId}, ${result.environment})
+
+`);
+      const shown = "payload" in result ? result.payload : rest;
+      process.stdout.write(JSON.stringify(shown, null, 2) + "\n");
+    } catch (err) {
+      emitError12(err, !!root.json);
+    }
+  });
+}
+async function trackMp(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson5(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
+}
+function emitFailure7(failure3, json3) {
+  if (json3) {
+    writeJson5({
+      status: "error",
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      walmart_status: failure3.walmartStatus,
+      reason: failure3.reason,
+      seller_id: failure3.sellerId,
+      required_scope: failure3.requiredScope,
+      unrecognized_kind: failure3.unrecognizedKind,
+      source: failure3.source,
+      retryable: failure3.retryable,
+      fix: failure3.fix,
+      invalid_params: failure3.invalidParams,
+      walmart_response: failure3.walmartResponse
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure3.friendly}
+`);
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
+`);
+    if (failure3.fix) process.stderr.write(`  fix: ${failure3.fix}
+`);
+    if (failure3.walmartStatus) process.stderr.write(`  Walmart's HTTP status: ${failure3.walmartStatus}
+`);
+    if (failure3.walmartResponse !== void 0) {
+      const said = cleanServerText(
+        typeof failure3.walmartResponse === "string" ? failure3.walmartResponse : JSON.stringify(failure3.walmartResponse)
+      );
+      if (said) process.stderr.write(`  Walmart said: ${said.length > 500 ? `${said.slice(0, 500)}...` : said}
+`);
+    }
+  }
+  process.exitCode = exitCodeForMarketplaceKind(failure3.kind);
+}
+function emitError12(err, json3) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json3) {
+    writeJson5({ status: "error", message });
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function renderSellers(sellers) {
+  if (sellers.length === 0) {
+    return "_(no Walmart Marketplace sellers are connected to this MixShift account)_";
+  }
+  const lines = ["| seller | id | environment | scopes | note |", "|---|---|---|---|---|"];
+  for (const s of sellers) {
+    const scopes = Array.isArray(s.scopes) && s.scopes.length > 0 ? s.scopes.join(", ") : "";
+    const note = s.reconnectRequired === true ? "RECONNECT NEEDED: https://mcp.mixshift.io/walmart/marketplace/connect" : typeof s.connectionExpiresAt === "string" && s.connectionExpiresAt ? `connection expires ${s.connectionExpiresAt}` : "";
+    lines.push(`| ${s.label} | ${s.sellerId} | ${s.environment} | ${scopes} | ${note} |`);
+  }
+  return lines.join("\n");
+}
+function renderOperations3(operations, families = []) {
+  if (operations.length === 0) {
+    return "_(no operations matched" + (families.length > 0 ? `; families: ${families.join(", ")}` : "") + ")_";
+  }
+  const byFamily = /* @__PURE__ */ new Map();
+  for (const op of operations) {
+    const list2 = byFamily.get(op.family) ?? [];
+    list2.push(op);
+    byFamily.set(op.family, list2);
+  }
+  const blocks = [];
+  for (const [family, ops] of byFamily) {
+    blocks.push(`## ${family}`);
+    for (const op of ops) {
+      const flags = [
+        op.method && op.method !== "GET" ? op.method : null,
+        op.write ? "WRITE (not callable from the plugin)" : null
+      ].filter(Boolean).join("; ");
+      blocks.push(`- **${op.id}**${flags ? ` (${flags})` : ""}`);
+      if (op.requiredQuery && op.requiredQuery.length > 0) {
+        blocks.push(`  - required query: ${op.requiredQuery.join(", ")}`);
+      }
+      if (op.notes) blocks.push(`  - notes: ${op.notes}`);
+    }
+    blocks.push("");
+  }
+  return blocks.join("\n").trimEnd();
+}
+
+// src/commands/walmart.ts
+function registerWalmartCommands(program3) {
+  const walmart = program3.command("walmart").description("Call Walmart APIs for the Walmart accounts connected to your MixShift account.");
+  const ads = walmart.command("ads").description(
+    "Walmart Connect (Walmart ads): Sponsored Search and Display campaigns, ad groups, keywords, reports, and audited writes (preview by default, --commit to apply)."
+  );
+  registerAdvertisers(ads);
+  registerOperations4(ads);
+  registerCall4(ads);
+  registerMarketplace(walmart);
+}
+function registerAdvertisers(ads) {
+  ads.command("advertisers").description("List the Walmart advertisers connected to your MixShift account.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listWalmartAdvertisers({ dataDirOverride: root.dataDir });
+      if (isWalmartFailure(result)) {
+        await trackWalmart(EventName.WalmartAdsAdvertisersListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind,
+          ...result.httpStatus ? { http_status: result.httpStatus } : {}
+        });
+        return emitFailure8(result, !!root.json);
+      }
+      await trackWalmart(EventName.WalmartAdsAdvertisersListed, "ok", startedAt, root.dataDir, {
+        count: result.advertisers.length,
+        // Which advertisers, not just how many: ids and link attributes only.
+        sample: result.advertisers.slice(0, 25).map((a) => ({
+          advertiser_id: a.advertiserId,
+          api: a.api,
+          environment: a.environment,
+          access: a.access
+        })),
+        truncated: result.advertisers.length > 25
+      });
+      if (root.json) {
+        writeJson6({ status: "ok", count: result.advertisers.length, advertisers: result.advertisers });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.advertisers.length} advertiser(s)
+
+`);
+        process.stdout.write(renderAdvertisers(result.advertisers) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError13(err, !!root.json);
+    }
+  });
+}
+function registerOperations4(ads) {
+  ads.command("operations").description(
+    "Browse the callable Walmart Connect operations. Read the notes before calling: they carry required params, body shapes, and Walmart quirks."
+  ).option("--family <name>", "filter to one family (see the families list)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const result = await listWalmartOperations(opts.family, { dataDirOverride: root.dataDir });
+      if (isWalmartFailure(result)) {
+        await trackWalmart(EventName.WalmartAdsOperationsListed, "failed", startedAt, root.dataDir, {
+          kind: result.kind
+        });
+        return emitFailure8(result, !!root.json);
+      }
+      await trackWalmart(EventName.WalmartAdsOperationsListed, "ok", startedAt, root.dataDir, {
+        count: result.operations.length,
+        ...opts.family ? { family: opts.family } : {}
+      });
+      if (root.json) {
+        writeJson6({
+          status: "ok",
+          count: result.operations.length,
+          families: result.families,
+          operations: result.operations
+        });
+      } else {
+        process.stderr.write(`
+\u2713 ${result.operations.length} operation(s)
+
+`);
+        process.stdout.write(renderOperations4(result.operations, result.families) + "\n");
+      }
+      return;
+    } catch (err) {
+      emitError13(err, !!root.json);
+    }
+  });
+}
+function registerCall4(ads) {
   ads.command("call <operation>").description(
     "Execute one cataloged Walmart Connect operation for one advertiser. Run `walmart ads operations` first for the id and its notes. Write operations preview by default; pass --commit to apply, ONLY after the user confirmed the preview."
   ).option("--advertiser-id <id>", "advertiser id from `walmart ads advertisers` (required)").option(
@@ -95002,13 +96764,13 @@ function registerCall3(ads) {
     try {
       const advertiserId = opts.advertiserId?.trim();
       if (!advertiserId) {
-        return emitError12(
+        return emitError13(
           new Error("--advertiser-id is required. Run `mixshift walmart ads advertisers` for the ids you can use."),
           !!root.json
         );
       }
       if (opts.bodyFile && opts.body) {
-        return emitError12(new Error("Pass --body-file or --body, not both."), !!root.json);
+        return emitError13(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       let body;
       if (opts.bodyFile) {
@@ -95042,7 +96804,7 @@ function registerCall3(ads) {
           ...result.retryable !== void 0 ? { retryable: result.retryable } : {},
           ...result.fix !== void 0 ? { has_fix: true } : {}
         });
-        return emitFailure6(result, !!root.json);
+        return emitFailure8(result, !!root.json);
       }
       await trackWalmart(EventName.WalmartAdsCalled, "ok", startedAt, root.dataDir, {
         operation,
@@ -95056,7 +96818,7 @@ function registerCall3(ads) {
       });
       const { ok: _ok, status: walmartStatus, ...rest } = result;
       if (root.json) {
-        writeJson5({ status: "ok", ...rest, ...walmartStatus !== void 0 ? { walmart_status: walmartStatus } : {} });
+        writeJson6({ status: "ok", ...rest, ...walmartStatus !== void 0 ? { walmart_status: walmartStatus } : {} });
         return;
       }
       if (result.dryRun === true) {
@@ -95090,7 +96852,7 @@ function registerCall3(ads) {
       process.stdout.write(JSON.stringify(shown, null, 2) + "\n");
       return;
     } catch (err) {
-      emitError12(err, !!root.json);
+      emitError13(err, !!root.json);
     }
   });
 }
@@ -95109,12 +96871,12 @@ async function trackWalmart(eventName, outcome, startedAt, dataDir, payload) {
 function safeAuditId(value) {
   return typeof value === "string" && /^[0-9a-fA-F-]{8,64}$/.test(value);
 }
-function writeJson5(obj2) {
+function writeJson6(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure6(failure3, json3) {
+function emitFailure8(failure3, json3) {
   if (json3) {
-    writeJson5({
+    writeJson6({
       status: "error",
       failure_kind: failure3.kind,
       message: failure3.friendly,
@@ -95157,10 +96919,10 @@ function emitFailure6(failure3, json3) {
   }
   process.exitCode = exitCodeForWalmartKind(failure3.kind);
 }
-function emitError12(err, json3) {
+function emitError13(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
   if (json3) {
-    writeJson5({ status: "error", message });
+    writeJson6({ status: "error", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
@@ -95179,7 +96941,7 @@ function renderAdvertisers(advertisers) {
   }
   return lines.join("\n");
 }
-function renderOperations3(operations, families = []) {
+function renderOperations4(operations, families = []) {
   if (operations.length === 0) {
     return "_(no operations matched" + (families.length > 0 ? `; families: ${families.join(", ")}` : "") + ")_";
   }
@@ -95322,7 +97084,7 @@ function unrecognizedShape(httpStatus, what) {
   };
 }
 async function shelfRequest(spec, opts) {
-  const resolved = await resolveBaseAndToken3(opts);
+  const resolved = await resolveBaseAndToken4(opts);
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -95354,7 +97116,7 @@ async function shelfRequest(spec, opts) {
   try {
     token = await tokenProvider(false);
   } catch (err) {
-    return sessionFailureFromError3(err);
+    return sessionFailureFromError4(err);
   }
   let attempt = await doFetch(token);
   if ("networkError" in attempt) return networkFailure(attempt);
@@ -95363,7 +97125,7 @@ async function shelfRequest(spec, opts) {
     try {
       token = await tokenProvider(true);
     } catch (err) {
-      return sessionFailureFromError3(err);
+      return sessionFailureFromError4(err);
     }
     attempt = await doFetch(token);
     if ("networkError" in attempt) return networkFailure(attempt);
@@ -95381,13 +97143,13 @@ async function shelfRequest(spec, opts) {
   try {
     json3 = await res.json();
   } catch {
-    return statusOnlyFailure3(res.status);
+    return statusOnlyFailure4(res.status);
   }
   if (isServerFailureEnvelope3(json3)) return toShelfFailure(json3, res.status);
-  if (!res.ok) return statusOnlyFailure3(res.status, safeJsonPreview3(json3));
+  if (!res.ok) return statusOnlyFailure4(res.status, safeJsonPreview4(json3));
   return { ok: true, json: json3, httpStatus: res.status };
 }
-async function resolveBaseAndToken3(opts) {
+async function resolveBaseAndToken4(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -95404,7 +97166,7 @@ async function resolveBaseAndToken3(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
-var KNOWN_KINDS3 = /* @__PURE__ */ new Set([
+var KNOWN_KINDS4 = /* @__PURE__ */ new Set([
   // Keep in step with ShelfErrorKind in mx-gateway src/shelf/errors.ts (+ route kinds).
   "shelf_not_configured",
   "shelf_not_enabled",
@@ -95423,13 +97185,13 @@ function isServerFailureEnvelope3(json3) {
   return typeof json3 === "object" && json3 !== null && json3.ok === false;
 }
 var num = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
-var str = (v) => typeof v === "string" && v ? v : void 0;
+var str4 = (v) => typeof v === "string" && v ? v : void 0;
 function toShelfFailure(json3, httpStatus) {
   const rawKind = typeof json3.kind === "string" ? json3.kind : "";
-  const recognized = KNOWN_KINDS3.has(rawKind);
+  const recognized = KNOWN_KINDS4.has(rawKind);
   const source = cleanServerText(json3.source);
   const kind = recognized ? rawKind : kindForStatus2(httpStatus, source);
-  const friendly = typeof json3.friendly === "string" && json3.friendly ? json3.friendly : defaultFriendly3(kind);
+  const friendly = typeof json3.friendly === "string" && json3.friendly ? json3.friendly : defaultFriendly4(kind);
   const issues = parseRouteIssues(json3.issues);
   const message = typeof json3.message === "string" ? json3.message : issues?.detail;
   return {
@@ -95438,11 +97200,11 @@ function toShelfFailure(json3, httpStatus) {
     friendly,
     httpStatus,
     ...message !== void 0 ? { message } : {},
-    ...str(json3.period) !== void 0 ? { period: str(json3.period) } : {},
+    ...str4(json3.period) !== void 0 ? { period: str4(json3.period) } : {},
     ...num(json3.allowance) !== void 0 ? { allowance: num(json3.allowance) } : {},
     ...num(json3.used) !== void 0 ? { used: num(json3.used) } : {},
-    ...str(json3.resets_at) !== void 0 ? { resetsAt: str(json3.resets_at) } : {},
-    ...str(json3.request_more) !== void 0 ? { requestMore: str(json3.request_more) } : {},
+    ...str4(json3.resets_at) !== void 0 ? { resetsAt: str4(json3.resets_at) } : {},
+    ...str4(json3.request_more) !== void 0 ? { requestMore: str4(json3.request_more) } : {},
     ...num(json3.available_count) !== void 0 ? { availableCount: num(json3.available_count) } : {},
     ...num(json3.retryAfterMs) !== void 0 ? { retryAfterMs: num(json3.retryAfterMs) } : {},
     ...typeof json3.required === "string" ? { requiredScope: json3.required } : {},
@@ -95458,17 +97220,17 @@ function kindForStatus2(httpStatus, source) {
   if (httpStatus === 400) return source === "request" ? "invalid_request" : "bad_request";
   return "unknown";
 }
-function statusOnlyFailure3(httpStatus, detail) {
+function statusOnlyFailure4(httpStatus, detail) {
   const kind = kindForStatus2(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly3(kind),
+    friendly: defaultFriendly4(kind),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
 }
-function defaultFriendly3(kind) {
+function defaultFriendly4(kind) {
   switch (kind) {
     case "shelf_not_configured":
       return "Shelf data is not set up on the MixShift service yet. Contact MixShift.";
@@ -95502,17 +97264,17 @@ function defaultFriendly3(kind) {
       return "The shelf request failed unexpectedly. Try again shortly.";
   }
 }
-function sessionFailureFromError3(err) {
+function sessionFailureFromError4(err) {
   const message = err instanceof Error ? err.message : String(err);
   const expired = /expired|refresh/i.test(message);
   return {
     ok: false,
     kind: expired ? "session_expired" : "not_authenticated",
-    friendly: defaultFriendly3(expired ? "session_expired" : "not_authenticated"),
+    friendly: defaultFriendly4(expired ? "session_expired" : "not_authenticated"),
     message
   };
 }
-function safeJsonPreview3(json3) {
+function safeJsonPreview4(json3) {
   try {
     const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
@@ -95628,12 +97390,12 @@ function renderShelfCatalogChat(entries = SHELF_CATALOG) {
 
 // src/commands/shelf-featured-offer-check.ts
 import { promises as fs } from "node:fs";
-import { join as join26, resolve as resolvePath3 } from "node:path";
+import { join as join27, resolve as resolvePath3 } from "node:path";
 
 // src/lib/shelf/featured-offer-check.ts
 var HELD_SHARE_FLOOR = 0.99;
 var num2 = (v) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
-var str2 = (v) => typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+var str5 = (v) => typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 var obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
 var list = (v) => Array.isArray(v) ? v.map(obj).filter((x) => x !== null) : [];
 function landedPrice(offer) {
@@ -95656,17 +97418,17 @@ function summarizeItem(item, ourSellerId) {
   const segments = [];
   for (const option of list(body.featuredBuyingOptions)) {
     for (const offer of list(option.segmentedFeaturedOffers)) {
-      const sellerId = str2(offer.sellerId);
+      const sellerId = str5(offer.sellerId);
       const price = landedPrice(offer);
-      const fulfillment = str2(offer.fulfillmentType);
+      const fulfillment = str5(offer.fulfillmentType);
       for (const seg of list(offer.featuredOfferSegments)) {
         const details = obj(seg.segmentDetails);
         const postal = obj(obj(details?.sampleLocation)?.postalCode);
         segments.push({
           sellerId,
-          membership: str2(seg.customerMembership) ?? "UNKNOWN",
+          membership: str5(seg.customerMembership) ?? "UNKNOWN",
           weight: num2(details?.glanceViewWeightPercentage) ?? 0,
-          zip: str2(postal?.value),
+          zip: str5(postal?.value),
           price,
           fulfillment
         });
@@ -95898,7 +97660,7 @@ function registerFeaturedOfferCheck(shelf) {
     try {
       await start(opts, root, startedAt);
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError14(err, !!root.json);
     }
   });
   foc.command("resume").description("Continue a check: poll the summary if pending, make the next round of shelf calls, render when done.").option("--out <dir>", "the check's output directory (default: the most recent one)").option("--budget <n>", `shelf calls to make in this invocation (default ${DEFAULT_BUDGET})`).action(async (opts, cmd) => {
@@ -95909,7 +97671,7 @@ function registerFeaturedOfferCheck(shelf) {
       const state = await readState(dir);
       await advance(state, dir, parseBudget(opts.budget), root, startedAt);
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError14(err, !!root.json);
     }
   });
   foc.command("status").description("Where a check stands, without making any call.").option("--out <dir>", "the check's output directory (default: the most recent one)").action(async (opts, cmd) => {
@@ -95919,7 +97681,7 @@ function registerFeaturedOfferCheck(shelf) {
       const state = await readState(dir);
       emitState(state, dir, !!root.json);
     } catch (err) {
-      emitError13(err, !!root.json);
+      emitError14(err, !!root.json);
     }
   });
 }
@@ -95935,7 +97697,7 @@ async function start(opts, root, startedAt) {
   if (!merchant) throw new Error("No merchant you can act for matches that id. Run `mixshift amazon merchants --json` and pass its legacySellerId.");
   const country = COUNTRY_TO_SHELF[(merchant.countryCode ?? "US").toUpperCase()];
   if (!country) throw new Error(`Shelf data does not cover marketplace ${merchant.countryCode ?? "unknown"} yet (us, ca, uk, de, fr, it, es, in).`);
-  const dir = opts.out ? resolvePath3(opts.out) : join26(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
+  const dir = opts.out ? resolvePath3(opts.out) : join27(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
   await fs.mkdir(dir, { recursive: true });
   const state = {
     version: 1,
@@ -96062,9 +97824,9 @@ async function advance(state, dir, budget, root, startedAt) {
       return;
     }
     const report = buildReport(state);
-    const html = join26(dir, "report.html");
-    const md = join26(dir, "report.md");
-    const js = join26(dir, "report.json");
+    const html = join27(dir, "report.html");
+    const md = join27(dir, "report.md");
+    const js = join27(dir, "report.json");
     await fs.writeFile(html, renderReportHtml(report), "utf8");
     await fs.writeFile(md, renderReportMarkdown(report), "utf8");
     await fs.writeFile(js, JSON.stringify(report, null, 2), "utf8");
@@ -96104,12 +97866,12 @@ function buildReport(state) {
 }
 async function writeState(dir, state) {
   state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await fs.writeFile(join26(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
+  await fs.writeFile(join27(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 async function readState(dir) {
   let raw;
   try {
-    raw = await fs.readFile(join26(dir, "state.json"), "utf8");
+    raw = await fs.readFile(join27(dir, "state.json"), "utf8");
   } catch {
     throw new Error(`No check found at ${dir} (no state.json). Start one with \`mixshift shelf featured-offer-check start\`.`);
   }
@@ -96119,17 +97881,17 @@ async function readState(dir) {
 }
 async function resolveOutDir(out2, dataDir) {
   if (out2) return resolvePath3(out2);
-  const base2 = join26(outputDir(dataDir), "featured-offer-check");
+  const base2 = join27(outputDir(dataDir), "featured-offer-check");
   let entries;
   try {
     entries = (await fs.readdir(base2, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
   }
-  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join26(base2, name))).mtimeMs })));
+  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join27(base2, name))).mtimeMs })));
   stamped.sort((a, b) => b.mtime - a.mtime);
   if (!stamped[0]) throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
-  return join26(base2, stamped[0].name);
+  return join27(base2, stamped[0].name);
 }
 function parseBudget(raw) {
   if (raw === void 0) return DEFAULT_BUDGET;
@@ -96222,7 +97984,7 @@ function emitReportFailure(failure3, json3) {
   }
   process.exitCode = exitCodeForKind(failure3.kind);
 }
-function emitError13(err, json3) {
+function emitError14(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
   if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   else process.stderr.write(`error: ${message}
@@ -96239,7 +98001,7 @@ function registerShelfCommands(program3) {
   );
   shelf.command("catalog").description("Every shelf call, with a plain explanation of what it answers, what it takes and what it costs.").action(async (_opts, cmd) => {
     const root = cmd.optsWithGlobals();
-    if (root.json) writeJson6({ status: "ok", count: SHELF_CATALOG.length, catalog: SHELF_CATALOG });
+    if (root.json) writeJson7({ status: "ok", count: SHELF_CATALOG.length, catalog: SHELF_CATALOG });
     else process.stdout.write(renderShelfCatalogChat());
     await track({ event_name: EventName.ShelfCatalogListed, payload: { count: SHELF_CATALOG.length } }, root.dataDir);
   });
@@ -96247,14 +98009,14 @@ function registerShelfCommands(program3) {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const country = parseCountry(opts.country);
-    if (!country) return emitError14(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
+    if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
     const result = await shelfZips(country, { dataDirOverride: root.dataDir });
     if (isShelfFailure(result)) {
       await trackShelf(EventName.ShelfZipsListed, "failed", startedAt, root.dataDir, failurePayload(result, { country }));
-      return emitFailure7(result, !!root.json);
+      return emitFailure9(result, !!root.json);
     }
     await trackShelf(EventName.ShelfZipsListed, "ok", startedAt, root.dataDir, { country, count: result.count });
-    if (root.json) writeJson6({ status: "ok", ...result });
+    if (root.json) writeJson7({ status: "ok", ...result });
     else {
       process.stderr.write(`
 \u2713 ${result.count} shopper location(s) for ${result.country}
@@ -96269,14 +98031,14 @@ function registerShelfCommands(program3) {
     const result = await shelfUsage({ dataDirOverride: root.dataDir });
     if (isShelfFailure(result)) {
       await trackShelf(EventName.ShelfUsageRead, "failed", startedAt, root.dataDir, failurePayload(result, {}));
-      return emitFailure7(result, !!root.json);
+      return emitFailure9(result, !!root.json);
     }
     await trackShelf(EventName.ShelfUsageRead, "ok", startedAt, root.dataDir, {
       allowance: result.allowance,
       used: result.used,
       source: result.source
     });
-    if (root.json) writeJson6({ status: "ok", ...result });
+    if (root.json) writeJson7({ status: "ok", ...result });
     else process.stdout.write(renderUsage(result) + "\n");
   });
   registerData(shelf, "buybox", "<asin>", "The Buy Box (featured offer) a shopper at a zip sees for an ASIN: price, seller, delivery promise.", true);
@@ -96301,9 +98063,9 @@ function registerData(shelf, kind, arg, description, takesZip) {
     const startedAt = Date.now();
     try {
       const country = parseCountry(opts.country);
-      if (!country) return emitError14(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
+      if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
       if (opts.origin !== void 0 && !ORIGINS.has(opts.origin)) {
-        return emitError14(new Error(`--origin must be one of ${[...ORIGINS].join(", ")}.`), !!root.json);
+        return emitError15(new Error(`--origin must be one of ${[...ORIGINS].join(", ")}.`), !!root.json);
       }
       const origin = opts.origin;
       const common2 = { country, fresh: !!opts.fresh, ...origin ? { origin } : {} };
@@ -96313,13 +98075,13 @@ function registerData(shelf, kind, arg, description, takesZip) {
       if (kind === "search") {
         if (opts.view !== void 0) {
           if (!SHELF_SURFACES.includes(opts.view)) {
-            return emitError14(new Error(`--view must be ${SHELF_SURFACES.join(" or ")}.`), !!root.json);
+            return emitError15(new Error(`--view must be ${SHELF_SURFACES.join(" or ")}.`), !!root.json);
           }
           surface = opts.view;
         }
         if (opts.page !== void 0) {
           page = Number(opts.page);
-          if (!Number.isInteger(page) || page < 1 || page > 5) return emitError14(new Error("--page must be a whole number from 1 to 5."), !!root.json);
+          if (!Number.isInteger(page) || page < 1 || page > 5) return emitError15(new Error("--page must be a whole number from 1 to 5."), !!root.json);
         }
       }
       const telemetry = {
@@ -96334,7 +98096,7 @@ function registerData(shelf, kind, arg, description, takesZip) {
       const result = kind === "buybox" ? await shelfBuybox({ asin: subject, zip, ...common2 }, clientOpts) : kind === "offers" ? await shelfOffers({ asin: subject, zip, ...common2 }, clientOpts) : kind === "search" ? await shelfSearch({ query: subject, surface, page, zip, ...common2 }, clientOpts) : kind === "product" ? await shelfProduct({ asin: subject, zip, ...common2 }, clientOpts) : await shelfSeller({ sellerId: subject, ...common2 }, clientOpts);
       if (isShelfFailure(result)) {
         await trackShelf(EventName.ShelfCalled, "failed", startedAt, root.dataDir, failurePayload(result, telemetry));
-        return emitFailure7(result, !!root.json);
+        return emitFailure9(result, !!root.json);
       }
       await trackShelf(EventName.ShelfCalled, "ok", startedAt, root.dataDir, {
         ...telemetry,
@@ -96344,7 +98106,7 @@ function registerData(shelf, kind, arg, description, takesZip) {
         ...kind === "offers" ? { offer_count: result.data.offer_count } : {}
       });
       if (root.json) {
-        writeJson6({ status: "ok", ...result });
+        writeJson7({ status: "ok", ...result });
         return;
       }
       process.stderr.write(`
@@ -96353,7 +98115,7 @@ function registerData(shelf, kind, arg, description, takesZip) {
 `);
       process.stdout.write(renderAnswer(kind, result) + "\n");
     } catch (err) {
-      emitError14(err, !!root.json);
+      emitError15(err, !!root.json);
     }
   });
 }
@@ -96389,12 +98151,12 @@ async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
     dataDir
   );
 }
-function writeJson6(obj2) {
+function writeJson7(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure7(failure3, json3) {
+function emitFailure9(failure3, json3) {
   if (json3) {
-    writeJson6({
+    writeJson7({
       status: "error",
       failure_kind: failure3.kind,
       message: failure3.friendly,
@@ -96430,9 +98192,9 @@ function emitFailure7(failure3, json3) {
   }
   process.exitCode = exitCodeForShelfKind(failure3.kind);
 }
-function emitError14(err, json3) {
+function emitError15(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json3) writeJson6({ status: "error", message });
+  if (json3) writeJson7({ status: "error", message });
   else process.stderr.write(`error: ${message}
 `);
   process.exitCode = 1;
@@ -96558,7 +98320,7 @@ function renderSeller(s) {
 }
 
 // src/commands/intelligence.ts
-import { readFile as readFile46, mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
+import { readFile as readFile46, mkdir as mkdir33, writeFile as writeFile30 } from "node:fs/promises";
 import { resolve as resolvePath4, dirname as dirname38 } from "node:path";
 
 // src/lib/intelligence/client.ts
@@ -96665,7 +98427,7 @@ async function getRunResult(runId, opts = {}) {
     return {
       ok: false,
       kind: "not_ready",
-      friendly: defaultFriendly4("not_ready"),
+      friendly: defaultFriendly5("not_ready"),
       runId
     };
   }
@@ -96680,7 +98442,7 @@ async function getRunResult(runId, opts = {}) {
   };
 }
 async function intelligenceRequest(spec, opts) {
-  const resolved = await resolveBaseAndToken4(opts);
+  const resolved = await resolveBaseAndToken5(opts);
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -96706,7 +98468,7 @@ async function intelligenceRequest(spec, opts) {
   try {
     token = await tokenProvider(false);
   } catch (err) {
-    return sessionFailureFromError4(err);
+    return sessionFailureFromError5(err);
   }
   let attempt = await doFetch(token);
   if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -96715,7 +98477,7 @@ async function intelligenceRequest(spec, opts) {
     try {
       token = await tokenProvider(true);
     } catch (err) {
-      return sessionFailureFromError4(err);
+      return sessionFailureFromError5(err);
     }
     attempt = await doFetch(token);
     if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -96733,17 +98495,17 @@ async function intelligenceRequest(spec, opts) {
   try {
     json3 = await res.json();
   } catch {
-    return statusOnlyFailure4(res.status);
+    return statusOnlyFailure5(res.status);
   }
   if (isServerFailureEnvelope4(json3)) {
     return toIntelligenceFailure(json3, res.status);
   }
   if (!res.ok) {
-    return statusOnlyFailure4(res.status, safeJsonPreview4(json3));
+    return statusOnlyFailure5(res.status, safeJsonPreview5(json3));
   }
   return { ok: true, json: json3, httpStatus: res.status };
 }
-async function resolveBaseAndToken4(opts) {
+async function resolveBaseAndToken5(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -96760,7 +98522,7 @@ async function resolveBaseAndToken4(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
-var KNOWN_KINDS4 = /* @__PURE__ */ new Set([
+var KNOWN_KINDS5 = /* @__PURE__ */ new Set([
   "not_enrolled",
   "unknown_insight",
   "bad_params",
@@ -96786,14 +98548,14 @@ function isServerFailureEnvelope4(json3) {
 }
 function toIntelligenceFailure(json3, httpStatus) {
   const rawKind = typeof json3.kind === "string" ? json3.kind : "";
-  const recognized = KNOWN_KINDS4.has(rawKind);
+  const recognized = KNOWN_KINDS5.has(rawKind);
   const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
   const serverFriendly = typeof json3.friendly === "string" ? json3.friendly : void 0;
   const message = typeof json3.message === "string" ? json3.message : void 0;
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly4(kind),
+    friendly: serverFriendly ?? defaultFriendly5(kind),
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
@@ -96802,12 +98564,12 @@ function toIntelligenceFailure(json3, httpStatus) {
     reason: strOrUndef2(json3.reason)
   };
 }
-function statusOnlyFailure4(httpStatus, detail) {
+function statusOnlyFailure5(httpStatus, detail) {
   const kind = statusToKind2(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly4(kind),
+    friendly: defaultFriendly5(kind),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
@@ -96849,7 +98611,7 @@ function hostUnreachable2(message) {
     message
   };
 }
-function sessionFailureFromError4(err) {
+function sessionFailureFromError5(err) {
   const message = err instanceof Error ? err.message : String(err);
   const expired = /expired|refresh/i.test(message);
   return {
@@ -96859,7 +98621,7 @@ function sessionFailureFromError4(err) {
     message
   };
 }
-function defaultFriendly4(kind) {
+function defaultFriendly5(kind) {
   switch (kind) {
     case "not_enrolled":
       return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
@@ -96870,7 +98632,7 @@ function defaultFriendly4(kind) {
     case "merchant_not_resolved":
       return "No merchant matched params.merchant. Double-check the sellerId / marketplaceId or brand.";
     case "no_data_for_period":
-      return "There is no data for the requested period. This is not an error, just try a different period.";
+      return "No data came back for the requested period. Retry once before concluding there is none: a brief service problem can look like an empty period.";
     case "account_too_large_use_async":
       return "This account is too large to compute synchronously. Retry the same command with --async, then poll the returned runId.";
     case "busy":
@@ -96895,7 +98657,7 @@ function defaultFriendly4(kind) {
 function strOrUndef2(v) {
   return typeof v === "string" ? v : void 0;
 }
-function safeJsonPreview4(json3) {
+function safeJsonPreview5(json3) {
   try {
     const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
@@ -96906,7 +98668,7 @@ function safeJsonPreview4(json3) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir31, open as open2, readFile as readFile45, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile28 } from "node:fs/promises";
+import { mkdir as mkdir32, open as open2, readFile as readFile45, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile29 } from "node:fs/promises";
 import { dirname as dirname37 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
@@ -96922,9 +98684,9 @@ async function loadLedger2(path2) {
   }
 }
 async function saveLedger2(path2, handles) {
-  await mkdir31(dirname37(path2), { recursive: true });
+  await mkdir32(dirname37(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile28(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await writeFile29(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename23(tmp, path2);
 }
 var LOCK_RETRY_ATTEMPTS = 15;
@@ -96969,7 +98731,7 @@ async function acquireLock(lockPath) {
 }
 async function withLedgerLock(ledgerPath, fn) {
   const lockPath = `${ledgerPath}.lock`;
-  await mkdir31(dirname37(lockPath), { recursive: true }).catch(() => {
+  await mkdir32(dirname37(lockPath), { recursive: true }).catch(() => {
   });
   const acquired = await acquireLock(lockPath);
   try {
@@ -97259,7 +99021,7 @@ function registerCatalogCommand(intelligence) {
       const result = await catalog({ dataDirOverride: root.dataDir });
       if (isIntelligenceFailure(result)) {
         await trackFailure3("catalog", void 0, result, startedAt, root.dataDir);
-        return emitFailure8(result, !!root.json);
+        return emitFailure10(result, !!root.json);
       }
       await track(
         {
@@ -97271,7 +99033,7 @@ function registerCatalogCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson7({ ok: true, entries: result.entries });
+        writeJson8({ ok: true, entries: result.entries });
       } else {
         process.stdout.write(`
 \u2713 ${result.entries.length} insight(s)
@@ -97280,7 +99042,7 @@ function registerCatalogCommand(intelligence) {
         process.stdout.write(renderCatalog(result.entries) + "\n");
       }
     } catch (err) {
-      emitError15(err, !!root.json);
+      emitError16(err, !!root.json);
     }
   });
 }
@@ -97308,7 +99070,7 @@ function registerRunCommand(intelligence) {
       if (isIntelligenceFailure(result)) {
         await trackFailure3("run", id, result, startedAt, root.dataDir);
         const hint = result.kind === "bad_params" && !result.reason ? await paramsHint(id, root.dataDir) : void 0;
-        return emitFailure8(result, !!root.json, hint);
+        return emitFailure10(result, !!root.json, hint);
       }
       if (isAccepted(result)) {
         await recordIntelligenceRun(
@@ -97335,7 +99097,7 @@ function registerRunCommand(intelligence) {
           root.dataDir
         );
         if (root.json) {
-          writeJson7(result);
+          writeJson8(result);
         } else {
           process.stdout.write(
             `
@@ -97352,7 +99114,7 @@ Handle saved to intelligence-runs.json; any later call can list it: mixshift int
       }
       await emitInsightResult(id, result, opts.out, startedAt, root, brandSlugFromParams(params));
     } catch (err) {
-      emitError15(err, !!root.json);
+      emitError16(err, !!root.json);
     }
   });
 }
@@ -97367,7 +99129,7 @@ function registerPollCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("poll", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure8(result, !!root.json);
+        return emitFailure10(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, result.status, root.dataDir);
       await track(
@@ -97380,7 +99142,7 @@ function registerPollCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson7(result);
+        writeJson8(result);
       } else {
         process.stdout.write(
           `${result.ready ? "\u2713 done" : "\u2026 still running"}  status=${result.status}
@@ -97390,7 +99152,7 @@ function registerPollCommand(intelligence) {
         );
       }
     } catch (err) {
-      emitError15(err, !!root.json);
+      emitError16(err, !!root.json);
     }
   });
 }
@@ -97405,7 +99167,7 @@ function registerGetCommand(intelligence) {
           await updateIntelligenceRunStatus(runId, result.kind, root.dataDir);
         }
         await trackFailure3("get", void 0, result, startedAt, root.dataDir, runId);
-        return emitFailure8(result, !!root.json);
+        return emitFailure10(result, !!root.json);
       }
       await updateIntelligenceRunStatus(runId, "DONE", root.dataDir);
       const handle = await ledgerHandleForRunId(runId, root.dataDir);
@@ -97421,7 +99183,7 @@ function registerGetCommand(intelligence) {
         runId
       );
     } catch (err) {
-      emitError15(err, !!root.json);
+      emitError16(err, !!root.json);
     }
   });
 }
@@ -97435,7 +99197,7 @@ function registerRunsCommand2(intelligence) {
       const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
       const shown = runs.slice(0, limit);
       if (root.json) {
-        writeJson7({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
+        writeJson8({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
         return;
       }
       if (shown.length === 0) {
@@ -97459,7 +99221,7 @@ Statuses are last-seen on THIS machine; poll refreshes from the server.
 `
       );
     } catch (err) {
-      emitError15(err, !!root.json);
+      emitError16(err, !!root.json);
     }
   });
 }
@@ -97504,34 +99266,34 @@ async function catalogEntry(id, dataDir) {
   }
 }
 async function paramsHint(id, dataDir) {
-  const lookup = await catalogEntry(id, dataDir);
-  return "entry" in lookup && lookup.entry.paramsDoc ? `${lookup.entry.id} takes: ${lookup.entry.paramsDoc}` : void 0;
+  const lookup3 = await catalogEntry(id, dataDir);
+  return "entry" in lookup3 && lookup3.entry.paramsDoc ? `${lookup3.entry.id} takes: ${lookup3.entry.paramsDoc}` : void 0;
 }
 async function describeInsight(id, cmd, root) {
   if (!id) {
-    if (root.json) writeJson7({ ok: true, usage: cmd.helpInformation() });
+    if (root.json) writeJson8({ ok: true, usage: cmd.helpInformation() });
     else process.stdout.write(cmd.helpInformation());
     return;
   }
-  const lookup = await catalogEntry(id, root.dataDir);
-  if ("entry" in lookup) {
+  const lookup3 = await catalogEntry(id, root.dataDir);
+  if ("entry" in lookup3) {
     if (root.json) {
-      writeJson7({ ok: true, id, entry: lookup.entry });
+      writeJson8({ ok: true, id, entry: lookup3.entry });
       return;
     }
     process.stdout.write(cmd.helpInformation());
     process.stdout.write(`
-${renderCatalog([lookup.entry])}
+${renderCatalog([lookup3.entry])}
 `);
     process.stdout.write(
       "\nThe params line above is the shape to send, as one JSON object: --params '{...}' or --params-file <path>. A merchant is named by its legacySellerId (the seller id `mixshift brand list` shows) or by {sellerId, marketplaceId}.\n"
     );
     return;
   }
-  const failure3 = "failure" in lookup ? lookup.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
-  const hint = "failure" in lookup ? hintForKind(failure3.kind) : "Ids: mixshift intelligence catalog";
+  const failure3 = "failure" in lookup3 ? lookup3.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
+  const hint = "failure" in lookup3 ? hintForKind(failure3.kind) : "Ids: mixshift intelligence catalog";
   if (root.json) {
-    writeJson7({ ok: false, id, kind: failure3.kind, message: failure3.friendly, detail: failure3.message, ...hint ? { hint } : {} });
+    writeJson8({ ok: false, id, kind: failure3.kind, message: failure3.friendly, detail: failure3.message, ...hint ? { hint } : {} });
   } else {
     process.stdout.write(cmd.helpInformation());
     process.stderr.write(`
@@ -97579,8 +99341,8 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir,
     runIdForTracking
   );
-  await mkdir32(dirname38(artifactPath), { recursive: true });
-  await writeFile29(artifactPath, JSON.stringify(result, null, 2), "utf8");
+  await mkdir33(dirname38(artifactPath), { recursive: true });
+  await writeFile30(artifactPath, JSON.stringify(result, null, 2), "utf8");
   await track(
     {
       event_name: EventName.IntelligenceRunRetrieved,
@@ -97598,7 +99360,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir
   );
   if (root.json) {
-    writeJson7({ ...result, artifact_path: artifactPath });
+    writeJson8({ ...result, artifact_path: artifactPath });
     return;
   }
   process.stdout.write("\n" + renderHeadline(headline) + "\n");
@@ -97627,6 +99389,12 @@ function hintForKind(kind) {
       return "Check `mixshift intelligence runs` for recent handles on this machine.";
     case "bad_params":
       return "See the params this insight takes: mixshift intelligence run <id> --help";
+    // Both: a finished run keeps its failure, so `get`/`poll` on the same
+    // runId only returns it again. The advice is a FRESH run, once.
+    case "engine_error":
+      return "This is usually a temporary engine or database failure. Start one fresh run with the same params (mixshift intelligence run <id> --async, then poll it); if that fails too, report the failure.";
+    case "no_data_for_period":
+      return "A brief service problem can look like an empty period. Start one fresh run with the same params (mixshift intelligence run <id> --async, then poll it); if it comes back empty again, the period has no data.";
     default:
       return void 0;
   }
@@ -97652,10 +99420,10 @@ async function trackFailure3(op, insightId, failure3, startedAt, dataDir, runId)
     dataDir
   );
 }
-function emitFailure8(failure3, json3, hintOverride) {
+function emitFailure10(failure3, json3, hintOverride) {
   const hint = hintOverride ?? hintForKind(failure3.kind);
   if (json3) {
-    writeJson7({
+    writeJson8({
       ok: false,
       kind: failure3.kind,
       ...failure3.reason ? { reason: failure3.reason } : {},
@@ -97676,17 +99444,17 @@ function emitFailure8(failure3, json3, hintOverride) {
   }
   process.exitCode = exitCodeForKind2(failure3.kind);
 }
-function emitError15(err, json3) {
+function emitError16(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
   if (json3) {
-    writeJson7({ ok: false, kind: "unknown", message });
+    writeJson8({ ok: false, kind: "unknown", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
   }
   process.exitCode = 1;
 }
-function writeJson7(obj2) {
+function writeJson8(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 function wrapIndented(text, width, indent) {
@@ -97944,9 +99712,9 @@ function failure(kind, extra = {}) {
   return { ok: false, kind, friendly: friendlyFor(kind), ...extra };
 }
 async function appStateRequest(method, path2, body, opts) {
-  return request(method, path2, body, opts);
+  return request2(method, path2, body, opts);
 }
-async function request(method, path2, body, opts) {
+async function request2(method, path2, body, opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -98020,9 +99788,9 @@ async function readMonthRows(scopeId, opts = {}) {
   const rows = /* @__PURE__ */ new Map();
   let after = null;
   for (let page = 0; page < 100; page++) {
-    const q = new URLSearchParams({ prefix: monthPrefix(scopeId), limit: String(PAGE) });
-    if (after) q.set("after", after);
-    const r = await request("GET", `/api/app-state/forecasting/docs?${q.toString()}`, void 0, opts);
+    const q3 = new URLSearchParams({ prefix: monthPrefix(scopeId), limit: String(PAGE) });
+    if (after) q3.set("after", after);
+    const r = await request2("GET", `/api/app-state/forecasting/docs?${q3.toString()}`, void 0, opts);
     if (!r.ok) return r;
     const docs = Array.isArray(r.json.docs) ? r.json.docs : [];
     for (const d of docs) {
@@ -98034,7 +99802,7 @@ async function readMonthRows(scopeId, opts = {}) {
   return { ok: true, rows };
 }
 async function writeMonthRows(writes, opts = {}) {
-  const r = await request("POST", "/api/app-state/forecasting/batch", { writes, reason: BUDGET_REASON }, opts);
+  const r = await request2("POST", "/api/app-state/forecasting/batch", { writes, reason: BUDGET_REASON }, opts);
   if (!r.ok) return r;
   const results = Array.isArray(r.json.results) ? r.json.results : [];
   return { ok: true, results };
@@ -98092,8 +99860,8 @@ function settingsOf(doc) {
 }
 async function readAccountSettings(scopeId, opts = {}) {
   const key = accountKey(scopeId);
-  const q = new URLSearchParams({ prefix: key, limit: "50" });
-  const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q.toString()}`, void 0, opts);
+  const q3 = new URLSearchParams({ prefix: key, limit: "50" });
+  const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q3.toString()}`, void 0, opts);
   if (!r.ok) return r;
   const docs = Array.isArray(r.json.docs) ? r.json.docs : [];
   const row = docs.find((d) => d && d.key === key);
@@ -98194,8 +99962,8 @@ function toSubBrand(d) {
   };
 }
 async function listSubBrands(legacySellerId, opts = {}) {
-  const q = legacySellerId === null ? "" : `?legacy_seller_id=${legacySellerId}`;
-  const r = await appStateRequest("GET", `/api/app-state/forecasting/scopes${q}`, void 0, opts);
+  const q3 = legacySellerId === null ? "" : `?legacy_seller_id=${legacySellerId}`;
+  const r = await appStateRequest("GET", `/api/app-state/forecasting/scopes${q3}`, void 0, opts);
   if (!r.ok) return r;
   const defs = Array.isArray(r.json.definitions) ? r.json.definitions : [];
   const subBrands = defs.map((d) => toSubBrand(d ?? {})).filter((s) => s !== null);
@@ -98244,9 +100012,9 @@ async function planSubBrandRemoval(scopeId, opts = {}) {
   let months = 0;
   let after = null;
   for (let page = 0; page < 100; page++) {
-    const q = new URLSearchParams({ prefix: monthPrefix(scopeId), limit: "500" });
-    if (after) q.set("after", after);
-    const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q.toString()}`, void 0, opts);
+    const q3 = new URLSearchParams({ prefix: monthPrefix(scopeId), limit: "500" });
+    if (after) q3.set("after", after);
+    const r = await appStateRequest("GET", `/api/app-state/forecasting/docs?${q3.toString()}`, void 0, opts);
     if (!r.ok) return r;
     const docs = Array.isArray(r.json.docs) ? r.json.docs : [];
     for (const d of docs) {
@@ -98293,7 +100061,7 @@ function registerForecastCommands(program3) {
       { event_name: EventName.ForecastBudgetShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, months: rows.length } },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, budgets: rows });
+    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, budgets: rows });
     if (rows.length === 0) {
       process.stdout.write(`
 No budget entered for ${scopeId}: the forecast estimates spend from ${isSubBrandScope(scopeId) ? "the sub-brand's" : "the account's"} history.
@@ -98347,7 +100115,7 @@ Sponsored-ads budgets for ${scopeId}:
     if (!r.ok) return fail2("set", scopeId, r, startedAt, root, entries.length);
     if (opts.dryRun) {
       const changes = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null, to: w.doc?.adBudget?.value ?? null }));
-      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
+      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -98371,7 +100139,7 @@ Already holding that budget: ${r.plan.unchanged.join(", ")}
       root.dataDir
     );
     if (root.json) {
-      return writeJson8({
+      return writeJson9({
         ok: true,
         scope_id: scopeId,
         written: r.written,
@@ -98406,7 +100174,7 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
     if (!r.ok) return fail2("clear", scopeId, r, startedAt, root, months.length);
     if (opts.dryRun) {
       const clearing = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null }));
-      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
+      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
       process.stdout.write(`
 Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} (${formatAmount(c.from ?? 0)})`).join(", ") || "nothing"}
 `);
@@ -98421,7 +100189,7 @@ Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} 
       },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
+    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
     process.stdout.write(
       `
 \u2713 ${r.written} month(s) cleared for ${scopeId}` + (r.plan.notSet.length ? `; no budget was entered for ${r.plan.notSet.join(", ")}` : "") + ".\n"
@@ -98458,7 +100226,7 @@ function registerSettingsCommands(forecast) {
       { event_name: EventName.ForecastSettingsShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, exists: read.account.exists } },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
+    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
     process.stdout.write(`
 Forecast settings for ${scopeId}${read.account.exists ? "" : " (nothing stored yet; every setting reads as off)"}:
 
@@ -98483,7 +100251,7 @@ Forecast settings for ${scopeId}${read.account.exists ? "" : " (nothing stored y
     if (!r.ok) return failSettings("set", scopeId, r, startedAt, root, Object.keys(patch));
     const line = (name) => `  ${r.before[name] === void 0 ? "unset" : r.before[name] ? "on" : "off"} -> ${r.after[name] ? "on" : "off"}  ${SETTING_LABEL[name]}`;
     if (opts.dryRun) {
-      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
+      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -98503,7 +100271,7 @@ Already holding that value: ${r.unchanged.join(", ")}
       },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
+    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
     if (r.changed.length === 0) {
       process.stdout.write(`
 Nothing changed for ${scopeId}: ${r.unchanged.join(", ")} already held that value.
@@ -98538,7 +100306,7 @@ async function failSettings(op, scopeId, f, startedAt, root, names) {
     },
     root.dataDir
   );
-  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
@@ -98559,7 +100327,7 @@ function registerSubBrandCommands(forecast) {
       { event_name: EventName.ForecastSubBrandListed, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { seller, count: r.subBrands.length, skipped: r.skipped } },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
+    if (root.json) return writeJson9({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
     if (r.subBrands.length === 0) {
       process.stdout.write(`
 No sub-brands defined${seller === null ? "" : ` for seller ${seller}`}.
@@ -98599,7 +100367,7 @@ ${r.skipped} stored definition(s) could not be read and are not listed.
     if (!r.ok) return subBrandFail("add", null, seller, r, startedAt, root);
     const noAds = campaignValues.length === 0 ? "It names no campaign label, so it has no ad spend and a forecast cannot train on it." : null;
     if (opts.dryRun && r.subBrand === null) {
-      if (root.json) return writeJson8({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
+      if (root.json) return writeJson9({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
       process.stdout.write(`
 Would define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}
 `);
@@ -98620,7 +100388,7 @@ ${noAds}
         root.dataDir
       );
     }
-    if (root.json) return writeJson8({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
+    if (root.json) return writeJson9({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
     process.stdout.write(
       r.created ? `
 \u2713 Defined ${s.name}: ${s.scopeId}
@@ -98648,7 +100416,7 @@ Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-0
     const p = planned.plan;
     const what = { definition: p.definition, months: p.months, settings: p.settings };
     if (!opts.apply) {
-      if (root.json) return writeJson8({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
+      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
       if (p.writes.length === 0) {
         process.stdout.write(`
 Nothing is stored under ${scopeId}.
@@ -98667,7 +100435,7 @@ Would remove ${scopeId} (nothing removed): ${p.definition ? "its definition" : "
       { event_name: EventName.ForecastSubBrandRemoved, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, deleted: r.deleted, months: p.months } },
       root.dataDir
     );
-    if (root.json) return writeJson8({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
+    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
     process.stdout.write(r.deleted === 0 ? `
 Nothing was stored under ${scopeId}.
 ` : `
@@ -98699,7 +100467,7 @@ async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
     },
     root.dataDir
   );
-  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
+  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
@@ -98710,7 +100478,7 @@ function formatAmount(n) {
 }
 function badInput(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json3) writeJson8({ ok: false, kind: "bad_input", message });
+  if (json3) writeJson9({ ok: false, kind: "bad_input", message });
   else process.stderr.write(`
 \u2717 ${message}
 `);
@@ -98757,19 +100525,19 @@ async function fail2(op, scopeId, f, startedAt, root, months) {
     },
     root.dataDir
   );
-  if (root.json) writeJson8({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
   process.exitCode = exitCodeFor4(f);
 }
-function writeJson8(obj2) {
+function writeJson9(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 
 // src/commands/report.ts
-import { readFile as readFile48, writeFile as writeFile31, mkdir as mkdir35, readdir as readdir7 } from "node:fs/promises";
-import { dirname as dirname41, join as join30, resolve as resolve2 } from "node:path";
+import { readFile as readFile48, writeFile as writeFile32, mkdir as mkdir36, readdir as readdir7 } from "node:fs/promises";
+import { dirname as dirname41, join as join31, resolve as resolve3 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -99607,7 +101375,7 @@ function extractEvidence(whole, selection) {
       used.add(id);
       if (kind !== null) findingIdsByKind.set(kind, [...findingIdsByKind.get(kind) ?? [], id]);
       const questions = Array.isArray(g.questions) ? g.questions : [];
-      const lines = questions.map((q) => asRecord(q)?.question).filter((q) => typeof q === "string" && q.trim().length > 0);
+      const lines = questions.map((q3) => asRecord(q3)?.question).filter((q3) => typeof q3 === "string" && q3.trim().length > 0);
       out2.push({
         id,
         ...kind ? { kind } : {},
@@ -100190,10 +101958,11 @@ function roleOfClaim(id) {
   if (/(operator_line|month_line)$/.test(id)) return "forecast";
   if (/outlook$/.test(id)) return "outlook";
   if (/basis$/.test(id)) return "basis";
+  if (/two_actuals$/.test(id)) return "basis";
   return null;
 }
 var CLIENT_ROLES = /* @__PURE__ */ new Set(["actual", "projection", "forecast", "outlook"]);
-var str3 = (v) => typeof v === "string" ? v : null;
+var str6 = (v) => typeof v === "string" ? v : null;
 var num3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
 var strs = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 function extractForecast(response, opts = {}) {
@@ -100202,19 +101971,19 @@ function extractForecast(response, opts = {}) {
   }
   const r = response;
   const metric = r.metric === "units" ? "units" : "revenue";
-  const month = str3(r.month) ?? "";
+  const month = str6(r.month) ?? "";
   if (opts.expectMonth !== void 0 && opts.expectMonth !== month) {
     throw new ForecastMonthMismatchError(opts.expectMonth, month);
   }
   let state = ["provided_current", "stale", "not_provided"].find((s) => s === r.forecast_state) ?? "not_provided";
-  let reason = str3(r.reason);
+  let reason = str6(r.reason);
   const pub = isRec2(r.published) ? r.published : null;
   const published = pub && num3(pub.gateway_revision) !== null ? {
-    at: str3(pub.at) ?? "",
-    by: str3(pub.by) ?? "",
-    producer: str3(pub.producer) ?? "app",
+    at: str6(pub.at) ?? "",
+    by: str6(pub.by) ?? "",
+    producer: str6(pub.producer) ?? "app",
     gateway_revision: num3(pub.gateway_revision),
-    published_run_id: str3(pub.published_run_id) ?? "",
+    published_run_id: str6(pub.published_run_id) ?? "",
     age_days: num3(pub.age_days) ?? 0,
     document_version: num3(pub.document_version),
     overlay_revisions: num3(pub.overlay_revisions)
@@ -100227,13 +101996,14 @@ function extractForecast(response, opts = {}) {
       insight: "FCT-TRACK-01",
       metric,
       month,
-      scope_id: str3(r.scope_id),
+      scope_id: str6(r.scope_id),
       forecast_state: state,
       reason,
-      friendly: str3(r.friendly),
+      friendly: str6(r.friendly),
       spend_basis: spendBasis,
       ytd_runs_past_report_month: r.ytd_runs_past_report_month === true,
       unrecognised: [],
+      unplaced_claims: [],
       published,
       attestation: ""
     },
@@ -100253,16 +102023,16 @@ function extractForecast(response, opts = {}) {
     const figures2 = [];
     for (const f of Array.isArray(rd.figures) ? rd.figures : []) {
       if (!isRec2(f)) continue;
-      const id = str3(f.id) ?? "";
+      const id = str6(f.id) ?? "";
       const role = roleOfId(id);
       const caveats = strs(f.caveats);
       figures2.push({
         id,
-        label: str3(f.label) ?? "",
+        label: str6(f.label) ?? "",
         value: f.value,
-        unit: str3(f.unit) ?? "",
-        basis: str3(f.basis) ?? "",
-        source_path: str3(f.source_path) ?? "",
+        unit: str6(f.unit) ?? "",
+        basis: str6(f.basis) ?? "",
+        source_path: str6(f.source_path) ?? "",
         caveats,
         confidence: "published",
         forecast_role: role ?? "unclassified",
@@ -100286,41 +102056,47 @@ function extractForecast(response, opts = {}) {
     const derived = [];
     for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
       if (!isRec2(d)) continue;
-      const id = str3(d.id) ?? "";
+      const id = str6(d.id) ?? "";
       const role = roleOfId(id);
       const inputs = strs(d.inputs);
       derived.push({
         id,
-        label: str3(d.label) ?? "",
+        label: str6(d.label) ?? "",
         value: d.value,
-        unit: str3(d.unit) ?? "",
-        basis: str3(d.basis) ?? "",
+        unit: str6(d.unit) ?? "",
+        basis: str6(d.basis) ?? "",
         inputs,
-        why_not_published: str3(d.why_not_published) ?? "",
+        why_not_published: str6(d.why_not_published) ?? "",
         forecast_role: role ?? "unclassified",
         client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe.get(i) === true)
       });
     }
     const claims = [];
+    const unplacedClaims = [];
+    let malformedClaims = 0;
     for (const c of Array.isArray(rd.claims) ? rd.claims : []) {
       if (!isRec2(c)) continue;
-      const id = str3(c.id) ?? "";
+      const id = str6(c.id) ?? "";
+      const role = roleOfClaim(id);
+      if (id === "") malformedClaims += 1;
+      else if (role === null) unplacedClaims.push(id);
       claims.push({
         id,
-        kind: str3(c.kind) ?? "",
-        text: str3(c.text) ?? "",
+        kind: str6(c.kind) ?? "",
+        text: str6(c.text) ?? "",
         figure_refs: strs(c.figure_refs),
-        forecast_role: roleOfClaim(id) ?? "unclassified",
-        ...str3(c.comparison_basis) ? { comparison_basis: str3(c.comparison_basis) } : {}
+        forecast_role: role ?? "basis",
+        ...str6(c.comparison_basis) ? { comparison_basis: str6(c.comparison_basis) } : {}
       });
     }
-    const unrecognised = [...figures2, ...derived, ...claims].filter((x) => x.forecast_role === "unclassified").map((x) => x.id);
+    const unrecognised = [...figures2, ...derived].filter((x) => x.forecast_role === "unclassified").map((x) => x.id).concat(Array.from({ length: malformedClaims }, () => ""));
     if (unrecognised.length > 0) {
       state = "not_provided";
       reason = "unrecognised_figures";
       doc.source.unrecognised = unrecognised;
     } else {
-      doc.currency = str3(rd.currency);
+      doc.source.unplaced_claims = unplacedClaims;
+      doc.currency = str6(rd.currency);
       doc.caveat_registry = registry2;
       doc.figures = figures2;
       doc.derived = derived;
@@ -100328,13 +102104,13 @@ function extractForecast(response, opts = {}) {
       for (const s of Array.isArray(rd.sections) ? rd.sections : []) {
         if (!isRec2(s)) continue;
         doc.sections.push({
-          id: str3(s.id) ?? "",
+          id: str6(s.id) ?? "",
           kind: "forecast",
           audience: "internal",
           figure_refs: strs(s.figure_refs),
           claim_refs: strs(s.claim_refs),
           caveats_rendered: strs(s.caveats_rendered),
-          display_text: str3(s.display_text) ?? ""
+          display_text: str6(s.display_text) ?? ""
         });
       }
       doc.limitations = strs(r.limitations);
@@ -100478,6 +102254,8 @@ function forecastExtractedPayload(doc, findings, ctx) {
     claims: doc.claims.length,
     sections: doc.sections.length,
     client_safe: clientSafe,
+    // A count only: tells us the service sent a claim id this version cannot place.
+    ...doc.source.unplaced_claims.length > 0 ? { unplaced_claims: doc.source.unplaced_claims.length } : {},
     ...ctx.checkRan ? { check_findings: findings.length } : {},
     expect_month: ctx.expectMonth !== void 0
   };
@@ -100568,7 +102346,7 @@ init_telemetry();
 
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join27 } from "node:path";
+import { join as join28 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -100794,7 +102572,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join27(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync2(join28(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -101193,8 +102971,8 @@ function failureFromException3(err) {
 // src/lib/run-ledger/local.ts
 init_resolve();
 import { createHash as createHash6 } from "node:crypto";
-import { mkdir as mkdir33, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile30 } from "node:fs/promises";
-import { dirname as dirname39, join as join28, sep } from "node:path";
+import { mkdir as mkdir34, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile31 } from "node:fs/promises";
+import { dirname as dirname39, join as join29, sep } from "node:path";
 var SKILL_LEDGERS = {
   // The folder keeps the pre-rename id: it holds every brand's existing ledger.
   "mx-max-report": { folder: "mx-monthly-report-max" }
@@ -101219,13 +102997,13 @@ function hashContent2(content) {
 function ledgerDir(brandSlug, skillId, dataDirOverride) {
   const entry = SKILL_LEDGERS[skillId];
   if (!entry) throw new Error(`internal error: no run ledger is defined for skill ${JSON.stringify(skillId)}`);
-  return join28(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
+  return join29(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
 }
 function statePath(brandSlug, dataDirOverride) {
-  return join28(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
+  return join29(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
 }
 function conflictsDir(brandSlug, skillId, stamp, dataDirOverride) {
-  return join28(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
+  return join29(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
 }
 async function readLocalLedger(dir) {
   const files = /* @__PURE__ */ new Map();
@@ -101249,7 +103027,7 @@ async function readLocalLedger(dir) {
           skipped.push({ path: `${relPath}/`, reason: "too_deep" });
           continue;
         }
-        await walk(join28(abs, e.name), [...rel, e.name], depth + 1);
+        await walk(join29(abs, e.name), [...rel, e.name], depth + 1);
         continue;
       }
       if (!e.isFile()) continue;
@@ -101258,7 +103036,7 @@ async function readLocalLedger(dir) {
         skipped.push({ path: relPath, reason: "unsafe_path" });
         continue;
       }
-      const buf = await readFile47(join28(abs, e.name));
+      const buf = await readFile47(join29(abs, e.name));
       if (buf.length > MAX_FILE_BYTES) {
         skipped.push({ path: relPath, reason: "too_large" });
         continue;
@@ -101298,7 +103076,7 @@ function localPathFor(dir, path2) {
   if (!isSafeLedgerPath(path2)) {
     throw new Error(`unsafe run ledger path ${JSON.stringify(path2)}: refusing to resolve a local path`);
   }
-  const abs = join28(dir, ...path2.split("/"));
+  const abs = join29(dir, ...path2.split("/"));
   if (!abs.startsWith(dir + sep)) {
     throw new Error(`run ledger path ${JSON.stringify(path2)} resolves outside the ledger folder`);
   }
@@ -101306,9 +103084,9 @@ function localPathFor(dir, path2) {
 }
 async function writeLedgerFile(dir, path2, content) {
   const abs = localPathFor(dir, path2);
-  await mkdir33(dirname39(abs), { recursive: true });
+  await mkdir34(dirname39(abs), { recursive: true });
   const tmp = `${abs}.tmp-${process.pid}`;
-  await writeFile30(tmp, content, "utf8");
+  await writeFile31(tmp, content, "utf8");
   await rename24(tmp, abs);
 }
 async function deleteLedgerFile(dir, path2) {
@@ -101329,9 +103107,9 @@ async function writeSyncState(brandSlug, skillId, state, dataDirOverride) {
   const path2 = statePath(brandSlug, dataDirOverride);
   const all = await readStateFile(brandSlug, dataDirOverride);
   all[skillId] = state;
-  await mkdir33(dirname39(path2), { recursive: true });
+  await mkdir34(dirname39(path2), { recursive: true });
   const tmp = `${path2}.tmp-${process.pid}`;
-  await writeFile30(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
+  await writeFile31(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
   await rename24(tmp, path2);
 }
 async function readStateFile(brandSlug, dataDirOverride) {
@@ -101348,8 +103126,8 @@ function isNotFound(err) {
 }
 
 // src/lib/run-ledger/sync.ts
-import { copyFile, mkdir as mkdir34 } from "node:fs/promises";
-import { dirname as dirname40, join as join29 } from "node:path";
+import { copyFile, mkdir as mkdir35 } from "node:fs/promises";
+import { dirname as dirname40, join as join30 } from "node:path";
 var UNAVAILABLE = /* @__PURE__ */ new Set(["unsupported", "unavailable", "host_unreachable"]);
 function base(opts, dir, state, message) {
   return {
@@ -101598,9 +103376,9 @@ async function applyServer(opts, dir, local, ledger, state, tenant) {
     const stamp = (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString().replace(/[:.]/g, "-");
     keptAside = conflictsDir(opts.brand, opts.skill, stamp, opts.dataDirOverride);
     for (const path2 of diverged) {
-      const aside = join29(keptAside, ...path2.split("/"));
+      const aside = join30(keptAside, ...path2.split("/"));
       if (local.files.has(path2) || unreadable.has(path2)) {
-        await mkdir34(dirname40(aside), { recursive: true });
+        await mkdir35(dirname40(aside), { recursive: true });
         await copyFile(localPathFor(dir, path2), aside);
       }
       const s = server.get(path2);
@@ -102013,7 +103791,7 @@ function figuresOpt(v) {
 }
 async function assertFiguresReadable(explicit) {
   if (!explicit || explicit.length === 0) return;
-  for (const path2 of [...new Set(explicit.map((p) => resolve2(p)))]) {
+  for (const path2 of [...new Set(explicit.map((p) => resolve3(p)))]) {
     let raw;
     try {
       raw = await readFile48(path2, "utf8");
@@ -102045,12 +103823,12 @@ async function loadServedContract(docPath, explicit, noFigures) {
   if (noFigures) return { ...none, index: { suppressAll: true } };
   let candidates;
   if (explicit && explicit.length > 0) {
-    candidates = [...new Set(explicit.map((p) => resolve2(p)))];
+    candidates = [...new Set(explicit.map((p) => resolve3(p)))];
   } else {
-    const dir = dirname41(resolve2(docPath));
+    const dir = dirname41(resolve3(docPath));
     try {
       const entries = await readdir7(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join30(dir, e));
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join31(dir, e));
     } catch {
       return none;
     }
@@ -102126,8 +103904,8 @@ function notesPayload(notes) {
 }
 async function writeReportOutput(out2, body) {
   try {
-    await mkdir35(dirname41(out2), { recursive: true });
-    await writeFile31(out2, body, "utf8");
+    await mkdir36(dirname41(out2), { recursive: true });
+    await writeFile32(out2, body, "utf8");
   } catch (err) {
     throw new UserFacingError(
       `Could not write ${out2}: ${err instanceof Error ? err.message : String(err)}`,
@@ -102291,7 +104069,8 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
                   figures: fdoc.figures.length,
                   attestation: fdoc.source.attestation,
                   out: opts.out ?? null,
-                  findings: ffindings
+                  findings: ffindings,
+                  unplaced_claims: fdoc.source.unplaced_claims
                 },
                 null,
                 2
@@ -102304,6 +104083,9 @@ ${summary.length === 0 ? pass : `FAIL: ${summary.join(", ")}`}`);
 forecast ${fdoc.forecast.metric} ${fdoc.forecast.report_month}: ${fdoc.forecast.state}` + (fdoc.source.reason ? ` (${fdoc.source.reason})` : "") + `, ${fdoc.figures.length} figure(s)${opts.out ? ` -> ${opts.out}` : ""}`
             );
             for (const f of ffindings) console.log(`  [${f.rule}] ${f.subject} -- ${f.detail}`);
+            for (const id of fdoc.source.unplaced_claims) {
+              console.log(`  note: claim ${id} is not one this version knows; kept for the internal companion only`);
+            }
             if (opts.check) console.log(ffindings.length === 0 ? "CHECK: PASS" : `CHECK: FAIL (${ffindings.length})`);
           }
         } catch (err) {
@@ -102957,7 +104739,7 @@ async function checkNamedPackCompat(opts) {
   let namedIds;
   try {
     const catalog2 = await loadCatalog();
-    namedIds = catalog2.queries.filter((q) => q.dispatch === "named").map((q) => q.id).sort();
+    namedIds = catalog2.queries.filter((q3) => q3.dispatch === "named").map((q3) => q3.id).sort();
   } catch (err) {
     return unchecked(`could not load the SQL catalog: ${msg(err)}`);
   }
@@ -103138,6 +104920,7 @@ async function assembleFullReport(opts) {
       };
     }
   }
+  const identity = await readDoctorIdentity(auth, network.health.reachable, opts.timeoutMs, opts.dataDirOverride);
   const ts = await getTelemetryStatus(opts.dataDirOverride);
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
   const ok = network.ok && namedPack.ok;
@@ -103145,6 +104928,7 @@ async function assembleFullReport(opts) {
     build,
     channel,
     auth,
+    ...identity ? { identity } : {},
     telemetry: {
       enabled: ts.enabled,
       reason: ts.reason,
@@ -103212,6 +104996,21 @@ function renderBuildStaleBanner(build) {
     "terminal"
   );
 }
+async function readDoctorIdentity(auth, reachable, timeoutMs, dataDirOverride, read = fetchIdentity) {
+  if (!(auth.signedIn && auth.kind === "interactive" && auth.refreshExpired !== true && reachable)) return void 0;
+  return read(dataDirOverride, fetch, Math.min(timeoutMs, IDENTITY_TIMEOUT_MS));
+}
+function signInEnded(identity) {
+  return identity !== void 0 && "ended" in identity && identity.ended === true;
+}
+function renderDoctorSignedInLines(auth, identity) {
+  if (signInEnded(identity) && identity) return formatIdentityLines("", identity).map((l) => `  ${l}`);
+  const who = auth.tokenActor ?? auth.personLabel ?? auth.email ?? "?";
+  const lines = identity ? formatIdentityLines(who, identity).map((l) => `  ${l}`) : [`  signed in (interactive) as ${who}`];
+  const tenant = auth.tokenEmail ?? auth.email;
+  if (tenant && tenant !== who) lines.push(`    tenant login: ${tenant}`);
+  return lines;
+}
 function renderFull(r) {
   const out2 = [];
   out2.push("mixshift doctor");
@@ -103231,13 +105030,12 @@ function renderFull(r) {
     out2.push(
       `  No MixShift account yet? Create one first: ${REGISTRATION_URL}`
     );
+  } else if (r.auth.kind === "interactive" && r.auth.refreshExpired === true) {
+    out2.push("  not signed in (saved sign-in expired). Run `mixshift auth login`.");
+  } else if (r.auth.kind === "interactive" && signInEnded(r.identity)) {
+    out2.push(...renderDoctorSignedInLines(r.auth, r.identity));
   } else if (r.auth.kind === "interactive") {
-    out2.push(
-      `  signed in (interactive) as ${r.auth.personLabel ?? r.auth.email ?? "?"}`
-    );
-    if (r.auth.email && r.auth.email !== r.auth.personLabel) {
-      out2.push(`    tenant login: ${r.auth.email}`);
-    }
+    out2.push(...renderDoctorSignedInLines(r.auth, r.identity));
     out2.push(`    service: ${r.auth.apiBase ?? "?"}`);
     if (r.auth.accessExpired) {
       out2.push(
@@ -103344,12 +105142,12 @@ init_credentials();
 init_telemetry();
 import { promises as fs3 } from "node:fs";
 import { fileURLToPath as fileURLToPath8 } from "node:url";
-import { dirname as dirname42, join as join32 } from "node:path";
+import { dirname as dirname42, join as join33 } from "node:path";
 
 // src/lib/demos.ts
 var import_yaml25 = __toESM(require_dist(), 1);
 import { promises as fs2 } from "node:fs";
-import { join as join31 } from "node:path";
+import { join as join32 } from "node:path";
 async function loadDemos(skillsDir) {
   if (!skillsDir) return [];
   let entries;
@@ -103362,7 +105160,7 @@ async function loadDemos(skillsDir) {
   for (const skillId of entries) {
     let raw;
     try {
-      raw = await fs2.readFile(join31(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+      raw = await fs2.readFile(join32(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
     } catch {
       continue;
     }
@@ -103375,13 +105173,13 @@ async function loadDemos(skillsDir) {
 }
 var norm = (s) => s.trim().toLowerCase().replace(/[\s_]+/g, "-");
 function resolveDemoSkill(input, demos, skillIds) {
-  const q = norm(input).replace(/^demo-/, "");
-  if (!q) return null;
+  const q3 = norm(input).replace(/^demo-/, "");
+  if (!q3) return null;
   for (const d of demos) {
-    if (q === d.skillId || `mx-${q}` === d.skillId || q === norm(d.title)) return d.skillId;
+    if (q3 === d.skillId || `mx-${q3}` === d.skillId || q3 === norm(d.title)) return d.skillId;
   }
   for (const id of skillIds) {
-    if (q === id || `mx-${q}` === id) return id;
+    if (q3 === id || `mx-${q3}` === id) return id;
   }
   return null;
 }
@@ -103487,7 +105285,8 @@ var CATALOG = [
   {
     title: "Live Walmart surfaces",
     skills: [
-      { id: "mx-walmart-ads", say: "show my Walmart campaigns", what: "Walmart Connect ads: campaigns, reports, previewed changes" }
+      { id: "mx-walmart-ads", say: "show my Walmart campaigns", what: "Walmart Connect ads: campaigns, reports, previewed changes" },
+      { id: "mx-walmart-retail", say: "what should I reorder on Walmart", what: "Walmart Marketplace, read only: per-SKU sales, stock, inbound, days of supply" }
     ]
   },
   {
@@ -103588,12 +105387,12 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join32(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join33(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
   let dir = dirname42(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join32(dir, "skills");
+      const candidate = join33(dir, "skills");
       const stat7 = await fs3.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
@@ -103814,7 +105613,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs5 } from "node:fs";
-import { resolve as resolve3, join as join33, relative, basename as basename4 } from "node:path";
+import { resolve as resolve4, join as join34, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -103940,7 +105739,7 @@ function registerShareSkillCommand(program3) {
             `Invalid --kind "${opts.kind}". Must be one of: ${[...VALID_KINDS].join(", ")}`
           );
         }
-        const abs = resolve3(pathArg);
+        const abs = resolve4(pathArg);
         const bundle = await collectBundle(abs);
         if (bundle.files.length === 0) {
           throw new Error(
@@ -104147,7 +105946,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join33(dir, e.name);
+        const abs = join34(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -104181,6 +105980,1887 @@ function findFrontmatter(files) {
 // src/commands/context.ts
 init_client2();
 init_engine();
+
+// src/commands/context-dsp-advertiser.ts
+init_client2();
+init_engine();
+init_local();
+import { createHash as createHash7 } from "node:crypto";
+import { readFile as readFile49, writeFile as writeFile33 } from "node:fs/promises";
+
+// src/lib/context-sync/dsp-advertiser.ts
+var import_yaml27 = __toESM(require_dist(), 1);
+init_schema2();
+import { isDeepStrictEqual } from "node:util";
+var DSP_ADVERTISER_ID_PATTERN = /^\d{1,64}$/;
+function isValidDspAdvertiserId(id) {
+  return DSP_ADVERTISER_ID_PATTERN.test(id);
+}
+function gatewayParseDspAdvertiserIds(content) {
+  const ids = [];
+  const token = (raw) => {
+    const m = /^(["'])(\d{1,64})\1$/.exec(raw.trim());
+    return m ? m[2] : null;
+  };
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const sm = /^[ \t]*-?[ \t]*dsp_advertiser_id:[ \t]*([^#\r\n]*?)[ \t]*(?:#[^\r\n]*)?\r?$/.exec(line);
+    if (sm) {
+      const t = token(sm[1]);
+      if (t) ids.push(t);
+      continue;
+    }
+    const km = /^[ \t]*-?[ \t]*dsp_advertiser_ids:[ \t]*(.*?)[ \t]*(?:#.*)?\r?$/.exec(line);
+    if (!km) continue;
+    const rest = km[1].trim();
+    if (rest.startsWith("[") && rest.endsWith("]")) {
+      for (const part of rest.slice(1, -1).split(",")) {
+        if (part.trim() === "") continue;
+        const t = token(part);
+        if (t) ids.push(t);
+      }
+    } else if (rest === "") {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (/^[ \t]*(?:#.*)?\r?$/.test(next)) continue;
+        const im = /^[ \t]*-[ \t]+([^#\r\n]*?)[ \t]*(?:#.*)?\r?$/.exec(next);
+        if (!im) break;
+        const t = token(im[1]);
+        if (t) ids.push(t);
+        else break;
+      }
+    }
+  }
+  return ids;
+}
+function describeAccount(a) {
+  const parts = [`seller_id ${a.seller_id}`];
+  if (a.amazon_seller_id) parts.push(`amazon_seller_id ${a.amazon_seller_id}`);
+  if (a.seller_name) parts.push(a.seller_name);
+  if (a.marketplace) parts.push(a.marketplace);
+  if (a.role) parts.push(`role ${a.role}`);
+  return parts.join(", ");
+}
+function describeAccounts(accounts) {
+  return accounts.map((a) => `  - ${describeAccount(a)}`).join("\n");
+}
+function accountChoiceOf(map2) {
+  const json3 = map2.toJSON();
+  return {
+    seller_id: typeof json3.seller_id === "number" || typeof json3.seller_id === "string" ? json3.seller_id : "?",
+    ...typeof json3.amazon_seller_id === "string" ? { amazon_seller_id: json3.amazon_seller_id } : {},
+    ...typeof json3.seller_name === "string" ? { seller_name: json3.seller_name } : {},
+    ...typeof json3.marketplace === "string" ? { marketplace: json3.marketplace } : {},
+    ...typeof json3.role === "string" ? { role: json3.role } : {}
+  };
+}
+function valueState(value, allowScalar) {
+  if (value === null || value === void 0) return { kind: "empty" };
+  if ((0, import_yaml27.isScalar)(value)) {
+    if (value.value === null || value.value === void 0) return { kind: "empty" };
+    if (allowScalar && typeof value.value === "string" && isValidDspAdvertiserId(value.value)) {
+      return { kind: "ids", ids: [value.value] };
+    }
+    return { kind: "invalid" };
+  }
+  if ((0, import_yaml27.isSeq)(value)) {
+    if (value.items.length === 0) return { kind: "empty" };
+    const out2 = [];
+    for (const item of value.items) {
+      if (!(0, import_yaml27.isScalar)(item) || typeof item.value !== "string" || !isValidDspAdvertiserId(item.value)) {
+        return { kind: "invalid" };
+      }
+      out2.push(item.value);
+    }
+    return { kind: "ids", ids: out2 };
+  }
+  return { kind: "invalid" };
+}
+function diffLines(before, after) {
+  const a = before.split(/\r?\n/);
+  const b = after.split(/\r?\n/);
+  const only = (x, y) => {
+    const count = /* @__PURE__ */ new Map();
+    for (const l of y) count.set(l, (count.get(l) ?? 0) + 1);
+    const out2 = [];
+    for (const l of x) {
+      const n = count.get(l) ?? 0;
+      if (n > 0) count.set(l, n - 1);
+      else out2.push(l);
+    }
+    return out2;
+  };
+  return { added: only(b, a), removed: only(a, b) };
+}
+function parseAccounts(content) {
+  const doc = (0, import_yaml27.parseDocument)(content);
+  if (doc.errors.length > 0) {
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        reason: "unreadable_yaml",
+        message: `context.yaml is not valid YAML: ${doc.errors[0]?.message ?? "parse error"}`
+      }
+    };
+  }
+  const accountsNode = doc.get("accounts", true);
+  const seq = (0, import_yaml27.isSeq)(accountsNode) ? accountsNode : null;
+  const items = seq ? seq.items.filter(import_yaml27.isMap) : [];
+  const flow = Boolean(seq?.flow) || items.some((m) => m.flow === true);
+  const caps = items.map((_, i) => {
+    const next = items[i + 1]?.items[0]?.key;
+    if (next?.range) return content.lastIndexOf("\n", next.range[0] - 1) + 1;
+    const r = seq?.range;
+    return r ? r[1] : content.length;
+  });
+  return { ok: true, doc, items, flow, caps };
+}
+var FLOW_MESSAGE = "This brand's accounts are written in flow style (inline braces or brackets). The DSP advertiser declaration has to sit on its own line, and MixShift does not read it from an inline account. Nothing was changed. Rewrite the accounts as a normal indented list (one key per line), then run this again.";
+function chooseAccount(items, choices, selector) {
+  if (selector !== void 0) {
+    const idx = choices.findIndex(
+      (c) => String(c.seller_id) === selector || c.amazon_seller_id === selector
+    );
+    if (idx < 0) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          reason: "account_not_found",
+          message: `No account on this brand matches --account ${selector}. Accounts:
+${describeAccounts(choices)}`,
+          accounts: choices
+        }
+      };
+    }
+    return { ok: true, target: items[idx] };
+  }
+  const primaries = choices.map((c, i) => c.role === "primary" ? i : -1).filter((i) => i >= 0);
+  if (primaries.length === 1) return { ok: true, target: items[primaries[0]] };
+  return { ok: true, target: items[0] };
+}
+var sameSet = (a, b) => {
+  const x = new Set(a);
+  const y = new Set(b);
+  return x.size === y.size && [...x].every((v) => y.has(v));
+};
+var Text = class {
+  constructor(s) {
+    this.s = s;
+    this.eol = s.includes("\r\n") ? "\r\n" : "\n";
+  }
+  s;
+  eol;
+  /** Start offset of the line holding offset `off`. */
+  ls(off) {
+    return this.s.lastIndexOf("\n", off - 1) + 1;
+  }
+  /** Offset just past the line holding `off` (including its terminator). */
+  lend(off) {
+    const i = this.s.indexOf("\n", off);
+    return i < 0 ? this.s.length : i + 1;
+  }
+  /** The line's text without its terminator. */
+  body(lineStart) {
+    const e = this.lend(lineStart);
+    return this.s.slice(lineStart, e).replace(/\r?\n$/, "");
+  }
+  /** The line's terminator ('' on an unterminated last line). */
+  term(lineStart) {
+    return /\r?\n$/.exec(this.s.slice(lineStart, this.lend(lineStart)))?.[0] ?? "";
+  }
+};
+function apply(content, edits) {
+  let out2 = content;
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+    out2 = out2.slice(0, e.start) + e.text + out2.slice(e.end);
+  }
+  return out2;
+}
+var q = (id) => `"${id}"`;
+function pairLines(t, pair, cap2) {
+  const key = pair.key;
+  const ks = key.range?.[0] ?? 0;
+  const start2 = t.ls(ks);
+  let e = key.range?.[1] ?? ks;
+  let lastItemLine = null;
+  let multiLineFlow = false;
+  const v = pair.value;
+  if ((0, import_yaml27.isSeq)(pair.value) && v?.range) {
+    if (pair.value.flow) {
+      multiLineFlow = t.ls(v.range[0]) !== t.ls(Math.max(v.range[0], v.range[1] - 1));
+      e = Math.max(e, v.range[1]);
+    } else if (pair.value.items.length > 0) {
+      const last = pair.value.items[pair.value.items.length - 1];
+      if (last.range) {
+        lastItemLine = t.ls(last.range[0]);
+        e = Math.max(e, last.range[1]);
+      }
+    }
+  } else if (v?.range) {
+    e = Math.max(e, v.range[1]);
+  }
+  e = Math.min(e, cap2);
+  const keyLineEnd = t.lend(ks);
+  let end = Math.max(keyLineEnd, t.lend(Math.max(ks, e - 1)));
+  while (end > keyLineEnd) {
+    const prevStart = t.ls(end - 1);
+    if (/^\s*(#.*)?$/.test(t.body(prevStart))) end = prevStart;
+    else break;
+  }
+  return { ks, start: start2, end, lastItemLine, multiLineFlow };
+}
+function keyIndent(t, map2) {
+  const first = map2.items[0]?.key;
+  const off = first?.range?.[0] ?? 0;
+  return " ".repeat(off - t.ls(off));
+}
+function findPair(map2, name) {
+  return map2.items.find((p) => (0, import_yaml27.isScalar)(p.key) && p.key.value === name);
+}
+function trailingComment(line) {
+  return /(\s+#.*)$/.exec(line)?.[1] ?? "";
+}
+function listLine(ids, comment) {
+  return `dsp_advertiser_ids: [${ids.map(q).join(", ")}]${comment}`;
+}
+function removePair(t, map2, pair, pl) {
+  const prefix = t.s.slice(pl.start, pl.ks);
+  if (!prefix.includes("-")) return { start: pl.start, end: pl.end, text: "" };
+  const next = map2.items[map2.items.indexOf(pair) + 1]?.key;
+  const nks = next?.range?.[0];
+  if (nks === void 0 || nks < pl.end) return { start: pl.ks, end: pl.end, text: "" };
+  return { start: pl.start, end: nks, text: t.s.slice(pl.end, t.ls(nks)) + prefix };
+}
+var MULTI_LINE_FLOW_MESSAGE = "The file lists advertisers in a form MixShift does not read (a list split over several lines inside brackets). Nothing was changed. Rewrite that list as one line or a normal indented list, then run this again.";
+var DSP_LINE = /^\s*-?\s*dsp_advertiser_ids?:/;
+var DSP_ITEM = /^\s*-\s*(["'])\d{1,64}\1\s*(#.*)?$/;
+var BLANK_OR_COMMENT = /^\s*(#.*)?$/;
+var dashed = (l) => /^\s*-/.test(l);
+var stripLead = (l) => l.replace(/^[ \t]*(?:-[ \t]+)?/, "");
+function onlyDspLines(removed, added, op) {
+  const isDsp = (l) => DSP_LINE.test(l) || DSP_ITEM.test(l);
+  const remDsp = removed.filter(isDsp);
+  const addDsp = added.filter(isDsp);
+  let remOther = removed.filter((l) => !isDsp(l));
+  const addOther = added.filter((l) => !isDsp(l));
+  const remDashed = remDsp.filter((l) => DSP_LINE.test(l) && dashed(l)).length;
+  const addDashed = addDsp.filter((l) => DSP_LINE.test(l) && dashed(l)).length;
+  if (op === "assign") {
+    if (remOther.length > 0 || addOther.length > 0 || remDashed !== addDashed) return false;
+    return true;
+  }
+  if (addDashed > remDashed) return false;
+  remOther = remOther.filter((l) => !BLANK_OR_COMMENT.test(l));
+  if (remOther.length !== addOther.length) return false;
+  const a = remOther.map(stripLead).sort();
+  const b = addOther.map(stripLead).sort();
+  return a.every((l, i) => l === b[i]);
+}
+var accountsOf = (o) => {
+  const a = o?.accounts;
+  return Array.isArray(a) ? a : [];
+};
+var validIdsOf = (v) => (Array.isArray(v) ? v : [v]).filter(
+  (x) => typeof x === "string" && isValidDspAdvertiserId(x)
+);
+var dspIdsOf = (a) => [
+  ...validIdsOf(a.dsp_advertiser_id),
+  ...Array.isArray(a.dsp_advertiser_ids) ? validIdsOf(a.dsp_advertiser_ids) : []
+];
+function structuralProblem(before, after, op, id, targetIdx) {
+  let o;
+  let n;
+  try {
+    o = (0, import_yaml27.parse)(before);
+    n = (0, import_yaml27.parse)(after);
+  } catch {
+    return "does not parse";
+  }
+  const strip = (doc) => {
+    const c = structuredClone(doc);
+    for (const a of accountsOf(c)) {
+      if (a && typeof a === "object") {
+        delete a.dsp_advertiser_id;
+        delete a.dsp_advertiser_ids;
+      }
+    }
+    return c;
+  };
+  if (!isDeepStrictEqual(strip(o), strip(n))) return "something other than the DSP keys changed";
+  const oa = accountsOf(o);
+  const na = accountsOf(n);
+  if (oa.length !== na.length) return "the number of accounts changed";
+  for (let i = 0; i < oa.length; i++) {
+    const before_ = oa[i];
+    const after_ = na[i];
+    const old = dspIdsOf(before_);
+    let expected = old;
+    let touched = false;
+    if (op === "assign" && i === targetIdx) {
+      expected = [...old, id];
+      touched = true;
+    } else if (op === "unassign" && old.includes(id)) {
+      expected = old.filter((v) => v !== id);
+      touched = true;
+    }
+    if (!sameSet(dspIdsOf(after_), expected)) return `account ${i + 1} holds the wrong DSP advertisers`;
+    if (!touched) {
+      const raw = (a) => [a.dsp_advertiser_id, a.dsp_advertiser_ids];
+      if (!isDeepStrictEqual(raw(before_), raw(after_))) return `account ${i + 1} changed`;
+    }
+  }
+  return null;
+}
+function existingContextProblem(content) {
+  let parsed;
+  try {
+    parsed = normalizeLegacyTacosFields((0, import_yaml27.parse)(content));
+  } catch (err) {
+    return `it does not parse (${err instanceof Error ? err.message : String(err)})`;
+  }
+  const r = contextSchema.safeParse(parsed);
+  if (r.success) return null;
+  const first = r.error.issues[0];
+  const where = first && first.path.length > 0 ? first.path.join(".") : "(root)";
+  return `${where}: ${first?.message ?? "invalid"}`;
+}
+function existingInvalid(problem) {
+  return {
+    ok: false,
+    reason: "existing_context_invalid",
+    message: `This brand's context.yaml already fails the brand context schema (${problem}). Nothing was changed. Fix that first (the mx-brand-context skill, or \`mixshift brand validate\`), then run this again.`
+  };
+}
+function finish2(content, edits, expected, account, edit, ctx) {
+  const next = apply(content, edits);
+  const { removed, added } = diffLines(content, next);
+  const unexpected = (why) => ({
+    ok: false,
+    reason: "unexpected_change",
+    message: `The planned edit would change more than the DSP advertiser lines (${why}). Nothing was written. Check this brand's DSP advertiser lines by hand.`
+  });
+  if (!onlyDspLines(removed, added, ctx.op)) return unexpected("a line that is not a DSP line");
+  const structural = structuralProblem(content, next, ctx.op, ctx.id, ctx.targetIdx);
+  if (structural) return unexpected(structural);
+  const verdict = verifyResult(next, expected);
+  if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
+  return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
+}
+function planDspAssignment(content, advertiserId, accountSelector) {
+  const parsed = parseAccounts(content);
+  if (!parsed.ok) return parsed.result;
+  const { items, flow, caps } = parsed;
+  if (items.length === 0) {
+    return {
+      ok: false,
+      reason: "no_accounts",
+      message: "This brand has no accounts[] entry in its context.yaml yet. Set the brand up first (the mx-brand-context skill), then declare the DSP advertiser."
+    };
+  }
+  const problem = existingContextProblem(content);
+  if (problem) return existingInvalid(problem);
+  if (flow) return { ok: false, reason: "flow_style_account", message: FLOW_MESSAGE };
+  const choices = items.map(accountChoiceOf);
+  const chosen = chooseAccount(items, choices, accountSelector);
+  if (!chosen.ok) return chosen.result;
+  const target = chosen.target;
+  const targetIdx = items.indexOf(target);
+  const cap2 = caps[targetIdx];
+  const account = accountChoiceOf(target);
+  const oldIds = gatewayParseDspAdvertiserIds(content);
+  if (oldIds.includes(advertiserId)) {
+    return { ok: true, content, changed: false, account, edit: "already_in_file", removed_lines: [], added_lines: [] };
+  }
+  const t = new Text(content);
+  const indent = keyIndent(t, target);
+  const singlePair = findPair(target, "dsp_advertiser_id");
+  const listPair = findPair(target, "dsp_advertiser_ids");
+  const list2 = listPair ? valueState(listPair.value, false) : { kind: "empty" };
+  const single = singlePair ? valueState(singlePair.value, true) : { kind: "empty" };
+  if (list2.kind === "invalid" || single.kind === "invalid") {
+    return {
+      ok: false,
+      reason: "existing_value_invalid",
+      message: "The account already has a DSP advertiser value that is not a quoted string of digits (an unquoted id, or a single value under dsp_advertiser_ids, declares nothing). Fix that line by hand first; nothing was changed."
+    };
+  }
+  const yamlIds = [...list2.kind === "ids" ? list2.ids : [], ...single.kind === "ids" ? single.ids : []];
+  if (yamlIds.includes(advertiserId)) {
+    return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE };
+  }
+  const edits = [];
+  let edit;
+  const replacePair = (pl, text) => {
+    edits.push({ start: pl.ks, end: pl.end, text: text + t.term(t.ls(pl.end - 1)) });
+  };
+  if (listPair && list2.kind === "ids" && (0, import_yaml27.isSeq)(listPair.value)) {
+    const pl = pairLines(t, listPair, cap2);
+    if (listPair.value.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE };
+      replacePair(pl, listLine([...list2.ids, advertiserId], trailingComment(t.body(pl.start))));
+    } else {
+      const lastLine2 = pl.lastItemLine;
+      const prefix = /^[ \t]*-[ \t]+/.exec(t.body(lastLine2))?.[0] ?? `${indent}- `;
+      const at = t.lend(lastLine2);
+      const needsEol = t.term(lastLine2) === "";
+      edits.push({ start: at, end: at, text: `${needsEol ? t.eol : ""}${prefix}${q(advertiserId)}${needsEol ? "" : t.eol}` });
+    }
+    edit = "appended";
+  } else if (singlePair && single.kind === "ids") {
+    const pl = pairLines(t, singlePair, cap2);
+    replacePair(pl, listLine([single.ids[0], advertiserId], trailingComment(t.body(pl.start))));
+    if (listPair) edits.push(removePair(t, target, listPair, pairLines(t, listPair, cap2)));
+    edit = "converted";
+  } else if (singlePair) {
+    const pl = pairLines(t, singlePair, cap2);
+    replacePair(pl, `dsp_advertiser_id: ${q(advertiserId)}${trailingComment(t.body(pl.start))}`);
+    if (listPair) edits.push(removePair(t, target, listPair, pairLines(t, listPair, cap2)));
+    edit = "replaced_empty";
+  } else if (listPair) {
+    const pl = pairLines(t, listPair, cap2);
+    replacePair(pl, listLine([advertiserId], trailingComment(t.body(pl.start))));
+    edit = "replaced_empty";
+  } else {
+    const last = target.items[target.items.length - 1];
+    const at = pairLines(t, last, cap2).end;
+    const unterminated = t.term(t.ls(at - 1)) === "";
+    edits.push({
+      start: at,
+      end: at,
+      text: unterminated ? `${t.eol}${indent}dsp_advertiser_id: ${q(advertiserId)}` : `${indent}dsp_advertiser_id: ${q(advertiserId)}${t.eol}`
+    });
+    edit = "added";
+  }
+  return finish2(content, edits, [...oldIds, advertiserId], account, edit, {
+    op: "assign",
+    id: advertiserId,
+    targetIdx
+  });
+}
+function planDspUnassignment(content, advertiserId) {
+  const parsed = parseAccounts(content);
+  if (!parsed.ok) return parsed.result;
+  const { items, caps } = parsed;
+  const problem = existingContextProblem(content);
+  if (problem) return existingInvalid(problem);
+  const oldIds = gatewayParseDspAdvertiserIds(content);
+  if (!oldIds.includes(advertiserId)) {
+    return { ok: true, content, changed: false, account: null, edit: "not_declared", removed_lines: [], added_lines: [] };
+  }
+  const t = new Text(content);
+  const edits = [];
+  let account = null;
+  for (let ai = 0; ai < items.length; ai++) {
+    const item = items[ai];
+    const cap2 = caps[ai];
+    const singlePair = findPair(item, "dsp_advertiser_id");
+    if (singlePair && (0, import_yaml27.isScalar)(singlePair.value) && singlePair.value.value === advertiserId) {
+      edits.push(removePair(t, item, singlePair, pairLines(t, singlePair, cap2)));
+      account = accountChoiceOf(item);
+    }
+    const listPair = findPair(item, "dsp_advertiser_ids");
+    if (!listPair || !(0, import_yaml27.isSeq)(listPair.value)) continue;
+    const seq = listPair.value;
+    if (!seq.items.some((n) => (0, import_yaml27.isScalar)(n) && n.value === advertiserId)) continue;
+    const kept = seq.items.filter((n) => !((0, import_yaml27.isScalar)(n) && n.value === advertiserId));
+    if (!kept.every((n) => (0, import_yaml27.isScalar)(n) && typeof n.value === "string" && isValidDspAdvertiserId(n.value))) {
+      return {
+        ok: false,
+        reason: "existing_value_invalid",
+        message: "A DSP advertiser list on this brand holds a value that is not a quoted string of digits. Fix that line by hand first; nothing was changed."
+      };
+    }
+    account = accountChoiceOf(item);
+    const pl = pairLines(t, listPair, cap2);
+    if (kept.length === 0) {
+      edits.push(removePair(t, item, listPair, pl));
+    } else if (seq.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE };
+      const ids = kept.map((n) => n.value);
+      edits.push({
+        start: pl.ks,
+        end: pl.end,
+        text: listLine(ids, trailingComment(t.body(pl.start))) + t.term(t.ls(pl.end - 1))
+      });
+    } else {
+      for (const n of seq.items) {
+        const node = n;
+        if (node.value === advertiserId && node.range) {
+          edits.push({ start: t.ls(node.range[0]), end: t.lend(node.range[0]), text: "" });
+        }
+      }
+    }
+  }
+  return finish2(content, edits, oldIds.filter((v) => v !== advertiserId), account, "removed", {
+    op: "unassign",
+    id: advertiserId,
+    targetIdx: -1
+  });
+}
+function verifyResult(next, expected) {
+  let parsed;
+  try {
+    parsed = normalizeLegacyTacosFields((0, import_yaml27.parse)(next));
+  } catch (err) {
+    return {
+      reason: "result_invalid",
+      message: `The edited context.yaml no longer parses (${err instanceof Error ? err.message : String(err)}). Nothing was written.`
+    };
+  }
+  const result = contextSchema.safeParse(parsed);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    const where = first && first.path.length > 0 ? first.path.join(".") : "(root)";
+    return {
+      reason: "result_invalid",
+      message: `The edited context.yaml does not pass the brand context schema (${where}: ${first?.message ?? "invalid"}). Nothing was written.`
+    };
+  }
+  if (!sameSet(gatewayParseDspAdvertiserIds(next), expected)) {
+    return {
+      reason: "result_not_recognized",
+      message: "After the edit, the way MixShift reads the advertiser ids would not be exactly what was asked for (an id would be missed, or another one switched on). Nothing was written. Check this brand's DSP advertiser lines by hand."
+    };
+  }
+  return null;
+}
+
+// src/commands/context-dsp-advertiser.ts
+init_credentials();
+init_telemetry();
+function emit2(root, obj2, human) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify(obj2) + "\n");
+  } else {
+    process.stdout.write(human.join("\n") + "\n");
+  }
+}
+function fail4(root, kind, message, extra = {}) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: "error", kind, message, ...extra }) + "\n");
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function lookupFailureMessage(r) {
+  return r.kind === "unsupported" ? "This MixShift service does not support the DSP advertiser lookup yet. Try again after the service is updated." : r.friendly;
+}
+async function lookup(client, advertiserId) {
+  if (!client.lookupDspAdvertiser) {
+    return {
+      ok: false,
+      kind: "unsupported",
+      message: "lookup not available",
+      friendly: "This MixShift service does not support the DSP advertiser lookup yet."
+    };
+  }
+  return client.lookupDspAdvertiser(advertiserId);
+}
+function registerDspAdvertiserCommands(context, deps) {
+  const group = context.command("dsp-advertiser").description(
+    "Which brand a DSP advertiser belongs to. The MixShift service files a DSP change on a brand's change log only when exactly one brand declares the advertiser."
+  );
+  group.command("show").description(
+    "Report which brand declares a DSP advertiser: unassigned (none), assigned (one brand), or conflict (several). Exit 0 for all three."
+  ).argument("<advertiser_id>", "the DSP advertiser id (digits)").action(async (advertiserId, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const t0 = Date.now();
+    if (!isValidDspAdvertiserId(advertiserId)) {
+      fail4(root, "invalid_id", "The DSP advertiser id must be digits only (up to 64).");
+      return;
+    }
+    try {
+      const client = createContextSyncClient({ dataDirOverride: root.dataDir });
+      const r = await lookup(client, advertiserId);
+      if (!r.ok) {
+        await track(
+          {
+            event_name: EventName.ContextDspAdvertiserShown,
+            outcome: "failed",
+            duration_ms: Date.now() - t0,
+            payload: { failure_kind: r.kind }
+          },
+          root.dataDir
+        );
+        fail4(root, r.kind, lookupFailureMessage(r));
+        return;
+      }
+      const state = r.brands.length === 0 ? "unassigned" : r.brands.length === 1 ? "assigned" : "conflict";
+      await track(
+        {
+          event_name: EventName.ContextDspAdvertiserShown,
+          outcome: "ok",
+          duration_ms: Date.now() - t0,
+          payload: { state, brand_count: r.brands.length }
+        },
+        root.dataDir
+      );
+      const human = state === "unassigned" ? [`unassigned: no brand declares DSP advertiser ${advertiserId}. Its changes stay unassigned.`] : state === "assigned" ? [`assigned: DSP advertiser ${advertiserId} belongs to brand ${r.brands[0]}.`] : [
+        `conflict: DSP advertiser ${advertiserId} is declared by several brands: ${r.brands.join(", ")}.`,
+        "Its changes stay unassigned until only one brand declares it. Ask the user which brand keeps it."
+      ];
+      emit2(
+        root,
+        {
+          status: "ok",
+          advertiser_id: advertiserId,
+          state,
+          brand: state === "assigned" ? r.brands[0] : null,
+          brands: r.brands
+        },
+        human
+      );
+    } catch (err) {
+      fail4(root, "unknown", err instanceof Error ? err.message : String(err));
+    }
+  });
+  group.command("assign").description(
+    "Declare a DSP advertiser on one brand the user named, so its DSP changes show on that brand's change log. Dry run by default; --commit writes the brand context, publishes only context.yaml, and reads the answer back. Refuses when another brand already declares the advertiser."
+  ).argument("<advertiser_id>", "the DSP advertiser id (digits)").requiredOption("--brand <slug>", "the brand the USER named for this advertiser").option("--account <seller_id>", "which of the brand's accounts (seller id) when it has several").option("--commit", "write the declaration and publish it (default: dry run)", false).option("--expect <plan_hash>", "with --commit: refuse unless the plan still hashes to this (from the dry run)").action(
+    async (advertiserId, opts, cmd) => runWrite("assign", advertiserId, opts, cmd, deps)
+  );
+  group.command("unassign").description(
+    "Remove a DSP advertiser from one brand the user named: the way out of a conflict or a wrong pick. Dry run by default; --commit writes, publishes only context.yaml, and reads the answer back. A brand that does not declare it is a no-op."
+  ).argument("<advertiser_id>", "the DSP advertiser id (digits)").requiredOption("--brand <slug>", "the brand the USER named").option("--commit", "remove the declaration and publish it (default: dry run)", false).option("--expect <plan_hash>", "with --commit: refuse unless the plan still hashes to this (from the dry run)").action(
+    async (advertiserId, opts, cmd) => runWrite("unassign", advertiserId, opts, cmd, deps)
+  );
+}
+async function serviceCredentialActive(dataDir) {
+  try {
+    const { credentials } = await loadCredentials(dataDir);
+    return !credentials?.datahub && Boolean(credentials?.service);
+  } catch {
+    return false;
+  }
+}
+async function runWrite(op, advertiserId, opts, cmd, deps) {
+  const root = cmd.optsWithGlobals();
+  const t0 = Date.now();
+  const commit = opts.commit === true;
+  const brand = opts.brand;
+  const assigning = op === "assign";
+  const finish4 = async (result, outcome, payload = {}) => {
+    await track(
+      {
+        event_name: EventName.ContextDspAdvertiserAssigned,
+        outcome,
+        duration_ms: Date.now() - t0,
+        payload: { op, result, commit, ...payload }
+      },
+      root.dataDir
+    );
+  };
+  const refuse = async (reason, message, extra = {}) => {
+    await finish4("refused", "failed", { reason });
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify({
+          status: "refused",
+          reason,
+          op,
+          advertiser_id: advertiserId,
+          brand,
+          commit,
+          message,
+          ...extra
+        }) + "\n"
+      );
+    } else {
+      process.stderr.write(`refused: ${message}
+`);
+    }
+    process.exitCode = 1;
+  };
+  const noop = async (result, message) => {
+    await finish4(result, "ok");
+    emit2(
+      root,
+      { status: "ok", result, op, advertiser_id: advertiserId, brand, commit, message },
+      [`${result}: ${message}`]
+    );
+  };
+  try {
+    if (!isValidDspAdvertiserId(advertiserId)) {
+      await refuse("invalid_id", "The DSP advertiser id must be digits only (up to 64).");
+      return;
+    }
+    if (!isSafeBrandSlug(brand)) {
+      await refuse("invalid_brand", `"${brand}" is not a valid brand slug.`);
+      return;
+    }
+    if (opts.expect !== void 0 && !commit) {
+      await refuse(
+        "expect_without_commit",
+        "--expect only applies together with --commit (it pins the change to the dry run the user saw)."
+      );
+      return;
+    }
+    if (commit && await serviceCredentialActive(root.dataDir)) {
+      await refuse(
+        "unattended_credential",
+        "This session is signed in with a service credential (for unattended runs), which must not change which brand owns a DSP advertiser. Sign in as a person (`mixshift auth login`) and run it again. A dry run is still allowed."
+      );
+      return;
+    }
+    const client = createContextSyncClient({ dataDirOverride: root.dataDir });
+    const found = await lookup(client, advertiserId);
+    if (!found.ok) {
+      await refuse(
+        "lookup_unavailable",
+        `${lookupFailureMessage(found)} Nothing was written: without the lookup there is no way to prove this change would not leave the advertiser ambiguous.`,
+        { lookup_kind: found.kind }
+      );
+      return;
+    }
+    if (assigning) {
+      const others = found.brands.filter((b) => b !== brand);
+      if (others.length > 0) {
+        await refuse(
+          "declared_by_other_brand",
+          `DSP advertiser ${advertiserId} is already declared by ${others.join(", ")}. Nothing was written: a second declaration would make it ambiguous and its changes would stay unassigned. The user must decide which brand keeps it (\`unassign\` removes it from the one that does not own it; a retired brand still counts).`,
+          { declared_by: found.brands }
+        );
+        return;
+      }
+      if (found.brands.includes(brand)) {
+        await noop("already_assigned", `DSP advertiser ${advertiserId} is already declared by ${brand}. Nothing to do.`);
+        return;
+      }
+    } else if (!found.brands.includes(brand)) {
+      await noop("not_declared", `Brand ${brand} does not declare DSP advertiser ${advertiserId}. Nothing to do.`);
+      return;
+    }
+    const setup = await deps.resolveBrandsAndManifest(brand, root);
+    if (!setup) {
+      await finish4("refused", "failed", { reason: "brand_check_failed" });
+      return;
+    }
+    const pulled = await pull(brand, setup.engineOptions);
+    if (!pulled.ok) {
+      await refuse("context_not_current", `Could not bring ${brand}'s context up to date: ${pulled.message}`);
+      return;
+    }
+    const bad = pulled.reports.find(
+      (r) => r.key === "context" && (r.action === "conflict" || r.action === "error")
+    );
+    if (bad) {
+      await refuse(
+        "context_not_current",
+        `${brand}'s context.yaml is not in step with the shared copy (${bad.action}${bad.detail ? `: ${bad.detail}` : ""}). Resolve that first (\`mixshift context status\`); nothing was written.`
+      );
+      return;
+    }
+    const engineOptions = { ...setup.engineOptions };
+    delete engineOptions.manifest;
+    const status = await computeStatus(brand, engineOptions);
+    if (!status.ok) {
+      await refuse("context_not_current", `Could not compare ${brand}'s context with the shared copy: ${status.message}`);
+      return;
+    }
+    const verdict = status.docs.find((d) => d.key === "context")?.verdict;
+    if (verdict === "local-ahead" || verdict === "local-only") {
+      await refuse(
+        "context_has_unpublished_changes",
+        `${brand}'s context.yaml has changes on this computer that are not published yet. Ask the user to review them and publish (\`mixshift context push --brand ` + brand + "`) or discard them first, so this change publishes only what was shown. Nothing was written."
+      );
+      return;
+    }
+    if (verdict !== void 0 && verdict !== "in-sync") {
+      await refuse(
+        "context_not_current",
+        `${brand}'s context.yaml is not in step with the shared copy (${verdict}). Run \`mixshift context status\` and resolve it first; nothing was written.`
+      );
+      return;
+    }
+    const path2 = localPathForKey(brand, "context", root.dataDir);
+    let content;
+    try {
+      content = await readFile49(path2, "utf8");
+    } catch {
+      await refuse(
+        "no_context_file",
+        `${brand} has no context.yaml on this computer. Set the brand up first (the mx-brand-context skill).`
+      );
+      return;
+    }
+    const plan = assigning ? planDspAssignment(content, advertiserId, opts.account) : planDspUnassignment(content, advertiserId);
+    if (!plan.ok) {
+      await refuse(plan.reason, plan.message, plan.accounts ? { accounts: plan.accounts } : {});
+      return;
+    }
+    const planHash = createHash7("sha256").update(plan.content).digest("hex").slice(0, 12);
+    if (commit && opts.expect !== void 0 && opts.expect !== planHash) {
+      await refuse(
+        "plan_changed",
+        "The planned change is no longer the one the user saw (the file or the shared copy changed since the dry run). Nothing was written. Run the dry run again, show it, and confirm again.",
+        { plan_hash: planHash }
+      );
+      return;
+    }
+    const accountSummary = plan.account ? describeAccounts([plan.account]).trim().replace(/^- /, "") : "";
+    const verb = assigning ? "declare" : "remove";
+    const changeLines = [
+      ...plan.removed_lines.map((l) => `- ${l}`),
+      ...plan.added_lines.map((l) => `+ ${l}`)
+    ];
+    if (!commit) {
+      await finish4("dry_run", "ok", { edit: plan.edit });
+      emit2(
+        root,
+        {
+          status: "ok",
+          result: "dry_run",
+          op,
+          advertiser_id: advertiserId,
+          brand,
+          account: plan.account,
+          edit: plan.edit,
+          commit: false,
+          removed_lines: plan.removed_lines,
+          added_lines: plan.added_lines,
+          plan_hash: planHash,
+          message: "Dry run: pulled any server updates to this brand's context and wrote nothing else. Re-run with --commit once the user confirms."
+        },
+        [
+          `Dry run: ${verb} DSP advertiser ${advertiserId} on brand ${brand}${accountSummary ? `, account ${accountSummary}` : ""}.`,
+          plan.changed ? "The context.yaml line(s) that would change:" : "No line would change; a commit would only read back.",
+          ...changeLines,
+          "Pulled any server updates to this brand's context and wrote nothing else. Re-run with --commit once the user confirms."
+        ]
+      );
+      return;
+    }
+    if (plan.changed) await writeFile33(path2, plan.content, "utf8");
+    const pushed = await push(brand, { ...engineOptions, onlyKeys: ["context"] });
+    const ctxReport = pushed.ok ? pushed.reports.find((r) => r.key === "context") : void 0;
+    const okActions = /* @__PURE__ */ new Set(["pushed", "created", "noop", "up-to-date"]);
+    const pushProblem = !pushed.ok ? pushed.message : !ctxReport ? "context.yaml was not published" : okActions.has(ctxReport.action) ? "" : `${ctxReport.action}${ctxReport.detail ? ` (${ctxReport.detail})` : ""}`;
+    if (pushProblem) {
+      let rolledBack = false;
+      if (plan.changed) {
+        try {
+          if (await readFile49(path2, "utf8") === plan.content) {
+            await writeFile33(path2, content, "utf8");
+            rolledBack = true;
+          }
+        } catch {
+        }
+      }
+      await finish4("push_failed", "failed", { rolled_back: rolledBack });
+      const message = `context.yaml may not have been published: ${pushProblem}. Check with \`mixshift context status\`. ` + (rolledBack ? "The local file was put back as it was. Run the command again: it re-pulls and re-checks first." : plan.changed ? "The local file still holds the edit (it changed while publishing). Run `mixshift context status` to see where it stands." : "Run `mixshift context status` to see where it stands.");
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({
+            status: "error",
+            kind: "push_failed",
+            result: "push_failed",
+            op,
+            advertiser_id: advertiserId,
+            brand,
+            commit: true,
+            rolled_back: rolledBack,
+            message
+          }) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+    const back = await lookup(createContextSyncClient({ dataDirOverride: root.dataDir }), advertiserId);
+    let verified = null;
+    let readbackBrands = null;
+    let note;
+    if (!back.ok) {
+      note = `Published, but the read-back lookup failed (${back.kind}), so it is not confirmed how the service now resolves the advertiser.`;
+    } else {
+      readbackBrands = back.brands;
+      if (assigning) {
+        verified = back.brands.length === 1 && back.brands[0] === brand;
+        note = verified ? `Confirmed: the service now resolves DSP advertiser ${advertiserId} to ${brand} only.` : back.brands.includes(brand) ? `Published, but ${back.brands.join(" and ")} now both declare DSP advertiser ${advertiserId} (another brand claimed it at the same moment). It now resolves to no brand and its changes stay unassigned. Ask the user which brand owns it, then run unassign on the other one.` : `Published, but the service does not resolve DSP advertiser ${advertiserId} to ${brand} yet (it resolves to ${back.brands.length === 0 ? "no brand" : back.brands.join(", ")}). Its changes stay unassigned until that is fixed.`;
+      } else {
+        verified = !back.brands.includes(brand);
+        note = verified ? `Confirmed: ${brand} no longer declares DSP advertiser ${advertiserId}. It now resolves to ${back.brands.length === 0 ? "no brand" : back.brands.join(", ")}.` : `Published, but the service still shows ${brand} declaring DSP advertiser ${advertiserId}.`;
+      }
+    }
+    const ok = back.ok ? verified === true : true;
+    await finish4("committed", ok ? "ok" : "failed", { edit: plan.edit, verified });
+    emit2(
+      root,
+      {
+        status: ok ? "ok" : "error",
+        result: "committed",
+        op,
+        advertiser_id: advertiserId,
+        brand,
+        account: plan.account,
+        edit: plan.edit,
+        commit: true,
+        removed_lines: plan.removed_lines,
+        added_lines: plan.added_lines,
+        plan_hash: planHash,
+        pushed: true,
+        verified,
+        readback_brands: readbackBrands,
+        message: note
+      },
+      [`${assigning ? "Declared" : "Removed"} DSP advertiser ${advertiserId} ${assigning ? "on" : "from"} brand ${brand}${accountSummary ? `, account ${accountSummary}` : ""}.`, note]
+    );
+    if (!ok) process.exitCode = 1;
+  } catch (err) {
+    fail4(root, "unknown", err instanceof Error ? err.message : String(err));
+  }
+}
+
+// src/commands/context-amc-instance.ts
+init_client2();
+init_engine();
+init_local();
+import { createHash as createHash8 } from "node:crypto";
+import { readFile as readFile50, writeFile as writeFile34 } from "node:fs/promises";
+
+// src/lib/context-sync/amc-instance.ts
+var import_yaml28 = __toESM(require_dist(), 1);
+init_schema2();
+import { isDeepStrictEqual as isDeepStrictEqual2 } from "node:util";
+var AMC_INSTANCE_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/;
+function isValidAmcInstanceId(id) {
+  return AMC_INSTANCE_ID_PATTERN.test(id);
+}
+function gatewayParseAmcInstanceIds(content) {
+  const ids = [];
+  const token = (raw) => {
+    const m = /^(["'])([A-Za-z0-9]{1,64})\1$/.exec(raw.trim());
+    return m ? m[2].toLowerCase() : null;
+  };
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const sm = /^[ \t]*-?[ \t]*amc_instance_id:[ \t]*([^#\r\n]*?)[ \t]*(?:#[^\r\n]*)?\r?$/.exec(line);
+    if (sm) {
+      const t = token(sm[1]);
+      if (t) ids.push(t);
+      continue;
+    }
+    const km = /^[ \t]*-?[ \t]*amc_instance_ids:[ \t]*(.*?)[ \t]*(?:#.*)?\r?$/.exec(line);
+    if (!km) continue;
+    const rest = km[1].trim();
+    if (rest.startsWith("[") && rest.endsWith("]")) {
+      for (const part of rest.slice(1, -1).split(",")) {
+        if (part.trim() === "") continue;
+        const t = token(part);
+        if (t) ids.push(t);
+      }
+    } else if (rest === "") {
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (/^[ \t]*(?:#.*)?\r?$/.test(next)) continue;
+        const im = /^[ \t]*-[ \t]+([^#\r\n]*?)[ \t]*(?:#.*)?\r?$/.exec(next);
+        if (!im) break;
+        const t = token(im[1]);
+        if (t) ids.push(t);
+        else break;
+      }
+    }
+  }
+  return ids;
+}
+function describeAccount2(a) {
+  const parts = [`seller_id ${a.seller_id}`];
+  if (a.amazon_seller_id) parts.push(`amazon_seller_id ${a.amazon_seller_id}`);
+  if (a.seller_name) parts.push(a.seller_name);
+  if (a.marketplace) parts.push(a.marketplace);
+  if (a.role) parts.push(`role ${a.role}`);
+  return parts.join(", ");
+}
+function describeAccounts2(accounts) {
+  return accounts.map((a) => `  - ${describeAccount2(a)}`).join("\n");
+}
+function accountChoiceOf2(map2) {
+  const json3 = map2.toJSON();
+  return {
+    seller_id: typeof json3.seller_id === "number" || typeof json3.seller_id === "string" ? json3.seller_id : "?",
+    ...typeof json3.amazon_seller_id === "string" ? { amazon_seller_id: json3.amazon_seller_id } : {},
+    ...typeof json3.seller_name === "string" ? { seller_name: json3.seller_name } : {},
+    ...typeof json3.marketplace === "string" ? { marketplace: json3.marketplace } : {},
+    ...typeof json3.role === "string" ? { role: json3.role } : {}
+  };
+}
+function valueState2(value, allowScalar) {
+  if (value === null || value === void 0) return { kind: "empty" };
+  if ((0, import_yaml28.isScalar)(value)) {
+    if (value.value === null || value.value === void 0) return { kind: "empty" };
+    if (allowScalar && typeof value.value === "string" && isValidAmcInstanceId(value.value)) {
+      return { kind: "ids", ids: [value.value] };
+    }
+    return { kind: "invalid" };
+  }
+  if ((0, import_yaml28.isSeq)(value)) {
+    if (value.items.length === 0) return { kind: "empty" };
+    const out2 = [];
+    for (const item of value.items) {
+      if (!(0, import_yaml28.isScalar)(item) || typeof item.value !== "string" || !isValidAmcInstanceId(item.value)) {
+        return { kind: "invalid" };
+      }
+      out2.push(item.value);
+    }
+    return { kind: "ids", ids: out2 };
+  }
+  return { kind: "invalid" };
+}
+function diffLines2(before, after) {
+  const a = before.split(/\r?\n/);
+  const b = after.split(/\r?\n/);
+  const only = (x, y) => {
+    const count = /* @__PURE__ */ new Map();
+    for (const l of y) count.set(l, (count.get(l) ?? 0) + 1);
+    const out2 = [];
+    for (const l of x) {
+      const n = count.get(l) ?? 0;
+      if (n > 0) count.set(l, n - 1);
+      else out2.push(l);
+    }
+    return out2;
+  };
+  return { added: only(b, a), removed: only(a, b) };
+}
+function parseAccounts2(content) {
+  const doc = (0, import_yaml28.parseDocument)(content);
+  if (doc.errors.length > 0) {
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        reason: "unreadable_yaml",
+        message: `context.yaml is not valid YAML: ${doc.errors[0]?.message ?? "parse error"}`
+      }
+    };
+  }
+  const accountsNode = doc.get("accounts", true);
+  const seq = (0, import_yaml28.isSeq)(accountsNode) ? accountsNode : null;
+  const items = seq ? seq.items.filter(import_yaml28.isMap) : [];
+  const flow = Boolean(seq?.flow) || items.some((m) => m.flow === true);
+  const caps = items.map((_, i) => {
+    const next = items[i + 1]?.items[0]?.key;
+    if (next?.range) return content.lastIndexOf("\n", next.range[0] - 1) + 1;
+    const r = seq?.range;
+    return r ? r[1] : content.length;
+  });
+  return { ok: true, doc, items, flow, caps };
+}
+var FLOW_MESSAGE2 = "This brand's accounts are written in flow style (inline braces or brackets). The AMC instance declaration has to sit on its own line, and MixShift does not read it from an inline account. Nothing was changed. Rewrite the accounts as a normal indented list (one key per line), then run this again.";
+function chooseAccount2(items, choices, selector) {
+  if (selector !== void 0) {
+    const idx = choices.findIndex(
+      (c) => String(c.seller_id) === selector || c.amazon_seller_id === selector
+    );
+    if (idx < 0) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          reason: "account_not_found",
+          message: `No account on this brand matches --account ${selector}. Accounts:
+${describeAccounts2(choices)}`,
+          accounts: choices
+        }
+      };
+    }
+    return { ok: true, target: items[idx] };
+  }
+  const primaries = choices.map((c, i) => c.role === "primary" ? i : -1).filter((i) => i >= 0);
+  if (primaries.length === 1) return { ok: true, target: items[primaries[0]] };
+  return { ok: true, target: items[0] };
+}
+var sameId = (v, id) => typeof v === "string" && v.toLowerCase() === id;
+var sameSet2 = (a, b) => {
+  const x = new Set(a);
+  const y = new Set(b);
+  return x.size === y.size && [...x].every((v) => y.has(v));
+};
+var Text2 = class {
+  constructor(s) {
+    this.s = s;
+    this.eol = s.includes("\r\n") ? "\r\n" : "\n";
+  }
+  s;
+  eol;
+  /** Start offset of the line holding offset `off`. */
+  ls(off) {
+    return this.s.lastIndexOf("\n", off - 1) + 1;
+  }
+  /** Offset just past the line holding `off` (including its terminator). */
+  lend(off) {
+    const i = this.s.indexOf("\n", off);
+    return i < 0 ? this.s.length : i + 1;
+  }
+  /** The line's text without its terminator. */
+  body(lineStart) {
+    const e = this.lend(lineStart);
+    return this.s.slice(lineStart, e).replace(/\r?\n$/, "");
+  }
+  /** The line's terminator ('' on an unterminated last line). */
+  term(lineStart) {
+    return /\r?\n$/.exec(this.s.slice(lineStart, this.lend(lineStart)))?.[0] ?? "";
+  }
+};
+function apply2(content, edits) {
+  let out2 = content;
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+    out2 = out2.slice(0, e.start) + e.text + out2.slice(e.end);
+  }
+  return out2;
+}
+var q2 = (id) => `"${id}"`;
+function pairLines2(t, pair, cap2) {
+  const key = pair.key;
+  const ks = key.range?.[0] ?? 0;
+  const start2 = t.ls(ks);
+  let e = key.range?.[1] ?? ks;
+  let lastItemLine = null;
+  let multiLineFlow = false;
+  const v = pair.value;
+  if ((0, import_yaml28.isSeq)(pair.value) && v?.range) {
+    if (pair.value.flow) {
+      multiLineFlow = t.ls(v.range[0]) !== t.ls(Math.max(v.range[0], v.range[1] - 1));
+      e = Math.max(e, v.range[1]);
+    } else if (pair.value.items.length > 0) {
+      const last = pair.value.items[pair.value.items.length - 1];
+      if (last.range) {
+        lastItemLine = t.ls(last.range[0]);
+        e = Math.max(e, last.range[1]);
+      }
+    }
+  } else if (v?.range) {
+    e = Math.max(e, v.range[1]);
+  }
+  e = Math.min(e, cap2);
+  const keyLineEnd = t.lend(ks);
+  let end = Math.max(keyLineEnd, t.lend(Math.max(ks, e - 1)));
+  while (end > keyLineEnd) {
+    const prevStart = t.ls(end - 1);
+    if (/^\s*(#.*)?$/.test(t.body(prevStart))) end = prevStart;
+    else break;
+  }
+  return { ks, start: start2, end, lastItemLine, multiLineFlow };
+}
+function keyIndent2(t, map2) {
+  const first = map2.items[0]?.key;
+  const off = first?.range?.[0] ?? 0;
+  return " ".repeat(off - t.ls(off));
+}
+function findPair2(map2, name) {
+  return map2.items.find((p) => (0, import_yaml28.isScalar)(p.key) && p.key.value === name);
+}
+function trailingComment2(line) {
+  return /(\s+#.*)$/.exec(line)?.[1] ?? "";
+}
+function listLine2(ids, comment) {
+  return `amc_instance_ids: [${ids.map(q2).join(", ")}]${comment}`;
+}
+function removePair2(t, map2, pair, pl) {
+  const prefix = t.s.slice(pl.start, pl.ks);
+  if (!prefix.includes("-")) return { start: pl.start, end: pl.end, text: "" };
+  const next = map2.items[map2.items.indexOf(pair) + 1]?.key;
+  const nks = next?.range?.[0];
+  if (nks === void 0 || nks < pl.end) return { start: pl.ks, end: pl.end, text: "" };
+  return { start: pl.start, end: nks, text: t.s.slice(pl.end, t.ls(nks)) + prefix };
+}
+var MULTI_LINE_FLOW_MESSAGE2 = "The file lists instances in a form MixShift does not read (a list split over several lines inside brackets). Nothing was changed. Rewrite that list as one line or a normal indented list, then run this again.";
+var AMC_LINE = /^\s*-?\s*amc_instance_ids?:/;
+var AMC_ITEM = /^\s*-\s*(["'])[A-Za-z0-9]{1,64}\1\s*(#.*)?$/;
+var BLANK_OR_COMMENT2 = /^\s*(#.*)?$/;
+var dashed2 = (l) => /^\s*-/.test(l);
+var stripLead2 = (l) => l.replace(/^[ \t]*(?:-[ \t]+)?/, "");
+function onlyAmcLines(removed, added, op) {
+  const isAmc = (l) => AMC_LINE.test(l) || AMC_ITEM.test(l);
+  const remAmc = removed.filter(isAmc);
+  const addAmc = added.filter(isAmc);
+  let remOther = removed.filter((l) => !isAmc(l));
+  const addOther = added.filter((l) => !isAmc(l));
+  const remDashed = remAmc.filter((l) => AMC_LINE.test(l) && dashed2(l)).length;
+  const addDashed = addAmc.filter((l) => AMC_LINE.test(l) && dashed2(l)).length;
+  if (op === "assign") {
+    if (remOther.length > 0 || addOther.length > 0 || remDashed !== addDashed) return false;
+    return true;
+  }
+  if (addDashed > remDashed) return false;
+  remOther = remOther.filter((l) => !BLANK_OR_COMMENT2.test(l));
+  if (remOther.length !== addOther.length) return false;
+  const a = remOther.map(stripLead2).sort();
+  const b = addOther.map(stripLead2).sort();
+  return a.every((l, i) => l === b[i]);
+}
+var accountsOf2 = (o) => {
+  const a = o?.accounts;
+  return Array.isArray(a) ? a : [];
+};
+var validIdsOf2 = (v) => (Array.isArray(v) ? v : [v]).filter(
+  (x) => typeof x === "string" && isValidAmcInstanceId(x)
+);
+var amcIdsOf = (a) => [
+  ...validIdsOf2(a.amc_instance_id),
+  ...Array.isArray(a.amc_instance_ids) ? validIdsOf2(a.amc_instance_ids) : []
+];
+function structuralProblem2(before, after, op, id, targetIdx) {
+  let o;
+  let n;
+  try {
+    o = (0, import_yaml28.parse)(before);
+    n = (0, import_yaml28.parse)(after);
+  } catch {
+    return "does not parse";
+  }
+  const strip = (doc) => {
+    const c = structuredClone(doc);
+    for (const a of accountsOf2(c)) {
+      if (a && typeof a === "object") {
+        delete a.amc_instance_id;
+        delete a.amc_instance_ids;
+      }
+    }
+    return c;
+  };
+  if (!isDeepStrictEqual2(strip(o), strip(n))) return "something other than the AMC keys changed";
+  const oa = accountsOf2(o);
+  const na = accountsOf2(n);
+  if (oa.length !== na.length) return "the number of accounts changed";
+  for (let i = 0; i < oa.length; i++) {
+    const before_ = oa[i];
+    const after_ = na[i];
+    const old = amcIdsOf(before_);
+    let expected = old;
+    let touched = false;
+    if (op === "assign" && i === targetIdx) {
+      expected = [...old, id];
+      touched = true;
+    } else if (op === "unassign" && old.some((v) => sameId(v, id))) {
+      expected = old.filter((v) => !sameId(v, id));
+      touched = true;
+    }
+    if (!sameSet2(amcIdsOf(after_), expected)) return `account ${i + 1} holds the wrong AMC instances`;
+    if (!touched) {
+      const raw = (a) => [a.amc_instance_id, a.amc_instance_ids];
+      if (!isDeepStrictEqual2(raw(before_), raw(after_))) return `account ${i + 1} changed`;
+    }
+  }
+  return null;
+}
+function existingContextProblem2(content) {
+  let parsed;
+  try {
+    parsed = normalizeLegacyTacosFields((0, import_yaml28.parse)(content));
+  } catch (err) {
+    return `it does not parse (${err instanceof Error ? err.message : String(err)})`;
+  }
+  const r = contextSchema.safeParse(parsed);
+  if (r.success) return null;
+  const first = r.error.issues[0];
+  const where = first && first.path.length > 0 ? first.path.join(".") : "(root)";
+  return `${where}: ${first?.message ?? "invalid"}`;
+}
+function existingInvalid2(problem) {
+  return {
+    ok: false,
+    reason: "existing_context_invalid",
+    message: `This brand's context.yaml already fails the brand context schema (${problem}). Nothing was changed. Fix that first (the mx-brand-context skill, or \`mixshift brand validate\`), then run this again.`
+  };
+}
+function finish3(content, edits, expected, account, edit, ctx) {
+  const next = apply2(content, edits);
+  const { removed, added } = diffLines2(content, next);
+  const unexpected = (why) => ({
+    ok: false,
+    reason: "unexpected_change",
+    message: `The planned edit would change more than the AMC instance lines (${why}). Nothing was written. Check this brand's AMC instance lines by hand.`
+  });
+  if (!onlyAmcLines(removed, added, ctx.op)) return unexpected("a line that is not an AMC line");
+  const structural = structuralProblem2(content, next, ctx.op, ctx.id, ctx.targetIdx);
+  if (structural) return unexpected(structural);
+  const verdict = verifyResult2(next, expected);
+  if (verdict) return { ok: false, reason: verdict.reason, message: verdict.message };
+  return { ok: true, content: next, changed: next !== content, account, edit, removed_lines: removed, added_lines: added };
+}
+function planAmcAssignment(content, instanceId, accountSelector) {
+  const parsed = parseAccounts2(content);
+  if (!parsed.ok) return parsed.result;
+  const { items, flow, caps } = parsed;
+  if (items.length === 0) {
+    return {
+      ok: false,
+      reason: "no_accounts",
+      message: "This brand has no accounts[] entry in its context.yaml yet. Set the brand up first (the mx-brand-context skill), then declare the AMC instance."
+    };
+  }
+  const problem = existingContextProblem2(content);
+  if (problem) return existingInvalid2(problem);
+  if (flow) return { ok: false, reason: "flow_style_account", message: FLOW_MESSAGE2 };
+  const choices = items.map(accountChoiceOf2);
+  const chosen = chooseAccount2(items, choices, accountSelector);
+  if (!chosen.ok) return chosen.result;
+  const target = chosen.target;
+  const targetIdx = items.indexOf(target);
+  const cap2 = caps[targetIdx];
+  const account = accountChoiceOf2(target);
+  const oldIds = gatewayParseAmcInstanceIds(content);
+  if (oldIds.includes(instanceId)) {
+    return { ok: true, content, changed: false, account, edit: "already_in_file", removed_lines: [], added_lines: [] };
+  }
+  const t = new Text2(content);
+  const indent = keyIndent2(t, target);
+  const singlePair = findPair2(target, "amc_instance_id");
+  const listPair = findPair2(target, "amc_instance_ids");
+  const list2 = listPair ? valueState2(listPair.value, false) : { kind: "empty" };
+  const single = singlePair ? valueState2(singlePair.value, true) : { kind: "empty" };
+  if (list2.kind === "invalid" || single.kind === "invalid") {
+    return {
+      ok: false,
+      reason: "existing_value_invalid",
+      message: "The account already has an AMC instance value that is not a quoted string of letters and digits (an unquoted id, or a single value under amc_instance_ids, declares nothing). Fix that line by hand first; nothing was changed."
+    };
+  }
+  const yamlIds = [...list2.kind === "ids" ? list2.ids : [], ...single.kind === "ids" ? single.ids : []];
+  if (yamlIds.some((v) => sameId(v, instanceId))) {
+    return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE2 };
+  }
+  const edits = [];
+  let edit;
+  const replacePair = (pl, text) => {
+    edits.push({ start: pl.ks, end: pl.end, text: text + t.term(t.ls(pl.end - 1)) });
+  };
+  if (listPair && list2.kind === "ids" && (0, import_yaml28.isSeq)(listPair.value)) {
+    const pl = pairLines2(t, listPair, cap2);
+    if (listPair.value.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE2 };
+      replacePair(pl, listLine2([...list2.ids, instanceId], trailingComment2(t.body(pl.start))));
+    } else {
+      const lastLine2 = pl.lastItemLine;
+      const prefix = /^[ \t]*-[ \t]+/.exec(t.body(lastLine2))?.[0] ?? `${indent}- `;
+      const at = t.lend(lastLine2);
+      const needsEol = t.term(lastLine2) === "";
+      edits.push({ start: at, end: at, text: `${needsEol ? t.eol : ""}${prefix}${q2(instanceId)}${needsEol ? "" : t.eol}` });
+    }
+    edit = "appended";
+  } else if (singlePair && single.kind === "ids") {
+    const pl = pairLines2(t, singlePair, cap2);
+    replacePair(pl, listLine2([single.ids[0], instanceId], trailingComment2(t.body(pl.start))));
+    if (listPair) edits.push(removePair2(t, target, listPair, pairLines2(t, listPair, cap2)));
+    edit = "converted";
+  } else if (singlePair) {
+    const pl = pairLines2(t, singlePair, cap2);
+    replacePair(pl, `amc_instance_id: ${q2(instanceId)}${trailingComment2(t.body(pl.start))}`);
+    if (listPair) edits.push(removePair2(t, target, listPair, pairLines2(t, listPair, cap2)));
+    edit = "replaced_empty";
+  } else if (listPair) {
+    const pl = pairLines2(t, listPair, cap2);
+    replacePair(pl, listLine2([instanceId], trailingComment2(t.body(pl.start))));
+    edit = "replaced_empty";
+  } else {
+    const last = target.items[target.items.length - 1];
+    const at = pairLines2(t, last, cap2).end;
+    const unterminated = t.term(t.ls(at - 1)) === "";
+    edits.push({
+      start: at,
+      end: at,
+      text: unterminated ? `${t.eol}${indent}amc_instance_id: ${q2(instanceId)}` : `${indent}amc_instance_id: ${q2(instanceId)}${t.eol}`
+    });
+    edit = "added";
+  }
+  return finish3(content, edits, [...oldIds, instanceId], account, edit, {
+    op: "assign",
+    id: instanceId,
+    targetIdx
+  });
+}
+function planAmcUnassignment(content, instanceId) {
+  const parsed = parseAccounts2(content);
+  if (!parsed.ok) return parsed.result;
+  const { items, caps } = parsed;
+  const problem = existingContextProblem2(content);
+  if (problem) return existingInvalid2(problem);
+  const oldIds = gatewayParseAmcInstanceIds(content);
+  if (!oldIds.includes(instanceId)) {
+    return { ok: true, content, changed: false, account: null, edit: "not_declared", removed_lines: [], added_lines: [] };
+  }
+  const t = new Text2(content);
+  const edits = [];
+  let account = null;
+  for (let ai = 0; ai < items.length; ai++) {
+    const item = items[ai];
+    const cap2 = caps[ai];
+    const singlePair = findPair2(item, "amc_instance_id");
+    if (singlePair && (0, import_yaml28.isScalar)(singlePair.value) && sameId(singlePair.value.value, instanceId)) {
+      edits.push(removePair2(t, item, singlePair, pairLines2(t, singlePair, cap2)));
+      account = accountChoiceOf2(item);
+    }
+    const listPair = findPair2(item, "amc_instance_ids");
+    if (!listPair || !(0, import_yaml28.isSeq)(listPair.value)) continue;
+    const seq = listPair.value;
+    if (!seq.items.some((n) => (0, import_yaml28.isScalar)(n) && sameId(n.value, instanceId))) continue;
+    const kept = seq.items.filter((n) => !((0, import_yaml28.isScalar)(n) && sameId(n.value, instanceId)));
+    if (!kept.every((n) => (0, import_yaml28.isScalar)(n) && typeof n.value === "string" && isValidAmcInstanceId(n.value))) {
+      return {
+        ok: false,
+        reason: "existing_value_invalid",
+        message: "An AMC instance list on this brand holds a value that is not a quoted string of letters and digits. Fix that line by hand first; nothing was changed."
+      };
+    }
+    account = accountChoiceOf2(item);
+    const pl = pairLines2(t, listPair, cap2);
+    if (kept.length === 0) {
+      edits.push(removePair2(t, item, listPair, pl));
+    } else if (seq.flow) {
+      if (pl.multiLineFlow) return { ok: false, reason: "result_not_recognized", message: MULTI_LINE_FLOW_MESSAGE2 };
+      const ids = kept.map((n) => n.value);
+      edits.push({
+        start: pl.ks,
+        end: pl.end,
+        text: listLine2(ids, trailingComment2(t.body(pl.start))) + t.term(t.ls(pl.end - 1))
+      });
+    } else {
+      for (const n of seq.items) {
+        const node = n;
+        if (sameId(node.value, instanceId) && node.range) {
+          edits.push({ start: t.ls(node.range[0]), end: t.lend(node.range[0]), text: "" });
+        }
+      }
+    }
+  }
+  return finish3(content, edits, oldIds.filter((v) => v !== instanceId), account, "removed", {
+    op: "unassign",
+    id: instanceId,
+    targetIdx: -1
+  });
+}
+function verifyResult2(next, expected) {
+  let parsed;
+  try {
+    parsed = normalizeLegacyTacosFields((0, import_yaml28.parse)(next));
+  } catch (err) {
+    return {
+      reason: "result_invalid",
+      message: `The edited context.yaml no longer parses (${err instanceof Error ? err.message : String(err)}). Nothing was written.`
+    };
+  }
+  const result = contextSchema.safeParse(parsed);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    const where = first && first.path.length > 0 ? first.path.join(".") : "(root)";
+    return {
+      reason: "result_invalid",
+      message: `The edited context.yaml does not pass the brand context schema (${where}: ${first?.message ?? "invalid"}). Nothing was written.`
+    };
+  }
+  if (!sameSet2(gatewayParseAmcInstanceIds(next), expected)) {
+    return {
+      reason: "result_not_recognized",
+      message: "After the edit, the way MixShift reads the instance ids would not be exactly what was asked for (an id would be missed, or another one switched on). Nothing was written. Check this brand's AMC instance lines by hand."
+    };
+  }
+  return null;
+}
+
+// src/commands/context-amc-instance.ts
+init_credentials();
+init_telemetry();
+function emit3(root, obj2, human) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify(obj2) + "\n");
+  } else {
+    process.stdout.write(human.join("\n") + "\n");
+  }
+}
+function fail5(root, kind, message, extra = {}) {
+  if (root.json) {
+    process.stdout.write(JSON.stringify({ status: "error", kind, message, ...extra }) + "\n");
+  } else {
+    process.stderr.write(`error: ${message}
+`);
+  }
+  process.exitCode = 1;
+}
+function lookupFailureMessage2(r) {
+  return r.kind === "unsupported" ? "This MixShift service does not support the AMC instance lookup yet. Try again after the service is updated." : r.friendly;
+}
+async function lookup2(client, instanceId) {
+  if (!client.lookupAmcInstance) {
+    return {
+      ok: false,
+      kind: "unsupported",
+      message: "lookup not available",
+      friendly: "This MixShift service does not support the AMC instance lookup yet."
+    };
+  }
+  return client.lookupAmcInstance(instanceId);
+}
+function registerAmcInstanceCommands(context, deps) {
+  const group = context.command("amc-instance").description(
+    "Which brand an AMC instance belongs to. The MixShift service files an AMC change on a brand's change log only when exactly one brand declares the instance."
+  );
+  group.command("show").description(
+    "Report which brand declares an AMC instance: unassigned (none), assigned (one brand), or conflict (several). Exit 0 for all three."
+  ).argument("<instance_id>", "the AMC instance id (letters and digits)").action(async (instanceId, _opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const t0 = Date.now();
+    if (!isValidAmcInstanceId(instanceId)) {
+      fail5(root, "invalid_id", "The AMC instance id must be letters and digits only (up to 64).");
+      return;
+    }
+    instanceId = instanceId.toLowerCase();
+    try {
+      const client = createContextSyncClient({ dataDirOverride: root.dataDir });
+      const r = await lookup2(client, instanceId);
+      if (!r.ok) {
+        await track(
+          {
+            event_name: EventName.ContextAmcInstanceShown,
+            outcome: "failed",
+            duration_ms: Date.now() - t0,
+            payload: { failure_kind: r.kind }
+          },
+          root.dataDir
+        );
+        fail5(root, r.kind, lookupFailureMessage2(r));
+        return;
+      }
+      const state = r.brands.length === 0 ? "unassigned" : r.brands.length === 1 ? "assigned" : "conflict";
+      await track(
+        {
+          event_name: EventName.ContextAmcInstanceShown,
+          outcome: "ok",
+          duration_ms: Date.now() - t0,
+          payload: { state, brand_count: r.brands.length }
+        },
+        root.dataDir
+      );
+      const human = state === "unassigned" ? [`unassigned: no brand declares AMC instance ${instanceId}. Its changes stay unassigned.`] : state === "assigned" ? [`assigned: AMC instance ${instanceId} belongs to brand ${r.brands[0]}.`] : [
+        `conflict: AMC instance ${instanceId} is declared by several brands: ${r.brands.join(", ")}.`,
+        "Its changes stay unassigned until only one brand declares it. Ask the user which brand keeps it."
+      ];
+      emit3(
+        root,
+        {
+          status: "ok",
+          instance_id: instanceId,
+          state,
+          brand: state === "assigned" ? r.brands[0] : null,
+          brands: r.brands
+        },
+        human
+      );
+    } catch (err) {
+      fail5(root, "unknown", err instanceof Error ? err.message : String(err));
+    }
+  });
+  group.command("assign").description(
+    "Declare an AMC instance on one brand the user named, so its AMC changes show on that brand's change log. Dry run by default; --commit writes the brand context, publishes only context.yaml, and reads the answer back. Refuses when another brand already declares the instance."
+  ).argument("<instance_id>", "the AMC instance id (letters and digits)").requiredOption("--brand <slug>", "the brand the USER named for this instance").option("--account <seller_id>", "which of the brand's accounts (seller id) when it has several").option("--commit", "write the declaration and publish it (default: dry run)", false).option("--expect <plan_hash>", "with --commit: refuse unless the plan still hashes to this (from the dry run)").action(
+    async (instanceId, opts, cmd) => runWrite2("assign", instanceId, opts, cmd, deps)
+  );
+  group.command("unassign").description(
+    "Remove an AMC instance from one brand the user named: the way out of a conflict or a wrong pick going forward (events already recorded on the brand stay on it). Dry run by default; --commit writes, publishes only context.yaml, and reads the answer back. A brand that does not declare it is a no-op."
+  ).argument("<instance_id>", "the AMC instance id (letters and digits)").requiredOption("--brand <slug>", "the brand the USER named").option("--commit", "remove the declaration and publish it (default: dry run)", false).option("--expect <plan_hash>", "with --commit: refuse unless the plan still hashes to this (from the dry run)").action(
+    async (instanceId, opts, cmd) => runWrite2("unassign", instanceId, opts, cmd, deps)
+  );
+}
+async function serviceCredentialActive2(dataDir) {
+  try {
+    const { credentials } = await loadCredentials(dataDir);
+    return !credentials?.datahub && Boolean(credentials?.service);
+  } catch {
+    return false;
+  }
+}
+async function runWrite2(op, instanceId, opts, cmd, deps) {
+  const root = cmd.optsWithGlobals();
+  const t0 = Date.now();
+  const commit = opts.commit === true;
+  const brand = opts.brand;
+  const assigning = op === "assign";
+  const finish4 = async (result, outcome, payload = {}) => {
+    await track(
+      {
+        event_name: EventName.ContextAmcInstanceAssigned,
+        outcome,
+        duration_ms: Date.now() - t0,
+        payload: { op, result, commit, ...payload }
+      },
+      root.dataDir
+    );
+  };
+  const refuse = async (reason, message, extra = {}) => {
+    await finish4("refused", "failed", { reason });
+    if (root.json) {
+      process.stdout.write(
+        JSON.stringify({
+          status: "refused",
+          reason,
+          op,
+          instance_id: instanceId,
+          brand,
+          commit,
+          message,
+          ...extra
+        }) + "\n"
+      );
+    } else {
+      process.stderr.write(`refused: ${message}
+`);
+    }
+    process.exitCode = 1;
+  };
+  const noop = async (result, message) => {
+    await finish4(result, "ok");
+    emit3(
+      root,
+      { status: "ok", result, op, instance_id: instanceId, brand, commit, message },
+      [`${result}: ${message}`]
+    );
+  };
+  try {
+    if (!isValidAmcInstanceId(instanceId)) {
+      await refuse("invalid_id", "The AMC instance id must be letters and digits only (up to 64).");
+      return;
+    }
+    instanceId = instanceId.toLowerCase();
+    if (!isSafeBrandSlug(brand)) {
+      await refuse("invalid_brand", `"${brand}" is not a valid brand slug.`);
+      return;
+    }
+    if (opts.expect !== void 0 && !commit) {
+      await refuse(
+        "expect_without_commit",
+        "--expect only applies together with --commit (it pins the change to the dry run the user saw)."
+      );
+      return;
+    }
+    if (commit && await serviceCredentialActive2(root.dataDir)) {
+      await refuse(
+        "unattended_credential",
+        "This session is signed in with a service credential (for unattended runs), which must not change which brand owns an AMC instance. Sign in as a person (`mixshift auth login`) and run it again. A dry run is still allowed."
+      );
+      return;
+    }
+    const client = createContextSyncClient({ dataDirOverride: root.dataDir });
+    const found = await lookup2(client, instanceId);
+    if (!found.ok) {
+      await refuse(
+        "lookup_unavailable",
+        `${lookupFailureMessage2(found)} Nothing was written: without the lookup there is no way to prove this change would not leave the instance ambiguous.`,
+        { lookup_kind: found.kind }
+      );
+      return;
+    }
+    if (assigning) {
+      const others = found.brands.filter((b) => b !== brand);
+      if (others.length > 0) {
+        await refuse(
+          "declared_by_other_brand",
+          `AMC instance ${instanceId} is already declared by ${others.join(", ")}. Nothing was written: a second declaration would make it ambiguous and its changes would stay unassigned. The user must decide which brand keeps it (\`unassign\` removes it from the one that does not own it; a retired brand still counts).`,
+          { declared_by: found.brands }
+        );
+        return;
+      }
+      if (found.brands.includes(brand)) {
+        await noop("already_assigned", `AMC instance ${instanceId} is already declared by ${brand}. Nothing to do.`);
+        return;
+      }
+    } else if (!found.brands.includes(brand)) {
+      await noop("not_declared", `Brand ${brand} does not declare AMC instance ${instanceId}. Nothing to do.`);
+      return;
+    }
+    const setup = await deps.resolveBrandsAndManifest(brand, root);
+    if (!setup) {
+      await finish4("refused", "failed", { reason: "brand_check_failed" });
+      return;
+    }
+    const pulled = await pull(brand, setup.engineOptions);
+    if (!pulled.ok) {
+      await refuse("context_not_current", `Could not bring ${brand}'s context up to date: ${pulled.message}`);
+      return;
+    }
+    const bad = pulled.reports.find(
+      (r) => r.key === "context" && (r.action === "conflict" || r.action === "error")
+    );
+    if (bad) {
+      await refuse(
+        "context_not_current",
+        `${brand}'s context.yaml is not in step with the shared copy (${bad.action}${bad.detail ? `: ${bad.detail}` : ""}). Resolve that first (\`mixshift context status\`); nothing was written.`
+      );
+      return;
+    }
+    const engineOptions = { ...setup.engineOptions };
+    delete engineOptions.manifest;
+    const status = await computeStatus(brand, engineOptions);
+    if (!status.ok) {
+      await refuse("context_not_current", `Could not compare ${brand}'s context with the shared copy: ${status.message}`);
+      return;
+    }
+    const verdict = status.docs.find((d) => d.key === "context")?.verdict;
+    if (verdict === "local-ahead" || verdict === "local-only") {
+      await refuse(
+        "context_has_unpublished_changes",
+        `${brand}'s context.yaml has changes on this computer that are not published yet. Ask the user to review them and publish (\`mixshift context push --brand ` + brand + "`) or discard them first, so this change publishes only what was shown. Nothing was written."
+      );
+      return;
+    }
+    if (verdict !== void 0 && verdict !== "in-sync") {
+      await refuse(
+        "context_not_current",
+        `${brand}'s context.yaml is not in step with the shared copy (${verdict}). Run \`mixshift context status\` and resolve it first; nothing was written.`
+      );
+      return;
+    }
+    const path2 = localPathForKey(brand, "context", root.dataDir);
+    let content;
+    try {
+      content = await readFile50(path2, "utf8");
+    } catch {
+      await refuse(
+        "no_context_file",
+        `${brand} has no context.yaml on this computer. Set the brand up first (the mx-brand-context skill).`
+      );
+      return;
+    }
+    const plan = assigning ? planAmcAssignment(content, instanceId, opts.account) : planAmcUnassignment(content, instanceId);
+    if (!plan.ok) {
+      await refuse(plan.reason, plan.message, plan.accounts ? { accounts: plan.accounts } : {});
+      return;
+    }
+    const planHash = createHash8("sha256").update(plan.content).digest("hex").slice(0, 12);
+    if (commit && opts.expect !== void 0 && opts.expect !== planHash) {
+      await refuse(
+        "plan_changed",
+        "The planned change is no longer the one the user saw (the file or the shared copy changed since the dry run). Nothing was written. Run the dry run again, show it, and confirm again.",
+        { plan_hash: planHash }
+      );
+      return;
+    }
+    const accountSummary = plan.account ? describeAccounts2([plan.account]).trim().replace(/^- /, "") : "";
+    const verb = assigning ? "declare" : "remove";
+    const changeLines = [
+      ...plan.removed_lines.map((l) => `- ${l}`),
+      ...plan.added_lines.map((l) => `+ ${l}`)
+    ];
+    if (!commit) {
+      await finish4("dry_run", "ok", { edit: plan.edit });
+      emit3(
+        root,
+        {
+          status: "ok",
+          result: "dry_run",
+          op,
+          instance_id: instanceId,
+          brand,
+          account: plan.account,
+          edit: plan.edit,
+          commit: false,
+          removed_lines: plan.removed_lines,
+          added_lines: plan.added_lines,
+          plan_hash: planHash,
+          message: "Dry run: pulled any server updates to this brand's context and wrote nothing else. Re-run with --commit once the user confirms."
+        },
+        [
+          `Dry run: ${verb} AMC instance ${instanceId} on brand ${brand}${accountSummary ? `, account ${accountSummary}` : ""}.`,
+          plan.changed ? "The context.yaml line(s) that would change:" : "No line would change; a commit would only read back.",
+          ...changeLines,
+          "Pulled any server updates to this brand's context and wrote nothing else. Re-run with --commit once the user confirms."
+        ]
+      );
+      return;
+    }
+    if (plan.changed) await writeFile34(path2, plan.content, "utf8");
+    const pushed = await push(brand, { ...engineOptions, onlyKeys: ["context"] });
+    const ctxReport = pushed.ok ? pushed.reports.find((r) => r.key === "context") : void 0;
+    const okActions = /* @__PURE__ */ new Set(["pushed", "created", "noop", "up-to-date"]);
+    const pushProblem = !pushed.ok ? pushed.message : !ctxReport ? "context.yaml was not published" : okActions.has(ctxReport.action) ? "" : `${ctxReport.action}${ctxReport.detail ? ` (${ctxReport.detail})` : ""}`;
+    if (pushProblem) {
+      let rolledBack = false;
+      if (plan.changed) {
+        try {
+          if (await readFile50(path2, "utf8") === plan.content) {
+            await writeFile34(path2, content, "utf8");
+            rolledBack = true;
+          }
+        } catch {
+        }
+      }
+      await finish4("push_failed", "failed", { rolled_back: rolledBack });
+      const message = `context.yaml may not have been published: ${pushProblem}. Check with \`mixshift context status\`. ` + (rolledBack ? "The local file was put back as it was. Run the command again: it re-pulls and re-checks first." : plan.changed ? "The local file still holds the edit (it changed while publishing). Run `mixshift context status` to see where it stands." : "Run `mixshift context status` to see where it stands.");
+      if (root.json) {
+        process.stdout.write(
+          JSON.stringify({
+            status: "error",
+            kind: "push_failed",
+            result: "push_failed",
+            op,
+            instance_id: instanceId,
+            brand,
+            commit: true,
+            rolled_back: rolledBack,
+            message
+          }) + "\n"
+        );
+      } else {
+        process.stderr.write(`error: ${message}
+`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+    const back = await lookup2(createContextSyncClient({ dataDirOverride: root.dataDir }), instanceId);
+    let verified = null;
+    let readbackBrands = null;
+    let note;
+    if (!back.ok) {
+      note = `Published, but the read-back lookup failed (${back.kind}), so it is not confirmed how the service now resolves the instance.`;
+    } else {
+      readbackBrands = back.brands;
+      if (assigning) {
+        verified = back.brands.length === 1 && back.brands[0] === brand;
+        note = verified ? `Confirmed: the service now resolves AMC instance ${instanceId} to ${brand} only.` : back.brands.includes(brand) ? `Published, but ${back.brands.join(" and ")} now both declare AMC instance ${instanceId} (another brand claimed it at the same moment). It now resolves to no brand and its changes stay unassigned. Ask the user which brand owns it, then run unassign on the other one.` : `Published, but the service does not resolve AMC instance ${instanceId} to ${brand} yet (it resolves to ${back.brands.length === 0 ? "no brand" : back.brands.join(", ")}). Its changes stay unassigned until that is fixed.`;
+      } else {
+        verified = !back.brands.includes(brand);
+        note = verified ? `Confirmed: ${brand} no longer declares AMC instance ${instanceId}. It now resolves to ${back.brands.length === 0 ? "no brand" : back.brands.join(", ")}.` : `Published, but the service still shows ${brand} declaring AMC instance ${instanceId}.`;
+      }
+    }
+    const ok = back.ok ? verified === true : true;
+    await finish4("committed", ok ? "ok" : "failed", { edit: plan.edit, verified });
+    emit3(
+      root,
+      {
+        status: ok ? "ok" : "error",
+        result: "committed",
+        op,
+        instance_id: instanceId,
+        brand,
+        account: plan.account,
+        edit: plan.edit,
+        commit: true,
+        removed_lines: plan.removed_lines,
+        added_lines: plan.added_lines,
+        plan_hash: planHash,
+        pushed: true,
+        verified,
+        readback_brands: readbackBrands,
+        message: note
+      },
+      [`${assigning ? "Declared" : "Removed"} AMC instance ${instanceId} ${assigning ? "on" : "from"} brand ${brand}${accountSummary ? `, account ${accountSummary}` : ""}.`, note]
+    );
+    if (!ok) process.exitCode = 1;
+  } catch (err) {
+    fail5(root, "unknown", err instanceof Error ? err.message : String(err));
+  }
+}
+
+// src/commands/context.ts
 init_local();
 init_stake_sync();
 init_telemetry();
@@ -104200,7 +107880,7 @@ function registerContextCommands(program3) {
       for (const brand of brands) {
         const r = await computeStatus(brand, engineOptions);
         if (!r.ok) {
-          emitError16(r.message, root);
+          emitError17(r.message, root);
           return;
         }
         results.push(r);
@@ -104279,7 +107959,7 @@ function registerContextCommands(program3) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError16(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -104308,6 +107988,8 @@ function registerContextCommands(program3) {
     syncStakesAfter: true
   });
   registerAutosyncSubcommand(context);
+  registerDspAdvertiserCommands(context, { resolveBrandsAndManifest });
+  registerAmcInstanceCommands(context, { resolveBrandsAndManifest });
   context.command("migrate").description(
     "First-push flow: seed the org store from the local brand dirs. Validates context.yaml, uploads every doc (identical server content dedupes as noop; differing content surfaces as a conflict), and writes the sync state so status/pull/push/sync take over."
   ).option("--brand <slug>", "limit to one brand (default: all local brands)").action(async (opts, cmd) => {
@@ -104315,7 +107997,7 @@ function registerContextCommands(program3) {
     const t0 = Date.now();
     try {
       if (opts.brand && !await brandDirExists(opts.brand, root.dataDir)) {
-        emitError16(
+        emitError17(
           `brand '${opts.brand}' has no local directory under ~/.mixshift/clients/ \u2014 migrate seeds the org store from local brand dirs`,
           root
         );
@@ -104332,7 +108014,7 @@ function registerContextCommands(program3) {
         client: createContextSyncClient({ dataDirOverride: root.dataDir })
       });
       if (!result.ok) {
-        emitError16(result.message, root);
+        emitError17(result.message, root);
         return;
       }
       const stakeRuns = [];
@@ -104391,7 +108073,7 @@ function registerContextCommands(program3) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError16(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -104420,7 +108102,7 @@ function registerActionSubcommand(context, spec) {
     const t0 = Date.now();
     try {
       if (spec.hasForce && opts.force && !opts.brand) {
-        emitError16(
+        emitError17(
           `--force requires --brand <slug>: forced ${spec.name} resolution is scoped to one brand at a time.`,
           root
         );
@@ -104436,7 +108118,7 @@ function registerActionSubcommand(context, spec) {
           ...spec.hasForce ? { force: opts.force ?? false } : {}
         });
         if (!r.ok) {
-          emitError16(r.message, root);
+          emitError17(r.message, root);
           return;
         }
         results.push({ brand: r.brand, reports: r.reports });
@@ -104508,7 +108190,7 @@ function registerActionSubcommand(context, spec) {
       process.exitCode = counts.error > 0 ? 1 : 0;
       return;
     } catch (err) {
-      emitError16(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -104600,7 +108282,7 @@ function registerAutosyncSubcommand(context) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError16(err instanceof Error ? err.message : String(err), root);
+      emitError17(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -104614,7 +108296,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
   const client = createContextSyncClient({ dataDirOverride: root.dataDir });
   const manifest = await client.fetchManifest({ lifecycle: "all" });
   if (!manifest.ok) {
-    emitError16(manifest.friendly, root);
+    emitError17(manifest.friendly, root);
     return null;
   }
   let brands = localOrExplicit;
@@ -104631,7 +108313,7 @@ async function resolveBrandsAndManifest(brandOpt, root) {
     const knownLocally = await brandDirExists(brandOpt, root.dataDir);
     const knownOnServer = manifest.brands.some((b) => b.brand_slug === brandOpt);
     if (!knownLocally && !knownOnServer) {
-      emitError16(
+      emitError17(
         `brand '${brandOpt}' not found locally or in the org store \u2014 check the slug (run \`mixshift context status\` for the known brands)`,
         root
       );
@@ -104711,7 +108393,7 @@ function emitNoBrands(root) {
     );
   }
 }
-function emitError16(message, root) {
+function emitError17(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -104807,7 +108489,7 @@ function registerList(timeline) {
       if (opts.since) {
         const since = parseSince(opts.since);
         if (!since.ok) {
-          emitError17(since.message, root);
+          emitError18(since.message, root);
           return;
         }
         query.since = since.iso;
@@ -104815,7 +108497,7 @@ function registerList(timeline) {
       if (opts.until) {
         const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
         if (!until.ok) {
-          emitError17(until.message, root);
+          emitError18(until.message, root);
           return;
         }
         query.until = until.iso;
@@ -104823,7 +108505,7 @@ function registerList(timeline) {
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
         if (!Number.isInteger(n) || n <= 0) {
-          emitError17(`--limit must be a positive integer, got '${opts.limit}'`, root);
+          emitError18(`--limit must be a positive integer, got '${opts.limit}'`, root);
           return;
         }
         query.limit = n;
@@ -104849,7 +108531,7 @@ function registerList(timeline) {
           },
           root.dataDir
         );
-        emitError17(result.friendly, root);
+        emitError18(result.friendly, root);
         return;
       }
       await track(
@@ -104893,7 +108575,7 @@ function registerList(timeline) {
       process.stdout.write(lines.join("\n") + "\n");
       return;
     } catch (err) {
-      emitError17(err instanceof Error ? err.message : String(err), root);
+      emitError18(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -104913,14 +108595,14 @@ function registerAdd(timeline) {
     try {
       const family = familyForKind(opts.kind);
       if (family === null) {
-        emitError17(
+        emitError18(
           `--kind must be 'comment' or 'structural.<what>' (got '${opts.kind}'). knowledge.* events are emitted by the context service and action.* events by instrumented write paths; neither can be added by hand.`,
           root
         );
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_NOTE_CHARS) {
-        emitError17(
+        emitError18(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_NOTE_CHARS}). Trim it, or store the full text as a corpus doc and reference it with --target.`,
           root
         );
@@ -104929,42 +108611,42 @@ function registerAdd(timeline) {
       const isStake = opts.category !== void 0;
       if (isStake) {
         if (!STAKE_CATEGORIES.includes(opts.category)) {
-          emitError17(
+          emitError18(
             `--category must be one of: ${STAKE_CATEGORIES.join(", ")} (got '${opts.category}').`,
             root
           );
           return;
         }
         if (family !== "structural") {
-          emitError17(
+          emitError18(
             `a --category stake requires a 'structural.<what>' --kind (got '${opts.kind}').`,
             root
           );
           return;
         }
         if (opts.interpretation === void 0 || opts.interpretation.length === 0) {
-          emitError17(
+          emitError18(
             "--interpretation is required when --category is given (a stake records what the org read into the event).",
             root
           );
           return;
         }
         if (opts.interpretation.length > MAX_INTERPRETATION_CHARS3) {
-          emitError17(
+          emitError18(
             `--interpretation is too long (${opts.interpretation.length} characters; the cap is ${MAX_INTERPRETATION_CHARS3}).`,
             root
           );
           return;
         }
         if (opts.source !== void 0 && !STAKE_SOURCES.includes(opts.source)) {
-          emitError17(
+          emitError18(
             `--source must be one of: ${STAKE_SOURCES.join(", ")} (got '${opts.source}').`,
             root
           );
           return;
         }
       } else if (opts.end !== void 0 || (opts.affects?.length ?? 0) > 0 || (opts.tag?.length ?? 0) > 0 || opts.intensity !== void 0 || opts.source !== void 0 || opts.interpretation !== void 0 || opts.evidence !== void 0) {
-        emitError17(
+        emitError18(
           "--end / --affects / --tag / --intensity / --source / --interpretation / --evidence describe a stake; add --category to record one.",
           root
         );
@@ -104974,7 +108656,7 @@ function registerAdd(timeline) {
       if (opts.intensity !== void 0) {
         intensity = Number(opts.intensity);
         if (!Number.isFinite(intensity)) {
-          emitError17(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
+          emitError18(`--intensity must be a finite number, got '${opts.intensity}'.`, root);
           return;
         }
       }
@@ -104983,7 +108665,7 @@ function registerAdd(timeline) {
         ["--end", opts.end]
       ]) {
         if (value !== void 0 && Number.isNaN(Date.parse(value))) {
-          emitError17(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
+          emitError18(`${flag} must be an ISO-8601 timestamp, got '${value}'.`, root);
           return;
         }
       }
@@ -104991,7 +108673,7 @@ function registerAdd(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError17(parsed.message, root);
+          emitError18(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -105042,7 +108724,7 @@ function registerAdd(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError17(result.friendly, root);
+        emitError18(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -105067,7 +108749,7 @@ function registerAdd(timeline) {
       }
       return;
     } catch (err) {
-      emitError17(err instanceof Error ? err.message : String(err), root);
+      emitError18(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -105084,25 +108766,25 @@ function registerCorroborate(timeline) {
     const t0 = Date.now();
     try {
       if (opts.status === void 0 && opts.end === void 0 && opts.evidence === void 0) {
-        emitError17(
+        emitError18(
           "a corroboration needs at least one of --status, --end, or --evidence (a --note alone is not a corroboration).",
           root
         );
         return;
       }
       if (opts.status !== void 0 && !STAKE_STATUSES.includes(opts.status)) {
-        emitError17(
+        emitError18(
           `--status must be one of: ${STAKE_STATUSES.join(", ")} (got '${opts.status}').`,
           root
         );
         return;
       }
       if (opts.end !== void 0 && Number.isNaN(Date.parse(opts.end))) {
-        emitError17(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
+        emitError18(`--end must be an ISO-8601 timestamp, got '${opts.end}'.`, root);
         return;
       }
       if (opts.note !== void 0 && opts.note.length > MAX_CORROBORATE_NOTE_CHARS) {
-        emitError17(
+        emitError18(
           `--note is too long (${opts.note.length} characters; the cap is ${MAX_CORROBORATE_NOTE_CHARS}).`,
           root
         );
@@ -105112,7 +108794,7 @@ function registerCorroborate(timeline) {
       if (opts.evidence !== void 0) {
         const parsed = parseEvidence(opts.evidence);
         if (!parsed.ok) {
-          emitError17(parsed.message, root);
+          emitError18(parsed.message, root);
           return;
         }
         evidence = parsed.value;
@@ -105142,7 +108824,7 @@ function registerCorroborate(timeline) {
         root.dataDir
       );
       if (!result.ok) {
-        emitError17(result.friendly, root);
+        emitError18(result.friendly, root);
         return;
       }
       if (root.json) {
@@ -105167,7 +108849,7 @@ function registerCorroborate(timeline) {
       }
       return;
     } catch (err) {
-      emitError17(err instanceof Error ? err.message : String(err), root);
+      emitError18(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -105220,7 +108902,7 @@ function registerSync(timeline) {
         root.dataDir
       );
       if (opts.brand !== void 0 && results[0].error !== void 0) {
-        emitError17(results[0].error, root);
+        emitError18(results[0].error, root);
         return;
       }
       if (root.json) {
@@ -105263,7 +108945,7 @@ function registerSync(timeline) {
       process.stdout.write((lines.length > 0 ? lines.join("\n") + "\n" : "") + summary + "\n");
       return;
     } catch (err) {
-      emitError17(err instanceof Error ? err.message : String(err), root);
+      emitError18(err instanceof Error ? err.message : String(err), root);
       return;
     }
   });
@@ -105380,7 +109062,7 @@ function filtersPayload(query, all) {
     all
   };
 }
-function emitError17(message, root) {
+function emitError18(message, root) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
   } else {
@@ -105398,7 +109080,7 @@ init_resolve();
 init_service_attribution_cache();
 init_telemetry();
 import { readdir as readdir8, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname43, join as join34 } from "node:path";
+import { basename as basename5, dirname as dirname43, join as join35 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -105454,14 +109136,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join34(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join35(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
     if (basename5(dir) !== "auth" || basename5(dirname43(dir)) !== ".mixshift") continue;
-    found.push(join34(dir, entry.name));
+    found.push(join35(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -105544,7 +109226,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join34(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join35(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -106064,7 +109746,7 @@ var OPTION_HINTS = {
   }
 };
 var ROOT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["--data-dir", "--surface"]);
-function resolve4(program3, argv) {
+function resolve5(program3, argv) {
   let cmd = program3;
   const path2 = [];
   for (let i = 0; i < argv.length; i++) {
@@ -106098,7 +109780,7 @@ function listSubcommands(cmd) {
   return cmd.commands.filter((c) => c.name() !== "help").map((c) => c.name()).join(", ");
 }
 function usageHint(code, message, argv, program3) {
-  const r = resolve4(program3, argv);
+  const r = resolve5(program3, argv);
   if (code === "commander.unknownOption") {
     const flag = /unknown option '(--[^'=\s]+)/.exec(message)?.[1];
     if (!flag) return void 0;
@@ -106243,6 +109925,7 @@ registerTelemetryCommands(program2);
 registerSkillCommands(program2);
 registerAmazonCommands(program2);
 registerAdsCommands(program2);
+registerDspCommands(program2);
 registerWalmartCommands(program2);
 registerShelfCommands(program2);
 registerIntelligenceCommands(program2);

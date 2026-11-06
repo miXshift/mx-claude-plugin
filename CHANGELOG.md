@@ -3,6 +3,67 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.21
+
+
+### Added
+
+- **Walmart Marketplace in the plugin (beta): `mx-walmart-retail`, read only.** For sellers connected to your MixShift account, ask what is selling, what you have, what is inbound, how many days it will last and what to reorder, and get one line per SKU with the riskiest first (stock and days of supply need Walmart Fulfillment Services). It also reads orders by date window, items, inventory and inbound shipments, straight from your Walmart seller account. A Seller Center admin connects the seller on the web and can disconnect at any time; connections are opening account by account. It never changes anything on Walmart. The commands are `mixshift walmart marketplace sellers`, `operations` and `call`.
+
+- **Check a DSP order before you switch it on, in one step.** `mixshift dsp readiness` runs the whole pre-launch checklist on an order: media type, goal, tracked products, real targeting on every line item and an approved creative on each, and lists what to confirm in the DSP console (an off-Amazon conversion, the responsive ad Amazon can create automatically). Each line is marked pass, fail, warn or confirm, with the ids it checked and how to fix it, so the common reasons Amazon refuses to start an order are caught before you try. It only reads.
+
+- **"Amazon O&O and Publisher Direct only" in one step.** `mixshift dsp supply-preset` finds the third-party exchange supply Amazon adds to new DSP line items, keeps Amazon-owned inventory and Publisher Direct, and previews removing the third-party exchanges. Nothing changes until you confirm, and every removed target is kept in the change record so it can be added back.
+
+- **Build a responsive ecommerce ad on DSP from the plugin.** The responsive ad Amazon creates automatically can only be
+  switched on in the DSP console when an order is created. You can now build a responsive ecommerce ad for
+  your products from the plugin instead, preview it, create it paused and attach it to a line item, where
+  Amazon reviews it like any creative. A DSP ad cannot be deleted, so the plugin always shows you
+  the exact ad first.
+
+- **You are asked once which brand a DSP advertiser belongs to.** When you start work on a DSP advertiser, before the first change, the plugin checks whether a brand already claims it. If none does, it asks which of your brands it belongs to, shows you the exact change, and writes it only after you confirm, so those DSP changes show on the right brand's change log from then on. Nothing is guessed or filled in for you, an advertiser a different brand already claims is never reassigned, and scheduled runs never ask or write; they just list the advertisers still unassigned. Brand setup asks the same question for a brand that runs DSP. New commands for the same job: `mixshift context dsp-advertiser show`, `assign` and `unassign` (the way out of a wrong pick or of two brands claiming one advertiser).
+
+- **You are asked once which brand an AMC instance belongs to.** Before the first audience create, fix or delete on an Amazon Marketing Cloud instance, the plugin checks whether a brand already claims it. If none does, it asks which of your brands it belongs to, shows you the exact change, and writes it only after you confirm, so those audience changes show on the right brand's change log from then on, instead of on whichever seller you had selected. Nothing is guessed or filled in for you, an instance a different brand already claims is never reassigned, and scheduled runs never ask or write; they just list the instances still unassigned. Brand setup asks the same question for a brand that uses AMC. New commands for the same job: `mixshift context amc-instance show`, `assign` and `unassign` (the way out of two brands claiming one instance, and how to correct a wrong pick going forward; changes already recorded on a brand stay on it).
+
+- **`mixshift auth status` and `mixshift doctor` now show who you are signed in as.** One line gives your email and your organization, and when you signed in as yourself with Google it says "verified member" with your role. Anything your organization does not allow you to do is listed. `auth status` is read-only: it uses your saved sign-in as it is, never renews it, and while it is expired says the identity will show after your next MixShift call. `doctor` checks that your sign-in works, so it may renew it, or tell you it ended and to sign in again, as before. If the service is slow or unreachable they give up after a few seconds and say so. When a request is refused for a missing permission, the message now says the permission may be off for you in your organization and to ask your org admin (a service credential has to be granted it when the credential is created), instead of saying signed-in users always hold it; if the service says why, the message names the cause. The device sign-in shows the code as its own step, and the work email you give at sign-in is now a prefill hint for the sign-in page, not your identity.
+
+### Changed
+
+- **DSP builds now cover the settings that decide whether an order delivers, and the plugin checks them before turning an order on.** Building orders, line items, targets and creative links stays available; the guidance now walks the order of operations (media type, goal KPI, tracked products, product category, frequency caps, audiences from Amazon or from AMC, and the default targets Amazon adds), and a read-only readiness checklist runs before an order is set live and stops on any failure. New lookups find product categories and the DSP audiences Amazon offers, and tracked products can be listed, added and removed. "Automatically create responsive ads" and creatives other than a responsive ecommerce ad remain console-only, and the plugin says so up front. Audiences made with the AMC skill appear in the MixShift AMC Workspaces app the next time that advertiser's Audiences page is opened, when the advertiser is set up there.
+
+### Fixed
+
+- **A placeholder ACoS target no longer shows as confirmed.** When MixShift has no
+  ACoS target on file for a brand, setup fills in 20% as a starting point. The Brand
+  Context page marked that number as confirmed, as if you had set it. It now shows it
+  as pre-filled with a note that it is a placeholder to confirm, and setting the target
+  (even to the same 20%) confirms it. The reports and checks that judge performance
+  against the target now say when it is only the placeholder and ask you to confirm it
+  first, instead of flagging against a number nobody chose.
+
+- **A slow brand context save is no longer reported as failed.** When a save took
+  more than a couple of seconds to reach your team, the plugin said it could not sync,
+  even though it usually went up with the next sync. It now says the save is kept on
+  your computer and should reach your team on the next sync, and shows how to check it
+  (`mixshift context status`). A save that really fails is still reported as a
+  failure, with the command to retry it.
+
+- **Report Max no longer drops a published forecast because of one new note from
+  the forecasting app.** When some months of a forecast use sales you corrected
+  in the forecasting app that differ from the warehouse, the forecast carries a note
+  saying so. Report Max did not recognize that note and left the whole forecast out
+  of the report. It now recognizes the note and keeps it in the internal companion
+  only. A note added later that this version does not know is handled the same way,
+  so the forecast still reaches the report. An unknown forecast figure still keeps
+  the forecast out, as before.
+
+- **A passing service problem during Report Max no longer reads as an account with no
+  data.** When fetching the report figures failed for a moment, the error could read as
+  if the account had no data for the period. Report Max now starts one fresh run, never
+  works from a figures file that was not written, and if the fresh run fails too says
+  plainly that the figures could not be fetched and why. The MixShift Intelligence
+  commands also say that an engine error is usually temporary, and that a "no data for
+  this period" answer is worth one fresh run before concluding the account has no data.
+
 ## 0.8.20
 
 
