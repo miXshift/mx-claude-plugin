@@ -23,7 +23,9 @@ description: >
   created paused (Amazon's rule for DSP, checked before the call), targeting
   including audiences, and existing creatives attached to line items, on Amazon's
   Campaign Management API; turning a build on is a separate confirmed edit.
-  Creating a DSP creative is NOT available. Routes through the bundled harness
+  A responsive ecommerce ad can be created too (dsp.create_ads: paused, linked
+  with dsp.create_ad_associations, cannot be deleted); every other creative type
+  stays console-only. Routes through the bundled harness
   CLI. Does not require brand setup, only that the user has signed in
   (`mixshift auth login`).
 
