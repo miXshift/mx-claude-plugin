@@ -1,0 +1,80 @@
+schema_version: 1
+skill_id: mx-walmart-retail
+display_name: Walmart Marketplace (per-SKU sales, stock, inbound, days of supply, reorder)
+version: "0.1.0"
+description: >
+  Beta. Read your Walmart Marketplace seller account through the bundled harness
+  CLI, for the sellers connected to the signed-in MixShift account: one view
+  per SKU of what is selling, what you have, what is inbound, how many days it
+  will last and what to reorder (the SKU snapshot), plus orders by date
+  window, items, inventory, Walmart Fulfillment Services (WFS) inventory and
+  inbound shipments. Read only: changes are made in the MixShift app, never
+  from Claude.
+
+# Tier 1: read-only against the service. Modeled per_account because every
+# call targets one Walmart seller (--seller). No brand context, no library SQL.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read, file_write]
+side_effect_policy: artifact_write   # saves a SKU table to disk when the user asks
+review_required: never
+sql_ids: []   # Walmart data is not in the MixShift warehouse
+
+harness_commands:
+  - mixshift walmart marketplace sellers
+  - mixshift walmart marketplace operations [--family <name>]
+  - mixshift walmart marketplace call <operation> --seller <id> [--environment <env>] [--query <json>] [--path <json>]
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts:
+  - name: walmart-sku-table
+    type: json_artifact   # the per-SKU table the user may ask to save
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: pro
+trigger_phrases:
+  - walmart marketplace
+  - my walmart sellers
+  - walmart seller account
+  - walmart inventory
+  - walmart wfs inventory
+  - walmart days of supply
+  - what should i reorder on walmart
+  - what is selling on walmart
+  - walmart sales by sku
+  - walmart orders
+  - walmart items
+  - walmart inbound shipments
+  - how long will my walmart stock last
+  - walmart sku snapshot
+  - what do we have on walmart
+  - connect my walmart seller account
+notes: >
+  Read only. `mixshift walmart marketplace sellers` lists the seller
+  connections this sign-in reaches (sellerId, environment sandbox|production,
+  label, scopes). `operations` lists the catalog and marks every write; the CLI
+  refuses a write before sending anything.
+
+  The headline read is `mp.sku_snapshot` (optional --query '{"sku":"..."}'):
+  per SKU units sold over 2/7/30/60 days, average daily units, orders over 60
+  days, and, when the seller uses Walmart Fulfillment Services, available,
+  reserved, inbound, on hand, days of supply, Walmart's suggested units and
+  forecast, plus complete, warnings and counted. It can take up to about 90
+  seconds; the CLI waits up to 150.
+
+  Connecting a seller happens on the web: a Seller Center admin opens
+  https://mcp.mixshift.io/walmart/marketplace/connect, signs in with their
+  MixShift account and approves MixShift on Walmart's screen. They can
+  disconnect at any time.
+
+  Failures are typed: branch on failure_kind (not_authenticated=2,
+  tenant_not_allowed=6, walmart_not_configured=6 (no seller connected), seller_not_allowed=7, not_found=7, throttled=8,
+  insufficient_scope=11, write_refused=11, bad_request=12, upstream_auth=14,
+  invalid_request=15), never on HTTP status.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - Walmart Marketplace enabled for the MixShift account
+    - a seller connected to the MixShift account

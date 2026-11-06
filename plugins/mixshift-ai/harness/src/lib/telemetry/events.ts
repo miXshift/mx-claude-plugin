@@ -254,6 +254,13 @@ export const EventName = {
   WalmartAdsOperationsListed: 'walmart.ads.operations_listed',
   WalmartAdsCalled: 'walmart.ads.called',
 
+  // Walmart Marketplace (seller) reads (lib/walmart/marketplace-call.ts +
+  // `mixshift walmart marketplace`). Operation id + seller id + environment +
+  // outcome; never the payload (orders and inventory are the seller's data).
+  WalmartMarketplaceSellersListed: 'walmart.marketplace.sellers_listed',
+  WalmartMarketplaceOperationsListed: 'walmart.marketplace.operations_listed',
+  WalmartMarketplaceCalled: 'walmart.marketplace.called',
+
   // Shelf data surface (lib/shelf/client.ts + `mixshift shelf`). Call kind,
   // country, whether a zip was given, surface/page, fresh, observed age,
   // outcome and duration; never the subject (an ASIN, a keyword or a seller

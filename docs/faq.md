@@ -194,6 +194,7 @@ The boundary is whether a skill needs a brand-context build. **Everything that n
 - `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, `mx-amazon-dsp` for live reads straight from Amazon
 - `mx-amazon-ads` for live Amazon Ads reads plus audited writes (preview, confirm, commit)
 - `mx-walmart-ads` for Walmart ads (Walmart Connect): campaigns, reports and previewed changes, for Walmart advertisers connected to your MixShift account (beta)
+- `mx-walmart-retail` for your Walmart Marketplace seller account, read only: per-SKU sales, stock, inbound and days of supply, plus orders, items and inventory, for sellers connected to your MixShift account (beta)
 - `mx-amazon-shelf` for the Amazon shelf as a shopper at a zip sees it: Buy Box, every seller on a listing, keyword rank, the product page, who a seller is (beta; say "demo Amazon shelf")
 - `mx-featured-offer-check` for who holds your Buy Box per shopper segment and why you lose it, from Amazon's answer plus the shelf, on one page (beta; say "demo featured offer check")
 
@@ -205,7 +206,7 @@ Yes. `mx-amazon-ads` reads a live Amazon Ads account (campaigns, ad groups, keyw
 
 ### Does the plugin work with Walmart?
 
-For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To connect an advertiser, an admin on your Walmart ad account adds MixShift as a partner in Ad Center (Access, then Partners, then + Add Partner) and emails the advertiser ID to support@mixshift.io; the skill walks you through it. Walmart Marketplace data (orders, items, inventory) is not in the plugin yet.
+For Walmart ads, yes, in beta. `mx-walmart-ads` works with Walmart Connect, Walmart's advertising API, for the Walmart advertisers MixShift has connected to your account: campaigns and their status, keywords and bids, Walmart's performance reports (for example the last 30 days of spend, clicks and impressions by campaign), and changes that preview first and are sent only after you confirm. It uses your normal plugin sign-in, with no separate connector. To connect an advertiser, an admin on your Walmart ad account adds MixShift as a partner in Ad Center (Access, then Partners, then + Add Partner) and emails the advertiser ID to support@mixshift.io; the skill walks you through it. For your Walmart Marketplace seller account, also in beta, `mx-walmart-retail` reads it, read only: one view per SKU of what is selling, what you have, what is inbound, how many days it will last and what to reorder, plus orders, items and inventory. A Seller Center admin connects the seller at https://mcp.mixshift.io/walmart/marketplace/connect by signing in with their MixShift account and approving MixShift on Walmart's screen, and can disconnect at any time. Price, inventory and order changes are made in the MixShift app, not from Claude.
 
 ### How do I see what a skill does before I use it?
 

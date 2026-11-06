@@ -93,8 +93,8 @@ Route elsewhere:
 
 - **Amazon ads** (Sponsored Products, Brands, Display on Amazon) go to
   `mx-amazon-ads`.
-- **Walmart Marketplace** (orders, items, inventory, WFS) is not in this
-  skill. Tell the user it is not available in the plugin yet.
+- **Walmart Marketplace** (seller orders, items, inventory, WFS, the per-SKU
+  snapshot) goes to `mx-walmart-retail`. It is not in this skill.
 
 ## Prerequisites the user needs
 
