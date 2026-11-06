@@ -146,9 +146,10 @@ export type PushAfterWriteResult =
        * Present (true) only when the attempt ran out of its wall-clock budget
        * rather than failing outright. The docs stay locally ahead and the
        * next sync (the two-way autosync on the next skill step, the next
-       * write, or an explicit push) publishes them, so the notice says
-       * "still syncing", not "could not sync". Telemetry is unchanged: still
-       * reason 'failed' with detail "timed out after <n>ms".
+       * write, or an explicit push) should publish them; with no sync they
+       * stay local. So the notice says "should go up on the next sync", not
+       * "could not sync". Telemetry is unchanged: still reason 'failed' with
+       * detail "timed out after <n>ms".
        */
       timedOut?: true;
     }
@@ -169,7 +170,7 @@ export type PushAfterWriteResult =
  * failure is "the write is durable locally and will publish on the next
  * explicit sync". Emits ONE concise user-facing line to STDERR (opt out with
  * `notify: false`) confirming the share, noting a transient sync failure, or
- * (on a budget timeout) saying the save is still syncing; STDOUT/--json stay
+ * (on a budget timeout) saying it should go up on the next sync; STDOUT/--json stay
  * clean.
  */
 export async function pushAfterWrite(
@@ -426,12 +427,13 @@ function noticeLineFor(brandSlug: string, result: PushAfterWriteResult): string 
       return null;
     case 'failed':
       // A budget timeout is not a failure the user should act on: the save
-      // is durable locally and the next sync publishes it. Say so, and give
-      // the read-only way to check, instead of "could not sync".
+      // is durable locally and the next sync should publish it (if no sync
+      // runs, it stays local, hence "should" and the status check), instead
+      // of "could not sync".
       if (result.timedOut) {
         return (
-          `Your ${brandSlug} save took longer than usual to reach your team and will go up on the next sync; ` +
-          `your work is saved locally. Check it with \`mixshift context status --brand ${brandSlug}\`.`
+          `Your ${brandSlug} save took longer than usual to reach your team and should go up on the next sync; ` +
+          `your work is saved locally. Check with \`mixshift context status --brand ${brandSlug}\`.`
         );
       }
       return (
