@@ -49,7 +49,7 @@ scripts/check-docs.mjs enforces parity. -->
 SellerID: [integer — must match warehouse]
 AmazonSellerID: [string — Amazon marketplace seller ID]
 ProfileID: [string — Amazon Ads API profile ID for write operations]
-SellerName in DB: [string — exact match in relevant table, e.g. "YOLO BRICK ROAD"]
+SellerName in DB: [string — exact match in relevant table, e.g. "EXAMPLE BRAND"]
 Account manager (MixShift): [name]
 Client-side contact: [name + role, if applicable]
 Brand setup completed: [YYYY-MM-DD or "not completed"]
@@ -227,7 +227,7 @@ Change History API status: not integrated | integrated
 
 Key interpretation rules:
   [bullet — e.g. "Apr peak is promo-driven, not structural"]
-  [bullet — e.g. "Jul/Aug understated due to recurring Spartan stockout"]
+  [bullet — e.g. "Jul/Aug understated due to a recurring stockout in one item group"]
 ```
 
 **Gap trigger:** Unknown seasonality = health check cannot frame pacing correctly; trough months get flagged as anomalies.

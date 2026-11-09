@@ -77,7 +77,7 @@ goals:
 campaign_structure:
   naming_pattern: "{AccountCode}-{Objective}-{BrandType}-{MatchType}-{ItemGroup}"
   account_codes:
-    - YBR                                 # short code for this brand's primary account
+    - ABC                                 # short code for this brand's primary account
   objectives:                             # optional: list of valid Objective tokens
     - PROSPECT
     - DEFEND
