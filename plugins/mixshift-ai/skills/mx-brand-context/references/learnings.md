@@ -219,7 +219,7 @@ Brand setup output that reads like a research appendix to a non-technical AM is 
 - sellermonthmetric_available: true — use account-level monthly reports without restatement gap concern
 - ASIN negation corpus: manual targeting corpus by item group is the validated positive training set
 - Item-group segmentation: bracelet corpus ≠ cross corpus ≠ islander corpus — same ASIN can signal different intent in different lanes
-- RP own ASINs appear in auto converters: filter B0CC/B0FR/B0BR prefix ASINs from competitor corpus
+- AB own ASINs appear in auto converters: filter B0CC/B0FR/B0BR prefix ASINs from competitor corpus
 - LT spend $3–12 with zero conversions = insufficient data for negation decision
 
 ---

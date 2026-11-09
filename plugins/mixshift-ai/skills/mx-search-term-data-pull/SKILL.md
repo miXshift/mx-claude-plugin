@@ -109,7 +109,7 @@ Used by: exact negation (detect cross-context conversion conflicts), relevance c
 
 From `STDP-05` pre-fetched results. Apply the taxonomy mapping in the application layer post-query — do not attempt SQL string parsing of CampaignName directly.
 
-**Why this matters:** A ST converting in BRACELET campaigns with zero orders in SPARTAN is a location-specific bleed. Aggregate shows total orders > 0 (Tier A — keep). Item group shows SPARTAN is bleeding. Without this layer, exact negation cannot safely recommend a location-specific negate for the SPARTAN ad group while preserving the BRACELET traffic.
+**Why this matters:** A ST converting in BRACELET campaigns with zero orders in EXAMPLE ITEM GROUP is a location-specific bleed. Aggregate shows total orders > 0 (Tier A — keep). Item group shows EXAMPLE ITEM GROUP is bleeding. Without this layer, exact negation cannot safely recommend a location-specific negate for the EXAMPLE ITEM GROUP ad group while preserving the BRACELET traffic.
 
 **Phase 2c — Lifetime Performance — Full Specific Location**
 

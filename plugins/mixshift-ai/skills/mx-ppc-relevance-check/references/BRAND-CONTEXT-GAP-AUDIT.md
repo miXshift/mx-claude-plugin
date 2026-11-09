@@ -40,7 +40,7 @@
 
 | Section | Gap | Severity | Note |
 |---|---|---|---|
-| Objective Configuration (§4) | Not present | P1 | example brand has multiple campaign objectives (efficiency, growth/awareness for Fahlo lines, launch state for new lines). Currently all evaluated as efficiency. Add objective overrides for Fahlo lines and Spartan in pullback. |
+| Objective Configuration (§4) | Not present | P1 | example brand has multiple campaign objectives (efficiency, growth/awareness for Example Brand B lines, launch state for new lines). Currently all evaluated as efficiency. Add objective overrides for Example Brand B lines and Example Item Group in pullback. |
 | Account Actions Log | Bid magnitudes missing | P1 | Multiple entries say "specific magnitude not captured." Change History API integration is the fix, but until then the log is partially blind on bid sizes. |
 | Brain Inputs (§15) | Empty | P2 | No Discord feedback log, no call transcripts, no monthly report annotations. Will fill organically. |
 | Revenue baseline | Needs refresh | P2 | Last updated 2026-03-06. Mar + Apr 2026 data now exists. Refresh on next brand setup pass. |

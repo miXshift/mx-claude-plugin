@@ -72,9 +72,9 @@ Review this file before every run. Add new entries immediately after any correct
 
 ## 2026-03-23 — VC: Quarterly projection when no quarterly target exists
 
-**What happened:** HP Bottom Line included quarterly projection even though no target exists.
+**What happened:** CD Bottom Line included quarterly projection even though no target exists.
 
-**Why:** RP has Q1 $70K target so quarterly sentence is correct for RP. HP does not.
+**Why:** AB has Q1 $70K target so quarterly sentence is correct for AB. CD does not.
 
 **The rule:** Check brand context for quarterly target before writing Bottom Line pacing lines. If no quarterly target: monthly pacing only. No quarterly sentence. Gate is mechanical.
 
