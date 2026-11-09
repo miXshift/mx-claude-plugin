@@ -599,7 +599,7 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
     } else {
       // --- Step 4: real verify, with bounded fall-through on REJECTION. ----
       // A structurally-usable credential can still be revoked (field case,
-      // Cartology 2026-07-23: discovery picked a stale credential out of a
+      // one customer, 2026-07-23: discovery picked a stale credential out of a
       // previously-granted folder that had been rotated at /admin, while a
       // valid credential sat in another candidate — the run died "credential
       // rejected" even though a working one existed). So: when the mint is

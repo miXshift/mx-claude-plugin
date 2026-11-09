@@ -60,7 +60,7 @@
 - Performance targets (ACOS target, sub-brand ACOS targets) ✅
 - Sub-brand structure ✅
 - Product portfolio by sub-brand (comprehensive) ✅
-- Structural events (FreshTab 12ct CRAP cycle, Glacier legacy wind-down) ✅
+- Structural events (Sub-brand A 12ct CRAP cycle, legacy sub-brand wind-down) ✅
 - Revenue baseline ✅
 - Seasonality — partial ✅
 - ST negation rules — present (from sessions) ✅
@@ -70,10 +70,10 @@
 
 | Section | Gap | Severity | Note |
 |---|---|---|---|
-| Objective Configuration (§4) | Not present | P1 | example brand runs brand defense, awareness (upper funnel), and efficiency campaigns. FreshTab has different ACOS dynamics than example brand Core. Without objective config, the skill applies efficiency logic to awareness/brand-defense campaigns. |
+| Objective Configuration (§4) | Not present | P1 | example brand runs brand defense, awareness (upper funnel), and efficiency campaigns. Sub-brand A has different ACOS dynamics than the example brand core line. Without objective config, the skill applies efficiency logic to awareness/brand-defense campaigns. |
 | Spend posture (§8) | Present but thin | P1 | Posture noted in some session context but not formalized in the file. Needs: current posture, re-entry trigger, house-on-fire threshold. |
 | Account Actions Log (§9) | Incomplete | P1 | Some bid history from sessions exists but has not been consistently committed to the actions log section. Needs a formal log section. |
-| Brand terms (§6) | Not formalized | P1 | Brand variants, example brand sub-brand terms, FreshTab, example brand — not in a formal brand terms section. example brand has complex brand term landscape (parent + sub-brands + legacy Glacier). |
+| Brand terms (§6) | Not formalized | P1 | Brand variants, example brand sub-brand terms, Sub-brand A, example brand — not in a formal brand terms section. example brand has complex brand term landscape (parent + sub-brands + a legacy sub-brand). |
 | ProfileID | Not in file | P1 | Required for write layer. |
 | Brain Inputs (§15) | Empty | P2 | |
 | Revenue baseline | May need refresh | P2 | Last updated 2026-03-23. Confirm whether Apr data needs to be added. |
@@ -104,7 +104,7 @@
 | Account Actions Log (§9) | MISSING | **P0** | No actions log exists in the example brand file. Skills will re-recommend in-flight changes and misread intentional bid changes as anomalies. This is the highest-severity gap. |
 | Objective Configuration (§4) | Not present | P1 | example brand has brand defense, acquisition/nonbrand, DSP (view-attribution), and potentially awareness campaigns. No objective overrides defined. |
 | Spend posture (§8) | Not formalized | P1 | Current posture not explicitly stated. Re-entry trigger not defined. |
-| Structural events (§7) | Thin | P1 | SKU history (UDM rebrand) is captured, but no formal event timeline. Promo calendar noted but not in structured format. |
+| Structural events (§7) | Thin | P1 | SKU history (a product-line rebrand) is captured, but no formal event timeline. Promo calendar noted but not in structured format. |
 | Attribution backfill calibration | MISSING | P1 | No T-1 vs T-7/T-14 calibration for example brand SP. The attribution rules section mentions 7-day SP but no empirical calibration data. |
 | ProfileID | Not in file | P1 | |
 | ASIN identity fit rules (§13) | Not present | P2 | Negation training set doesn't exist for example brand. Would benefit significantly from a Phase 2 training session. |
@@ -137,8 +137,8 @@
 | Objective Configuration (§4) | Not present | P1 | example brand has SB running at ~99% ACOS structurally — this is brand awareness, not efficiency. Without objective config, the health check and bid health skills flag SB as a chronic bleed requiring intervention. |
 | Spend posture (§8) | Present but thin | P1 | Posture context exists in sessions but not formalized in the file. Operating philosophy ("breakeven + brand recognition") is documented but re-entry trigger and house-on-fire threshold are not defined. |
 | Account Actions Log (§9) | Incomplete | P1 | Some bid history from sessions exists but the formal log section is sparse. |
-| Brand terms (§6) | Not formalized | P1 | example brand brand terms and variants not in a formal section. NFC category has complex brand term landscape. |
-| ASIN identity fit rules (§13) | Not present | P2 | No negation training set for example brand — NFC category has many wrong-context ASIN matches that would benefit from a training session. |
+| Brand terms (§6) | Not formalized | P1 | example brand brand terms and variants not in a formal section. The category has a complex brand term landscape. |
+| ASIN identity fit rules (§13) | Not present | P2 | No negation training set for example brand — the category has many wrong-context ASIN matches that would benefit from a training session. |
 | Brain inputs (§15) | Empty | P2 | |
 
 **Brand setup re-run recommendation:** Medium priority. Objective config for SB campaigns is the most impactful missing piece — it's causing false positive intervention recommendations every health check run. A targeted Phase 0 intake + objective config session would close that gap. Full brand setup not needed.

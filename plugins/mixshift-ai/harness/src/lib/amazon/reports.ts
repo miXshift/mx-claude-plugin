@@ -920,7 +920,7 @@ export async function getReportDocument(
 /** How many times to (re)attempt the presigned download before giving up. A
  *  large report doc that stalls or drops mid-stream is transient; earlier this
  *  bucketed as a single-shot `unknown` failure that forced manual re-runs
- *  (Elevate, 0.8.5, re-ran 3x by hand). */
+ *  (one agency, 0.8.5, re-ran 3x by hand). */
 export const DEFAULT_DOWNLOAD_ATTEMPTS = 3;
 /** Per-attempt STALL timeout: abort an attempt only after this long with NO
  *  progress (no headers, no bytes). A download that keeps making progress is

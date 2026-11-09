@@ -10,8 +10,8 @@
 --   capture_rate_calibration.daily_settlement_curve.by_campaign_type[CT]
 --   capture_rate_calibration.daily_settlement_curve.dow_offset_pts[DOW]
 -- DAYOFWEEK convention: 1=Sunday, 2=Monday, ..., 7=Saturday.
--- Multi-seller: spans every seller_id in accounts[] (example brand rolls up the
--- legacy Glacier VC seller 114 alongside active 113).
+-- Multi-seller: spans every seller_id in accounts[] (example brand rolls up a
+-- legacy VC seller alongside its active one).
 
 SELECT
     CampaignType                                                       AS campaign_type,

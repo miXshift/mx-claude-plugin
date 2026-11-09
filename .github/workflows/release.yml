@@ -79,6 +79,9 @@ jobs:
 
       - name: No internal-skill exposure (nothing tracked under .claude/ or internal docs)
         run: npm run check-no-internal-exposure
+        env:
+          # Private name denylist (rule 5); same secret and behavior as ci.yml.
+          EXPOSURE_DENYLIST: ${{ secrets.EXPOSURE_DENYLIST }}
 
       - name: Skill contract resolution (sql_ids, context fields, upstream, command surfaces)
         run: npm run check-contracts

@@ -1047,7 +1047,7 @@ describe('task preflight (command)', () => {
     expect(input.error_class).toBe('credential_invalid');
   });
 
-  // --- Verify fall-through on mint rejection (Cartology field case) --------
+  // --- Verify fall-through on mint rejection (customer field case) ---------
   // A structurally-usable credential can be REVOKED; preflight must try the
   // next discovered candidate instead of dying on the stale one.
 
