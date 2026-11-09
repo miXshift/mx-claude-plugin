@@ -28,6 +28,11 @@
 //      comments VERBATIM, so a reference scrubbed from src but not rebuilt
 //      still ships via the map.
 //   4. Commit messages on the branch must not carry non-MixShift emails.
+//   5. No customer/brand name from the PRIVATE EXPOSURE_DENYLIST (a GitHub
+//      Actions secret) in tracked content or branch messages. Warns and skips
+//      when the list is absent. Details at the rule below.
+//   6. No name that already leaked once (salted digests in hashed-name-scan.mjs),
+//      always on.
 
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -197,63 +202,111 @@ try {
   // The tree rules above already ran; skip the log rule rather than fail.
   console.log('✓ check-no-internal-exposure: commit-message scan skipped (origin/main not resolvable)');
 }
-// 5. NAME-CLASS scan (denylist-driven, PRIVATE list): customer/brand names must
-//    never reach tracked content OR branch commit messages. The list itself is
-//    confidential, so it never lives in this repo: provide it via the
-//    EXPOSURE_DENYLIST env var (comma-separated names) or EXPOSURE_DENYLIST_FILE
-//    (path to a newline-separated file, e.g. from the private ops store locally
-//    or a CI secret). Absent both, this rule prints a WARNING and passes: the
-//    gate must not fail on machines without the private list, and CI is the
-//    enforcing surface. Closes the PR-METADATA exposure class (a brand name
-//    shipped in a squash-merge message on 2026-09-03, and in a PR title before
-//    that): scrubbing files while narrating brands in commit messages was the
-//    exact gap, because messages ARE published content on a public repo.
+// 5. NAME-CLASS scan (PRIVATE denylist): customer/brand names must never reach
+//    tracked content OR branch commit messages. The list itself is
+//    confidential, so it never lives in this repo. Sources (both may be set;
+//    their names are combined):
+//      EXPOSURE_DENYLIST       the GitHub Actions repository secret of the same
+//                              name in CI (ci.yml + release.yml pass it in), or
+//                              an env var locally
+//      EXPOSURE_DENYLIST_FILE  path to a file, e.g. from the private ops store
+//    Format (parseDenylist in hashed-name-scan.mjs): names separated by
+//    newlines and/or commas, whitespace trimmed, blank entries and `#` lines
+//    ignored. Matching reuses rule 6's tokenizer, so "Acme Outdoor Gear" also
+//    catches acme-outdoor-gear, AcmeOutdoorGear, ACME_OUTDOOR_GEAR and the
+//    run-together form; entries under MIN_LISTED_LENGTH letters/digits are
+//    skipped with a warning (they collide with random base64 in dist/).
+//    Scope: EVERY tracked text file, plus branch commit messages when
+//    origin/main resolves (local runs; CI's shallow checkout skips that half,
+//    as for rules 4 and 6). In dist/ the sourcemap's own-source
+//    sourcesContent is scanned (where a name scrubbed from src but not rebuilt
+//    still ships, see rule 3) and the minified bundle is not: its random
+//    base64 and short identifiers collide with short names
+//    (listedNameHitsInFile in hashed-name-scan.mjs explains the trade).
+//    Absent the list (a machine without it, a fork PR that gets no secrets, or
+//    the secret not created yet), this rule WARNS and passes, and in GitHub
+//    Actions it also raises a ::warning annotation so the skip is visible on
+//    the run. Present, any hit fails. Output never prints a listed name, only
+//    file:line and the entry's position in the list. Closes the PR-METADATA
+//    exposure class too (a brand name shipped in a squash-merge message on
+//    2026-09-03, and in a PR title before that): messages ARE published
+//    content on a public repo.
 try {
-  let names = [];
-  if (process.env.EXPOSURE_DENYLIST) {
-    names = process.env.EXPOSURE_DENYLIST.split(',').map((n) => n.trim()).filter(Boolean);
-  } else if (process.env.EXPOSURE_DENYLIST_FILE) {
-    const fs = await import('node:fs');
-    names = fs.readFileSync(process.env.EXPOSURE_DENYLIST_FILE, 'utf8')
-      .split(/\r?\n/)
-      .map((n) => n.trim())
-      .filter((n) => n && !n.startsWith('#'));
+  const { readFileSync } = await import('node:fs');
+  const { parseDenylist, compileListedNames, findListedNames, listedNameHitsInFile, MIN_LISTED_LENGTH } =
+    await import('./hashed-name-scan.mjs');
+  let raw = process.env.EXPOSURE_DENYLIST || '';
+  if (process.env.EXPOSURE_DENYLIST_FILE) {
+    raw += '\n' + readFileSync(process.env.EXPOSURE_DENYLIST_FILE, 'utf8');
   }
+  const names = parseDenylist(raw);
   if (names.length === 0) {
-    console.log('WARN check-no-internal-exposure: name-class scan SKIPPED (no EXPOSURE_DENYLIST/_FILE configured); CI is the enforcing surface');
+    const msg =
+      'name-class scan SKIPPED: no EXPOSURE_DENYLIST (or EXPOSURE_DENYLIST_FILE) configured. ' +
+      'A maintainer adds the EXPOSURE_DENYLIST repository secret to enforce it in CI.';
+    console.log('WARN check-no-internal-exposure: ' + msg);
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.log('::warning title=EXPOSURE_DENYLIST not set::' + msg);
+    }
   } else {
+    const { entries, skipped } = compileListedNames(names);
+    if (skipped.length) {
+      console.log(
+        `WARN check-no-internal-exposure: denylist entr${skipped.length === 1 ? 'y' : 'ies'} ` +
+          `#${skipped.join(', #')} skipped: under ${MIN_LISTED_LENGTH} letters/digits, too short to match reliably`,
+      );
+    }
     const hits = [];
-    const lower = names.map((n) => n.toLowerCase());
-    const scan = (text, where) => {
-      const t = text.toLowerCase();
-      for (let i = 0; i < lower.length; i++) {
-        if (t.includes(lower[i])) hits.push(where + ': contains a denylisted name (#' + (i + 1) + ')');
-      }
-    };
-    const REC_SEP = String.fromCharCode(1); // %x01 in the git format below
-    const FIELD_SEP = String.fromCharCode(0); // %x00
+    let files;
     try {
-      const log = execFileSync('git', ['log', 'origin/main..HEAD', '--format=%H%x00%B%x01'], { encoding: 'utf8' });
-      for (const entry of log.split(REC_SEP).filter(Boolean)) {
-        const parts = entry.split(FIELD_SEP);
-        if (parts[1]) scan(parts[1], 'commit ' + parts[0].trim().slice(0, 9) + ' message');
+      files = execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, encoding: 'utf8' })
+        .split('\0')
+        .filter(Boolean);
+    } catch {
+      files = []; // no git context: same stance as rules 1-3
+    }
+    for (const rel of files) {
+      let buf;
+      try {
+        buf = readFileSync(join(REPO_ROOT, rel));
+      } catch {
+        continue;
       }
-    } catch { /* no origin/main: tree half still runs */ }
+      if (buf.subarray(0, 8192).includes(0)) continue; // binary
+      for (const h of listedNameHitsInFile(rel, buf.toString('utf8'), entries)) {
+        hits.push(`  ${h.where}: denylisted name #${h.entry}`);
+      }
+    }
     try {
-      const diff = execFileSync('git', ['diff', 'origin/main...HEAD', '--unified=0'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-      let file = '?';
-      for (const line of diff.split(String.fromCharCode(10))) {
-        if (line.startsWith('+++ b/')) file = line.slice(6);
-        else if (line.startsWith('+') && !line.startsWith('+++')) scan(line, file);
+      const log = execFileSync('git', ['log', 'origin/main..HEAD', '--format=%H%x00%B%x01'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      });
+      for (const entry of log.split('\x01').filter(Boolean)) {
+        const [sha, body = ''] = entry.split('\0');
+        for (const h of findListedNames(body, entries)) {
+          hits.push(`  commit ${sha.trim().slice(0, 9)} message: denylisted name #${h.entry}`);
+        }
       }
-    } catch { /* ditto */ }
+    } catch {
+      // origin/main unavailable (CI's shallow checkout): the tree half above ran.
+    }
     if (hits.length) {
-      console.error('check-no-internal-exposure: DENYLISTED NAME reached the branch (names never printed here):');
-      for (const h of [...new Set(hits)].slice(0, 20)) console.error('  - ' + h);
-      console.error('Scrub the content AND the commit message (reword + amend/rebase) before pushing.');
+      const shown = hits.slice(0, 50);
+      console.error(
+        `check-no-internal-exposure: ${hits.length} occurrence(s) of a DENYLISTED customer/brand name in the PUBLIC repo (names are never printed):\n` +
+          shown.join('\n') +
+          (hits.length > shown.length ? `\n  ... and ${hits.length - shown.length} more` : '') +
+          `\nReplace each with a neutral placeholder ("example brand", "Brand A"). If it is in a commit\n` +
+          `message, reword that commit. If it is in dist/, rebuild after scrubbing src. "#N" is the\n` +
+          `N-th name in the list (EXPOSURE_DENYLIST first, then EXPOSURE_DENYLIST_FILE; blank and # lines\n` +
+          `not counted).`,
+      );
       process.exit(1);
     }
-    console.log('OK  check-no-internal-exposure: name-class scan clean (' + names.length + ' denylisted names, messages + added lines)');
+    console.log(
+      `OK  check-no-internal-exposure: name-class scan clean (${entries.length} denylisted name(s), ${files.length} tracked files + branch messages)`,
+    );
   }
 } catch (err) {
   console.error('check-no-internal-exposure: name-class scan errored: ' + (err && err.message ? err.message : err));

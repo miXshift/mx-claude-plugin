@@ -549,7 +549,7 @@ describe('checkFigures: DELTA-IDENTITY re-points at the comparable pair when the
    *  is -55594, while the narrowed pair says the real change is -3174.
    *
    *  PROVENANCE, because a fixture that looks measured and is not is its own
-   *  defect. The engine's published Skratch Labs US figures are the levels
+   *  defect. The engine's published reference-account figures are the levels
    *  116745 and 61151, the change -3174, and the one-sided buckets 56625 (14
    *  entities, comparison-only) and 4205 (7, current-only). The comparable pair
    *  below is NOT separately published -- it is FORCED by those, because the

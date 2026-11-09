@@ -1890,7 +1890,7 @@ export function checkFigures(out: ExtractDocument): CheckFinding[] {
   // blind spot on precisely the metric that just proved it needed one.
   // Switching the rule off for `lost_sales` outright would do the same thing
   // permanently, and a tolerance is worse still: it would have to be the size
-  // of the one-sided bucket ($56,625 on the engine's own Skratch reference),
+  // of the one-sided bucket ($56,625 on the engine's own reference account),
   // which would void this rule for every other metric sharing the path.
   //
   // Deliberately keyed on the FIGURE, not on the metric name: nothing here

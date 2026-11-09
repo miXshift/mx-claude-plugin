@@ -310,7 +310,7 @@ describe('computeStatus verdict matrix', () => {
   // 'local-ahead'. Pre-fix this compared revision numbers (5 != 3) and
   // reported 'diverged' + a --force prompt.
   it('reports local-ahead (not diverged) when the server revision advanced but content is unchanged', async () => {
-    const brand = 'popl-like';
+    const brand = 'example-brand';
     const server = new FakeServer();
     // Local edited on top of the synced baseline.
     await writeBrandFile(brand, 'narrative.md', 'original\nedit by sam\n');
@@ -339,7 +339,7 @@ describe('computeStatus verdict matrix', () => {
   // Companion: same stale-revision baseline, but the local file is untouched
   // (Sam's Step 1 case). Must stay 'in-sync' — content matches head.
   it('stays in-sync when the server revision advanced but content matches an unedited local file', async () => {
-    const brand = 'popl-like-2';
+    const brand = 'example-brand-2';
     const server = new FakeServer();
     await writeBrandFile(brand, 'narrative.md', 'original\n');
     server.set(brand, 'narrative', 'original\n', { revision: 5 });

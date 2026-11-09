@@ -62,7 +62,7 @@ Note derived values in Tier 3 file with "(derived — confirm with the operator)
 ## Campaign Label ≠ Product Line Code
 
 - Do not assume campaign label matches the short code in the product line table
-- Example: HCDM is labeled "SUPERFUEL" in campaign names
+- Example: product line code PL-A is labeled "LINE-X" in campaign names
 - Confirm mapping with AM before encoding item group taxonomy
 - Same risk exists for any "seasonal rotation" campaign where contained products change without campaign rename
 
@@ -200,16 +200,16 @@ Brand setup output that reads like a research appendix to a non-technical AM is 
 
 - TACOS-to-ACOS derivation: trailing Ads%Sales = 62.9% → ACOS target 79%, scale threshold 63%
 - Ads % of Sales volatility: monthly range 48.7%–73.7% (stdev ~6.5pts) — treat derived ACOS targets as working proxy
-- Campaign item group taxonomy gap: confirm mapping with AM (e.g., Tags, Metal vs. PhoneCard, Badge)
+- Campaign item group taxonomy gap: confirm mapping with AM (e.g., Item Group A vs. Item Group B)
 - Sessions anomaly: Anomalous session spikes (443K vs normal 14-19K) with CVR collapse = bot/scraper traffic — flag in brand context
 - Inventory history is mandatory: use mws_inventory_history (not mws_inventory_health) for the standard brand setup diagnostic
 - Multi-marketplace naming: include marketplace suffix (e.g., `example-brand-us-reports` not `example-brand-reports`)
 
-### example brand Labs (SC, 2026-03-15)
+### example brand B (SC, 2026-03-15)
 
 - DSP session surge mechanism: when DSP ramps materially (58K–96K clicks/month), Sessions inflate and CVR compresses — encode in Tier 3 and annotate CVR reads
-- Campaign label ≠ product line code: HCDM is labeled "SUPERFUEL" — confirm with AM before encoding item group taxonomy
-- 50/50 same-SKU / other-SKU cross-sell: at this scale (multi-line fueling brand), 51% other-SKU is structurally expected — encode as baseline
+- Campaign label ≠ product line code: PL-A is labeled "LINE-X" — confirm with AM before encoding item group taxonomy
+- 50/50 same-SKU / other-SKU cross-sell: at this scale (multi-line consumables brand), 51% other-SKU is structurally expected — encode as baseline
 - Ads % of Sales seasonal swing: 14pts across the year (24.6% Oct → 38.1% Jun) — monthly TACOS targets (not derived ACOS) are the correct management targets
 - Phase 2 AMA follow-up: explicitly compile residual open questions and route to AM as formal short AMA
 
@@ -218,7 +218,7 @@ Brand setup output that reads like a research appendix to a non-technical AM is 
 - VC improvement_pts = 4.42pts (large-swing account) — weighted MTD formula is mandatory
 - sellermonthmetric_available: true — use account-level monthly reports without restatement gap concern
 - ASIN negation corpus: manual targeting corpus by item group is the validated positive training set
-- Item-group segmentation: bracelet corpus ≠ cross corpus ≠ islander corpus — same ASIN can signal different intent in different lanes
+- Item-group segmentation: Item Group A corpus ≠ Item Group B corpus ≠ Item Group C corpus — same ASIN can signal different intent in different lanes
 - AB own ASINs appear in auto converters: filter B0CC/B0FR/B0BR prefix ASINs from competitor corpus
 - LT spend $3–12 with zero conversions = insufficient data for negation decision
 

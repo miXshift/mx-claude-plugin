@@ -67,6 +67,13 @@ jobs:
 
       - name: No internal-skill exposure (nothing tracked under .claude/skills/ in the public repo)
         run: npm run check-no-internal-exposure
+        env:
+          # Private customer/brand name denylist (rule 5). A maintainer sets the
+          # repository secret EXPOSURE_DENYLIST: names separated by newlines or
+          # commas, `#` lines ignored. Unset (or on a fork PR, which gets no
+          # secrets) the rule warns and skips; set, any hit in tracked content
+          # fails this step. The script never prints a listed name.
+          EXPOSURE_DENYLIST: ${{ secrets.EXPOSURE_DENYLIST }}
 
       - name: Skill contract resolution (sql_ids, context fields, upstream, command surfaces)
         run: npm run check-contracts
