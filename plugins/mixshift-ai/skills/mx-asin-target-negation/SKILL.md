@@ -1,6 +1,6 @@
 ---
 name: mx-asin-target-negation
-version: 1.8.2
+version: 1.9.0
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Pulls ASIN-triggered rows for a configurable
@@ -10,7 +10,7 @@ description: >
   Triggers on: 'run asin negation review', 'asin target negations', 'pdp overlap review',
                'phase 2 negations', 'asin exact negations'.
 author: Claude
-last_updated: 2026-04-08
+last_updated: 2026-11-09
 dependencies:
   - MySQL database (keywordtargetingmetric, targetexpressionsmetric, keywordtargeting)
   - brand context file (required)
@@ -26,6 +26,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.9.0
+    change: "Lifetime performance by location (ANEG-04) now reads keywordtargetingmetric only. Sponsored Products target search-term rows can be duplicated across keywordtargetingmetric and targetexpressionsmetric, so the earlier UNION of both tables could count a location's lifetime spend, sales, orders and clicks twice and lift a losing location over the lifetime-orders floor. The two tables are never summed. ASINs still match case-insensitively. Replaces the v1.5.0 two-table requirement."
   - version: 1.8.2
     change: "An ACoS target seeded from the bootstrap placeholder (management.acos_target_source: default) is named as a placeholder and confirmed with the user before anything is flagged against it, and the answer is recorded with mixshift brand config so it counts as confirmed for every skill; a value saved on the card is never called a placeholder."
   - version: 1.8.1
@@ -179,7 +181,7 @@ This file contains pre-executed results for all queries, keyed by query ID:
 - `ANEG-01` — Corpus Layer 2: auto-campaign ASIN lifetime converters (`keywordtargetingmetric` WHERE `recordType = 'Product Attribute Targeting'` AND `lifetime_conversions >= 1`): `KeywordText (ASIN), lifetime_spend, lifetime_orders`
 - `ANEG-02` — Window pull (PAT rows only): `SearchTerm, KeywordText, CampaignName, AdGroupName, MatchType, window_spend, window_sales, window_orders, window_clicks` for the review window
 - `ANEG-03` — Manual ASIN targets (suppression mask): `KeywordText (ASIN)` of currently enabled manual targets from `keywordtargeting`
-- `ANEG-04` — Lifetime performance by location (UNION of `keywordtargetingmetric` + `targetexpressionsmetric`): `SearchTerm/KeywordText (ASIN), CampaignName, AdGroupName, lifetime_spend, lifetime_sales, lifetime_orders, lifetime_clicks, lifetime_acos`
+- `ANEG-04` — Lifetime performance by location (`keywordtargetingmetric` only, `recordType = 'Product Attribute Targeting'`): `SearchTerm/KeywordText (ASIN), CampaignName, AdGroupName, lifetime_spend, lifetime_sales, lifetime_orders, lifetime_clicks, lifetime_acos`
 
 All queries share the join key: `(SellerID, normalized_asin_target, CampaignName, AdGroupName)`.
 
@@ -271,19 +273,12 @@ If LT spend is low ($3-12) with zero conversions: classify as insufficient data 
 **Only run for ASINs that passed Phase 2 relevance as Close / Adjacent / Weak.**
 ASINs classified as Irrelevant skip directly to routing.
 
-**CRITICAL — TWO TABLE REQUIREMENT:**
-ASIN lifetime performance lives across two tables. Query BOTH and UNION before aggregating:
-
-| Table | Coverage |
-|---|---|
-| `keywordtargetingmetric` | SP keyword-triggered auto/DISC PAT rows |
-| `targetexpressionsmetric` | SP manual asinSameAs/asinCategorySameAs PAT + SD targeting expression rows |
-
-Manual CONQ/PROF asinSameAs targets record performance in targetexpressionsmetric only.
+**ONE TABLE RULE:**
+ASIN lifetime performance comes from `keywordtargetingmetric` alone (`recordType = 'Product Attribute Targeting'`). Sponsored Products target search-term rows can be duplicated across `keywordtargetingmetric` and `targetexpressionsmetric`, so never sum the two tables: adding them counts a location's lifetime spend, sales, orders and clicks twice, and doubled orders can lift a losing location over the lifetime-orders floor. ANEG-04 already follows this rule; do not add `targetexpressionsmetric` figures to its results.
 
 **Level 1 — By Location (primary negate decision slice):**
 
-From `ANEG-04` pre-fetched results (UNION of `keywordtargetingmetric` + `targetexpressionsmetric`, aggregated by location).
+From `ANEG-04` pre-fetched results (`keywordtargetingmetric` only, aggregated by location).
 
 **Level 2 — Account-wide aggregate (context only):**
 Use for context only — do NOT use account-wide aggregate alone to drive negate vs. keep decisions.
@@ -393,7 +388,7 @@ The manual targeting list IS the positive training set. Before Phase 2 PDP revie
 - [ ] Every account in config produced a verdict
 - [ ] Manual target suppression completed before PDP review
 - [ ] PDP assessment performed (not deferred)
-- [ ] Both keywordtargetingmetric AND targetexpressionsmetric queried
+- [ ] Lifetime by location taken from ANEG-04 (keywordtargetingmetric only), never summed with targetexpressionsmetric
 - [ ] Location-granular lifetime performance used (not account-wide aggregate)
 - [ ] Item-group context applied where relevant
 - [ ] Clean negate candidates vs. review candidates clearly separated
@@ -414,7 +409,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/aneg-sidecar-input.json
 {
   "skill": "mx-asin-target-negation",
-  "skill_version": "1.8.2",
+  "skill_version": "1.9.0",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",

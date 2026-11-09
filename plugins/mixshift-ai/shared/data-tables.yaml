@@ -95,6 +95,8 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    gotchas:
+      - "Never sum this table with targetexpressionsmetric. Sponsored Products target search-term rows (here `recordType = 'Product Attribute Targeting'`) can be duplicated across the two tables with the same spend, sales, orders and clicks, so a UNION ALL of both followed by SUM, or a join that adds their columns, counts them twice. Pick one table per question; ASIN-target lifetime totals and loser lists read this table alone (library query ANEG-04)."
 
   targetexpressionsmetric:
     description: "Product-attribute-target metrics including SearchTerm. SP + SB + SD product targeting. Counterpart to keywordmetric for non-keyword targeting."
@@ -102,6 +104,8 @@ tables:
     time_series: true
     requires_seller_id: true
     date_column: DateTime
+    gotchas:
+      - "Never sum this table with keywordtargetingmetric. Its Sponsored Products search-term rows can be duplicated there (as `recordType = 'Product Attribute Targeting'`) with the same spend, sales, orders and clicks, so adding the two tables counts them twice. Pick one table per question; ASIN-target lifetime totals and loser lists read keywordtargetingmetric alone (library query ANEG-04)."
 
   productadmetric:
     description: "Product-ad-level (ASIN/SKU) metrics for Sponsored Products + Sponsored Display. Equivalent to Amazon's 'Advertised Product' report. Includes attributed sales for the advertised ASIN. Use this for ASIN-level ad reporting."

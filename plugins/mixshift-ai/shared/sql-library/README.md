@@ -43,6 +43,19 @@ Each `.sql` file MUST:
    (e.g., a date list assembled at runtime). The drift checker strips these
    before scanning.
 
+## Table rules
+
+- **Never sum `keywordtargetingmetric` and `targetexpressionsmetric`.**
+  Sponsored Products target search-term rows can be duplicated across the two
+  tables (in `keywordtargetingmetric` they carry `recordType = 'Product
+  Attribute Targeting'`), with the same spend, sales, orders and clicks. A
+  `UNION ALL` of both tables followed by `SUM`, or a join that adds their
+  columns, counts each duplicated row twice. Pick one table per question.
+  ANEG-04 reads `keywordtargetingmetric` alone, and so should any new
+  loser-list query (Sam 2026-11-09).
+  `harness/src/lib/data/target-metrics-one-table.test.ts` fails any library
+  query, or any SQL block in a skill, that reads both tables.
+
 ## ID convention
 
 `<SKILL-PREFIX>-<NN>` where SKILL-PREFIX is the canonical short code:

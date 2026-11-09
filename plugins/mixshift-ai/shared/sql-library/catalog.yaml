@@ -300,9 +300,13 @@ queries:
 
   - id: ANEG-04
     file: ANEG-04.sql
-    purpose: Phase 3 lifetime performance by location — UNIONs keywordtargetingmetric and targetexpressionsmetric for ASINs that passed PDP relevance.
+    purpose: Phase 3 lifetime performance by location for ASINs that passed PDP relevance, from keywordtargetingmetric only.
     consumers: [mx-asin-target-negation]
     tier: 1
+    notes: |
+      One table only (2026-11-09). Sponsored Products target search-term
+      rows can be duplicated across the two target metrics tables, so a loser
+      list never sums them; see the RULE block in ANEG-04.sql.
 
   - id: STH-01
     file: STH-01.sql
