@@ -533,13 +533,13 @@ exactly, every time.
 **Caps and limits:**
 
 - **Each write operation has its own per-call limit, and its notes in
-  `mixshift ads operations` state it.** 200 is the most any operation takes.
-  Sponsored Brands takes fewer: at most 10 per call for SB campaign, ad group
-  and ad creates and updates, and at most 100 for SB keywords, negative
-  keywords, product targets, negative targets and theme targets. These are the
-  limits Amazon sets. A batch over an operation's limit is refused before
-  anything is sent, dry run included, and the message names the limit: split
-  the change set into calls of that size.
+  `mixshift ads operations` state it.** 200 is the most any operation takes,
+  and SB keyword and negative keyword writes take the full 200. Other
+  Sponsored Brands writes take fewer: at most 10 per call for SB campaign, ad
+  group and ad creates and updates, and at most 100 for SB product targets,
+  negative targets and theme targets. A batch over an operation's limit is
+  refused before anything is sent, dry run included, and the message names the
+  limit: split the change set into calls of that size.
 - **`insufficient_scope` (exit 11)** means the credential cannot write (a
   machine credential issued read-only). Do **not** retry. Hand the user the
   change list so they can apply it themselves (or have an admin issue an
@@ -948,9 +948,10 @@ These supersede other instructions:
   items, dry-run again and re-confirm.
 - **Show `before_state` before every commit.** It is the current value and the
   rollback source; the user is confirming a diff, not a blank instruction.
-- **Keep each call within the operation's per-call limit** (200 at most; 10 for
-  SB campaign, ad group and ad writes; 100 for the other SB writes). Split
-  larger sets.
+- **Keep each call within the operation's per-call limit** (200 at most, which
+  SB keyword and negative keyword writes take; 10 for SB campaign, ad group and
+  ad writes; 100 for SB product targets, negative targets and theme targets).
+  Split larger sets.
 - **Partial failure is normal on commits.** Summarize success and error counts
   both; never report "done" while items errored. Surface the per-item errors
   and the `audit_id`.

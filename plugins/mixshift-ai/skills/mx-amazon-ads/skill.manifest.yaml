@@ -94,10 +94,10 @@ notes: >
   confirmation of the exact change set, only then re-run the same command
   with --commit. Commits return Amazon's multi-status response (partial
   failure is normal: summarize success AND error counts) plus audit_id.
-  Per-call limits: each write operation's notes state its own; 200 at most,
-  10 for SB campaign / ad group / ad creates and updates, 100 for the other
-  SB writes (keywords, negative keywords, targets, negative targets,
-  themes). A batch over the limit is refused before anything is sent (dry
+  Per-call limits: each write operation's notes state its own; 200 at most
+  (SB keywords and negative keywords take 200), 10 for SB campaign / ad
+  group / ad creates and updates, 100 for SB targets, negative targets and
+  themes. A batch over the limit is refused before anything is sent (dry
   run included); split it. SB theme targets: sb.list_themes, then
   sb.update_themes (state and bid; a theme cannot be archived, pause it
   instead). insufficient_scope (exit 11) =
