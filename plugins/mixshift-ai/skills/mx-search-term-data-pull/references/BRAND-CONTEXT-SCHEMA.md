@@ -150,7 +150,7 @@ CRAP threshold: [if applicable — e.g. de-advertise risk]
 ```
 Primary brand name: [string]
 Brand term variants: [list — misspellings, phonetic variants, sub-brands]
-Proprietary coined terms: [list — terms RP owns that appear in organic search]
+Proprietary coined terms: [list — terms the brand owns that appear in organic search]
 Brand ACOS context: [sentence — e.g. elevated vs. established brands, why]
 Brand/NonBrand split tracking: yes | no
 ```

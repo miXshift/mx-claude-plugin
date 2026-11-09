@@ -257,7 +257,7 @@ For brands like example brand: bracelet-adjacent form factors (link bracelets, c
 **NOT Irrelevant by default:**
 - bracelet-adjacent form factors (link, cuff, leather braided, paracord, charm bracelet)
 - religious bracelet adjacency to brand Cross item group
-- military/patriotic bracelet adjacency to brand Spartan item group
+- military/patriotic bracelet adjacency to a military-themed brand item group (e.g. Example Item Group)
 - waterproof/rugged outdoor bracelet adjacency to brand core values
 - any ASIN that appears in brand's validated manual targeting corpus
 
