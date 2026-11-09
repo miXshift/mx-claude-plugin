@@ -260,4 +260,63 @@ try {
   process.exit(1);
 }
 
+// 6. HASHED-NAME scan (in-repo list, always on): names that already leaked into
+//    this public repo once, stored only as salted digests (scripts/hashed-name-
+//    scan.mjs explains the matcher and how to add one). Rule 5 needs the private
+//    list, which is absent on most machines, and sees only ADDED lines; this rule
+//    needs no secret and scans EVERY tracked text file (dist/ included, same
+//    reason as rule 3) plus the branch commit messages, so a known leak cannot
+//    come back by any path: a revert, a copy from an old commit, an upstream sync.
+try {
+  const { readFileSync } = await import('node:fs');
+  const { findHashedNames, HASHED_NAMES } = await import('./hashed-name-scan.mjs');
+  const hits = [];
+  let files;
+  try {
+    files = execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean);
+  } catch {
+    files = []; // no git context: same stance as rules 1-3
+  }
+  for (const rel of files) {
+    let buf;
+    try {
+      buf = readFileSync(join(REPO_ROOT, rel));
+    } catch {
+      continue;
+    }
+    if (buf.subarray(0, 8192).includes(0)) continue; // binary
+    for (const h of findHashedNames(buf.toString('utf8'))) {
+      hits.push(`  ${rel}:${h.line}: known leaked name #${h.entry}`);
+    }
+  }
+  try {
+    const log = execFileSync('git', ['log', 'origin/main..HEAD', '--format=%H%x00%B%x01'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    for (const entry of log.split('\x01').filter(Boolean)) {
+      const [sha, body = ''] = entry.split('\0');
+      for (const h of findHashedNames(body)) {
+        hits.push(`  commit ${sha.trim().slice(0, 9)} message: known leaked name #${h.entry}`);
+      }
+    }
+  } catch {
+    // origin/main unavailable: the tree half above still ran.
+  }
+  if (hits.length) {
+    console.error(
+      `check-no-internal-exposure: ${hits.length} occurrence(s) of a name that already leaked into this PUBLIC repo (the name is never printed):\n` +
+      hits.join('\n') +
+      `\nReplace it with a neutral placeholder ("Example Brand", "Brand A"). If it is in a commit message, reword that commit.`,
+    );
+    process.exit(1);
+  }
+  console.log(`OK  check-no-internal-exposure: hashed-name scan clean (${HASHED_NAMES.length} name(s), ${files.length} tracked files + branch messages)`);
+} catch (err) {
+  console.error('check-no-internal-exposure: hashed-name scan errored: ' + (err && err.message ? err.message : err));
+  process.exit(1);
+}
+
 console.log('✓ check-no-internal-exposure: no internal paths tracked, no internal design-doc references in tracked content, no emails in branch commit messages');
