@@ -295,6 +295,48 @@ describe('runAuthLogin :: device-code happy path', () => {
   }, 15_000);
 });
 
+describe('runAuthLogin :: gateway base from environment', () => {
+  it('starts the device flow against MIXSHIFT_GATEWAY_BASE_URL when no apiBase is passed', async () => {
+    const savedBase = process.env.MIXSHIFT_GATEWAY_BASE_URL;
+    process.env.MIXSHIFT_GATEWAY_BASE_URL = 'https://gw.example.test/';
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        urls.push(url);
+        if (url.endsWith('/auth/device/init')) {
+          return jsonResponse(200, {
+            ok: true,
+            deviceCode: 'dev-code-1',
+            loginUrl: 'https://gw.example.test/login?device_code=dev-code-1',
+            expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          });
+        }
+        if (url.endsWith('/auth/device/poll')) {
+          return jsonResponse(200, { ...validExchangeBody(), state: 'approved' });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    try {
+      const result = await runAuthLogin({
+        personLabel: 'alice@acmeco.com',
+        mode: 'device',
+        dataDirOverride: testDir,
+        postLoginDiscovery: false,
+      });
+      expect(result.ok).toBe(true);
+      expect(urls.length).toBeGreaterThan(0);
+      for (const u of urls) expect(u.startsWith('https://gw.example.test/auth/')).toBe(true);
+      const { credentials } = await loadCredentials(testDir);
+      expect(credentials?.datahub?.api_base).toBe('https://gw.example.test');
+    } finally {
+      if (savedBase === undefined) delete process.env.MIXSHIFT_GATEWAY_BASE_URL;
+      else process.env.MIXSHIFT_GATEWAY_BASE_URL = savedBase;
+    }
+  }, 15_000);
+});
+
 describe('runAuthLogin :: device-code failure modes', () => {
   it('throws when /auth/device/init returns 500', async () => {
     const mockFetch = vi

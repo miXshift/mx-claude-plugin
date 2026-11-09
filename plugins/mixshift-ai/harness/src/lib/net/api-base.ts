@@ -1,3 +1,5 @@
+import { resolveGatewayBaseSafe } from './gateway-url.js';
+
 /**
  * Canonical base URL for the mx-legacy-auth MCP service, plus a small
  * helper to extract the bare hostname for user-facing diagnostics.
@@ -23,4 +25,15 @@ export function resolveApiBaseHost(apiBase?: string): string {
   } catch {
     return new URL(DEFAULT_API_BASE).host;
   }
+}
+
+/**
+ * The service URL to use when the caller passed no explicit `--api-base`:
+ * the configured gateway (`MIXSHIFT_GATEWAY_BASE_URL` or `gateway.base_url`,
+ * validated by the same https/loopback guard as the metadata fetchers),
+ * else DEFAULT_API_BASE. Never throws; a malformed value falls back to the
+ * default rather than reaching a request.
+ */
+export async function resolveDefaultApiBase(): Promise<string> {
+  return (await resolveGatewayBaseSafe()) || DEFAULT_API_BASE;
 }

@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runNetworkDoctor } from './doctor.js';
 
 const API_BASE = 'https://mcp.mixshift.io';
@@ -54,6 +57,29 @@ describe('runNetworkDoctor', () => {
     for (const k of PROXY_KEYS) {
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
+    }
+  });
+
+  it('probes MIXSHIFT_GATEWAY_BASE_URL when no --api-base or saved credentials exist', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'mixshift-doctor-base-'));
+    const savedBase = process.env.MIXSHIFT_GATEWAY_BASE_URL;
+    process.env.MIXSHIFT_GATEWAY_BASE_URL = 'https://gw.example.test/';
+    try {
+      const urls: string[] = [];
+      const report = await runNetworkDoctor({
+        dataDirOverride: dataDir,
+        fetchImpl: (async (url: string) => {
+          urls.push(url);
+          return OK(200);
+        }) as unknown as typeof fetch,
+      });
+      expect(urls).toEqual(['https://gw.example.test/health']);
+      expect(report.api_base).toBe('https://gw.example.test');
+      expect(report.host).toBe('gw.example.test');
+    } finally {
+      if (savedBase === undefined) delete process.env.MIXSHIFT_GATEWAY_BASE_URL;
+      else process.env.MIXSHIFT_GATEWAY_BASE_URL = savedBase;
+      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
