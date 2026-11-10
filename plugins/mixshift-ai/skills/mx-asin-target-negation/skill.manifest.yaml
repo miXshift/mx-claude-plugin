@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-asin-target-negation
 display_name: ASIN Target Negation Review
-version: "1.8.2"
+version: "1.9.0"
 description: >
   Phase 2 negation review for ASIN targets matched through auto campaigns, category targeting,
   and other Product Attribute Targeting paths. Suppresses ASINs already under manual targeting,
@@ -30,7 +30,7 @@ pre_execution:
         All 4 queries are independent with fixed params known upfront. ANEG-01 is the
         Corpus Layer 2 positive-examples pre-check. ANEG-02 is the window PAT pull.
         ANEG-03 is the manual-target suppression mask. ANEG-04 is the lifetime performance
-        join (UNION of keywordtargetingmetric + targetexpressionsmetric by location).
+        join by location (keywordtargetingmetric only).
 required_context_fields:
   - accounts[*].seller_id
   - accounts[*].account_type
@@ -58,11 +58,11 @@ trigger_phrases:
   - which competitor asins are on my product pages
   - competitor asins showing on my listings
 notes: >
-  ANEG-04 queries both keywordtargetingmetric and targetexpressionsmetric and UNIONs before
-  aggregating. Manual asinSameAs/asinCategorySameAs CONQ/PROF targets record performance in
-  targetexpressionsmetric only -- querying only keywordtargetingmetric will undercount orders.
-  Location-granular lifetime data is required for negate decisions; account-wide aggregates
-  are context only.
+  ANEG-04 reads keywordtargetingmetric only (recordType 'Product Attribute Targeting').
+  Sponsored Products target search-term rows can be duplicated across keywordtargetingmetric
+  and targetexpressionsmetric, so the two tables are never summed: adding them counts lifetime
+  spend, sales, orders and clicks twice. Location-granular lifetime data
+  is required for negate decisions; account-wide aggregates are context only.
 
 # OCL — Objective Level Configuration (the confirm-on-run knobs).
 # pre_check_lifetime_orders is the negate-safety floor (a location needs at
