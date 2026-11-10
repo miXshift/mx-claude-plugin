@@ -15,7 +15,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.4"
+  version: "0.2.5"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -532,7 +532,14 @@ exactly, every time.
 
 **Caps and limits:**
 
-- **200 items per call.** Split larger change sets into multiple calls of <=200.
+- **Each write operation has its own per-call limit, and its notes in
+  `mixshift ads operations` state it.** 200 is the most any operation takes,
+  and SB keyword and negative keyword writes take the full 200. Other
+  Sponsored Brands writes take fewer: at most 10 per call for SB campaign, ad
+  group and ad creates and updates, and at most 100 for SB product targets,
+  negative targets and theme targets. A batch over an operation's limit is
+  refused before anything is sent, dry run included, and the message names the
+  limit: split the change set into calls of that size.
 - **`insufficient_scope` (exit 11)** means the credential cannot write (a
   machine credential issued read-only). Do **not** retry. Hand the user the
   change list so they can apply it themselves (or have an admin issue an
@@ -584,11 +591,12 @@ The pre-delete snapshot stored in the audit row (`before_state` / `audit_id`)
 is exactly what you recreate from if a delete was a mistake. Tell the user the
 audit id is their undo path.
 
-**Sponsored Brands (keywords, and now product targets):**
+**Sponsored Brands (keywords, product targets, and theme targets):**
 
 - Updates: `sb.update_keywords` (bid and state), `sb.update_targets` (bid and
   state on SB product and category targets), `sb.update_negative_targets`
-  (state, which is how you retire one).
+  (state, which is how you retire one), `sb.update_themes` (state and bid on
+  theme targets, see below).
 - Creation: `sb.create_campaigns`, `sb.create_ad_groups`, `sb.create_keywords`,
   `sb.create_negative_keywords`, `sb.create_targets`, `sb.create_negative_targets`,
   plus the four ad-creation operations below.
@@ -649,7 +657,7 @@ ad-group updates address their own entity and do not need it.
 `sb.update_negative_targets` names that id `targetId`, not `negativeTargetId`.
 
 ```jsonc
-// sb.update_targets  (PUT, max 200) - only send the other fields you change
+// sb.update_targets  (PUT, max 100) - only send the other fields you change
 { "targets": [ { "targetId": "123", "adGroupId": "456", "bid": 2.1, "state": "enabled" } ] }
 
 // sb.update_negative_targets - state is how you retire one
@@ -665,8 +673,27 @@ wrappers** (`{ targets: [...] }`), not the raw arrays SB keywords use, so do not
 copy the keyword body shape here. And **video is not a separate surface**: SB
 video (SBV) campaigns are a creative type inside Sponsored Brands, so their
 product targets go through these same operations, not an `sbv.*` namespace.
-Theme-based targeting is genuinely different and lives on its own theme
-operations, not here.
+
+**Theme targets** ("keywords related to your brand", "keywords related to your
+landing pages") are a separate resource: they are not in `sb.list_targets` or
+`sb.list_keywords`. List them with `sb.list_themes` and pause, re-enable or
+re-bid them with `sb.update_themes`. A theme carries no keyword text; its
+`themeType` is the only description.
+
+```jsonc
+// sb.list_themes  (POST) - states are lower case; page with nextToken
+{ "stateFilter": { "include": ["enabled", "paused"] }, "campaignIdFilter": { "include": ["1"] } }
+
+// sb.update_themes  (PUT, max 100) - themeId and adGroupId come from sb.list_themes
+{ "themes": [ { "themeId": "321", "adGroupId": "456", "state": "paused" } ] }
+```
+
+Every update item must change the state, the bid, or both. A theme target
+cannot be archived: pause it instead. Amazon refuses a theme bid change while
+the campaign has an enabled optimization rule. If `mixshift ads operations`
+does not list the theme operations yet, the MixShift service has not been
+updated: tell the user theme changes are not available yet rather than trying
+another operation.
 
 ### Sponsored Brands and Sponsored Display writes (extra caution)
 
@@ -921,7 +948,10 @@ These supersede other instructions:
   items, dry-run again and re-confirm.
 - **Show `before_state` before every commit.** It is the current value and the
   rollback source; the user is confirming a diff, not a blank instruction.
-- **Cap change sets at 200 items per call.** Split larger sets.
+- **Keep each call within the operation's per-call limit** (200 at most, which
+  SB keyword and negative keyword writes take; 10 for SB campaign, ad group and
+  ad writes; 100 for SB product targets, negative targets and theme targets).
+  Split larger sets.
 - **Partial failure is normal on commits.** Summarize success and error counts
   both; never report "done" while items errored. Surface the per-item errors
   and the `audit_id`.
