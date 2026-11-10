@@ -81,7 +81,7 @@ Claude walks you through sign-in inline:
 
 1. Asks for your work email (used to attribute your session — same email you use to log into MixShift is fine).
 2. Opens a browser tab at the MixShift sign-in page (`https://mcp.mixshift.io/login`).
-3. You sign in with your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before.
+3. You sign in with your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" or "Sign in with Microsoft" (whichever it uses), or "Continue as <you>" when already signed in on the web; otherwise use your team login as before.
 4. You say "done" in chat, and Claude confirms.
 
 Alternatively, run directly from a terminal:

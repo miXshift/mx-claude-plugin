@@ -47,6 +47,6 @@ export function notAMemberCopy(orgName?: unknown): string {
 export function reverifyCopy(): string {
   return (
     'Your sign-in needs to be re-verified. Run `mixshift auth login` to sign in again, ' +
-    'with Google if your organization uses it.'
+    'with Google or Microsoft if your organization uses member sign-in.'
   );
 }

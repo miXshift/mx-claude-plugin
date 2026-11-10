@@ -59,7 +59,7 @@ One or two sentences, then move. Don't repeat the framing at each step.
 
 **Why:** on a shared MixShift login, the `person_label` is the work email your admin sees against your actions in the session log. On a shared login it is typed, not proven. It is also a prefill hint for the sign-in page. (Path C skips this: service credentials carry their own `svc:` label, chosen by the admin at creation.)
 
-**If your organization uses member sign-in,** the sign-in page lets you choose **Sign in with Google** or **Continue as \<you\>**. Doing so proves who you are, so your actions are recorded under your verified identity and your organization's role and limits apply to you. `mixshift auth status` shows whether your session is verified, your organization and role, and anything you are not allowed to do. If you are unsure, send people to the page and let them pick; do not guess for them.
+**If your organization uses member sign-in,** the sign-in page lets you choose **Sign in with Google** or **Sign in with Microsoft** (whichever your organization uses), or **Continue as \<you\>**. Doing so proves who you are, so your actions are recorded under your verified identity and your organization's role and limits apply to you. `mixshift auth status` shows whether your session is verified, your organization and role, and anything you are not allowed to do. If you are unsure, send people to the page and let them pick; do not guess for them.
 
 **Check first:** if `~/.mixshift/auth/credentials` exists and has a `datahub.person_label` from a prior login, reuse it. Tell the user:
 
@@ -105,7 +105,7 @@ Capture `device_code` and `login_url`. The other fields don't need to be passed 
 
 > *"Open this link to sign in: \<login_url\>*
 > *If the page asks for a code, type: \<device_code\>*
-> *Use your MixShift login, or "Sign in with Google" if your organization uses it. Your credentials stay on the sign-in page; the plugin only holds a token after.*
+> *Use your MixShift login, or "Sign in with Google" or "Sign in with Microsoft" if your organization uses member sign-in. Your credentials stay on the sign-in page; the plugin only holds a token after.*
 > *Tell me when you're done."*
 
 Always relay BOTH the link and the `device_code`, the code on its own line, in Cowork and in Claude Code chat. The URL already carries the code, so the password sign-in works exactly as before and never asks for it. But members who choose "Continue as \<you\>" must TYPE the code shown on their device, so they need to see it. The code is the `device_code` value from `device-init` (a short code like `ABCD-EFGH`); there is no separate user code.
@@ -139,7 +139,7 @@ One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` bl
 
 There is no shell and no local disk, so the plugin cannot store tokens for the user. The user mints tokens themselves and pastes the access token into the connector configuration:
 
-> *"Open https://mcp.mixshift.io/login?mode=direct&client_id=mx-claude-browser in a browser tab, sign in with your MixShift login plus your work email (or with Google if your organization uses it), and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
+> *"Open https://mcp.mixshift.io/login?mode=direct&client_id=mx-claude-browser in a browser tab, sign in with your MixShift login plus your work email (or with Google or Microsoft if your organization uses member sign-in), and the page will show you an access token. Paste that into the connector's Authorization header configuration (Bearer token). Tokens last 24h; revisit the page to mint a fresh one."*
 
 Do NOT attempt to call auth bootstrap MCP tools — they no longer exist on the service (auth moved to the HTTP transport layer). If a tool named `mixshift_auth_start` or `mixshift_auth_complete` appears in older instructions, those instructions are stale.
 
@@ -191,7 +191,7 @@ If it fails:
 
 End with a concise success message. Use what you actually learned, don't speculate.
 
-- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
+- Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google or Microsoft, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
 - Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at /admin any time."*
 
 Don't restate everything from the CLI output (it's already on screen). Don't list features they could try unless they're already in context.

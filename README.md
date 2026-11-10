@@ -113,7 +113,7 @@ The plugin ships **34 skills**. Each is invoked naturally in chat: say what you 
 ## Requirements
 
 - A Claude account (Cowork or Claude Code)
-- An active MixShift customer account: your MixShift login (or Sign in with Google, if your organization uses member sign-in) authenticates the plugin (via a browser-based sign-in, not pasted in chat)
+- An active MixShift customer account: your MixShift login (or Sign in with Google or Sign in with Microsoft, if your organization uses member sign-in) authenticates the plugin (via a browser-based sign-in, not pasted in chat)
 
 No MixShift account yet? Create one at `https://www.mydashapplications.com/auth/registration`, then connect your Amazon accounts and activate ads + retail data per the [getting started guide](https://know.mixshift.io/en/articles/9584082-getting-started-with-mixshift). Most accounts are fully populated within 24-48 hours of activation; large catalogs can take longer.
 

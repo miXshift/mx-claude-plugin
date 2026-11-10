@@ -227,8 +227,9 @@ function renderWelcome(args: {
   lines.push('');
   lines.push('  Sign in so the plugin can read your Amazon ads + retail data.');
   lines.push('  You\'ll need your MixShift account. If your organization uses member');
-  lines.push('  sign-in, choose "Sign in with Google" (or "Continue as <you>" when');
-  lines.push('  already signed in on the web); otherwise use your team login as before.');
+  lines.push('  sign-in, choose "Sign in with Google" or "Sign in with Microsoft"');
+  lines.push('  (whichever it uses), or "Continue as <you>" when already signed in on');
+  lines.push('  the web; otherwise use your team login as before.');
   lines.push('  Your credentials stay in your browser; the plugin only holds a token after.');
   lines.push('');
   for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split('\n')) {
@@ -484,8 +485,9 @@ function renderWelcomeChat(args: {
   lines.push(
     'Sign in so the plugin can read your Amazon ads + retail data. ' +
       "You'll need your MixShift account. If your organization uses member " +
-      'sign-in, choose "Sign in with Google" (or "Continue as <you>" when ' +
-      'already signed in on the web); otherwise use your team login as before. ' +
+      'sign-in, choose "Sign in with Google" or "Sign in with Microsoft" ' +
+      '(whichever it uses), or "Continue as <you>" when already signed in on ' +
+      'the web; otherwise use your team login as before. ' +
       'Your credentials stay in your browser; the plugin only holds a token after.',
   );
   lines.push('');

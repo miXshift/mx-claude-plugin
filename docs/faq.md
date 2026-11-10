@@ -82,7 +82,7 @@ Full details: [`docs/auth-setup.md`](./auth-setup.md).
 
 ### What credentials do I use to sign in?
 
-Your team login as before, or, if your organization uses member sign-in, "Sign in with Google" (or "Continue as <you>" when already signed in on the web). Your credentials stay on the sign-in page in your browser; the plugin never sees them. After sign-in, the plugin only holds a short-lived token (24h access / 30d refresh).
+Your team login as before, or, if your organization uses member sign-in, "Sign in with Google" or "Sign in with Microsoft" (whichever it uses), or "Continue as <you>" when already signed in on the web. Your credentials stay on the sign-in page in your browser; the plugin never sees them. After sign-in, the plugin only holds a short-lived token (24h access / 30d refresh).
 
 ### Where are my brands listed? I expected to see all my Amazon accounts.
 
@@ -132,7 +132,7 @@ Key brands live in `~/.mixshift/profile.yaml::brands.key` as a local cache. As o
 
 ### Do my teammates and I sign in with the same account?
 
-Each person signs in with their **own** MixShift account (their own login, or their own Google sign-in if your organization uses member sign-in). The auth service maps each user to your tenant's shared data view, but with their own session and their own `person_label` for attribution. So admin tooling can see WHO at your org ran what.
+Each person signs in with their **own** MixShift account (their own login, or their own Google or Microsoft sign-in if your organization uses member sign-in). The auth service maps each user to your tenant's shared data view, but with their own session and their own `person_label` for attribution. So admin tooling can see WHO at your org ran what.
 
 Each teammate runs sign-in once on their own machine; tokens land at their own `~/.mixshift/auth/credentials`. Cowork doesn't share local filesystem state across users.
 
