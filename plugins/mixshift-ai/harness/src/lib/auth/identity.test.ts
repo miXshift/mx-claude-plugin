@@ -172,8 +172,8 @@ describe('refusal copy', () => {
     expect(notAMemberCopy()).toContain('not a member of your organization');
   });
 
-  it('reverify says to sign in again, with Google if the org uses it', () => {
-    expect(reverifyCopy()).toContain('sign in again, with Google if your organization uses it');
+  it('reverify says to sign in again, with Google or Microsoft if the org uses member sign-in', () => {
+    expect(reverifyCopy()).toContain('sign in again, with Google or Microsoft if your organization uses member sign-in');
   });
 
   it('reason guard', () => {

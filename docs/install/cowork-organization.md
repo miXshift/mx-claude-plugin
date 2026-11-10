@@ -46,7 +46,7 @@ Sign-in is per-user but trivial. Each person at your org:
 2. Says "welcome" or "sign in to mixshift".
 3. Claude asks for their work email (used to attribute their session — same email they use to log into MixShift is fine).
 4. Claude opens a browser tab at the MixShift sign-in page.
-5. They sign in with their MixShift account. If their organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use their team login as before.
+5. They sign in with their MixShift account. If their organization uses member sign-in, choose "Sign in with Google" or "Sign in with Microsoft" (whichever it uses), or "Continue as <you>" when already signed in on the web; otherwise use their team login as before.
 6. They return to chat, say "done", and Claude confirms.
 
 That's it. The plugin stores a short-lived token at `~/.mixshift/auth/credentials` on each person's machine. No shared credentials to distribute, no password files, no IP whitelist coordination.
