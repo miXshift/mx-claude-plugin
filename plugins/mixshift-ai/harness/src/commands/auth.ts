@@ -28,7 +28,7 @@ import { getCachedOrgManifest } from '../lib/context-sync/autosync.js';
 import { listLocalBrands } from '../lib/context-sync/local.js';
 import { isRetiredBrand } from '../lib/context-sync/lifecycle.js';
 import { networkErrorMessage } from '../lib/net/classify.js';
-import { resolveApiBaseHost } from '../lib/net/api-base.js';
+import { resolveApiBaseHost, resolveDefaultApiBase } from '../lib/net/api-base.js';
 import { DATA_TIMING_TERMINAL } from '../lib/onboarding.js';
 import { DEADLINE, raceDeadline } from '../lib/utils/deadline.js';
 
@@ -333,7 +333,8 @@ function registerLoginSubcommand(auth: Command): void {
     )
     .option(
       '--api-base <url>',
-      'Override the auth service URL (default: https://mcp.mixshift.io). ' +
+      'Override the auth service URL (default: https://mcp.mixshift.io, or ' +
+        'MIXSHIFT_GATEWAY_BASE_URL). ' +
         'Used for local mx-legacy-auth development.',
     )
     .option(
@@ -594,7 +595,10 @@ function registerServiceSetupSubcommand(auth: Command): void {
         'plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias ' +
         'MIXSHIFT_CLIENT_SECRET), never argv.',
     )
-    .option('--api-base <url>', 'mx-legacy-auth service URL.', 'https://mcp.mixshift.io')
+    .option(
+      '--api-base <url>',
+      'mx-legacy-auth service URL (default: https://mcp.mixshift.io, or MIXSHIFT_GATEWAY_BASE_URL).',
+    )
     .option(
       '--setup-code <code>',
       'One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin.',
@@ -613,7 +617,7 @@ function registerServiceSetupSubcommand(auth: Command): void {
     .action(async (opts: ServiceSetupOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       try {
-        const apiBase = opts.apiBase ?? 'https://mcp.mixshift.io';
+        const apiBase = opts.apiBase ?? (await resolveDefaultApiBase());
         let clientId: string;
         let secret: string;
         let label = opts.label;

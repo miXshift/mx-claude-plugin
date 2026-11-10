@@ -52,7 +52,7 @@ import {
   runDiscoveryAndPersist,
   countByActivity,
 } from '../clients/index.js';
-import { DEFAULT_API_BASE } from '../net/api-base.js';
+import { resolveDefaultApiBase } from '../net/api-base.js';
 
 const PKCE_CALLBACK_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
 const DEVICE_POLL_INTERVAL_MS = 3_000;
@@ -156,7 +156,7 @@ export async function initDeviceFlow(
       `--person-label must be an email address (got "${opts.personLabel}").`,
     );
   }
-  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const apiBase = opts.apiBase ?? (await resolveDefaultApiBase());
   const deviceLabel = opts.deviceLabel ?? hostname();
   const clientId = resolveClientId(opts.clientId);
 
@@ -205,7 +205,7 @@ export interface PollDeviceFlowResult {
 export async function pollDeviceFlow(
   opts: PollDeviceFlowOptions,
 ): Promise<PollDeviceFlowResult> {
-  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const apiBase = opts.apiBase ?? (await resolveDefaultApiBase());
   const deviceLabel = opts.deviceLabel ?? hostname();
   const clientId = resolveClientId(opts.clientId);
   const maxWaitMs = opts.maxWaitMs ?? 30_000;
@@ -400,7 +400,7 @@ export async function runAuthLogin(
   }
 
   const resolved: ResolvedOptions = {
-    apiBase: opts.apiBase ?? DEFAULT_API_BASE,
+    apiBase: opts.apiBase ?? (await resolveDefaultApiBase()),
     personLabel: opts.personLabel,
     deviceLabel: opts.deviceLabel ?? hostname(),
     clientId: resolveClientId(opts.clientId),

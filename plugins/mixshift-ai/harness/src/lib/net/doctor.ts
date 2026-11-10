@@ -11,7 +11,7 @@
  */
 
 import { loadCredentials } from '../auth/credentials.js';
-import { DEFAULT_API_BASE, resolveApiBaseHost } from './api-base.js';
+import { resolveApiBaseHost, resolveDefaultApiBase } from './api-base.js';
 import { networkErrorMessage } from './classify.js';
 
 export interface AllowlistEntry {
@@ -155,7 +155,7 @@ async function resolveApiBase(
   } catch {
     // Unreadable / malformed credentials should never break a diagnostic.
   }
-  return DEFAULT_API_BASE;
+  return resolveDefaultApiBase();
 }
 
 function readProxyInfo(): DoctorProxyInfo {
