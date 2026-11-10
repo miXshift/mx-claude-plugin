@@ -317,8 +317,8 @@ function registerLoginSubcommand(auth: Command): void {
       'Your work email. A prefill hint for the sign-in page, not your identity: ' +
         'if your organization uses member sign-in, you choose "Sign in with Google" ' +
         'or "Sign in with Microsoft" there and the sign-in itself proves who you are. ' +
-        'On a shared login it is ' +
-        'the typed name admins see against your actions. Still required here.',
+        'On a shared login it is the typed name admins see against your actions. ' +
+        'Still required here.',
     )
     .option(
       '--device-label <label>',
