@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-dsp
 display_name: Amazon DSP (reports + live account reads)
-version: "0.7.1"
+version: "0.8.0"
 description: >
   Read an Amazon DSP (Demand-Side Platform) advertiser straight from Amazon
   through MixShift's service. Two surfaces, addressed differently. REPORTING is
@@ -44,7 +44,9 @@ review_required: always                    # writes require explicit user confir
 sql_ids: []   # no warehouse SQL; data comes from the Amazon DSP reporting API
 
 # Harness commands the skill calls (DSP is the DSP family inside `ads call`,
-# plus the 0.7.0 composites `dsp readiness` and `dsp supply-preset`).
+# plus the 0.7.0 composites `dsp readiness` and `dsp supply-preset`, and the
+# 0.8.0 `dsp creative-map`, a record kept on the user's machine that never
+# reaches Amazon).
 # NOTE the two parameter names: the report operations take --path accountId=,
 # the /dsp/v1 account reads take --path advertiserId=. Same value, different
 # name per surface. The two discovery operations are in the Accounts family, so
@@ -70,13 +72,16 @@ harness_commands:
   - mixshift ads call dsp.create_targets --path advertiserId= --body-file <file> [--commit]
   - mixshift ads call dsp.delete_targets --path advertiserId= --body-file <file> [--commit]
   - mixshift ads call dsp.create_ad_associations --path advertiserId= --body-file <file> [--commit]
-  - mixshift ads call dsp.create_ads --path advertiserId= --body-file <file> [--commit]
+  - mixshift ads call dsp.create_ads --path advertiserId= --body-file <file> [--commit] [--for-order <campaignId>]
   - mixshift ads call dsp.query_ads --path advertiserId= --body <json>
   - mixshift ads call dsp.query_campaigns --path advertiserId= --body <json>
   - mixshift ads call dsp.query_ad_groups --path advertiserId= --body <json>
   - mixshift ads call dsp.query_targets --path advertiserId= --body <json>
   - mixshift dsp readiness <campaignId> --advertiser-id <id> --legacy-seller-id <id>
   - mixshift dsp supply-preset <adGroupId> --advertiser-id <id> --legacy-seller-id <id>
+  - mixshift dsp creative-map list [--advertiser-id <id>] [--order <campaignId>]
+  - mixshift dsp creative-map confirm <campaignId> --advertiser-id <id> --creative-id <id> [--reuse] [--commit]
+  - mixshift dsp creative-map remove <campaignId> --advertiser-id <id> --creative-id <id> [--commit]
   - mixshift context dsp-advertiser show <advertiser_id>
   - mixshift context dsp-advertiser assign <advertiser_id> --brand <slug> [--account <seller_id>] [--commit] [--expect <plan_hash>]
   - mixshift context dsp-advertiser unassign <advertiser_id> --brand <slug> [--commit] [--expect <plan_hash>]
