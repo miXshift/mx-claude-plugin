@@ -16,7 +16,7 @@ description: >
   pacing. Previewed; applied on confirmation. Console only: other
   creatives, "Automatically create responsive ads". No brand setup, only sign-in.
 metadata:
-  version: "0.7.1"
+  version: "0.8.0"
   author: "MixShift"
 trigger_phrases:
   - pull a dsp report
@@ -210,11 +210,16 @@ mixshift ads call <operation> [--legacy-seller-id <id> | --seller-id <id> --mark
                               [--path <k=v> ...] [--body-file <file> | --body <json>]
 mixshift dsp readiness <campaignId> --advertiser-id <id> [--legacy-seller-id <id>]
 mixshift dsp supply-preset <adGroupId> [...] --advertiser-id <id> [--legacy-seller-id <id>]
+mixshift dsp creative-map list [--advertiser-id <id>] [--order <campaignId>]
+mixshift dsp creative-map confirm <campaignId> --advertiser-id <id> --creative-id <id> [--reuse] [--commit]
+mixshift dsp creative-map remove <campaignId> --advertiser-id <id> --creative-id <id> [--commit]
 ```
 
 `dsp readiness` is the "Before activating an order" checklist (read-only).
 `dsp supply-preset` plans an "Amazon O&O + Publisher Direct only" supply change
-and previews it; see "Order of operations" step 9.
+and previews it; see "Order of operations" step 9. `dsp creative-map` is the
+record of which responsive ecommerce creative each order is meant to carry; see
+"Which responsive creative belongs to which order".
 
 `ads operations --family DSP` prints each DSP operation id with its notes; read
 the notes before calling. The operations, used in the order below:
@@ -682,7 +687,7 @@ Work through these in order; each later step depends on an earlier one.
 
 | # | Decide or do | Rule |
 |---|---|---|
-| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. **A hand-built responsive ecommerce ad works from the API** (`dsp.create_ads`, proven on a test advertiser November 2026): adType `COMPONENT` with `creative.componentCreative.responsiveEcommerceSettings` (products, language, inventory types, `optimizationGoalKpi` and `supportedThirdPartySellers` are required by Amazon), created paused with no `adGroupId` on the ad, then linked to a line item with `dsp.create_ad_associations`; it goes through Amazon's moderation like any creative. It is the only creative type MixShift builds (others stay console-only) and not the console's automatic one. A DSP ad cannot be deleted, so preview it and get the user's yes first; after a 5xx or unknown outcome, read back with `dsp.query_ads` (needs `adProductFilter`) before sending again. |
+| 1 | **Automatically create responsive ads (AutomatedREC)?** Ask first. | Amazon's API has no switch for it; it exists only on the console's Create order screen and cannot be turned on later. If the user wants it, the **order is created in the console** (switch on, tracked products added), then MixShift builds the line items, targets and creative links on that order. That split works. Otherwise MixShift creates the order too. **A hand-built responsive ecommerce ad works from the API** (`dsp.create_ads`, proven on a test advertiser November 2026): adType `COMPONENT` with `creative.componentCreative.responsiveEcommerceSettings` (products, language, inventory types, `optimizationGoalKpi` and `supportedThirdPartySellers` are required by Amazon), created paused with no `adGroupId` on the ad, then linked to a line item with `dsp.create_ad_associations`; it goes through Amazon's moderation like any creative. It is the only creative type MixShift builds (others stay console-only) and not the console's automatic one. A DSP ad cannot be deleted, so preview it and get the user's yes first; after a 5xx or unknown outcome, read back with `dsp.query_ads` (needs `adProductFilter`) before sending again. Build each order's responsive ad with `--for-order <campaignId>` on the `dsp.create_ads` call (one order per call): on the commit the new ad id is recorded as that order's creative, so `dsp readiness` can catch it on another order's line item later. |
 | 2 | **Media type** | Send `optimizations.primaryInventoryTypes` on the order (`AUDIO`, `DISPLAY`, `VIDEO_OLV`, `VIDEO_STV`) and match it to the line items (Display line items mean `["DISPLAY"]`). Without it the order has no media type and creatives do not populate. MixShift refuses a campaign create without it. |
 | 3 | **Goal KPI** | Retail (endemic) orders: `ROAS` or `ROAS_PROMOTED`; both need tracked products on the order. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion from Amazon's Events manager on the order before activation. `COST_PER_ACTION`, `RETURN_ON_AD_SPEND`, `TOTAL_RETURN_ON_AD_SPEND` and `COMBINED_RETURN_ON_AD_SPEND` are deprecated and refused on create (Amazon silently stores `COST_PER_ACTION` as the off-Amazon KPI). |
 | 4 | **Tracked products** | Add the order's ASINs with `dsp.create_conversion_tracking_products`; check with `dsp.list_conversion_tracking_products`. |
@@ -738,7 +743,9 @@ These rules are for **creating**. The edit operations (`dsp.update_campaigns`, `
       then attach with `dsp.create_ad_associations` (`adId` is the creative's
       `adCreativeId`). A new attachment starts with Amazon's moderation
       `PENDING`: check `dsp.list_association_moderations` before turning the
-      line item on.
+      line item on. **The eligible list holds every order's responsive ad**, so
+      attach an order's own one: the one recorded for it (`dsp creative-map
+      list --order <campaignId>`), not one picked by name or products.
    Later steps differ from the confirmed plan only by the ids Amazon assigned.
    If the user wants to change anything else mid-build, preview it again.
 6. **Read the 207 per item.** Each response can carry three lists, each entry
@@ -789,6 +796,7 @@ What it checks, so you can explain a line:
 - [ ] **KPI prerequisites met.** `ROAS` and `ROAS_PROMOTED` need the tracked products above. `COST_PER_CONVERSION_OFF_AMAZON` needs an off-Amazon conversion on the order (Events manager in the console); MixShift cannot read that yet, so **ask the user to confirm it** and mark the line "confirmed by user", not "checked". Activation error `CONVERSION_TRACKING_REQUIRED` means: endemic order, add tracked products; non-endemic order or off-Amazon KPI, add an off-Amazon conversion.
 - [ ] **Every line item has targeting.** `dsp.query_targets` per line item returns audiences or other intended targets, not only Amazon's defaults.
 - [ ] **AutomatedREC present, if the user chose it.** Ask the user to confirm in the console that the order shows its automatically created responsive ad (MixShift cannot yet confirm it from the API; `dsp.list_eligible_creatives` may list it, so mention it if it does). If it is missing, it cannot be added to an existing order: the order is rebuilt in the console.
+- [ ] **Each line item carries its own order's responsive creative** (`Responsive creative on line item ...`). Checked against the creative map (see "Which responsive creative belongs to which order"), over every attachment, active or not. `PASS`: the order's recorded creative is attached. `FAIL`: a creative recorded for **another order** is attached, or the order's recorded creative is missing or gone from the advertiser; the line names the order, line item and creative ids and the fix. `CONFIRM`: a responsive creative nobody recorded is attached ("originating order unverified"), alone or beside the recorded one. `WARN`: the recorded creative is attached but its attachment is not active. `NOT CHECKED`: a read failed or stopped early. A separate `WARN` (`Responsive creative products`) says a creative features none of the order's tracked products; that alone never means it belongs to another order. A line item with no responsive creative and none recorded is not judged here.
 - [ ] **Every line item has an approved creative.** `dsp.list_eligible_creatives` lists the creative as eligible and `dsp.list_association_moderations` shows it approved, not `PENDING` or rejected.
 - [ ] **No forbidden third-party trackers.** Where a line item targets an AMC audience that forbids them, no `THIRD_PARTY` targets remain (`dsp.query_targets`; remove with `dsp.delete_targets`).
 
@@ -797,6 +805,52 @@ with `mixshift ads call` and report them the same way.
 
 A passing checklist is not a guarantee: Amazon can still refuse the activation,
 and the result is reported per item like any other write.
+
+### Which responsive creative belongs to which order
+
+The user story: *"I build all my orders first and attach creatives later. The
+creative chooser lists every order's automatically created responsive ad, so I
+can attach another order's by mistake. I want the readiness check to catch it."*
+
+**Amazon does not say which order a responsive ecommerce creative was made
+for.** A DSP ad carries no order id, and an attachment shows where a creative is
+now, not where it came from. So MixShift checks each line item against a
+**creative map**: a record, kept on the user's machine for the signed-in
+tenant, of which creative each order is meant to carry. It gets an entry in two
+ways only:
+
+- **A MixShift build.** `ads call dsp.create_ads ... --commit --for-order
+  <campaignId>` records each created ad as built for that order (the intended
+  order of a creative MixShift built, not proof of the console's automatic one).
+- **The user's confirmation**, for a creative built in the DSP console
+  (including the automatically created one). Ask the user which order it was
+  made for, then:
+
+  ```bash
+  mixshift dsp creative-map confirm <campaignId> --advertiser-id <id> --creative-id <id> --legacy-seller-id <id>
+  ```
+
+  That reads the order and the creative from Amazon and prints what it would
+  record, writing nothing. Show it to the user; only after their yes, run the
+  same command with `--commit`. It refuses a creative Amazon does not have, one
+  that is not a responsive ecommerce creative, and one already recorded for
+  another order unless the user says it is shared on purpose (`--reuse`).
+
+**Never fill the map in yourself.** A creative's name, its products (two
+orders can feature the same ASINs), its dates, its eligibility and where it is
+attached now can all be offered to the user as a *suggestion* ("this one was
+created the same day as the order; is it that order's?"). None of them is the
+answer, and none of them goes into `confirm` without the user saying so. In a
+scheduled or unattended run nobody can confirm: leave the line `CONFIRM` and
+list it in the run summary.
+
+**Never detach or replace a creative to fix a `FAIL`.** MixShift cannot remove
+a creative from a line item, and the readiness check changes nothing. Tell the
+user which creative to remove from which line item in the DSP console, and offer
+to attach the right one with `dsp.create_ad_associations` (previewed and
+confirmed like any write). A wrong or stale record is removed with `dsp
+creative-map remove` (a dry run until `--commit`). `dsp creative-map list` shows
+what is recorded.
 
 ## Which reporting surface: the 90-day rule
 
@@ -1146,6 +1200,12 @@ These supersede other instructions:
   runs; never in bulk.** A DSP advertiser is declared on a brand only after the
   user names that brand and confirms the dry run. Evidence from matching is a
   suggestion, not an answer.
+- **Never decide which order a responsive creative belongs to.** Only a
+  MixShift build (`--for-order`) or the user's confirmation (`dsp creative-map
+  confirm`, dry run first) records it. Names, ASINs, dates, eligibility and
+  current attachments are suggestions to show the user. A `CONFIRM` on a
+  responsive creative stays `CONFIRM` until the user answers, and a `FAIL` is
+  fixed by the user in the DSP console: never detach or replace a creative.
 - **A build never starts spend.** Campaigns and line items are created
   `PAUSED`; turning them on is a separate, confirmed `dsp.update_*` change.
   Never retry a create whose outcome is unknown without querying first: Amazon

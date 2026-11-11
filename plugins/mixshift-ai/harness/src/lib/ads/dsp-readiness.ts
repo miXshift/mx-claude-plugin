@@ -18,10 +18,18 @@
  *   - dsp.list_creative_associations      which creatives are attached
  *   - dsp.list_association_moderations    Amazon's approval per attachment
  *   - dsp.list_eligible_creatives         what could be attached, when nothing is
+ *   - dsp.query_ads                       the attached (and expected) creatives'
+ *                                         names, types and featured products
  *
  * What the API cannot answer (an off-Amazon conversion in Events manager, the
  * console-only automatically created responsive ad) is printed as "confirm in
  * the console", never as a pass.
+ *
+ * Responsive creative identity (lib/ads/dsp-creative-identity.ts): Amazon does
+ * not say which order a responsive ecommerce creative was made for, so each
+ * line item's responsive creative is checked against the tenant's creative map
+ * (lib/ads/dsp-creative-map.ts), passed in by the caller. A creative recorded
+ * for another order fails; one nobody recorded is CONFIRM, never a guess.
  *
  * This module is pure apart from the injected `call`, so the checklist logic
  * is tested without a network.
@@ -29,6 +37,14 @@
 
 import type { AdsCallInput, AdsCallSuccess } from '../amazon/ads-call.js';
 import { isReportFailure, type ReportFailure } from '../amazon/reports.js';
+import { scopedEntries, type CreativeMapInput } from './dsp-creative-map.js';
+import {
+  evaluateResponsiveIdentity,
+  type AttachedCreative,
+  type CreativeDetail,
+  type IdentityResult,
+  type Read,
+} from './dsp-creative-identity.js';
 
 export type ReadinessLevel = 'pass' | 'fail' | 'warn' | 'confirm' | 'unchecked';
 
@@ -68,6 +84,11 @@ export interface ReadinessReport {
   trackedProducts?: number;
   lineItems: ReadinessLineItem[];
   checks: ReadinessCheck[];
+  /**
+   * Per line item: is its responsive ecommerce creative the one recorded for
+   * this order? Absent when the line items could not be read.
+   */
+  responsiveCreativeIdentity?: IdentityResult[];
   /** True only when no check failed and every check could be run. */
   ready: boolean;
   counts: Record<ReadinessLevel, number>;
@@ -121,6 +142,8 @@ const MAX_PAGES = 20;
  */
 const CM_AD_GROUP_FILTER_MAX = 20;
 const V1_AD_GROUP_CHUNK = 50;
+/** Ad ids per dsp.query_ads read (the adIdFilter maximum). */
+const AD_ID_FILTER_MAX = 100;
 /** Tracked products read page size (Amazon's maximum, 10,000). */
 const TRACKED_PRODUCTS_PAGE = 10000;
 
@@ -235,6 +258,14 @@ function fmtCounts(m: Record<string, number>): string {
   return parts.length ? parts.join(', ') : 'none';
 }
 
+export interface ReadinessOptions {
+  /**
+   * The tenant's responsive creative map. Without one every attached
+   * responsive creative is CONFIRM (origin unverified), never PASS.
+   */
+  creativeMap?: CreativeMapInput;
+}
+
 /**
  * Run the checklist for one order. Returns a ReportFailure only when the order
  * itself cannot be read (sign-in, merchant, Amazon refusing the account); any
@@ -245,7 +276,12 @@ export async function checkDspReadiness(
   call: ReadinessCall,
   advertiserId: string,
   campaignId: string,
+  options: ReadinessOptions = {},
 ): Promise<ReadinessReport | ReportFailure> {
+  const creativeMap: CreativeMapInput = options.creativeMap ?? {
+    status: 'unavailable',
+    reason: 'no creative map was given to this check',
+  };
   const path = { advertiserId };
   const checks: ReadinessCheck[] = [];
   const add = (c: ReadinessCheck): void => {
@@ -395,6 +431,11 @@ export async function checkDspReadiness(
     'query',
   );
   const retail = kpi !== undefined && RETAIL_KPIS.has(kpi);
+  // The featured-vs-tracked products WARN only compares against a complete list.
+  const trackedAsins =
+    isReportFailure(tpRes) || tpRes.truncated
+      ? undefined
+      : tpRes.rows.map((r) => str(asRec(r)?.productId)).filter((x): x is string => !!x);
   if (isReportFailure(tpRes)) {
     add({
       id: 'tracked_products',
@@ -754,8 +795,109 @@ export async function checkDspReadiness(
     }
   }
 
+  // ---- responsive creative identity -------------------------------------
+  // Every association counts, whatever its state or approval: a paused or
+  // rejected attachment of another order's creative is still on the line item.
+  const attachments: Read<Map<string, AttachedCreative[]>> = creativeReadError
+    ? { ok: false, error: creativeReadError }
+    : { ok: true, truncated: creativeTruncated, value: groupAttachments(ids, assoc, mods) };
+  const expectedIds =
+    creativeMap.status === 'ok'
+      ? [
+          ...new Set(
+            scopedEntries(creativeMap.entries, creativeMap.tenant, advertiserId)
+              .filter((e) => e.order_id === campaignId)
+              .map((e) => e.creative_id),
+          ),
+        ]
+      : [];
+  const wanted = [
+    ...new Set([...(attachments.ok ? [...attachments.value.values()].flat().map((a) => a.creativeId) : []), ...expectedIds]),
+  ];
+  const details = wanted.length && attachments.ok ? await readCreativeDetails(call, path, wanted) : undefined;
+  const identity = evaluateResponsiveIdentity({
+    advertiserId,
+    orderId: campaignId,
+    lineItems: report.lineItems,
+    creativeMap,
+    attachments,
+    ...(details ? { details } : {}),
+    ...(trackedAsins ? { trackedAsins } : {}),
+  });
+  report.responsiveCreativeIdentity = identity.results;
+  for (const c of identity.checks) add(c);
+
   add(automatedRec(responsive));
   return finish(report);
+}
+
+/** Attachments per line item id, with the ad experiences the moderation (or association) row names. */
+function groupAttachments(ids: string[], assoc: Rec[], mods: Rec[]): Map<string, AttachedCreative[]> {
+  const out = new Map<string, AttachedCreative[]>();
+  const mine = new Set(ids);
+  for (const a of assoc) {
+    const gid = str(a.adGroupId);
+    const cid = str(a.adCreativeId);
+    if (!gid || !cid || !mine.has(gid)) continue;
+    const mod = mods.find((m) => str(m.adGroupId) === gid && str(m.adCreativeId) === cid);
+    const experiences = [
+      ...new Set([...approvalOf(mod, undefined).experiences, ...approvalOf(undefined, a).experiences]),
+    ];
+    const list = out.get(gid) ?? [];
+    list.push({ creativeId: cid, ...(str(a.state) ? { state: str(a.state) } : {}), experiences });
+    out.set(gid, list);
+  }
+  return out;
+}
+
+/**
+ * Names, types and featured products of the given creatives, from dsp.query_ads
+ * by id (a DSP ad links to line items by association, so an ad-group filter can
+ * return nothing). A failed or early-stopped read is returned as such, so no
+ * identity verdict passes on it.
+ */
+async function readCreativeDetails(
+  call: ReadinessCall,
+  path: { advertiserId: string },
+  creativeIds: string[],
+): Promise<Read<Map<string, CreativeDetail>>> {
+  const value = new Map<string, CreativeDetail>();
+  let truncated = false;
+  for (const part of chunk(creativeIds, AD_ID_FILTER_MAX)) {
+    const res = await pageAll(
+      call,
+      {
+        operation: 'dsp.query_ads',
+        pathParams: path,
+        body: { adProductFilter: DSP, adIdFilter: { include: part }, maxResults: AD_ID_FILTER_MAX },
+      },
+      'ads',
+      'body',
+    );
+    if (isReportFailure(res)) return { ok: false, error: readFailureText(res) };
+    truncated ||= res.truncated;
+    for (const row of res.rows) {
+      const d = detailOf(asRec(row));
+      if (d && part.includes(d.creativeId)) value.set(d.creativeId, d);
+    }
+  }
+  return { ok: true, truncated, value };
+}
+
+function detailOf(ad: Rec | undefined): CreativeDetail | undefined {
+  const creativeId = str(ad?.adId);
+  if (!ad || !creativeId) return undefined;
+  const rec = asRec(asRec(asRec(ad.creative)?.componentCreative)?.responsiveEcommerceSettings);
+  const products = Array.isArray(rec?.products)
+    ? (rec?.products as unknown[]).map((p) => str(asRec(p)?.productId)).filter((x): x is string => !!x)
+    : [];
+  return {
+    creativeId,
+    ...(str(ad.name) ? { name: str(ad.name) } : {}),
+    ...(str(ad.adType) ? { adType: str(ad.adType) } : {}),
+    responsive: rec !== undefined,
+    products,
+  };
 }
 
 function automatedRec(responsive: string[] | undefined): ReadinessCheck {

@@ -14,6 +14,14 @@
  *       `ads call dsp.delete_targets --commit` on the same audited path; this
  *       command never commits.
  *
+ *   dsp creative-map list|confirm|remove
+ *       The plugin-local record of which responsive ecommerce creative each
+ *       order is meant to carry (lib/ads/dsp-creative-map.ts), which `dsp
+ *       readiness` checks every line item against. `confirm` records a
+ *       console-built creative the user named (dry run unless --commit; it reads
+ *       the order and the creative from Amazon first and refuses an id it cannot
+ *       find). Nothing here writes to Amazon.
+ *
  * Exit / telemetry contract matches `ads`: handlers set process.exitCode and
  * return; telemetry carries counts, check ids and outcome, never Amazon's
  * payload (seller-level business data) or the advertiser id.
@@ -37,6 +45,16 @@ import {
   type SupplyCall,
   type SupplyPreset,
 } from '../lib/ads/dsp-supply.js';
+import {
+  creativeMapForReadiness,
+  creativeMapPath,
+  loadCreativeMap,
+  recordCreativeMappings,
+  removeCreativeMapping,
+  resolveMappingIdentity,
+  scopedEntries,
+  type CreativeMappingEntry,
+} from '../lib/ads/dsp-creative-map.js';
 import { resolveDataDir } from '../lib/paths/resolve.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -105,7 +123,10 @@ export function registerDspCommands(program: Command): void {
             },
             { dataDirOverride: root.dataDir },
           );
-        const result = await checkDspReadiness(call, opts.advertiserId, campaignId);
+        // The tenant's creative map, read locally; when it cannot be used every
+        // responsive creative reads CONFIRM, never PASS.
+        const creativeMap = await creativeMapForReadiness(root.dataDir);
+        const result = await checkDspReadiness(call, opts.advertiserId, campaignId, { creativeMap });
         if (isReportFailure(result)) {
           await trackReadiness('failed', startedAt, root.dataDir, {
             kind: result.kind,
@@ -125,6 +146,10 @@ export function registerDspCommands(program: Command): void {
           // Stable check ids only (e.g. "creative", "tracked_products"): which
           // gates real orders trip, never what Amazon said about them.
           failed_checks: [...new Set(result.checks.filter((c) => c.level === 'fail').map((c) => c.id))],
+          // Responsive creative identity: verdict counts and reason codes only,
+          // never a creative, line item or order id.
+          rec_identity: identityCounts(result.responsiveCreativeIdentity ?? []),
+          creative_map: creativeMap.status,
           ...(opts.legacySellerId !== undefined ? { legacy_seller_id: opts.legacySellerId } : {}),
         });
         if (json) {
@@ -142,6 +167,360 @@ export function registerDspCommands(program: Command): void {
     });
 
   registerSupplyPreset(dsp);
+  registerCreativeMap(dsp);
+}
+
+function identityCounts(results: Array<{ verdict: string; reason: string }>): Record<string, unknown> {
+  const counts: Record<string, number> = {};
+  for (const r of results) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
+  return { ...counts, reasons: [...new Set(results.map((r) => r.reason))].sort() };
+}
+
+// ---------------------------------------------------------------------------
+// dsp creative-map ...
+// ---------------------------------------------------------------------------
+
+interface CreativeMapCliOptions extends ReadinessCliOptions {
+  creativeId?: string;
+  reuse?: boolean;
+  commit?: boolean;
+}
+
+function registerCreativeMap(dsp: Command): void {
+  const map = dsp
+    .command('creative-map')
+    .description(
+      'The record of which responsive ecommerce creative each DSP order is meant to carry, checked by ' +
+        '`dsp readiness` on every line item. Kept on this machine for the signed-in tenant; never sent to Amazon.',
+    );
+
+  map
+    .command('list')
+    .description('List the recorded order -> responsive creative mappings for the signed-in tenant.')
+    .option('--advertiser-id <id>', 'only this DSP advertiser')
+    .option('--order <campaignId>', 'only this DSP order')
+    .action(async (opts: { advertiserId?: string; order?: string }, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const json = !!root.json;
+      try {
+        if (opts.advertiserId !== undefined && !NUMERIC_ID.test(opts.advertiserId)) {
+          return usage('--advertiser-id must be the numeric DSP advertiser id.', json);
+        }
+        if (opts.order !== undefined && !NUMERIC_ID.test(opts.order)) {
+          return usage('--order must be the numeric DSP order (campaign) id.', json);
+        }
+        const who = await resolveMappingIdentity(root.dataDir);
+        if (!who.ok) return usage(`No creative map can be read: ${who.reason}.`, json);
+        const loaded = await loadCreativeMap(root.dataDir);
+        if (!loaded.ok) return usage(loaded.reason, json);
+        const rows = loaded.entries.filter(
+          (e) =>
+            e.tenant === who.identity.tenant &&
+            (opts.advertiserId === undefined || e.advertiser_id === opts.advertiserId) &&
+            (opts.order === undefined || e.order_id === opts.order),
+        );
+        if (json) {
+          process.stdout.write(JSON.stringify({ status: 'ok', count: rows.length, entries: rows.map(publicEntry) }, null, 2) + '\n');
+          return;
+        }
+        process.stdout.write(
+          rows.length
+            ? rows.map(renderEntry).join('\n') + '\n'
+            : 'No responsive creative is recorded for an order' +
+                (opts.advertiserId ? ` on advertiser ${opts.advertiserId}` : '') +
+                '. `dsp readiness` shows every responsive creative as unverified until one is.\n',
+        );
+      } catch (err) {
+        fail(err, json);
+      }
+    });
+
+  map
+    .command('confirm <campaignId>')
+    .description(
+      'Record that a responsive ecommerce creative belongs to this order, after the user said so. Reads the ' +
+        'order and the creative from Amazon first; a dry run unless --commit. Never infer the order from a ' +
+        "creative's name, products, dates or attachments.",
+    )
+    .option('--advertiser-id <id>', 'DSP advertiser id that owns the order and the creative')
+    .option('--creative-id <id>', 'the responsive ecommerce creative (adCreativeId / adId)')
+    .option('--reuse', 'the creative is already recorded for another order and the user says it is shared on purpose')
+    .option('--commit', 'write the record (only after the user confirmed the dry run)')
+    .option('--profile-id <id>', 'Ads profileId from `ads profiles`')
+    .option('--legacy-seller-id <id>', 'exact per-marketplace seller record id')
+    .option('--seller-id <id>', 'AmazonSellerID; pair with --marketplace when multi-marketplace')
+    .option('--marketplace <m>', 'country code (US, UK, ...) or raw marketplaceId')
+    .action(async (campaignId: string, opts: CreativeMapCliOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const json = !!root.json;
+      const startedAt = Date.now();
+      try {
+        const bad = idProblem(campaignId, opts);
+        if (bad) return usage(bad, json);
+        const advertiserId = opts.advertiserId as string;
+        const creativeId = opts.creativeId as string;
+        const who = await resolveMappingIdentity(root.dataDir);
+        if (!who.ok) return usage(`Nothing can be recorded: ${who.reason}.`, json);
+        if (who.identity.automation) {
+          return usage(
+            'A creative mapping records what a person confirmed; it cannot be written under a service credential. ' +
+              'Sign in as a person (`mixshift auth login`) to confirm it.',
+            json,
+          );
+        }
+        const loaded = await loadCreativeMap(root.dataDir);
+        if (!loaded.ok) return usage(loaded.reason, json);
+        const mine = scopedEntries(loaded.entries, who.identity.tenant, advertiserId);
+        const already = mine.find((e) => e.order_id === campaignId && e.creative_id === creativeId);
+        const elsewhere = [...new Set(mine.filter((e) => e.creative_id === creativeId && e.order_id !== campaignId).map((e) => e.order_id))];
+        if (elsewhere.length && !opts.reuse && !already) {
+          return usage(
+            `Creative ${creativeId} is already recorded for order ${elsewhere.join(', ')}. If the user says it is shared ` +
+              `with order ${campaignId} on purpose, run this again with --reuse; otherwise ask which order it belongs to.`,
+            json,
+          );
+        }
+
+        // Read-only proof that both ids are real on this advertiser, before anything is recorded.
+        const selector = {
+          profileId: opts.profileId,
+          legacySellerId: opts.legacySellerId,
+          sellerId: opts.sellerId,
+          marketplace: opts.marketplace,
+        };
+        const verified = await verifyOrderAndCreative(
+          (input) => adsCall({ ...input, ...selector }, { dataDirOverride: root.dataDir }),
+          advertiserId,
+          campaignId,
+          creativeId,
+        );
+        if (isReportFailure(verified)) {
+          await trackCreativeMap('failed', startedAt, root.dataDir, { action: 'confirm', kind: verified.kind });
+          return emitFailure(verified, json);
+        }
+        if (!verified.ok) {
+          await trackCreativeMap('failed', startedAt, root.dataDir, { action: 'confirm', kind: verified.code });
+          return usage(verified.message, json);
+        }
+
+        const entry: CreativeMappingEntry = {
+          tenant: who.identity.tenant,
+          advertiser_id: advertiserId,
+          order_id: campaignId,
+          creative_id: creativeId,
+          source: 'user_confirmed',
+          recorded_at: new Date().toISOString(),
+          ...(who.identity.actor ? { recorded_by: who.identity.actor } : {}),
+          ...(opts.reuse ? { reuse: true } : {}),
+        };
+        const plan =
+          `order ${campaignId}${verified.orderName ? ` "${verified.orderName}"` : ''} -> responsive creative ${creativeId}` +
+          `${verified.creativeName ? ` "${verified.creativeName}"` : ''}` +
+          (verified.products.length ? `, products ${verified.products.slice(0, 5).join(', ')}${verified.products.length > 5 ? ', ...' : ''}` : '') +
+          ` (advertiser ${advertiserId}${opts.reuse ? `; shared on purpose with order ${elsewhere.join(', ')}` : ''})`;
+
+        if (already) {
+          if (json) process.stdout.write(JSON.stringify({ status: 'ok', recorded: false, already: publicEntry(already) }, null, 2) + '\n');
+          else process.stdout.write(`Already recorded: ${renderEntry(already)}\n`);
+          return;
+        }
+        if (!opts.commit) {
+          await trackCreativeMap('ok', startedAt, root.dataDir, { action: 'confirm', dry_run: true, reuse: !!opts.reuse });
+          if (json) {
+            process.stdout.write(JSON.stringify({ status: 'ok', dry_run: true, would_record: publicEntry(entry) }, null, 2) + '\n');
+          } else {
+            process.stdout.write(
+              `DRY RUN: would record ${plan}.\nNothing was written. After the user confirms this is the order the ` +
+                'creative was made for, run the same command with --commit.\n',
+            );
+          }
+          return;
+        }
+        const res = await recordCreativeMappings([entry], root.dataDir);
+        await trackCreativeMap('ok', startedAt, root.dataDir, {
+          action: 'confirm',
+          dry_run: false,
+          added: res.added.length,
+          reuse: !!opts.reuse,
+        });
+        if (json) {
+          process.stdout.write(JSON.stringify({ status: 'ok', recorded: res.added.length > 0, entry: publicEntry(entry), file: creativeMapPath(root.dataDir) }, null, 2) + '\n');
+        } else {
+          process.stdout.write(`Recorded ${plan}.\n  ${creativeMapPath(root.dataDir)}\nRun \`mixshift dsp readiness ${campaignId} --advertiser-id ${advertiserId}\` to check its line items.\n`);
+        }
+      } catch (err) {
+        fail(err, json);
+      }
+    });
+
+  map
+    .command('remove <campaignId>')
+    .description('Remove one recorded order -> responsive creative mapping (a stale or wrong one). A dry run unless --commit.')
+    .option('--advertiser-id <id>', 'DSP advertiser id')
+    .option('--creative-id <id>', 'the recorded creative id')
+    .option('--commit', 'remove the record (only after the user confirmed)')
+    .action(async (campaignId: string, opts: CreativeMapCliOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const json = !!root.json;
+      const startedAt = Date.now();
+      try {
+        const bad = idProblem(campaignId, opts);
+        if (bad) return usage(bad, json);
+        const who = await resolveMappingIdentity(root.dataDir);
+        if (!who.ok) return usage(`Nothing can be removed: ${who.reason}.`, json);
+        if (who.identity.automation) {
+          return usage('A creative mapping is removed by a person, not under a service credential.', json);
+        }
+        const key = {
+          tenant: who.identity.tenant,
+          advertiser_id: opts.advertiserId as string,
+          order_id: campaignId,
+          creative_id: opts.creativeId as string,
+        };
+        const loaded = await loadCreativeMap(root.dataDir);
+        if (!loaded.ok) return usage(loaded.reason, json);
+        const found = loaded.entries.filter(
+          (e) =>
+            e.tenant === key.tenant &&
+            e.advertiser_id === key.advertiser_id &&
+            e.order_id === key.order_id &&
+            e.creative_id === key.creative_id,
+        );
+        if (!found.length) {
+          return usage(`No record of creative ${key.creative_id} for order ${campaignId} on advertiser ${key.advertiser_id}.`, json);
+        }
+        if (!opts.commit) {
+          if (json) process.stdout.write(JSON.stringify({ status: 'ok', dry_run: true, would_remove: found.map(publicEntry) }, null, 2) + '\n');
+          else process.stdout.write(`DRY RUN: would remove ${found.map(renderEntry).join('; ')}.\nNothing was changed; add --commit after the user confirms.\n`);
+          return;
+        }
+        const removed = await removeCreativeMapping(key, root.dataDir);
+        await trackCreativeMap('ok', startedAt, root.dataDir, { action: 'remove', removed: removed.length });
+        if (json) process.stdout.write(JSON.stringify({ status: 'ok', removed: removed.map(publicEntry) }, null, 2) + '\n');
+        else process.stdout.write(`Removed ${removed.map(renderEntry).join('; ')}.\n`);
+      } catch (err) {
+        fail(err, json);
+      }
+    });
+}
+
+function idProblem(campaignId: string, opts: CreativeMapCliOptions): string | undefined {
+  if (!opts.advertiserId || !NUMERIC_ID.test(opts.advertiserId)) {
+    return '--advertiser-id is required: the numeric DSP advertiser id.';
+  }
+  if (!NUMERIC_ID.test(campaignId)) return '<campaignId> must be the numeric DSP order (campaign) id.';
+  if (!opts.creativeId || !NUMERIC_ID.test(opts.creativeId)) {
+    return '--creative-id is required: the numeric id of the responsive ecommerce creative.';
+  }
+  return undefined;
+}
+
+/** The record as shown to the user: no tenant key. */
+function publicEntry(e: CreativeMappingEntry): Record<string, unknown> {
+  const { tenant: _tenant, ...rest } = e;
+  return rest;
+}
+
+function renderEntry(e: CreativeMappingEntry): string {
+  return (
+    `advertiser ${e.advertiser_id} order ${e.order_id} -> creative ${e.creative_id} ` +
+    `(${e.source === 'plugin_build' ? `MixShift build${e.audit_id ? `, audit ${e.audit_id}` : ''}` : 'confirmed by user'}` +
+    `${e.reuse ? ', shared on purpose' : ''}, ${e.recorded_at.slice(0, 10)})`
+  );
+}
+
+/**
+ * Read-only: the order exists under the advertiser, and the creative exists
+ * there and is a responsive ecommerce creative. Returns a ReportFailure when a
+ * read itself fails (nothing is recorded then either).
+ */
+export async function verifyOrderAndCreative(
+  call: ReadinessCall,
+  advertiserId: string,
+  campaignId: string,
+  creativeId: string,
+): Promise<
+  | { ok: true; orderName?: string; creativeName?: string; products: string[] }
+  | { ok: false; code: string; message: string }
+  | ReportFailure
+> {
+  const path = { advertiserId };
+  const dsp = { include: ['AMAZON_DSP'] };
+  const camp = await call({
+    operation: 'dsp.query_campaigns',
+    pathParams: path,
+    body: { adProductFilter: dsp, campaignIdFilter: { include: [campaignId] }, maxResults: 10 },
+  });
+  if (isReportFailure(camp)) return camp;
+  const campaigns = (camp.payload as { campaigns?: unknown } | undefined)?.campaigns;
+  const order = Array.isArray(campaigns)
+    ? (campaigns as Array<Record<string, unknown>>).find((c) => String(c?.campaignId ?? '') === campaignId)
+    : undefined;
+  if (!order) {
+    return { ok: false, code: 'order_not_found', message: `No DSP order ${campaignId} under advertiser ${advertiserId}; nothing was recorded.` };
+  }
+  const ads = await call({
+    operation: 'dsp.query_ads',
+    pathParams: path,
+    body: { adProductFilter: dsp, adIdFilter: { include: [creativeId] }, maxResults: 10 },
+  });
+  if (isReportFailure(ads)) return ads;
+  const rows = (ads.payload as { ads?: unknown } | undefined)?.ads;
+  const ad = Array.isArray(rows)
+    ? (rows as Array<Record<string, unknown>>).find((a) => String(a?.adId ?? '') === creativeId)
+    : undefined;
+  if (!ad) {
+    return {
+      ok: false,
+      code: 'creative_not_found',
+      message: `Creative ${creativeId} was not found on advertiser ${advertiserId}; nothing was recorded.`,
+    };
+  }
+  const settings = (((ad.creative as Record<string, unknown> | undefined)?.componentCreative as Record<string, unknown> | undefined)
+    ?.responsiveEcommerceSettings ?? undefined) as Record<string, unknown> | undefined;
+  if (!settings || typeof settings !== 'object') {
+    return {
+      ok: false,
+      code: 'not_responsive',
+      message:
+        `Creative ${creativeId} is not a responsive ecommerce creative (Amazon lists it as ${String(ad.adType ?? 'an unknown type')}); ` +
+        'this record is only for responsive ecommerce creatives. Nothing was recorded.',
+    };
+  }
+  const products = Array.isArray(settings.products)
+    ? (settings.products as Array<Record<string, unknown>>).map((p) => String(p?.productId ?? '')).filter((x) => x.length > 0)
+    : [];
+  return {
+    ok: true,
+    ...(typeof order.name === 'string' && order.name ? { orderName: order.name } : {}),
+    ...(typeof ad.name === 'string' && ad.name ? { creativeName: ad.name } : {}),
+    products,
+  };
+}
+
+async function trackCreativeMap(
+  outcome: 'ok' | 'failed',
+  startedAt: number,
+  dataDir: string | undefined,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await track(
+    {
+      event_name: EventName.DspCreativeMapChanged,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...(outcome === 'failed' && typeof payload.kind === 'string' ? { error_class: payload.kind } : {}),
+      payload,
+    },
+    dataDir,
+  );
+}
+
+function fail(err: unknown, json: boolean): void {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json) process.stdout.write(JSON.stringify({ status: 'error', message }, null, 2) + '\n');
+  else process.stderr.write(`error: ${message}\n`);
+  process.exitCode = 1;
 }
 
 interface SupplyCliOptions extends ReadinessCliOptions {

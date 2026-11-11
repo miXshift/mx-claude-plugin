@@ -70,6 +70,11 @@ import {
   renderDrift,
 } from '../lib/ads/proposals-render.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
+import {
+  buildEntriesFromCreate,
+  recordCreativeMappings,
+  resolveMappingIdentity,
+} from '../lib/ads/dsp-creative-map.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 import { keyValueOption } from '../lib/cli/option-parsers.js';
 
@@ -230,6 +235,7 @@ interface CallCliOptions {
   rationale?: string;
   evidenceFile?: string;
   expiresHours?: string;
+  forOrder?: string;
 }
 
 function registerCall(ads: Command): void {
@@ -294,6 +300,12 @@ function registerCall(ads: Command): void {
       '--expires-hours <n>',
       'with --propose: hours the proposal stays open (1-168, default 72)',
     )
+    .option(
+      '--for-order <campaignId>',
+      'dsp.create_ads only: the DSP order (campaign) these responsive ads are built for. On a ' +
+        'successful --commit each created ad id is recorded against it on this machine, so ' +
+        '`dsp readiness` can tell this order\'s responsive ad from another order\'s.',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -339,6 +351,29 @@ function registerCall(ads: Command): void {
           const stray = proposeOnly.find(([, v]) => v !== undefined);
           if (stray) {
             return emitError(new Error(`${stray[0]} only applies with --propose.`), !!root.json);
+          }
+        }
+        if (opts.forOrder !== undefined) {
+          if (operation !== 'dsp.create_ads') {
+            return emitError(new Error('--for-order only applies to dsp.create_ads.'), !!root.json);
+          }
+          if (!/^\d{1,30}$/.test(opts.forOrder)) {
+            return emitError(new Error('--for-order must be the numeric DSP order (campaign) id.'), !!root.json);
+          }
+          if (opts.propose) {
+            return emitError(
+              new Error(
+                '--for-order cannot ride a proposal: a DSP build is committed by a signed-in person. ' +
+                  'After the commit, record the order with `mixshift dsp creative-map confirm`.',
+              ),
+              !!root.json,
+            );
+          }
+          if (!/^\d{1,30}$/.test(opts.path?.advertiserId ?? '')) {
+            return emitError(
+              new Error('--for-order needs the numeric DSP advertiser id in --path advertiserId=<id>.'),
+              !!root.json,
+            );
           }
         }
         let expiresInHours: number | undefined;
@@ -482,6 +517,20 @@ function registerCall(ads: Command): void {
           ...(typeof result.itemsCount === 'number' ? { items_count: result.itemsCount } : {}),
           ...(result.auditId ? { audit_id: result.auditId } : {}),
         });
+        // A committed dsp.create_ads built for a named order: record each new
+        // ad id as that order's intended responsive creative (plugin-local,
+        // never sent anywhere). Never fails the commit, which already applied.
+        const creativeMap =
+          opts.forOrder !== undefined && result.dryRun === false
+            ? await recordBuildMapping({
+                advertiserId: opts.path.advertiserId as string,
+                orderId: opts.forOrder,
+                payload: result.payload,
+                ...(result.auditId ? { auditId: result.auditId } : {}),
+                dataDir: root.dataDir,
+                startedAt,
+              })
+            : undefined;
         if (root.json) {
           writeJson({
             status: 'ok',
@@ -495,6 +544,7 @@ function registerCall(ads: Command): void {
             ...(result.beforeState !== undefined ? { before_state: result.beforeState } : {}),
             ...(result.preview !== undefined ? { preview: result.preview } : {}),
             ...(result.payload !== undefined ? { payload: result.payload } : {}),
+            ...(creativeMap ? { creative_map: creativeMap } : {}),
           });
         } else if (result.dryRun === true) {
           const commitHint = result.auditId
@@ -504,7 +554,11 @@ function registerCall(ads: Command): void {
             `\n✓ DRY RUN ${result.operation} (profile ${result.profileId}): ` +
               `${result.itemsCount ?? '?'} item(s) validated, nothing applied.\n` +
               (result.auditId ? `  audit: ${result.auditId}\n` : '') +
-              `  Re-run with ${commitHint} AFTER the user confirms this change set.\n\n`,
+              `  Re-run with ${commitHint} AFTER the user confirms this change set.\n` +
+              (opts.forOrder
+                ? `  On commit, each created ad is recorded as built for order ${opts.forOrder} (on this machine only).\n`
+                : '') +
+              '\n',
           );
           process.stdout.write(
             JSON.stringify({ preview: result.preview, beforeState: result.beforeState }, null, 2) + '\n',
@@ -516,6 +570,7 @@ function registerCall(ads: Command): void {
               '  Amazon responds per item; check success/error arrays below.\n\n',
           );
           process.stdout.write(JSON.stringify(result.payload, null, 2) + '\n');
+          if (creativeMap) process.stderr.write(`\n${creativeMap.message}\n`);
         } else {
           process.stderr.write(`\n✓ ${result.operation} (profile ${result.profileId})\n\n`);
           process.stdout.write(JSON.stringify(result.payload, null, 2) + '\n');
@@ -558,6 +613,66 @@ function registerCall(ads: Command): void {
         emitError(err, !!root.json);
       }
     });
+}
+
+/**
+ * After a committed `dsp.create_ads --for-order`: record each created ad id as
+ * the order's intended responsive creative (source plugin_build). Best-effort
+ * and non-throwing; the result says what happened so the user is told.
+ */
+export async function recordBuildMapping(input: {
+  advertiserId: string;
+  orderId: string;
+  payload: unknown;
+  auditId?: string;
+  dataDir?: string;
+  startedAt: number;
+}): Promise<{ recorded: string[]; message: string }> {
+  try {
+    const who = await resolveMappingIdentity(input.dataDir);
+    if (!who.ok) {
+      return {
+        recorded: [],
+        message:
+          `The order mapping was NOT recorded (${who.reason}). Record it with ` +
+          `\`mixshift dsp creative-map confirm ${input.orderId} --advertiser-id ${input.advertiserId} --creative-id <adId>\`.`,
+      };
+    }
+    const entries = buildEntriesFromCreate({
+      tenant: who.identity.tenant,
+      ...(who.identity.actor ? { actor: who.identity.actor } : {}),
+      advertiserId: input.advertiserId,
+      orderId: input.orderId,
+      payload: input.payload,
+      ...(input.auditId ? { auditId: input.auditId } : {}),
+    });
+    if (!entries.length) {
+      return { recorded: [], message: 'No ad was created, so no order mapping was recorded.' };
+    }
+    const res = await recordCreativeMappings(entries, input.dataDir);
+    await track(
+      {
+        event_name: EventName.DspCreativeMapChanged,
+        outcome: 'ok',
+        duration_ms: Date.now() - input.startedAt,
+        payload: { action: 'build', added: res.added.length, existing: res.existing.length },
+      },
+      input.dataDir,
+    );
+    const ids = entries.map((e) => e.creative_id);
+    return {
+      recorded: ids,
+      message:
+        `Recorded responsive ad ${ids.join(', ')} as built for order ${input.orderId} ` +
+        '(intended identity from this build; `dsp readiness` checks line items against it).',
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      recorded: [],
+      message: `The order mapping was NOT recorded: ${message}`,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

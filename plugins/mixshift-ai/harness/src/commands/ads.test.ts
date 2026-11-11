@@ -16,6 +16,11 @@ import { registerAdsCommands } from './ads.js';
 import { adsCall } from '../lib/amazon/ads-call.js';
 import { emitAdsCommitEvent } from '../lib/timeline/ads-emit.js';
 import { track } from '../lib/telemetry/index.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { saveCredentials } from '../lib/auth/credentials.js';
+import { loadCreativeMap } from '../lib/ads/dsp-creative-map.js';
 
 vi.mock('../lib/amazon/ads-call.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/amazon/ads-call.js')>();
@@ -272,5 +277,150 @@ describe('ads call: a MixShift refusal reaches the agent as one (mx-ops#144 P5)'
     const payload = vi.mocked(track).mock.calls[0]?.[0]?.payload as Record<string, unknown>;
     expect(payload).toMatchObject({ kind: 'invalid_request', source: 'request', retryable: false, has_fix: true });
     expect(JSON.stringify(payload)).not.toContain('Nothing was sent');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dsp.create_ads --for-order: the build records its intended order (synthetic ids)
+// ---------------------------------------------------------------------------
+
+describe('ads call dsp.create_ads --for-order', () => {
+  const ADV = '1000000000000000001';
+  const ORDER = '2000000000000000002';
+  const AD = '4000000000000000011';
+  let dir: string;
+
+  const jwt = (claims: Record<string, unknown>): string => {
+    const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    return `${seg({ alg: 'HS256' })}.${seg(claims)}.sig`;
+  };
+
+  async function signIn(): Promise<void> {
+    await saveCredentials(
+      {
+        schema_version: 2,
+        created_at: new Date().toISOString(),
+        datahub: {
+          api_base: 'https://mcp.mixshift.io',
+          access_token: jwt({ sub: 'tenant-1', actor: 'person@example.test' }),
+          refresh_token: 'r'.repeat(24),
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          refresh_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+          user_id: 'tenant-1',
+          email: 'login@example.test',
+          person_label: 'person@example.test',
+          device_label: 'test-host',
+          client_id: 'mx-claude-plugin',
+        },
+      },
+      dir,
+    );
+  }
+
+  const create = (extra: string[] = []): Promise<void> =>
+    runAds(
+      'call',
+      'dsp.create_ads',
+      '--legacy-seller-id',
+      '574',
+      '--path',
+      `advertiserId=${ADV}`,
+      '--body',
+      '{"ads":[{"adProduct":"AMAZON_DSP","adType":"COMPONENT","state":"PAUSED","creative":{}}]}',
+      '--data-dir',
+      dir,
+      ...extra,
+    );
+
+  const committed = {
+    ok: true as const,
+    operation: 'dsp.create_ads',
+    profileId: 'p1',
+    legacySellerId: 574,
+    marketplaceId: null,
+    dryRun: false,
+    itemsCount: 1,
+    auditId: 'audit_create',
+    payload: { success: [{ index: 0, ad: { adId: AD } }], error: [] },
+  };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'ads-for-order-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('records each created ad as built for the named order after a commit', async () => {
+    await signIn();
+    vi.mocked(adsCall).mockResolvedValue(committed);
+    await create(['--commit', '--for-order', ORDER]);
+    expect(process.exitCode ?? 0).toBe(0);
+    const loaded = await loadCreativeMap(dir);
+    expect(loaded).toMatchObject({
+      ok: true,
+      entries: [
+        {
+          tenant: 'user:tenant-1',
+          advertiser_id: ADV,
+          order_id: ORDER,
+          creative_id: AD,
+          source: 'plugin_build',
+          audit_id: 'audit_create',
+        },
+      ],
+    });
+    const ev = vi.mocked(track).mock.calls.map((c) => c[0]).find((e) => e.event_name === 'dsp.creative_map_changed');
+    expect(ev?.payload).toEqual({ action: 'build', added: 1, existing: 0 });
+    expect(JSON.stringify(ev)).not.toContain(AD);
+  });
+
+  it('records nothing on a dry run', async () => {
+    await signIn();
+    vi.mocked(adsCall).mockResolvedValue({ ...committed, dryRun: true, payload: undefined });
+    await create(['--for-order', ORDER]);
+    expect(await loadCreativeMap(dir)).toEqual({ ok: true, entries: [] });
+  });
+
+  it('never fails the commit when nothing can be recorded (not signed in here), and says so', async () => {
+    vi.mocked(adsCall).mockResolvedValue(committed);
+    const out: string[] = [];
+    vi.mocked(process.stdout.write).mockImplementation((c: unknown): boolean => {
+      out.push(String(c));
+      return true;
+    });
+    await runAds(
+      '--json',
+      'call',
+      'dsp.create_ads',
+      '--path',
+      `advertiserId=${ADV}`,
+      '--body',
+      '{"ads":[]}',
+      '--data-dir',
+      dir,
+      '--commit',
+      '--for-order',
+      ORDER,
+    );
+    expect(process.exitCode ?? 0).toBe(0);
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed.creative_map.recorded).toEqual([]);
+    expect(parsed.creative_map.message).toContain('NOT recorded');
+  });
+
+  it('refuses --for-order on another operation, on a proposal, or without the advertiser, before any call', async () => {
+    await runAds('call', 'dsp.create_ad_associations', '--path', `advertiserId=${ADV}`, '--body', '{}', '--for-order', ORDER);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+    await create(['--propose', '--for-order', ORDER]);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+    await runAds('call', 'dsp.create_ads', '--body', '{}', '--for-order', ORDER);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+    await create(['--for-order', 'order-one']);
+    expect(process.exitCode).toBe(1);
+    expect(adsCall).not.toHaveBeenCalled();
   });
 });

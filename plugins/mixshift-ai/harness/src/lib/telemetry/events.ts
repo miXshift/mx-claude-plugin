@@ -238,6 +238,12 @@ export const EventName = {
   // Payload: preset, line item / skipped / target / batch counts,
   // legacy_seller_id; on failure kind + stage. Never an id from Amazon.
   DspSupplyPresetPlanned: 'dsp.supply_preset_planned',
+  // The responsive creative map (lib/ads/dsp-creative-map.ts): `dsp
+  // creative-map confirm|remove`, and the plugin_build record written after
+  // `ads call dsp.create_ads --commit --for-order`. Payload: action, dry_run,
+  // added/removed counts, reuse flag; on failure the kind. Never an order,
+  // creative or advertiser id.
+  DspCreativeMapChanged: 'dsp.creative_map_changed',
   // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
   // `ads call --propose`). Payloads carry the proposal id, operation id,
   // items count and guard counts, never the change set, rationale or evidence.
