@@ -212,6 +212,27 @@ export type LabelsFailureKind =
   | 'insufficient_scope' // 403: the credential lacks the read scopes
   | 'account_limited' // 403: this credential is limited to other accounts
   | 'internal' // 500: labels service error
+  // --- the write path (change sets) ---
+  | 'invalid_value' // 422: a value cannot be stored
+  | 'scope_not_supported' // 422: a campaign change can only use scope marketplace
+  | 'empty_selection' // 422: nothing in the selection is known to the label store
+  | 'too_many_entities' // 422: more than one change set holds
+  | 'too_many_open_previews' // 429: too many uncommitted previews
+  | 'change_set_not_found' // 404
+  | 'approval_mismatch' // 409: the approval hash is not the one the preview returned
+  | 'change_set_expired' // 409: a preview is good for 24 hours
+  | 'change_set_cancelled' // 409
+  | 'commit_in_flight' // 409, retryable: being committed right now
+  | 'commit_retry' // 409, retryable: a database conflict, nothing written
+  | 'commit_too_large' // 422: split the change set
+  | 'not_cancellable' // 409: only a preview can be cancelled
+  | 'nothing_to_undo' // 422
+  | 'account_not_accessible' // 403: an account the change set reaches is no longer usable
+  | 'invalid_name' // 422: a display name cannot be used
+  | 'name_in_use' // 409: another field has that display name
+  | 'partially_applied' // 409: some items changed, some did not (full results ride the body)
+  | 'stale' // 409: every item had changed since the preview
+  | 'failed' // 422: nothing was changed
   // --- local-only ---
   | 'not_authenticated'
   | 'session_expired'
@@ -232,6 +253,11 @@ export interface LabelsFailure {
   invalidParams?: string[];
   /** The service sent a kind this build does not know (contract drift). */
   unrecognizedKind?: string;
+  /**
+   * The service's whole error envelope. A write that did not fully apply (partially_applied, stale, failed)
+   * carries its full per-item account here, and not_enabled says why (`reason`).
+   */
+  body?: Record<string, unknown>;
 }
 
 export interface LabelsClientOptions {
@@ -265,7 +291,31 @@ export function exitCodeForLabelsKind(kind: LabelsFailureKind): number {
     case 'account_limited':
       return 11; // this credential may not read labels
     case 'bad_params':
+    case 'invalid_value':
+    case 'scope_not_supported':
+    case 'empty_selection':
+    case 'too_many_entities':
+    case 'too_many_open_previews':
+    case 'commit_too_large':
+    case 'not_cancellable':
+    case 'nothing_to_undo':
+    case 'invalid_name':
+    case 'name_in_use':
       return 15; // refused as sent: change the request
+    case 'change_set_not_found':
+    case 'account_not_accessible':
+      return 7; // no such change set, or an account that is not usable
+    case 'approval_mismatch':
+    case 'change_set_expired':
+    case 'change_set_cancelled':
+      return 16; // the preview can no longer be committed as it stands: preview again
+    case 'partially_applied':
+    case 'stale':
+    case 'failed':
+      return 17; // the commit did not fully apply: read the per-item results, preview again for the rest
+    case 'commit_in_flight':
+    case 'commit_retry':
+      return 10; // nothing was lost: run the same commit again
     case 'not_available':
     case 'internal':
     case 'host_unreachable':
@@ -474,18 +524,18 @@ export async function collectPages<R, P extends { ok: true; rows: R[]; next_curs
 // Internal request plumbing
 // ---------------------------------------------------------------------------
 
-const isState = (v: unknown): v is LabelsServiceState => v === 'off' || v === 'observing' || v === 'on';
+export const isState = (v: unknown): v is LabelsServiceState => v === 'off' || v === 'observing' || v === 'on';
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 
 /** A query string from the defined values only (an empty value is a value the service would refuse, so it is sent). */
-function query(params: Record<string, string | number | undefined>): string {
+export function query(params: Record<string, string | number | undefined>): string {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined) qs.set(k, String(v));
   const s = qs.toString();
   return s ? `?${s}` : '';
 }
 
-function unrecognizedShape(httpStatus: number, what: string): LabelsFailure {
+export function unrecognizedShape(httpStatus: number, what: string): LabelsFailure {
   return {
     ok: false,
     kind: 'unknown',
@@ -495,15 +545,15 @@ function unrecognizedShape(httpStatus: number, what: string): LabelsFailure {
   };
 }
 
-interface RequestSpec {
-  method: 'GET' | 'POST';
+export interface RequestSpec {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
   body?: Record<string, unknown>;
 }
 
-type RequestSuccess = { ok: true; json: unknown; httpStatus: number };
+export type RequestSuccess = { ok: true; json: unknown; httpStatus: number };
 
-async function labelsRequest(spec: RequestSpec, opts: LabelsClientOptions): Promise<RequestSuccess | LabelsFailure> {
+export async function labelsRequest(spec: RequestSpec, opts: LabelsClientOptions): Promise<RequestSuccess | LabelsFailure> {
   const resolved = await resolveBaseAndToken(opts);
   if ('ok' in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
@@ -606,6 +656,26 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<LabelsFailureKind>([
   'insufficient_scope',
   'account_limited',
   'internal',
+  'invalid_value',
+  'scope_not_supported',
+  'empty_selection',
+  'too_many_entities',
+  'too_many_open_previews',
+  'change_set_not_found',
+  'approval_mismatch',
+  'change_set_expired',
+  'change_set_cancelled',
+  'commit_in_flight',
+  'commit_retry',
+  'commit_too_large',
+  'not_cancellable',
+  'nothing_to_undo',
+  'account_not_accessible',
+  'invalid_name',
+  'name_in_use',
+  'partially_applied',
+  'stale',
+  'failed',
   'unknown',
 ]);
 
@@ -631,6 +701,7 @@ function toLabelsFailure(json: Record<string, unknown>, httpStatus: number): Lab
     ...(json.retryable === true ? { retryable: true } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
     ...(issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {}),
+    body: json,
   };
 }
 
@@ -668,6 +739,32 @@ export function defaultFriendly(kind: LabelsFailureKind | 'route_missing'): stri
       return 'This credential is limited to other accounts, so it cannot read labels. Sign in as yourself, or ask your org admin.';
     case 'internal':
       return 'The labels service hit an error. Try again shortly.';
+    case 'invalid_value':
+    case 'scope_not_supported':
+    case 'empty_selection':
+    case 'too_many_entities':
+    case 'too_many_open_previews':
+    case 'commit_too_large':
+    case 'not_cancellable':
+    case 'nothing_to_undo':
+    case 'invalid_name':
+    case 'name_in_use':
+      return 'MixShift refused this label change as sent. Nothing was changed. Check the inputs and run `mixshift labels --help`.';
+    case 'change_set_not_found':
+      return 'No such change set for this account. A change set is found by the id the preview printed.';
+    case 'approval_mismatch':
+    case 'change_set_expired':
+    case 'change_set_cancelled':
+      return 'This change set can no longer be committed as it stands. Nothing was changed. Preview the change again.';
+    case 'commit_in_flight':
+    case 'commit_retry':
+      return 'The commit did not go through this time and nothing was written. Run the same commit again.';
+    case 'account_not_accessible':
+      return 'This change reaches an account you can no longer use. Nothing was changed.';
+    case 'partially_applied':
+    case 'stale':
+    case 'failed':
+      return 'The change was not fully applied. Read the per-item results below.';
     case 'route_missing':
       return 'The MixShift service does not have labels yet. Update the plugin, or try again later.';
     case 'host_unreachable':
