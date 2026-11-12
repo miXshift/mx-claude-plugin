@@ -266,7 +266,67 @@ describe('labels lines: an allowlist, from the first `labels` token on', () => {
     expect(redactArgs(['data', 'query', '--sql', 'select 1', '--name', 'x'])).toEqual(['data', 'query', '--sql', 'select 1', '--name', 'x']);
   });
 
-  it('tokens before the first labels token keep the root-flag handling', () => {
-    expect(redactArgs(['--token', 'abc', 'labels', 'state'])).toEqual(['--token', R, 'labels', 'state']);
+  it('tokens before the first labels token: only the root flags the CLI has survive', () => {
+    expect(redactArgs(['--token', 'abc', 'labels', 'state'])).toEqual([R, R, 'labels', 'state']);
+    expect(redactArgs(['--json', '--verbose', '--surface', 'cli', '--data-dir', 'C:/x', 'labels', 'state'])).toEqual(['--json', '--verbose', '--surface', 'cli', '--data-dir', R, 'labels', 'state']);
+  });
+});
+
+describe('labels lines: two passes, most redacted wins (fourth review of #270)', () => {
+  const R = '<redacted>';
+  const SECRET = 'S3cret';
+
+  it('secrets BEFORE the labels token, case variants and =labels triggers are redacted', () => {
+    const lines: string[][] = [
+      ['--value', SECRET, 'labels', 'search'],
+      ['--set', `item_group=${SECRET}`, 'labels', 'preview'],
+      [SECRET, 'labels', 'search'],
+      ['Labels', 'search', '--value', SECRET],
+      ['LABELS', 'preview', '--set', `a=${SECRET}`],
+      ['--x=labels', 'search', '--value', SECRET],
+      ['labels', 'preview', '--clear', SECRET],
+      ['labels', 'preview', '--rename', SECRET],
+      ['labels', 'search', '--field', SECRET],
+      ['labels', 'preview', '--account', '12345678901'],
+    ];
+    for (const argv of lines) expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
+    expect(redactArgs(['labels', 'preview', '--account', '12345678901'])).toEqual(['labels', 'preview', '--account', R]);
+    expect(redactArgs(['labels', 'preview', '--account', '1234567890'])).toEqual(['labels', 'preview', '--account', '1234567890']);
+    expect(redactArgs([SECRET, 'labels', 'search'])).toEqual([R, 'labels', 'search']);
+  });
+
+  it('field keys are the enumerated label fields and nothing else', () => {
+    for (const key of ['item_group', 'nickname', 'brand', 'parent_asin', 'label_1', 'label_2', 'tag_1', 'tag_4', 'manager', 'objective']) {
+      expect(redactArgs(['labels', 'search', '--field', key])).toEqual(['labels', 'search', '--field', key]);
+    }
+    expect(redactArgs(['labels', 'search', '--field', 'my_brand_x', '--clear', 'Tag_1'])).toEqual(['labels', 'search', '--field', R, '--clear', R]);
+  });
+
+  it('other command groups are byte-identical to before, including a bare `labels` as a value', () => {
+    expect(redactArgs(['forecast', '--name', SECRET, '--note', 'labels', 'sub-brand', 'add'])).toEqual(['forecast', '--name', R, '--note', 'labels', 'sub-brand', 'add']);
+    expect(redactArgs(['auth', 'service-setup', '--client-secret', 'labels'])).toEqual(['auth', 'service-setup', '--client-secret', R]);
+    expect(redactArgs(['brand', 'add', '--name', 'labels'])).toEqual(['brand', 'add', '--name', 'labels']);
+    expect(redactArgs(['data', 'query', '--name', 'labels', 'search', '--value', SECRET])).toEqual(['data', 'query', '--name', 'labels', 'search', '--value', R]);
+    expect(redactArgs(['forecast', 'sub-brand', 'add', '--name', 'labels', '--item-label', SECRET])).toEqual(['forecast', 'sub-brand', 'add', '--name', R, '--item-label', R]);
+  });
+
+  it('property: secrets placed before the labels token, in every case variant, never appear', () => {
+    const triggers = ['labels', 'Labels', 'LABELS', '--x=labels', '--x=LABELS'];
+    const befores: string[][] = [
+      [SECRET],
+      ['--value', SECRET],
+      [`--value=${SECRET}`],
+      ['--bogus', SECRET],
+      ['-o', SECRET],
+      ['--profile', 'p', '--set', `item_group=${SECRET}`],
+      ['--data-dir', SECRET],
+      ['--surface', SECRET],
+      ['--json', SECRET],
+    ];
+    const afters: string[][] = [['search', '--value', SECRET], ['preview', '--set', `a=${SECRET}`], ['previw', SECRET], [], ['get', '--ids', SECRET]];
+    for (const t of triggers) for (const bf of befores) for (const af of afters) {
+      const argv = [...bf, t, ...af];
+      expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
+    }
   });
 });

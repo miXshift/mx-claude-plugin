@@ -8,7 +8,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CLEAR_MARKER, checkEntityId, checkLabelValue, parseChangeCsv, parseCsv, parseSetFlags } from './change-input.js';
+import { CLEAR_MARKER, fieldKeysFor, checkEntityId, checkLabelValue, parseChangeCsv, parseCsv, parseSetFlags } from './change-input.js';
+import { LABEL_FIELD_KEYS } from './field-keys.js';
 import { loadPending, pendingDir, removePending, savePending } from './pending.js';
 
 describe('checkLabelValue', () => {
@@ -164,5 +165,11 @@ describe('the approval kept on this machine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the field key list the redactor keeps', () => {
+  it('is exactly the fields the label commands accept', () => {
+    expect([...LABEL_FIELD_KEYS].sort()).toEqual([...new Set([...fieldKeysFor('item'), ...fieldKeysFor('campaign')])].sort());
   });
 });

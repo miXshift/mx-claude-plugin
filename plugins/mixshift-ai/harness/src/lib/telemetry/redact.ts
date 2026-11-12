@@ -35,6 +35,8 @@
  * inline raw credentials into query/body strings.
  */
 
+import { LABEL_FIELD_KEYS } from '../labels/field-keys.js';
+
 const REDACTED = '<redacted>';
 
 /**
@@ -94,7 +96,7 @@ function isForecastSubBrand(argv: readonly string[]): boolean {
 /**
  * `group` then `sub` anywhere later in argv, not only as the next token: the root options
  * (`--json`, `--data-dir x`, `--verbose`) may sit between them and still parse, so
- * `forecast --json sub-brand ...` is the same command as `forecast sub-brand --json ...`.
+ * `labels --json search ...` is the same command as `labels search --json ...`.
  */
 function hasSubcommandLater(argv: readonly string[], group: string, sub: string): boolean {
   const i = argv.indexOf(group);
@@ -102,6 +104,18 @@ function hasSubcommandLater(argv: readonly string[], group: string, sub: string)
 }
 
 const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
+
+/**
+ * And for `labels search ...`: the VALUE of `--value` is a label the customer typed on an
+ * item or campaign (a product line, a nickname, a tag), which is their own business data
+ * and which the privacy page says is not collected. The field key (`--field item_group`),
+ * the account and the ids stay, as they do for every other command.
+ */
+function isLabelsSearch(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'labels', 'search');
+}
+
+const LABELS_VALUE_FLAG = /^value$/;
 
 /**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
@@ -115,14 +129,15 @@ function redactGeneric(argv: readonly string[]): string[] {
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const labels = isLabelsSearch(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
-  // Under `forecast sub-brand` the token after a bare value flag IS its value
+  // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand;
+  const strictValue = subBrand || labels;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
-  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`).
+  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
 
   for (const arg of argv) {
@@ -191,122 +206,175 @@ function isNumericLike(arg: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// `labels` command lines: an ALLOWLIST
+// `labels` command lines: a second pass by ALLOWLIST, on top of the baseline
 // ---------------------------------------------------------------------------
 
 /**
  * Label commands carry the customer's own label text, item and campaign ids, file paths and approval hashes in
  * their flags and positionals. The captured line is taken BEFORE the arguments are parsed, so a rejected, mistyped
  * or oddly ordered line reaches telemetry too, and every denylist of "which flag holds a value" has leaked on some
- * such line. So labels lines are redacted by allowlist, not by denylist:
+ * such line. So the rule is two passes and "most redacted wins":
  *
- *   1. Trigger: a token exactly equal to `labels` anywhere in the line (no locating the command, no skipping root
- *      flags). Over-triggering on another command's line that happens to hold that token is accepted:
- *      over-redaction is safe, exposure is not.
- *   2. From that token on, only these survive: the names of known flags; the first positional when it is a
- *      registered labels subcommand; the value of an allowlisted flag when it has that flag's shape; and a
- *      change set id (a UUID). Everything else is replaced by `<redacted>`: every other flag's value, every other
- *      positional (so an unquoted multi-word value cannot leak its tail), unknown flag-like tokens, ids, label text,
- *      names, `--where` and `--set` clauses, file paths and approval hashes.
- *   3. Tokens before the first `labels` keep the handling above for root flags.
+ *   1. The baseline: `redactGeneric` (what every command line has always had) over the WHOLE line, no splitting.
+ *   2. If any token is `labels` (any case) or ends with `=labels`, the allowlist is ALSO applied to the whole line:
+ *      before that token only the root flags the CLI has survive (`--json`-style booleans, the name of `--data-dir`
+ *      without its path, `--surface` with a valid value), and every other token is redacted; from that token on
+ *      only known flag names, a registered labels subcommand as the first positional, a change set id, and the
+ *      shape-checked values of a short list of flags survive. A token is kept only if BOTH passes keep it.
+ *   3. Exception, so other command groups are not blinded: when the first positional of the line is another
+ *      registered top-level command (`forecast`, `auth`, `brand`, ...), the line belongs to that group and has the
+ *      baseline only, exactly as before.
  *
- * The token after a flag that is not a known boolean is always that flag's value, whatever it starts with
- * (commander takes `--to --promo` as the value `--promo`), unless it is itself a known flag name.
+ * Over-triggering on an odd line is accepted: over-redaction is safe, exposure is not. The token after a flag
+ * that is not a known boolean is always that flag's value, whatever it starts with (commander takes
+ * `--to --promo` as the value `--promo`), unless it is itself a known flag name.
  */
 const LABELS_SUBCOMMANDS = new Set(['state', 'fields', 'get', 'search', 'drift', 'changes', 'preview', 'commit', 'undo', 'sets', 'set', 'cancel', 'field-name']);
 
-/** Flags that take no value. */
-const LABELS_BOOLEAN_FLAGS = new Set(['json', 'verbose', 'all', 'commit', 'remove', 'help', 'version', 'h', 'V']);
+/** The registered top-level commands other than `labels` (cli.ts). A line whose first positional is one of these is that group's. */
+const OTHER_TOP_LEVEL_COMMANDS = new Set([
+  'profile', 'auth', 'brand', 'validate', 'prefetch', 'render', 'sidecar', 'ui', 'data', 'feedback', 'welcome', 'version', 'whatsnew',
+  'update-actions', 'telemetry', 'skill', 'amazon', 'ads', 'dsp', 'walmart', 'shelf', 'intelligence', 'forecast', 'report', 'doctor',
+  'guide', 'demo', 'share-skill', 'context', 'timeline', 'task', 'help',
+]);
 
-const FIELD_KEY_SHAPE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+/** Root flags that take no value, and the root flags that do. */
+const ROOT_BOOLEAN_FLAGS = new Set(['json', 'verbose', 'help', 'version']);
+const LABELS_BOOLEAN_FLAGS = new Set([...ROOT_BOOLEAN_FLAGS, 'all', 'commit', 'remove']);
+
+const FIELD_KEY_SET = new Set<string>(LABEL_FIELD_KEYS);
+const fieldKey = { test: (v: string): boolean => FIELD_KEY_SET.has(v) };
 const TIME_SHAPE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z)?$/;
 const UUID_SHAPE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const SURFACE_SHAPE = /^(claude_code|cowork|cli|cli_headless)$/;
+
+interface Shape {
+  test(v: string): boolean;
+}
 
 /** Flags whose value is not sensitive, and the exact shape it must have to be kept. */
-const LABELS_VALUE_SHAPES: Record<string, RegExp> = {
-  account: /^[1-9][0-9]{0,15}$/,
+const LABELS_VALUE_SHAPES: Record<string, Shape> = {
+  account: /^[1-9][0-9]{0,9}$/,
   entity: /^(item|campaign)$/,
   scope: /^(marketplace|region|all)$/,
-  field: FIELD_KEY_SHAPE,
-  clear: FIELD_KEY_SHAPE,
-  rename: FIELD_KEY_SHAPE,
+  field: fieldKey,
+  clear: fieldKey,
+  rename: fieldKey,
   limit: /^[0-9]{1,4}$/,
   before: TIME_SHAPE,
   since: TIME_SHAPE,
-  surface: /^(claude_code|cowork|cli|cli_headless)$/,
+  surface: SURFACE_SHAPE,
 };
 
-/** Every flag name a labels line (root options included) may carry. Anything else is not kept, not even its name. */
+/** Every flag name a labels line may carry. Anything else is not kept, not even its name. */
 const LABELS_KNOWN_FLAGS = new Set([
   ...LABELS_BOOLEAN_FLAGS,
   ...Object.keys(LABELS_VALUE_SHAPES),
-  'data-dir',
-  'ids',
-  'ids-file',
-  'where',
-  'file',
-  'set',
-  'from',
-  'to',
-  'name',
-  'value',
-  'cursor',
-  'approval-hash',
+  'data-dir', 'ids', 'ids-file', 'where', 'file', 'set', 'from', 'to', 'name', 'value', 'cursor', 'approval-hash',
 ]);
 
-function redactLabels(rest: readonly string[]): string[] {
+interface AllowConfig {
+  known: ReadonlySet<string>;
+  booleans: ReadonlySet<string>;
+  shapes: Readonly<Record<string, Shape>>;
+  /** Whether a positional is kept: its 1-based position among positionals, and the token. */
+  keepPositional(n: number, arg: string): boolean;
+}
+
+const isFlagLike = (arg: string): boolean => arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg);
+
+/** One allowlist pass over a run of tokens. Same length out as in. */
+function allowlist(tokens: readonly string[], cfg: AllowConfig): string[] {
   const out: string[] = [];
-  let valueOf: string | null | undefined; // undefined: no value pending; null: a value is pending for an unknown or non-allowlisted flag
+  let pending: string | null | undefined; // undefined: none; null: a value for an unknown or non-allowlisted flag; string: that allowlisted flag
   let positionals = 0;
-  for (const [idx, arg] of rest.entries()) {
-    if (idx === 0) {
-      out.push(arg); // the `labels` token itself
-      continue;
-    }
-    const isFlagLike = arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg);
-    const knownFlagName = isFlagLike ? LABELS_KNOWN_FLAGS.has(arg.replace(/^-+/, '').split('=')[0]!) && !arg.startsWith('---') : false;
-    // A pending value: taken whatever it looks like, unless it is itself a known flag (the previous flag was a boolean we did not know).
-    if (valueOf !== undefined && !(knownFlagName && arg.startsWith('--'))) {
-      const shape = valueOf === null ? null : LABELS_VALUE_SHAPES[valueOf];
+  for (const arg of tokens) {
+    const flag = isFlagLike(arg);
+    const name = flag && arg.startsWith('--') && !arg.startsWith('---') ? arg.slice(2).split('=')[0]! : null;
+    const knownLong = name !== null && cfg.known.has(name);
+    if (pending !== undefined && !knownLong) {
+      const shape = pending === null ? undefined : cfg.shapes[pending];
       out.push(shape && shape.test(arg) ? arg : REDACTED);
-      valueOf = undefined;
+      pending = undefined;
       continue;
     }
-    valueOf = undefined;
-    if (isFlagLike) {
-      if (!knownFlagName || !arg.startsWith('--')) {
-        // An unknown flag, or a short one: not kept, and what follows it is taken as its value.
-        out.push(REDACTED);
-        if (!arg.includes('=')) valueOf = null;
+    pending = undefined;
+    if (flag) {
+      if (!knownLong) {
+        out.push(REDACTED); // an unknown or short flag: not even its name; what follows it is taken as its value
+        if (!arg.includes('=')) pending = null;
         continue;
       }
       const eq = arg.indexOf('=');
-      const name = (eq >= 0 ? arg.slice(2, eq) : arg.slice(2));
       if (eq >= 0) {
-        const shape = LABELS_VALUE_SHAPES[name];
+        const shape = cfg.shapes[name!];
         const value = arg.slice(eq + 1);
         out.push(`--${name}=${shape && shape.test(value) ? value : REDACTED}`);
         continue;
       }
       out.push(arg);
-      if (!LABELS_BOOLEAN_FLAGS.has(name)) valueOf = LABELS_VALUE_SHAPES[name] ? name : null;
+      if (!cfg.booleans.has(name!)) pending = cfg.shapes[name!] ? name! : null;
       continue;
     }
-    // A positional: the subcommand (the first one only), or a change set id.
     positionals += 1;
-    if ((positionals === 1 && LABELS_SUBCOMMANDS.has(arg)) || UUID_SHAPE.test(arg)) out.push(arg);
-    else out.push(REDACTED);
+    out.push(cfg.keepPositional(positionals, arg) ? arg : REDACTED);
   }
   return out;
 }
 
+/** The root flags the CLI really has; every positional before the `labels` token is redacted. */
+const ROOT_CONFIG: AllowConfig = {
+  known: new Set([...ROOT_BOOLEAN_FLAGS, 'data-dir', 'surface']),
+  booleans: ROOT_BOOLEAN_FLAGS,
+  shapes: { surface: SURFACE_SHAPE },
+  keepPositional: () => false,
+};
+
+const LABELS_CONFIG: AllowConfig = {
+  known: LABELS_KNOWN_FLAGS,
+  booleans: LABELS_BOOLEAN_FLAGS,
+  shapes: LABELS_VALUE_SHAPES,
+  keepPositional: (n, arg) => (n === 1 && LABELS_SUBCOMMANDS.has(arg)) || UUID_SHAPE.test(arg),
+};
+
+/** The first positional of the whole line, skipping flags and the values of the two root flags that take one. */
+function firstPositional(argv: readonly string[]): string | null {
+  for (let j = 0; j < argv.length; j += 1) {
+    const a = argv[j]!;
+    if (a === '--data-dir' || a === '--surface') {
+      j += 1;
+      continue;
+    }
+    if (isFlagLike(a)) continue;
+    return a;
+  }
+  return null;
+}
+
+const isLabelsToken = (a: string): boolean => {
+  const l = a.toLowerCase();
+  return l === 'labels' || l.endsWith('=labels');
+};
+
 /**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
- * invocation and cannot throw. A line with a `labels` token is redacted by allowlist from that token on.
+ * invocation and cannot throw. See the two-pass rule above for `labels` lines.
  */
 export function redactArgs(argv: readonly string[]): string[] {
-  const i = argv.indexOf('labels');
-  if (i < 0) return redactGeneric(argv);
-  return [...redactGeneric(argv.slice(0, i)), ...redactLabels(argv.slice(i))];
+  const base = redactGeneric(argv);
+  const i = argv.findIndex(isLabelsToken);
+  if (i < 0) return base;
+  const first = firstPositional(argv);
+  if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base;
+  const trigger = /^labels$/i.test(argv[i]!) ? argv[i]! : REDACTED;
+  const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
+  // Most redacted wins: a token is kept only if both passes keep it.
+  return argv.map((orig, k) => {
+    const b = base[k]!;
+    const a = allow[k]!;
+    if (b === orig) return a;
+    if (a === orig) return b;
+    return a === REDACTED || b === REDACTED ? REDACTED : a;
+  });
 }
