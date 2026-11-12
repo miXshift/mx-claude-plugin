@@ -94,7 +94,7 @@ function isForecastSubBrand(argv: readonly string[]): boolean {
 /**
  * `group` then `sub` anywhere later in argv, not only as the next token: the root options
  * (`--json`, `--data-dir x`, `--verbose`) may sit between them and still parse, so
- * `labels --json search ...` is the same command as `labels search --json ...`.
+ * `forecast --json sub-brand ...` is the same command as `forecast sub-brand --json ...`.
  */
 function hasSubcommandLater(argv: readonly string[], group: string, sub: string): boolean {
   const i = argv.indexOf(group);
@@ -104,108 +104,25 @@ function hasSubcommandLater(argv: readonly string[], group: string, sub: string)
 const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
 
 /**
- * And for `labels search ...`: the VALUE of `--value` is a label the customer typed on an
- * item or campaign (a product line, a nickname, a tag), which is their own business data
- * and which the privacy page says is not collected. The field key (`--field item_group`),
- * the account and the ids stay, as they do for every other command.
- */
-const ROOT_VALUE_FLAGS = new Set(['--data-dir', '--surface']);
-
-/**
- * The first token at or after `from` that is not a flag (or the value of a root flag that takes one).
- * Returns its index, or -1.
- */
-function firstWord(argv: readonly string[], from: number): number {
-  for (let j = from; j < argv.length; j += 1) {
-    const a = argv[j]!;
-    if (ROOT_VALUE_FLAGS.has(a)) {
-      j += 1;
-      continue;
-    }
-    if (a.startsWith('-')) continue;
-    return j;
-  }
-  return -1;
-}
-
-type LabelsMode = 'none' | 'search' | 'write' | 'union';
-
-/** The subcommands that carry no label text or ids in a value flag. They keep every flag as typed. */
-const LABELS_PLAIN_SUBCOMMANDS = new Set(['state', 'fields', 'get', 'drift', 'changes', 'undo', 'sets', 'set', 'cancel']);
-
-/**
- * Which redaction rules `labels ...` gets. The command is the first non-flag token of the whole line (a root
- * flag's value, like `--data-dir labels`, is not the command), and the subcommand is the first non-flag token after
- * it, never "a token anywhere later" (`--from search` is a value, not the subcommand). Fails CLOSED: when `labels`
- * is the command and the subcommand is not one we know (a typo, a stray flag such as `labels --account 42 preview`,
- * or none at all), the flags of every labels command are redacted together, because the line is captured before it
- * is parsed and a rejected line still reaches telemetry.
- */
-function labelsMode(argv: readonly string[]): LabelsMode {
-  const cmd = firstWord(argv, 0);
-  if (cmd < 0 || argv[cmd] !== 'labels') return 'none';
-  const subIdx = firstWord(argv, cmd + 1);
-  const sub = subIdx < 0 ? null : argv[subIdx]!;
-  if (sub === 'search') return 'search';
-  if (sub === 'preview' || sub === 'commit' || sub === 'field-name') return 'write';
-  if (sub !== null && LABELS_PLAIN_SUBCOMMANDS.has(sub)) return 'none';
-  return 'union';
-}
-
-
-/**
- * And for the labels WRITE commands (`labels preview`, `labels commit`, `labels field-name`): the VALUES of
- * `--set`, `--where`, `--from`, `--to` and `--name` are labels the customer typed, and `--ids` names their own
- * items or campaigns (the read commands keep ids, as every command does; a change set is a statement about
- * what they are about to relabel, so its ids go too). `--approval-hash` is the proof that a preview was seen,
- * so it goes as well. Kept: the account, the entity, the scope, the field keys (`--clear tag_1`,
- * `--rename item_group`, `--field label_2`), the change set id, file paths and the flags. For `--set` and
- * `--where` the field key in front of the `=` stays (`--set item_group=<redacted>`).
- */
-const LABELS_UNION_VALUE_FLAG = /^(value|set|where|from|to|name|ids|approval-hash)$/;
-
-const LABELS_WRITE_KEYED_FLAG = /^(set|where)$/;
-const FIELD_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
-
-function redactLabelsWriteValue(name: string, value: string): string {
-  if (LABELS_WRITE_KEYED_FLAG.test(name)) {
-    const eq = value.indexOf('=');
-    if (eq > 0 && FIELD_KEY.test(value.slice(0, eq).trim())) return `${value.slice(0, eq)}=${REDACTED}`;
-  }
-  return REDACTED;
-}
-
-/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
  */
-export function redactArgs(argv: readonly string[]): string[] {
+function redactGeneric(argv: readonly string[]): string[] {
   const out: string[] = [];
   // Set by a secret-named flag: the IMMEDIATE next token is that flag's value.
   let redactNextValue = false;
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
-  const mode = labelsMode(argv);
-  // Every labels mode redacts the union of the labels value flags (fail closed): the parser may reject a flag
-  // on this subcommand, but the line is captured before it is parsed.
-  const labelsWrite = mode !== 'none';
-  const valueFlag = budget
-    ? BUDGET_VALUE_FLAG
-    : subBrand
-      ? SUB_BRAND_VALUE_FLAG
-      : labelsWrite
-        ? LABELS_UNION_VALUE_FLAG
-        : null;
-  const redactValue = (name: string, value: string) =>
-    budget ? redactBudgetValue(name, value) : labelsWrite ? redactLabelsWriteValue(name, value) : REDACTED;
-  // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
+  // Under `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labelsWrite;
+  const strictValue = subBrand;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
-  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
+  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`).
   let budgetFlag: string | null = null;
 
   for (const arg of argv) {
@@ -271,4 +188,125 @@ export function redactArgs(argv: readonly string[]): string[] {
 /** Guard so a negative number (`-5`) isn't treated as a flag. */
 function isNumericLike(arg: string): boolean {
   return /^-\d/.test(arg);
+}
+
+// ---------------------------------------------------------------------------
+// `labels` command lines: an ALLOWLIST
+// ---------------------------------------------------------------------------
+
+/**
+ * Label commands carry the customer's own label text, item and campaign ids, file paths and approval hashes in
+ * their flags and positionals. The captured line is taken BEFORE the arguments are parsed, so a rejected, mistyped
+ * or oddly ordered line reaches telemetry too, and every denylist of "which flag holds a value" has leaked on some
+ * such line. So labels lines are redacted by allowlist, not by denylist:
+ *
+ *   1. Trigger: a token exactly equal to `labels` anywhere in the line (no locating the command, no skipping root
+ *      flags). Over-triggering on another command's line that happens to hold that token is accepted:
+ *      over-redaction is safe, exposure is not.
+ *   2. From that token on, only these survive: the names of known flags; the first positional when it is a
+ *      registered labels subcommand; the value of an allowlisted flag when it has that flag's shape; and a
+ *      change set id (a UUID). Everything else is replaced by `<redacted>`: every other flag's value, every other
+ *      positional (so an unquoted multi-word value cannot leak its tail), unknown flag-like tokens, ids, label text,
+ *      names, `--where` and `--set` clauses, file paths and approval hashes.
+ *   3. Tokens before the first `labels` keep the handling above for root flags.
+ *
+ * The token after a flag that is not a known boolean is always that flag's value, whatever it starts with
+ * (commander takes `--to --promo` as the value `--promo`), unless it is itself a known flag name.
+ */
+const LABELS_SUBCOMMANDS = new Set(['state', 'fields', 'get', 'search', 'drift', 'changes', 'preview', 'commit', 'undo', 'sets', 'set', 'cancel', 'field-name']);
+
+/** Flags that take no value. */
+const LABELS_BOOLEAN_FLAGS = new Set(['json', 'verbose', 'all', 'commit', 'remove', 'help', 'version', 'h', 'V']);
+
+const FIELD_KEY_SHAPE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const TIME_SHAPE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z)?$/;
+const UUID_SHAPE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** Flags whose value is not sensitive, and the exact shape it must have to be kept. */
+const LABELS_VALUE_SHAPES: Record<string, RegExp> = {
+  account: /^[1-9][0-9]{0,15}$/,
+  entity: /^(item|campaign)$/,
+  scope: /^(marketplace|region|all)$/,
+  field: FIELD_KEY_SHAPE,
+  clear: FIELD_KEY_SHAPE,
+  rename: FIELD_KEY_SHAPE,
+  limit: /^[0-9]{1,4}$/,
+  before: TIME_SHAPE,
+  since: TIME_SHAPE,
+  surface: /^(claude_code|cowork|cli|cli_headless)$/,
+};
+
+/** Every flag name a labels line (root options included) may carry. Anything else is not kept, not even its name. */
+const LABELS_KNOWN_FLAGS = new Set([
+  ...LABELS_BOOLEAN_FLAGS,
+  ...Object.keys(LABELS_VALUE_SHAPES),
+  'data-dir',
+  'ids',
+  'ids-file',
+  'where',
+  'file',
+  'set',
+  'from',
+  'to',
+  'name',
+  'value',
+  'cursor',
+  'approval-hash',
+]);
+
+function redactLabels(rest: readonly string[]): string[] {
+  const out: string[] = [];
+  let valueOf: string | null | undefined; // undefined: no value pending; null: a value is pending for an unknown or non-allowlisted flag
+  let positionals = 0;
+  for (const [idx, arg] of rest.entries()) {
+    if (idx === 0) {
+      out.push(arg); // the `labels` token itself
+      continue;
+    }
+    const isFlagLike = arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg);
+    const knownFlagName = isFlagLike ? LABELS_KNOWN_FLAGS.has(arg.replace(/^-+/, '').split('=')[0]!) && !arg.startsWith('---') : false;
+    // A pending value: taken whatever it looks like, unless it is itself a known flag (the previous flag was a boolean we did not know).
+    if (valueOf !== undefined && !(knownFlagName && arg.startsWith('--'))) {
+      const shape = valueOf === null ? null : LABELS_VALUE_SHAPES[valueOf];
+      out.push(shape && shape.test(arg) ? arg : REDACTED);
+      valueOf = undefined;
+      continue;
+    }
+    valueOf = undefined;
+    if (isFlagLike) {
+      if (!knownFlagName || !arg.startsWith('--')) {
+        // An unknown flag, or a short one: not kept, and what follows it is taken as its value.
+        out.push(REDACTED);
+        if (!arg.includes('=')) valueOf = null;
+        continue;
+      }
+      const eq = arg.indexOf('=');
+      const name = (eq >= 0 ? arg.slice(2, eq) : arg.slice(2));
+      if (eq >= 0) {
+        const shape = LABELS_VALUE_SHAPES[name];
+        const value = arg.slice(eq + 1);
+        out.push(`--${name}=${shape && shape.test(value) ? value : REDACTED}`);
+        continue;
+      }
+      out.push(arg);
+      if (!LABELS_BOOLEAN_FLAGS.has(name)) valueOf = LABELS_VALUE_SHAPES[name] ? name : null;
+      continue;
+    }
+    // A positional: the subcommand (the first one only), or a change set id.
+    positionals += 1;
+    if ((positionals === 1 && LABELS_SUBCOMMANDS.has(arg)) || UUID_SHAPE.test(arg)) out.push(arg);
+    else out.push(REDACTED);
+  }
+  return out;
+}
+
+/**
+ * Return a copy of `argv` with credential material replaced by `<redacted>`.
+ * Pure and cheap (single pass over a small array); safe to call on every
+ * invocation and cannot throw. A line with a `labels` token is redacted by allowlist from that token on.
+ */
+export function redactArgs(argv: readonly string[]): string[] {
+  const i = argv.indexOf('labels');
+  if (i < 0) return redactGeneric(argv);
+  return [...redactGeneric(argv.slice(0, i)), ...redactLabels(argv.slice(i))];
 }

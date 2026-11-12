@@ -162,49 +162,8 @@ describe('forecast sub-brand (red team 2026-10-12 on #215)', () => {
   });
 });
 
-describe('labels search', () => {
-  it('drops the --value text in both flag forms, and keeps the account, field key and the flags', () => {
-    expect(
-      redactArgs(['--json', 'labels', 'search', '--account', '42', '--field', 'item_group', '--value', 'Example Line', '--limit', '10']),
-    ).toEqual(['--json', 'labels', 'search', '--account', '42', '--field', 'item_group', '--value', '<redacted>', '--limit', '10']);
-    expect(redactArgs(['labels', 'search', '--account', '42', '--field=tag_1', '--value=Spring Promo', '--all'])).toEqual([
-      'labels',
-      'search',
-      '--account',
-      '42',
-      '--field=tag_1',
-      '--value=<redacted>',
-      '--all',
-    ]);
-    // Elsewhere a --value is not a label and is kept.
-    expect(redactArgs(['ads', 'call', 'x', '--value', 'keep me'])).toEqual(['ads', 'call', 'x', '--value', 'keep me']);
-    // The other labels commands carry ids and a time, not label text.
-    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02']);
-  });
-});
-
 describe('value flags in every argv form the parser accepts (review of #268)', () => {
   const R = '<redacted>';
-
-  it('labels search: root options between `labels` and `search` do not hide the command', () => {
-    expect(redactArgs(['labels', '--json', 'search', '--account', '42', '--value', 'Secret Line'])).toEqual(['labels', '--json', 'search', '--account', '42', '--value', R]);
-    expect(redactArgs(['--json', 'labels', '--data-dir', 'x', 'search', '--value=Secret Line'])).toEqual(['--json', 'labels', '--data-dir', 'x', 'search', `--value=${R}`]);
-    expect(redactArgs(['labels', '--verbose', '--json', 'search', '--account', '42', '--field', 'tag_1', '--value', 'Secret Line', '--all'])).toEqual(['labels', '--verbose', '--json', 'search', '--account', '42', '--field', 'tag_1', '--value', R, '--all']);
-  });
-
-  it('labels search: a value that starts with a dash is still the value (commander takes it)', () => {
-    expect(redactArgs(['labels', 'search', '--value', '-Secret Line'])).toEqual(['labels', 'search', '--value', R]);
-    expect(redactArgs(['labels', 'search', '--value', '--promo', '--account', '42'])).toEqual(['labels', 'search', '--value', R, '--account', '42']);
-    expect(redactArgs(['labels', 'search', '--value', '-5'])).toEqual(['labels', 'search', '--value', R]);
-    expect(redactArgs(['labels', 'search', '--value=-Secret'])).toEqual(['labels', 'search', `--value=${R}`]);
-    // A trailing bare --value has nothing to redact and nothing to leak.
-    expect(redactArgs(['labels', 'search', '--account', '42', '--value'])).toEqual(['labels', 'search', '--account', '42', '--value']);
-  });
-
-  it('labels: other subcommands and other groups keep --value', () => {
-    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
-    expect(redactArgs(['search', '--value', 'keep'])).toEqual(['search', '--value', 'keep']);
-  });
 
   it('forecast sub-brand: root options in between, and dash-leading values, in both flag forms', () => {
     expect(redactArgs(['forecast', '--json', 'sub-brand', 'add', '--seller', '42', '--name', 'Northwind Outdoors'])).toEqual(['forecast', '--json', 'sub-brand', 'add', '--seller', '42', '--name', R]);
@@ -214,95 +173,100 @@ describe('value flags in every argv form the parser accepts (review of #268)', (
   });
 });
 
-describe('labels write commands: label values and ids are customer data', () => {
+// ---------------------------------------------------------------------------
+// labels command lines are redacted by ALLOWLIST (third review of #270)
+// ---------------------------------------------------------------------------
+
+describe('labels lines: an allowlist, from the first `labels` token on', () => {
   const R = '<redacted>';
+  const SECRET = 'S3cret';
   const ID = '11111111-2222-4333-8444-555555555555';
   const HASH = 'ab'.repeat(32);
 
-  it('preview: --set and --where keep the field key and lose the value; --ids, --from and --to are redacted; the rest stays', () => {
+  it('keeps what makes telemetry useful on a normal line', () => {
+    expect(redactArgs(['--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--scope', 'region', '--field', 'item_group', '--limit', '10', '--all'])).toEqual([
+      '--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--scope', 'region', '--field', 'item_group', '--limit', '10', '--all',
+    ]);
+    expect(redactArgs(['labels', 'commit', ID, '--commit'])).toEqual(['labels', 'commit', ID, '--commit']);
+    expect(redactArgs(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z', '--limit=20'])).toEqual(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z', '--limit=20']);
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--clear', 'tag_1', '--rename', 'item_group'])).toEqual(['labels', 'preview', '--account', '42', '--clear', 'tag_1', '--rename', 'item_group']);
+  });
+
+  it('redacts ids, values, names, where clauses, file paths, cursors, data dirs and hashes', () => {
     expect(
-      redactArgs(['--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--ids', 'B0EXAMPLE01,B0EXAMPLE02', '--set', 'item_group=Example Line', '--clear', 'tag_1', '--scope', 'region']),
-    ).toEqual(['--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--ids', R, '--set', `item_group=${R}`, '--clear', 'tag_1', '--scope', 'region']);
-    expect(redactArgs(['labels', 'preview', '--account', '42', '--where=item_group=Old Line', '--set=brand=New'])).toEqual(['labels', 'preview', '--account', '42', `--where=item_group=${R}`, `--set=brand=${R}`]);
-    expect(redactArgs(['labels', 'preview', '--account', '42', '--rename', 'tag_2', '--from', 'Old Tag', '--to', 'New Tag'])).toEqual(['labels', 'preview', '--account', '42', '--rename', 'tag_2', '--from', R, '--to', R]);
-    expect(redactArgs(['labels', 'preview', '--account', '42', '--ids-file', 'ids.txt', '--file', 'changes.csv'])).toEqual(['labels', 'preview', '--account', '42', '--ids-file', 'ids.txt', '--file', 'changes.csv']);
+      redactArgs(['labels', 'preview', '--account', '42', '--ids', 'B0EXAMPLE01', '--ids-file', 'ids.txt', '--file', 'c.csv', '--set', 'item_group=Example', '--where', 'brand=Acme', '--from', 'Old', '--to', 'New', '--name', 'Pattern', '--cursor', 'abc', '--data-dir', 'C:/x', '--approval-hash', HASH]),
+    ).toEqual(['labels', 'preview', '--account', '42', '--ids', R, '--ids-file', R, '--file', R, '--set', R, '--where', R, '--from', R, '--to', R, '--name', R, '--cursor', R, '--data-dir', R, '--approval-hash', R]);
+    expect(redactArgs(['labels', 'search', '--account=42', '--field=tag_1', '--value=Spring Promo', '--file=c.csv'])).toEqual(['labels', 'search', '--account=42', '--field=tag_1', `--value=${R}`, `--file=${R}`]);
   });
 
-  it('preview: root options in between and values that start with a dash are still redacted', () => {
-    expect(redactArgs(['labels', '--json', 'preview', '--ids', 'B0EXAMPLE01', '--set', 'tag_1=-20% promo'])).toEqual(['labels', '--json', 'preview', '--ids', R, '--set', `tag_1=${R}`]);
-    expect(redactArgs(['labels', 'preview', '--rename', 'tag_1', '--from', '-Old', '--to', '--New'])).toEqual(['labels', 'preview', '--rename', 'tag_1', '--from', R, '--to', R]);
-    expect(redactArgs(['labels', 'preview', '--set', 'not a key = x'])).toEqual(['labels', 'preview', '--set', R]);
+  it('a value that does not have its flag shape is redacted too', () => {
+    expect(redactArgs(['labels', 'preview', '--account', 'Secret Co', '--entity', SECRET, '--scope', SECRET, '--field', 'has space', '--limit', SECRET])).toEqual(['labels', 'preview', '--account', R, '--entity', R, '--scope', R, '--field', R, '--limit', R]);
+    expect(redactArgs(['labels', 'sets', '--before', SECRET, `--account=${SECRET}`])).toEqual(['labels', 'sets', '--before', R, `--account=${R}`]);
   });
 
-  it('commit: the approval hash goes, the change set id and the confirmation flag stay', () => {
-    expect(redactArgs(['labels', 'commit', ID, '--commit', '--approval-hash', HASH])).toEqual(['labels', 'commit', ID, '--commit', '--approval-hash', R]);
-    expect(redactArgs(['labels', 'commit', ID, '--approval-hash=' + HASH, '--commit'])).toEqual(['labels', 'commit', ID, `--approval-hash=${R}`, '--commit']);
-  });
-
-  it('field-name: the display name goes, the account and field key stay', () => {
-    expect(redactArgs(['labels', 'field-name', '--account', '42', '--field', 'label_2', '--name', 'Pattern ID', '--commit'])).toEqual(['labels', 'field-name', '--account', '42', '--field', 'label_2', '--name', R, '--commit']);
-  });
-
-  it('other commands keep these flags; the read commands keep their ids', () => {
-    expect(redactArgs(['brand', 'add', '--name', 'Northwind', '--set', 'a=b'])).toEqual(['brand', 'add', '--name', 'Northwind', '--set', 'a=b']);
-    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
-    expect(redactArgs(['labels', 'undo', ID])).toEqual(['labels', 'undo', ID]);
-    expect(redactArgs(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z'])).toEqual(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z']);
-  });
-});
-
-describe('labels: the subcommand is the first non-flag token, not any later token (review of #270)', () => {
-  const R = '<redacted>';
-  it('a flag value that is the word search or preview does not change which rules apply', () => {
-    expect(redactArgs(['labels', 'preview', '--account', '42', '--rename', 'objective', '--from', 'search', '--to', 'Brand Defense Q4'])).toEqual(['labels', 'preview', '--account', '42', '--rename', 'objective', '--from', R, '--to', R]);
-    expect(redactArgs(['labels', 'preview', '--account', '42', '--ids-file', 'search', '--set', 'item_group=Secret Line'])).toEqual(['labels', 'preview', '--account', '42', '--ids-file', 'search', '--set', `item_group=${R}`]);
-    expect(redactArgs(['--data-dir', 'x', 'labels', '--data-dir', 'search', 'preview', '--set', 'brand=Secret'])).toEqual(['--data-dir', 'x', 'labels', '--data-dir', 'search', 'preview', '--set', `brand=${R}`]);
-  });
-  it('read commands: a later `search` or `preview` token does not turn on or off the wrong rules', () => {
-    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01', '--ids-file', 'search'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01', '--ids-file', 'search']);
-    expect(redactArgs(['labels', 'search', '--account', '42', '--field', 'tag_1', '--value', 'preview'])).toEqual(['labels', 'search', '--account', '42', '--field', 'tag_1', '--value', R]);
-    expect(redactArgs(['labels', 'get', '--value', 'search'])).toEqual(['labels', 'get', '--value', 'search']);
-  });
-});
-
-describe('labels: redaction fails closed when the subcommand is not resolved (second review of #270)', () => {
-  const SECRET = 'S3cretValue';
-
-  it('lines that are rejected by the parser, or carry a stray flag first, are still redacted', () => {
+  it('the lines the third review found', () => {
     const lines: string[][] = [
+      ['--profile', 'p', 'labels', 'search', '--value', SECRET],
+      ['-o', 'x', 'labels', 'search', '--value', SECRET],
+      ['--format', 'json', 'labels', 'preview', '--set', `item_group=${SECRET}`],
+      ['labels', 'set', '--account', '42', '--ids', 'B0A', '--set', `item_group=${SECRET}`],
+      ['labels', 'get', '--value', SECRET],
+      ['labels', '--from', 'get', '--to', SECRET, 'preview'],
+      ['labels', 'preview', '--to', 'Brand', `Defense${SECRET}`],
+      // the second review's lines, and the first's
       ['labels', '--account', '42', 'search', '--field', 'brand', '--value', SECRET],
       ['labels', '--account', '42', 'preview', '--set', `item_group=${SECRET}`],
       ['--surface', 'labels', 'labels', 'search', '--value', SECRET],
       ['--data-dir', 'labels', 'labels', 'preview', '--set', `item_group=${SECRET}`],
       ['labels', 'previw', '--set', `item_group=${SECRET}`],
+      ['labels', 'preview', '--account', '42', '--rename', 'objective', '--from', 'search', '--to', SECRET],
+      ['labels', 'preview', '--account', '42', '--ids-file', 'search', '--set', `item_group=${SECRET}`],
+      ['data', 'query', '--name', 'labels', 'search', '--value', SECRET],
     ];
     for (const argv of lines) expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
-    expect(redactArgs(['labels', '--account', '42', 'preview', '--set', `item_group=${SECRET}`])).toEqual(['labels', '--account', '42', 'preview', '--set', 'item_group=<redacted>']);
-    // The field key and account stay, as everywhere else.
-    expect(redactArgs(['--data-dir', 'labels', 'labels', 'search', '--field', 'brand', '--value', SECRET])).toEqual(['--data-dir', 'labels', 'labels', 'search', '--field', 'brand', '--value', '<redacted>']);
+    expect(redactArgs(['labels', 'preview', '--to', 'Brand', `Defense${SECRET}`])).toEqual(['labels', 'preview', '--to', R, R]);
+    expect(redactArgs(['labels', '--from', 'get', '--to', SECRET, 'preview'])).toEqual(['labels', '--from', R, '--to', R, 'preview']);
   });
 
-  it('a value flag never leaks: every flag, both forms, before or after the subcommand, for every write or unknown subcommand', () => {
-    const flags = ['value', 'set', 'where', 'from', 'to', 'name', 'ids', 'approval-hash'];
-    const subs: Array<string | null> = ['search', 'preview', 'commit', 'field-name', 'previw', null];
-    for (const flag of flags) {
+  it('property: no flag off the allowlist, in either form, at any position, with stray positionals, ever shows the secret', () => {
+    const offList = ['value', 'set', 'where', 'from', 'to', 'name', 'ids', 'ids-file', 'file', 'cursor', 'approval-hash', 'data-dir', 'bogus', 'x'];
+    const subs: Array<string | null> = ['state', 'fields', 'get', 'search', 'drift', 'changes', 'preview', 'commit', 'undo', 'sets', 'set', 'cancel', 'field-name', 'previw', null];
+    const secrets = [SECRET, `item_group=${SECRET}`, `-${SECRET}`, `--${SECRET}`];
+    for (const flag of offList) {
       for (const sub of subs) {
-        const secret = flag === 'set' || flag === 'where' ? `item_group=${SECRET}` : SECRET;
-        const forms: string[][] = [[`--${flag}`, secret], [`--${flag}=${secret}`]];
-        for (const form of forms) {
-          const after = ['labels', ...(sub ? [sub] : []), '--account', '42', ...form];
-          const before = ['labels', ...form, ...(sub ? [sub] : []), '--account', '42'];
-          const root = ['--json', 'labels', '--data-dir', 'x', ...(sub ? [sub] : []), ...form];
-          for (const argv of [after, before, root]) {
-            expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
+        for (const secret of secrets) {
+          const forms: string[][] = [[`--${flag}`, secret], [`--${flag}=${secret}`], [`-${flag[0]}`, secret]];
+          for (const form of forms) {
+            const mid = [...(sub ? [sub] : [])];
+            const argvs = [
+              ['labels', ...mid, '--account', '42', ...form],
+              ['labels', ...form, ...mid, '--account', '42'],
+              ['--json', 'labels', '--data-dir', 'x', ...mid, ...form, 'stray', SECRET],
+              ['--profile', 'p', 'labels', ...form, 'Brand', SECRET, ...mid],
+            ];
+            for (const argv of argvs) {
+              const out = redactArgs(argv).join(' ');
+              // The stray positional and the flag value are always secret; the flag name itself is never the secret.
+              expect(out, argv.join(' ')).not.toContain(SECRET);
+            }
           }
         }
       }
     }
   });
 
-  it('known read subcommands and other groups are unchanged', () => {
-    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
-    expect(redactArgs(['ads', 'call', 'x', '--value', 'keep me', '--set', 'a=b'])).toEqual(['ads', 'call', 'x', '--value', 'keep me', '--set', 'a=b']);
+  it('lines with no labels token are exactly what they were before (other command groups)', () => {
+    expect(redactArgs(['brand', 'add', '--name', 'Northwind', '--seller-id', '42'])).toEqual(['brand', 'add', '--name', 'Northwind', '--seller-id', '42']);
+    expect(redactArgs(['ads', 'call', 'sp.list_campaigns', '--profile-id', '123', '--query', 'maxResults=10', '--token', 'abc123', '--value', 'keep me'])).toEqual(['ads', 'call', 'sp.list_campaigns', '--profile-id', '123', '--query', 'maxResults=10', '--token', R, '--value', 'keep me']);
+    expect(redactArgs(['amazon', 'report', 'run', '--type', 'GET_X', '--option', 'reportPeriod=DAY', '--client-secret', 'shh'])).toEqual(['amazon', 'report', 'run', '--type', 'GET_X', '--option', 'reportPeriod=DAY', '--client-secret', R]);
+    expect(redactArgs(['forecast', 'budget', '--set', '2026-12=5000', '--note', 'Q4 push'])).toEqual(['forecast', 'budget', '--set', `2026-12=${R}`, '--note', R]);
+    expect(redactArgs(['forecast', 'sub-brand', 'add', '--seller', '42', '--name', 'Northwind Outdoors', '--item-label', 'North'])).toEqual(['forecast', 'sub-brand', 'add', '--seller', '42', '--name', R, '--item-label', R]);
+    expect(redactArgs(['shelf', 'featured-offer-check', '--asins', 'B0EXAMPLE01,B0EXAMPLE02', '--marketplace', 'US'])).toEqual(['shelf', 'featured-offer-check', '--asins', 'B0EXAMPLE01,B0EXAMPLE02', '--marketplace', 'US']);
+    expect(redactArgs(['auth', 'service-setup', '--setup-code', 'SVC-ABCD-EFGH', '--client-id', 'svc_public'])).toEqual(['auth', 'service-setup', '--setup-code', R, '--client-id', 'svc_public']);
+    expect(redactArgs(['data', 'query', '--sql', 'select 1', '--name', 'x'])).toEqual(['data', 'query', '--sql', 'select 1', '--name', 'x']);
+  });
+
+  it('tokens before the first labels token keep the root-flag handling', () => {
+    expect(redactArgs(['--token', 'abc', 'labels', 'state'])).toEqual(['--token', R, 'labels', 'state']);
   });
 });
