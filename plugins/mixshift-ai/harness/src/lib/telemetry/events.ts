@@ -286,6 +286,12 @@ export const EventName = {
   // reason counts at the end, outcome; never an ASIN, a seller or a price.
   ShelfFeaturedOfferCheck: 'shelf.featured_offer_check',
 
+  // Labels read surface (lib/labels/client.ts + `mixshift labels`). One event per
+  // call: kind (state, fields, get, search, drift, changes), the account the call
+  // was for, entity, how many rows, pages and ids, the service state, outcome and
+  // duration. Never a label value, a filter value, an id or the answer.
+  LabelsCalled: 'labels.called',
+
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
   // + outcome + cache hit/miss + limitation COUNT only — never the insight

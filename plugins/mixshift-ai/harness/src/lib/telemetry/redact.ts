@@ -88,11 +88,32 @@ const BUDGET_VALUE_FLAG = /^(set|note)$/;
  * says are not collected (red team 2026-10-12 on #215, P1).
  */
 function isForecastSubBrand(argv: readonly string[]): boolean {
-  const i = argv.indexOf('forecast');
-  return i >= 0 && argv[i + 1] === 'sub-brand';
+  return hasSubcommandLater(argv, 'forecast', 'sub-brand');
+}
+
+/**
+ * `group` then `sub` anywhere later in argv, not only as the next token: the root options
+ * (`--json`, `--data-dir x`, `--verbose`) may sit between them and still parse, so
+ * `labels --json search ...` is the same command as `labels search --json ...`.
+ */
+function hasSubcommandLater(argv: readonly string[], group: string, sub: string): boolean {
+  const i = argv.indexOf(group);
+  return i >= 0 && argv.indexOf(sub, i + 1) >= 0;
 }
 
 const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
+
+/**
+ * And for `labels search ...`: the VALUE of `--value` is a label the customer typed on an
+ * item or campaign (a product line, a nickname, a tag), which is their own business data
+ * and which the privacy page says is not collected. The field key (`--field item_group`),
+ * the account and the ids stay, as they do for every other command.
+ */
+function isLabelsSearch(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'labels', 'search');
+}
+
+const LABELS_VALUE_FLAG = /^value$/;
 
 /**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
@@ -106,17 +127,22 @@ export function redactArgs(argv: readonly string[]): string[] {
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const labels = isLabelsSearch(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
+  // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
+  // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
+  // so it is redacted without the "looks like a flag" exception the budget flags keep.
+  const strictValue = subBrand || labels;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
-  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`).
+  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
 
   for (const arg of argv) {
     if (budgetFlag !== null) {
       const name = budgetFlag;
       budgetFlag = null;
-      if (!(arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg))) {
+      if (strictValue || !(arg.startsWith('-') && arg.length > 1 && !isNumericLike(arg))) {
         out.push(redactValue(name, arg));
         continue;
       }
