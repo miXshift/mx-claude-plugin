@@ -131,7 +131,7 @@ One more case arrives in chat rather than in the poll JSON: the user reports the
 
 ## Path C — Service credential (unattended runs): delegate
 
-Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at /admin, secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
+Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at People & access (https://build.mixshift.ai/people; legacy single sign-in tenants that have not moved to OAuth yet: mcp.mixshift.io/admin), secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
 
 One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` block) and a service credential both exist in the same data dir, the human session wins and the service credential is the fallback.
 
@@ -192,7 +192,7 @@ If it fails:
 End with a concise success message. Use what you actually learned, don't speculate.
 
 - Path A/D: run `mixshift auth status` and relay its first line, which says who you are signed in as; it says "verified member" only when you signed in as yourself with Google or Microsoft, for example *"Signed in as person@example.com (verified member of acme-co, builder)"*. Then: *"Token is stored locally at `~/.mixshift/auth/credentials` — only you can read it."*
-- Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at /admin any time."*
+- Path C: *"Service credential \<svc: label\> is configured and verified. Unattended runs on this machine authenticate as that label, and your admin can see, rotate, or revoke it at People & access (https://build.mixshift.ai/people) any time."*
 
 Don't restate everything from the CLI output (it's already on screen). Don't list features they could try unless they're already in context.
 
@@ -226,7 +226,7 @@ If the user gets stuck mid-flow:
 
 - **Scheduled task aborts with "No credentials found":** the task's sandbox has no credential. Route to Path C — and check `MIXSHIFT_DATA_DIR`: the service credential must live in the data dir the scheduled task actually reads.
 
-- **Service credential 401 invalid_client:** revoked or rotated. Admin checks /admin; re-run `service-setup` with the current secret. (Path C failure section has the full phrasing.)
+- **Service credential 401 invalid_client:** revoked or rotated. Admin checks People & access (legacy single sign-in tenants: /admin); re-run `service-setup` with the current secret. (Path C failure section has the full phrasing.)
 
 - **User asks about the legacy raw-MySQL path (`mixshift auth setup`):** that path is retired, and per-user IP whitelisting is gone with it. The command remains in the CLI only for backward compatibility; do not recommend it. Say: *"The old `auth setup` raw-MySQL path has been retired. `mixshift auth login` is the supported way to sign in, and unattended runs use a service credential (the mx-auth-service-setup flow)."*
 
