@@ -21,8 +21,15 @@
  *   - At most CHANGE_SET_MAX rows, each id once.
  */
 
-import { CHANGE_SET_MAX, OPEN_PREVIEWS_MAX } from './write-client.js';
+import { CHANGE_SET_MAX } from './write-client.js';
 import type { LabelEntity } from './client.js';
+
+/**
+ * The most change sets one file may make (one per distinct combination of values). An organization may hold 25
+ * uncommitted previews in all, so a file is held to 10: one file cannot use up the allowance that other work,
+ * an undo, or a second file needs.
+ */
+export const FILE_GROUPS_MAX = 10;
 
 /** The marker that clears a label in a CSV cell (and the only value that cannot be set from a file). */
 export const CLEAR_MARKER = '<clear>';
@@ -82,6 +89,15 @@ export function checkLabelValue(entity: LabelEntity, field: string, raw: string)
   const size = limit.unit === 'bytes' ? Buffer.byteLength(value, 'utf8') : [...value].length;
   if (size > limit.max) return { ok: false, message: `the value is longer than the ${limit.max} ${limit.unit} ${field} holds` };
   return { ok: true, value };
+}
+
+/**
+ * Does a value start with a character a spreadsheet reads as a formula (= + - @)? The service stores such a value
+ * as given through the API (`--set`), but says a FILE import must reject or neutralize it before it reaches a cell a
+ * person opens in a spreadsheet. A file is rejected here, with its line.
+ */
+export function startsLikeFormula(value: string): boolean {
+  return /^[=+\-@]/.test(value);
 }
 
 /** An id of this entity as the service takes it: ASINs upper-cased, campaign ids as 1 to 20 digits. */
@@ -289,6 +305,11 @@ export function parseChangeCsv(text: string, entity: LabelEntity): CsvResult {
         set[f] = null;
         return;
       }
+      if (startsLikeFormula(raw)) {
+        errors.push(`Line ${rec.line}, ${f}: a value in a file cannot start with = + - or @ (a spreadsheet would read it as a formula). Change the value, or set it with BTlabels preview --setBT instead.`.replace(/BT/g, '`'));
+        bad = true;
+        return;
+      }
       const checked = checkLabelValue(entity, f, raw);
       if (!checked.ok) {
         errors.push(`Line ${rec.line}, ${f}: ${checked.message}.`);
@@ -307,9 +328,9 @@ export function parseChangeCsv(text: string, entity: LabelEntity): CsvResult {
     groups.set(key, group);
   }
   if (errors.length > 0) return fail();
-  if (groups.size > OPEN_PREVIEWS_MAX) {
+  if (groups.size > FILE_GROUPS_MAX) {
     errors.push(
-      `This file makes ${groups.size} different combinations of values, and each combination is its own change set; an organization may hold at most ${OPEN_PREVIEWS_MAX} uncommitted previews. Give more rows the same values, or split the file.`,
+      `This file makes ${groups.size} different combinations of values, and each combination is its own change set; one file may make at most ${FILE_GROUPS_MAX} (an organization may hold 25 uncommitted previews in all, and one file should not use them up). Files work best when many rows share the same values. Give more rows the same values, or split the file.`,
     );
     return fail();
   }

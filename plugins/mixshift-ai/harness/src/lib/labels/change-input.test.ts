@@ -108,13 +108,15 @@ describe('parseChangeCsv', () => {
     expect(r.more).toBe(10);
   });
 
-  it('caps rows at one change set (1,000) and the number of combinations at the open-preview limit (25)', () => {
+  it('caps rows at one change set (1,000) and the number of combinations at 10 (so one file cannot use the 25-preview allowance)', () => {
     const big = Array.from({ length: 1001 }, (_v, i) => `B0X${i},Acme`).join('\n');
     expect(parseChangeCsv(`asin,brand\n${big}\n`, 'item')).toMatchObject({ ok: false, errors: [expect.stringContaining('1001 rows, and one change set holds at most 1000')] });
     const exactly = Array.from({ length: 1000 }, (_v, i) => `B0X${i},Acme`).join('\n');
     expect(parseChangeCsv(`asin,brand\n${exactly}\n`, 'item').ok).toBe(true);
-    const many = Array.from({ length: 26 }, (_v, i) => `B0X${i},Brand ${i}`).join('\n');
-    expect(parseChangeCsv(`asin,brand\n${many}\n`, 'item')).toMatchObject({ ok: false, errors: [expect.stringContaining('26 different combinations')] });
+    const ten = Array.from({ length: 10 }, (_v, i) => `B0X${i},Brand ${i}`).join('\n');
+    expect(parseChangeCsv(`asin,brand\n${ten}\n`, 'item').ok).toBe(true);
+    const many = Array.from({ length: 11 }, (_v, i) => `B0X${i},Brand ${i}`).join('\n');
+    expect(parseChangeCsv(`asin,brand\n${many}\n`, 'item')).toMatchObject({ ok: false, errors: [expect.stringContaining('11 different combinations')] });
   });
 });
 

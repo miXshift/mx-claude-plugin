@@ -250,3 +250,17 @@ describe('labels write commands: label values and ids are customer data', () => 
     expect(redactArgs(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z'])).toEqual(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z']);
   });
 });
+
+describe('labels: the subcommand is the first non-flag token, not any later token (review of #270)', () => {
+  const R = '<redacted>';
+  it('a flag value that is the word search or preview does not change which rules apply', () => {
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--rename', 'objective', '--from', 'search', '--to', 'Brand Defense Q4'])).toEqual(['labels', 'preview', '--account', '42', '--rename', 'objective', '--from', R, '--to', R]);
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--ids-file', 'search', '--set', 'item_group=Secret Line'])).toEqual(['labels', 'preview', '--account', '42', '--ids-file', 'search', '--set', `item_group=${R}`]);
+    expect(redactArgs(['--data-dir', 'x', 'labels', '--data-dir', 'search', 'preview', '--set', 'brand=Secret'])).toEqual(['--data-dir', 'x', 'labels', '--data-dir', 'search', 'preview', '--set', `brand=${R}`]);
+  });
+  it('read commands: a later `search` or `preview` token does not turn on or off the wrong rules', () => {
+    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01', '--ids-file', 'search'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01', '--ids-file', 'search']);
+    expect(redactArgs(['labels', 'search', '--account', '42', '--field', 'tag_1', '--value', 'preview'])).toEqual(['labels', 'search', '--account', '42', '--field', 'tag_1', '--value', R]);
+    expect(redactArgs(['labels', 'get', '--value', 'search'])).toEqual(['labels', 'get', '--value', 'search']);
+  });
+});

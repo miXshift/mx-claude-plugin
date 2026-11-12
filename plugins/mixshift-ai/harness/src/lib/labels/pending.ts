@@ -8,6 +8,9 @@
  * `<data dir>/labels/pending/<change set id>.json` (owner-only), is removed once the change set is
  * committed or cancelled, and any record past its expiry is swept the next time one is saved.
  *
+ * The file is created owner-only (0600) on macOS and Linux. On Windows those mode bits do not apply, so the
+ * record relies on the permissions of the user profile folder, which also holds the other MixShift files.
+ *
  * A change set previewed on another machine has no record here; `commit` then asks for
  * `--approval-hash` (printed by that preview in --json) or a fresh preview.
  */

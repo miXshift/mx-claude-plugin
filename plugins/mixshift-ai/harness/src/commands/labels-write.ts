@@ -54,7 +54,7 @@ import {
   type LabelsSelection,
   type ResultRow,
 } from '../lib/labels/write-client.js';
-import { checkEntityId, checkLabelValue, fieldKeysFor, parseChangeCsv, parseSetFlags, type FieldSet } from '../lib/labels/change-input.js';
+import { FILE_GROUPS_MAX, checkEntityId, checkLabelValue, fieldKeysFor, parseChangeCsv, parseSetFlags, type FieldSet } from '../lib/labels/change-input.js';
 import { HASH_RE, UUID_RE, loadPending, removePending, savePending } from '../lib/labels/pending.js';
 import {
   UTF16_MESSAGE,
@@ -114,7 +114,7 @@ export function registerLabelsWriteCommands(program: Command): void {
     .option('--ids <list>', 'comma-separated ASINs (or campaign ids with --entity campaign) to change')
     .option('--ids-file <path>', 'a text file of ids, separated by commas, spaces or new lines')
     .option('--where <field=value>', 'every item or campaign whose field equals this exact value (case and spacing included), for example item_group="Water Bottles"')
-    .option('--file <path>', `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it`)
+    .option('--file <path>', `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}`)
     .option('--set <field=value>', 'with --ids, --ids-file or --where: set a field to a value (repeatable), for example --set brand="Acme Home"', collect)
     .option('--clear <field>', 'with --ids, --ids-file or --where: remove the label from a field (repeatable)', collect)
     .option('--rename <field>', 'rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)')
@@ -166,8 +166,9 @@ export function registerLabelsWriteCommands(program: Command): void {
 
   labels
     .command('cancel <change-set-id>')
-    .description('Cancel a preview you no longer want. Nothing was changed by it, and nothing is. Only a preview can be cancelled.')
-    .action(async (id: string, _opts: unknown, cmd: Command) => runCancel(id, cmd.optsWithGlobals<RootOptions>()));
+    .description('Cancel a preview you no longer want. Nothing was changed by it, and nothing is. Only a preview can be cancelled. Sent ONLY with --commit; without it the change set is shown and nothing is cancelled.')
+    .option('--commit', 'actually cancel the preview (default: show it and send nothing). Use only after the person confirmed')
+    .action(async (id: string, opts: { commit?: boolean }, cmd: Command) => runCancel(id, opts, cmd.optsWithGlobals<RootOptions>()));
 
   // -------------------------------------------------------------------------
   // field-name
@@ -400,11 +401,13 @@ function sumTotals(views: readonly ChangeSetView[]): { identities: number; to_ch
 }
 
 /** A change set as --json carries it: the service's view, plus the command that commits it. */
-function viewJson(view: ChangeSetView, approvalSaved?: boolean): Record<string, unknown> {
-  const rest = withoutOk(view);
+function viewJson(view: ChangeSetView, approvalSaved?: boolean, withHash = true): Record<string, unknown> {
+  const { approval_hash: hash, ...rest } = withoutOk(view);
   const preview = view.status === 'preview';
   return {
     ...rest,
+    // Only a preview's own output carries the hash (a parent that must commit needs it); a read of a set never repeats it.
+    ...(withHash && hash !== undefined ? { approval_hash: hash } : {}),
     ...(preview ? { commit_command: commitCommand(view.change_set_id), ...(approvalSaved !== undefined ? { approval_saved: approvalSaved } : {}) } : {}),
   };
 }
@@ -418,6 +421,13 @@ function printPreviews(views: readonly ChangeSetView[], entity: LabelEntity | un
   noteFreshness(views[0]!.state);
   const ready = views.filter((v) => v.status === 'preview');
   if (ready.length === 0) return;
+  if (views.length > 1) {
+    process.stderr.write(
+      `\nThis file made ${views.length} change sets, one for each different combination of values. Each is committed (and undone) separately:\n` +
+        views.map((v) => `  ${v.change_set_id}`).join('\n') +
+        '\n',
+    );
+  }
   const blocked = ready.filter((v) => !v.can_commit);
   const lines: string[] = [];
   if (blocked.length > 0) lines.push(`  ${blockedText(blocked[0]!)}`);
@@ -458,7 +468,7 @@ async function runCommit(id: string, opts: { commit?: boolean; approvalHash?: st
     const saved = (await loadPending(setId, root.dataDir)) !== null || opts.approvalHash !== undefined;
     await trackLabels('commit', 'ok', startedAt, root.dataDir, { dry_run: true, committed: false, change_set_id: setId, status: view.status, service_state: view.state, committable: view.can_commit, approval_available: saved });
     if (root.json) {
-      return writeJson({ status: 'ok', committed: false, dry_run: true, approval_available: saved, change_set: viewJson(view, saved) });
+      return writeJson({ status: 'ok', committed: false, dry_run: true, approval_available: saved, change_set: viewJson(view, saved, false) });
     }
     process.stderr.write(`\nNOT COMMITTED (no --commit): nothing has been changed.\n`);
     process.stdout.write(renderChangeSet(view, undefined) + '\n');
@@ -481,6 +491,20 @@ async function runCommit(id: string, opts: { commit?: boolean; approvalHash?: st
   if (hash === undefined) {
     const pending = await loadPending(setId, root.dataDir);
     if (!pending) {
+      // No approval here: it may simply be a change set that is already final. Say what it really is.
+      const known = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+      if (isLabelsFailure(known)) return fail(known, 'commit', startedAt, root, { committed: true, approval_source: 'none' }, { change_set_id: setId });
+      const settled = settledStatus(known);
+      if (settled) {
+        await trackLabels('commit', settled.exit === 0 ? 'ok' : 'failed', startedAt, root.dataDir, { committed: true, sent: false, change_set_id: setId, status: known.status, approval_source: 'none', service_state: known.state, ...(settled.exit === 0 ? {} : { kind_failed: settled.kind }) });
+        if (root.json) writeJson({ status: settled.exit === 0 ? 'ok' : 'error', committed: false, sent: false, ...(settled.exit === 0 ? {} : { failure_kind: settled.kind }), message: settled.message, change_set: viewJson(known, undefined, false) });
+        else {
+          process.stderr.write(`\n${settled.exit === 0 ? '✓' : '✗'} ${settled.message}\n`);
+          process.stdout.write(renderChangeSet(known, undefined) + '\n');
+        }
+        process.exitCode = settled.exit;
+        return;
+      }
       const message =
         'This machine has no approval for that change set, so nothing was sent. Preview it again here (`mixshift labels preview ...`), or pass --approval-hash with the hash the preview returned.';
       await trackLabels('commit', 'failed', startedAt, root.dataDir, { committed: true, change_set_id: setId, kind_failed: 'no_approval' });
@@ -526,6 +550,30 @@ async function runCommit(id: string, opts: { commit?: boolean; approvalHash?: st
     if (result.sync?.note) process.stderr.write(`\n${result.sync.note}\n`);
   }
   if (incomplete) process.exitCode = 17;
+}
+
+/**
+ * What a change set that is not an open preview already is, with the exit code a commit attempt on it gets:
+ * committed 0, partial, stale or failed 17, cancelled or expired 16. null for a preview that can still be committed.
+ */
+function settledStatus(v: ChangeSetView): { exit: number; kind: string; message: string } | null {
+  switch (v.status) {
+    case 'committed':
+      return { exit: 0, kind: 'already_committed', message: `Nothing sent: this change set is already committed${v.committed_at ? ` (${v.committed_at})` : ''}.` };
+    case 'partial':
+      return { exit: 17, kind: 'partially_applied', message: 'Nothing sent: this change set was committed and only partly applied. The items that were not changed are listed below; preview the change again to include them.' };
+    case 'stale':
+    case 'failed':
+      return { exit: 17, kind: v.status, message: `Nothing sent: this change set was committed and ${v.status === 'stale' ? 'every item had changed since the preview, so nothing was applied' : 'nothing was applied'}. Preview the change again.` };
+    case 'cancelled':
+      return { exit: 16, kind: 'change_set_cancelled', message: 'Nothing sent: this change set was cancelled. Preview the change again.' };
+    case 'expired':
+      return { exit: 16, kind: 'change_set_expired', message: 'Nothing sent: this preview expired. Preview the change again.' };
+    case 'preview':
+      return Date.parse(v.expires_at) < Date.now() ? { exit: 16, kind: 'change_set_expired', message: 'Nothing sent: this preview expired. Preview the change again.' } : null;
+    default:
+      return { exit: 16, kind: 'not_open', message: `Nothing sent: this change set is ${v.status}, not an open preview.` };
+  }
 }
 
 /** The body of a commit that did not fully apply: print every item that needs attention, exit 17. */
@@ -641,17 +689,27 @@ async function runSet(id: string, root: RootOptions): Promise<void> {
   const view = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
   if (isLabelsFailure(view)) return fail(view, 'set', startedAt, root, {}, { change_set_id: setId });
   await trackLabels('set', 'ok', startedAt, root.dataDir, { change_set_id: setId, status: view.status, service_state: view.state });
-  if (root.json) return writeJson({ status: 'ok', change_set: viewJson(view) });
+  if (root.json) return writeJson({ status: 'ok', change_set: viewJson(view, undefined, false) });
   process.stdout.write(renderChangeSet(view, undefined) + '\n');
   if (view.status === 'preview' && view.can_commit) {
     process.stderr.write(`\nThis is a preview; nothing has been changed. To apply it after the person confirms: ${commitCommand(setId)}\n`);
   }
 }
 
-async function runCancel(id: string, root: RootOptions): Promise<void> {
+async function runCancel(id: string, opts: { commit?: boolean }, root: RootOptions): Promise<void> {
   const startedAt = Date.now();
   if (!UUID_RE.test(id.trim())) return badInput('The change set id is the one `mixshift labels preview` or `labels sets` printed (36 characters with dashes).', root);
   const setId = id.trim().toLowerCase();
+  if (!opts.commit) {
+    const view = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+    if (isLabelsFailure(view)) return fail(view, 'cancel', startedAt, root, { cancelled: false, dry_run: true }, { change_set_id: setId });
+    await trackLabels('cancel', 'ok', startedAt, root.dataDir, { dry_run: true, cancelled: false, change_set_id: setId, status: view.status, service_state: view.state });
+    if (root.json) return writeJson({ status: 'ok', cancelled: false, dry_run: true, change_set: viewJson(view, undefined, false) });
+    process.stderr.write(`\nNOT CANCELLED (no --commit): nothing has been changed.${view.status === 'preview' ? ' This would cancel the preview below; it expires on its own after 24 hours anyway.' : ` This change set is ${view.status}, and only a preview can be cancelled.`}\n`);
+    process.stdout.write(renderChangeSet(view, undefined) + '\n');
+    if (view.status === 'preview') process.stderr.write(`\nTo cancel it: mixshift labels cancel ${setId} --commit\n`);
+    return;
+  }
   const result = await labelsCancel(setId, { dataDirOverride: root.dataDir });
   if (isLabelsFailure(result)) return fail(result, 'cancel', startedAt, root, {}, { change_set_id: setId });
   await removePending(setId, root.dataDir);
@@ -719,7 +777,7 @@ async function runFieldName(opts: FieldNameOpts, root: RootOptions): Promise<voi
 // ---------------------------------------------------------------------------
 
 /** What to do next, per failure kind: the service's sentence says what happened, this says which command comes next. */
-function nextStep(failure: LabelsFailure, kind: CallKind, extra: Record<string, unknown>): string | undefined {
+function nextStep(failure: LabelsFailure, kind: CallKind, extra: Record<string, unknown>, base: Record<string, unknown> = {}): string | undefined {
   const id = typeof extra.change_set_id === 'string' ? extra.change_set_id : '<id>';
   switch (failure.kind) {
     case 'approval_mismatch':
@@ -729,6 +787,10 @@ function nextStep(failure: LabelsFailure, kind: CallKind, extra: Record<string, 
     case 'commit_retry':
     case 'commit_in_flight':
       return `Nothing was lost. Run the same command again: \`${commitCommand(id)}\`.`;
+    case 'too_many_entities':
+      return base.mode === 'where'
+        ? `List what matches with BTmixshift labels search --account <id> --field <key> --value <text>BT, save the ids to a file, and preview them in parts of at most ${CHANGE_SET_MAX} with --ids-file.`.replace(/BT/g, '`')
+        : undefined;
     case 'commit_too_large':
       return `Do not retry it as it is. Split the change into smaller change sets (at most ${CHANGE_SET_MAX} each) and preview and commit each one.`;
     case 'host_unreachable':
@@ -758,10 +820,11 @@ async function fail(failure: LabelsFailure, kind: CallKind, startedAt: number, r
     ...(serviceState ? { service_state: serviceState } : {}),
   });
   // A sign-in that may read labels but not change them gets one line saying so (the service's default words are about reading).
-  const friendly = failure.kind === 'insufficient_scope' && !failure.message ? 'This sign-in cannot change labels. Ask your organization admin for label-editing permission.' : failure.friendly;
+  const serviceSentence = typeof failure.body?.friendly === 'string' && failure.body.friendly.includes(' ');
+  const friendly = failure.kind === 'insufficient_scope' && !serviceSentence ? 'This sign-in cannot change labels. Ask your organization admin for label-editing permission.' : failure.friendly;
   const issues = Array.isArray(failure.body?.issues) ? (failure.body?.issues as unknown[]) : undefined;
   const issueLines = (issues ?? []).flatMap((i) => (isRecord(i) && typeof i.field === 'string' && typeof i.message === 'string' ? [`  ${i.field}: ${i.message}`] : []));
-  const step = nextStep(failure, kind, extra);
+  const step = nextStep(failure, kind, extra, base);
   if (root.json) {
     writeJson({
       status: 'error',

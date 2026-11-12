@@ -364,6 +364,8 @@ describe('labels preview --file', () => {
     expect(stderr).toContain('Change set 1 of 4: nothing has been changed.');
     expect(stderr).toContain('Change set 4 of 4: nothing has been changed.');
     expect(await readdir(join(tmp, 'labels', 'pending'))).toHaveLength(4);
+    expect(stderr).toContain('This file made 4 change sets, one for each different combination of values. Each is committed (and undone) separately:');
+    expect(stderr).toContain(`  ${SET_ID_2}`);
     expect(lastTrack().payload).toMatchObject({ mode: 'file', rows: 5, change_sets: 4 });
   });
 
@@ -398,6 +400,23 @@ describe('labels preview --file', () => {
     expect(lastLineJson()).toMatchObject({ status: 'error', failure_kind: 'invalid_input' });
     expect((lastLineJson().errors as string[]).length).toBe(5);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cell that starts with = + - or @ with its line (a file only; --set is left as the service treats it)', async () => {
+    const file = join(tmp, 'formula.csv');
+    await writeFile(file, csv('asin,brand,tag_1', 'B0EXAMPLE01,=SUM(A1),', 'B0EXAMPLE02,Acme,-20% promo', 'B0EXAMPLE03,+1,@x', 'B0EXAMPLE04,Fine,'));
+    await run('labels', 'preview', '--account', ACCOUNT, '--file', file);
+    expect(stderr).toContain('Line 2, brand: a value in a file cannot start with = + - or @');
+    expect(stderr).toContain('Line 3, tag_1:');
+    expect(stderr).toContain('Line 4, brand:');
+    expect(stderr).toContain('Line 4, tag_1:');
+    expect(process.exitCode).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    gateway = () => ({ status: 200, body: view() });
+    process.exitCode = undefined;
+    await run('labels', 'preview', '--account', ACCOUNT, '--ids', SECRET_ID, '--set', 'tag_1=-20% promo');
+    expect(seen[0]!.body).toMatchObject({ set: { tag_1: '-20% promo' } });
   });
 
   it('caps the file at the change set size with a message that says how to split it', async () => {
@@ -551,10 +570,13 @@ describe('labels commit: nothing is written without --commit', () => {
     expect(lastLineJson()).toMatchObject({ status: 'ok', committed: true, outcome: 'committed', already_committed: true, counts: { applied: 5, unchanged: 1, stale: 0, refused: 0 } });
   });
 
-  it('--commit with no approval on this machine sends nothing and exits 16; --approval-hash supplies one', async () => {
-    gateway = () => ({ status: 200, body: commitBody() });
+  it('--commit with no approval on this machine and an open preview: nothing is committed, exit 16; --approval-hash supplies one', async () => {
+    gateway = (req) => {
+      if (req.method !== 'GET') throw new Error('a write was sent');
+      return { status: 200, body: view() };
+    };
     await run('labels', 'commit', SET_ID, '--commit');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(seen.map((r) => r.method)).toEqual(['GET']);
     expect(process.exitCode).toBe(16);
     expect(stderr).toContain('no approval for that change set');
     expect(stderr).toContain('--approval-hash');
@@ -562,13 +584,61 @@ describe('labels commit: nothing is written without --commit', () => {
     process.exitCode = undefined;
     await run('--json', 'labels', 'commit', SET_ID, '--commit');
     expect(lastLineJson()).toMatchObject({ status: 'error', failure_kind: 'no_approval' });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(writesSeen()).toHaveLength(0);
 
+    gateway = () => ({ status: 200, body: commitBody() });
+    seen.length = 0;
     process.exitCode = undefined;
     await run('labels', 'commit', SET_ID, '--commit', '--approval-hash', HASH.toUpperCase());
     expect(seen[0]!.body).toMatchObject({ approval_hash: HASH });
     expect(process.exitCode).toBeUndefined();
     expect(lastTrack().payload).toMatchObject({ approval_source: 'flag' });
+  });
+
+  it.each([
+    ['committed', 0, 'already committed', {}],
+    ['partial', 17, 'only partly applied', { needs_attention: staleRows }],
+    ['stale', 17, 'every item had changed since the preview', {}],
+    ['failed', 17, 'nothing was applied', {}],
+    ['cancelled', 16, 'was cancelled', {}],
+    ['expired', 16, 'expired', {}],
+  ])('re-running a commit on a %s change set (no record here) reports its real status, exit %s, and sends no write', async (status, exit, words, extra) => {
+    gateway = () => ({ status: 200, body: view({ status, can_commit: false, approval_hash: undefined, committed_at: '2026-11-12T11:00:00.000000Z', ...extra }) });
+    await run('labels', 'commit', SET_ID, '--commit');
+    expect(writesSeen()).toHaveLength(0);
+    expect(stderr).toContain(words);
+    expect(stderr).not.toContain('no approval');
+    expect(process.exitCode ?? 0).toBe(exit);
+    stdout = '';
+    await run('--json', 'labels', 'commit', SET_ID, '--commit');
+    expect(lastLineJson()).toMatchObject({ committed: false, sent: false });
+    expect(lastLineJson().status).toBe(exit === 0 ? 'ok' : 'error');
+  });
+
+  it('a preview past its expiry with no record reads as expired (exit 16)', async () => {
+    gateway = () => ({ status: 200, body: view({ expires_at: '2020-01-01T00:00:00.000000Z' }) });
+    await run('labels', 'commit', SET_ID, '--commit');
+    expect(process.exitCode).toBe(16);
+    expect(stderr).toContain('expired');
+    expect(writesSeen()).toHaveLength(0);
+  });
+
+  it('--json of a set read and of the dry-run commit never repeats the approval hash; the preview does', async () => {
+    await previewOnce();
+    gateway = () => ({ status: 200, body: view() });
+    await run('--json', 'labels', 'set', SET_ID);
+    expect(stdout).not.toContain(HASH);
+    expect(lastLineJson()).toMatchObject({ status: 'ok' });
+    stdout = '';
+    await run('--json', 'labels', 'commit', SET_ID);
+    expect(stdout).not.toContain(HASH);
+    expect(lastLineJson()).toMatchObject({ approval_available: true });
+    stdout = '';
+    await run('--json', 'labels', 'cancel', SET_ID);
+    expect(stdout).not.toContain(HASH);
+    stdout = '';
+    await run('--json', 'labels', 'preview', '--account', ACCOUNT, '--ids', SECRET_ID, '--set', 'brand=Acme');
+    expect(stdout).toContain(HASH);
   });
 
   it('refuses a malformed change set id or approval hash before any request', async () => {
@@ -750,6 +820,24 @@ describe('failures: every kind, its exit code and what to do next', () => {
     expect(process.exitCode).toBe(15);
   });
 
+  it('insufficient_scope prints the gateway sentence when it sends one, and a plain one when it does not', async () => {
+    gateway = () => fail(403, 'insufficient_scope', 'This credential lacks the labels:write permission. Ask your org admin to grant it.', { required_scopes: ['labels:write'] });
+    await run('labels', 'preview', '--account', ACCOUNT, '--ids', SECRET_ID, '--set', 'brand=Acme');
+    expect(stderr).toContain('lacks the labels:write permission');
+    expect(stderr).not.toContain('This sign-in cannot change labels.');
+    expect(process.exitCode).toBe(11);
+  });
+
+  it('too_many_entities on --where advises labels search plus --ids-file, not a bare "split"', async () => {
+    gateway = () => fail(422, 'too_many_entities', 'This change reaches 1500 items or campaigns, and one change set holds at most 1000.', { entities: 1500, cap: 1000 });
+    await run('labels', 'preview', '--account', ACCOUNT, '--where', 'brand=Acme', '--set', 'brand=Zed');
+    expect(stderr).toContain('mixshift labels search --account <id> --field <key> --value <text>');
+    expect(stderr).toContain('--ids-file');
+    stderr = '';
+    await run('labels', 'preview', '--account', ACCOUNT, '--rename', 'brand', '--from', 'Acme', '--to', 'Zed');
+    expect(stderr).not.toContain('labels search');
+  });
+
   it('an unknown kind keeps the status mapping and is recorded as unrecognized', async () => {
     gateway = () => fail(409, 'something_new', 'A brand new sentence from the service.');
     await run('--json', 'labels', 'commit', SET_ID, '--commit', '--approval-hash', HASH);
@@ -856,15 +944,27 @@ describe('labels undo, sets, set, cancel', () => {
 
   it('cancel drops the preview and its kept approval; a committed set cannot be cancelled', async () => {
     await previewOnce();
-    gateway = () => ({ status: 200, body: { ok: true, state: 'on', change_set_id: SET_ID, status: 'cancelled', friendly: 'Cancelled. Nothing was changed.' } });
+    // Without --commit: the set is shown, nothing is cancelled.
+    gateway = (req) => {
+      if (req.method !== 'GET') throw new Error('a write was sent');
+      return { status: 200, body: view() };
+    };
     await run('labels', 'cancel', SET_ID);
+    expect(writesSeen()).toHaveLength(0);
+    expect(stderr).toContain('NOT CANCELLED (no --commit)');
+    expect(stderr).toContain(`mixshift labels cancel ${SET_ID} --commit`);
+    expect(await readFile(pendingFile(), 'utf8')).toContain(HASH);
+    seen.length = 0;
+    stderr = '';
+    gateway = () => ({ status: 200, body: { ok: true, state: 'on', change_set_id: SET_ID, status: 'cancelled', friendly: 'Cancelled. Nothing was changed.' } });
+    await run('labels', 'cancel', SET_ID, '--commit');
     expect(seen[0]!.method).toBe('POST');
     expect(seen[0]!.url.pathname).toBe(`/api/labels/changes/sets/${SET_ID}/cancel`);
     expect(stderr).toContain('✓ Cancelled. Nothing was changed.');
     await expect(readFile(pendingFile(), 'utf8')).rejects.toThrow();
 
     gateway = () => fail(409, 'not_cancellable', 'This change set is committed, so it cannot be cancelled. Only a preview can be.', { status: 'committed' });
-    await run('labels', 'cancel', SET_ID);
+    await run('labels', 'cancel', SET_ID, '--commit');
     expect(process.exitCode).toBe(15);
     expect(stderr).toContain('Only a preview can be.');
   });

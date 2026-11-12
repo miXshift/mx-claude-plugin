@@ -110,7 +110,27 @@ const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
  * the account and the ids stay, as they do for every other command.
  */
 function isLabelsSearch(argv: readonly string[]): boolean {
-  return hasSubcommandLater(argv, 'labels', 'search');
+  return labelsSubcommand(argv) === 'search';
+}
+
+/**
+ * The `labels` subcommand: the FIRST token after `labels` that is not a flag (or a root flag's value). Never
+ * "a token anywhere later": a flag value can be the word `search` or `preview` (`--from search`,
+ * `--ids-file search`), and treating that as the subcommand would pick the wrong redaction rules and leak.
+ */
+function labelsSubcommand(argv: readonly string[]): string | null {
+  const i = argv.indexOf('labels');
+  if (i < 0) return null;
+  for (let j = i + 1; j < argv.length; j += 1) {
+    const a = argv[j]!;
+    if (a === '--data-dir' || a === '--surface') {
+      j += 1;
+      continue;
+    }
+    if (a.startsWith('-')) continue;
+    return a;
+  }
+  return null;
 }
 
 const LABELS_VALUE_FLAG = /^value$/;
@@ -125,7 +145,8 @@ const LABELS_VALUE_FLAG = /^value$/;
  * `--where` the field key in front of the `=` stays (`--set item_group=<redacted>`).
  */
 function isLabelsWrite(argv: readonly string[]): boolean {
-  return hasSubcommandLater(argv, 'labels', 'preview') || hasSubcommandLater(argv, 'labels', 'commit') || hasSubcommandLater(argv, 'labels', 'field-name');
+  const sub = labelsSubcommand(argv);
+  return sub === 'preview' || sub === 'commit' || sub === 'field-name';
 }
 
 const LABELS_WRITE_VALUE_FLAG = /^(set|where|from|to|name|ids|approval-hash)$/;
