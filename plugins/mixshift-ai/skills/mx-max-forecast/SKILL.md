@@ -87,9 +87,10 @@ These rules supersede any other instruction.
   it in their words; never call the forecast "the plan".
 - **Do not read the `references/` folder during execution.** There is none here by design.
 - **Do not supplement with general e-commerce knowledge** or benchmarks not in the answer.
-- **Disclose the metered cost once, before the first call.** Each `mixshift intelligence run`
-  is a metered MixShift Intelligence request (a cached answer is served free). One sentence,
-  then run.
+- **Say once, before the first call, that forecast usage is tracked.** Each `mixshift
+  intelligence run` is recorded as usage on the account (a cached answer is not counted again).
+  That is usage tracking, not a charge per run: never tell the user a forecast costs money per
+  run, and never quote a price or say it will always be free. One sentence, then run.
 - **Writes only on the user's yes.** This skill writes three things, each after the user said
   yes to exactly what is written: the monthly sponsored ads budget (`mixshift forecast budget
   set`, after the user saw the months and amounts), the DSP switch (`mixshift forecast settings
@@ -317,7 +318,7 @@ When a month already holds a different budget, run the same command with `--dry-
 show the user what changes before saving.
 
 Then run Step 3 again, with a horizon that covers the last month saved (up to 12): the saved
-budget changes the answer, so it is one more metered request, not a cache hit. Compare the
+budget changes the answer, so it is a fresh run (tracked as usage), not a cached answer. Compare the
 months saved with `figures.months[]` in the new answer and name any saved month the answer does
 not use (outside the horizon). Then explain the new answer. **On no**, explain the answer you have
 and say the spend is estimated. A refused save (`state_home_elsewhere`, `insufficient_scope`,
@@ -345,7 +346,7 @@ forecast, so a budget that includes DSP can be read against it? Do not ask on a 
 forecast (the app holds the switch) and do not ask when the warehouse holds no DSP months
 (there is nothing to switch on; say DSP is not in the series if the user raises it).
 
-**On yes**, switch it on and re-run Step 3 (one more metered request):
+**On yes**, switch it on and re-run Step 3 (a fresh run, tracked as usage):
 
 ```bash
 mixshift forecast settings set --scope <scope_id from the answer> --include-dsp on
@@ -424,10 +425,11 @@ explanation beyond "the MixShift forecasting app".
 - **Revenue only on the computed path.** Units are served from a published forecast.
 - **Horizon 1 to 12.** Seven months out and beyond is a planning level on any account:
   the service's own backtests show no training depth beats last year's same month there.
-- **Metered.** Readiness and the forecast are each one metered request; cached answers are free
-  for a day. Saving a budget is two small requests on the account's usage (a read and a save),
-  and the re-run after it is one more forecast request. Listing or defining a sub-brand is one or
-  two small requests on the account's usage.
+- **Usage is tracked, not billed per run.** Readiness and the forecast are each recorded as one
+  request on the account's usage; a cached answer is not counted again for a day. Saving a
+  budget is two small requests on the account's usage (a read and a save), and the re-run after
+  it is one more forecast request. Listing or defining a sub-brand is one or two small requests
+  on the account's usage. None of this is a per-run charge, and the skill states no price.
 - **Sponsored only.** The budget is sponsored ad spend, the basis the computed forecast stands
   on; DSP is not part of it.
 
