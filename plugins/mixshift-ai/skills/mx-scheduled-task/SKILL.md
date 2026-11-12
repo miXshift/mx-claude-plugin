@@ -111,7 +111,9 @@ brand, digest delivered, no Amazon writes).
 3. **Use the raw client-id path, not a setup code.** A setup code is single-use
    with a 10-minute lifetime, which does not fit a sandbox that starts fresh on
    every fire. Have the admin create the credential with a raw secret at
-   https://mcp.mixshift.io/admin, then set in the environment:
+   People & access (https://build.mixshift.ai/people; legacy single sign-in
+   tenants that have not moved to OAuth yet: mcp.mixshift.io/admin), then set
+   in the environment:
    `MIXSHIFT_SERVICE_CLIENT_SECRET` (the older name `MIXSHIFT_CLIENT_SECRET`
    also works) and, optionally, `MIXSHIFT_SERVICE_CLIENT_ID` so the prompt need
    not pass `--client-id`. Each fire starts with
@@ -161,7 +163,7 @@ state must live under it, nowhere else.
 **Multiple scheduled tasks can share one anchor folder and one credential.** A
 service credential is a tenant machine credential, not bound to a task, so point
 every task at the same anchor and reuse the one credential when its scopes cover
-them (mint a separate credential only for finer /admin attribution or
+them (mint a separate credential only for finer People & access attribution or
 revocation, never because each task "needs its own"). The one thing that does
 NOT carry over is the Cowork folder grant: the mount permission is stored per
 task, so each task still needs its own one-time approval to reach the shared
@@ -173,15 +175,16 @@ per task.
 
 Invoke `mx-auth-service-setup` and follow it, with one instruction pinned: the
 data dir is `[anchor folder]/.mixshift` (on Claude Code, the default
-`~/.mixshift`). The admin mints a setup code at https://mcp.mixshift.io/admin,
-the user pastes it, and the credential lands inside the anchor.
+`~/.mixshift`). The admin mints a setup code at People & access (https://build.mixshift.ai/people),
+the user pastes it, and the credential lands inside the anchor. On a legacy
+single sign-in tenant that hasn't moved to OAuth yet? Use mcp.mixshift.io/admin for now.
 
 Scopes: request read-only for read-only work. A monthly forecast refresh does
-not need `ads:write` or `listings:write`. One credential per task keeps /admin
+not need `ads:write` or `listings:write`. One credential per task keeps People & access
 attribution and revocation clean.
 
 If a credential from earlier attempts is stranded (minted into a sandbox that no
-longer exists), have the user revoke it at /admin. Its secret is unreachable but
+longer exists), have the user revoke it at People & access. Its secret is unreachable but
 still valid until revoked.
 
 ## Step 3 - Generate the task instructions

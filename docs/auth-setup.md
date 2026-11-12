@@ -232,13 +232,15 @@ The `~/.mixshift/auth/credentials` file is per-OS-user. Cowork's chat backend ma
 
 `mixshift auth login` needs a human in a browser, and the tokens it stores rotate on refresh. Neither works for automation: a scheduled Cowork task wakes in a fresh sandbox with nobody at the keyboard, a cloud job reads its secrets from a read-only env, and CI has no browser anywhere. Service credentials cover exactly that.
 
-A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at `https://mcp.mixshift.io/admin`. It is scoped read-only by default, revocable instantly, and rotatable with zero downtime. (Amazon Ads writes need an explicit `ads:write` scope on the credential, issued by the admin; see below.) Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
+A service credential is a static `client_id` + `client_secret` pair, issued by your **tenant admin** at People & access (`https://build.mixshift.ai/people`). It is scoped read-only by default, revocable instantly, and rotatable with zero downtime. (Amazon Ads writes need an explicit `ads:write` scope on the credential, issued by the admin; see below.) Nothing about it changes when the automation uses it, so it survives restarts, redeploys, fresh sandboxes, and long pauses.
 
 ### Setup (default: one-time setup code, no secret handling)
 
 The easiest path is chat-driven: in the Claude workspace where the automation will run, say *"set up a service credential"* and the `mx-auth-service-setup` skill drives everything below.
 
-1. Your tenant admin clicks **Create service credential** at `https://mcp.mixshift.io/admin` (they pick a label like `nightly-foep-watch`). The admin gets a one-time **setup code** (`SVC-XXXX-XXXX`, valid 10 minutes).
+1. Your tenant admin clicks **Create service credential** at People & access (`https://build.mixshift.ai/people`; they pick a label like `nightly-foep-watch`). The admin gets a one-time **setup code** (`SVC-XXXX-XXXX`, valid 10 minutes).
+
+   > **Legacy fallback:** on a legacy single sign-in tenant that hasn't moved to OAuth yet, use `https://mcp.mixshift.io/admin` for now. Google sign-in users cannot reach `/admin`, so People & access is the primary path.
 2. Paste the code where the automation runs (chat is fine: the code is single-use and expires; nobody ever sees the secret):
 
    ```bash
@@ -247,13 +249,15 @@ The easiest path is chat-driven: in the Claude workspace where the automation wi
 
    The exchange creates the credential server-side at that moment and writes it directly into this machine's credentials file, then verifies by minting a real token.
 
+   If you see "unknown, expired, or already used": codes are single-use with a 10-minute lifetime and are kept only in gateway memory, so a gateway deploy mid-window drops any pending code. Mint a fresh code at People & access (`https://build.mixshift.ai/people`) and retry right away. On a legacy single sign-in tenant that hasn't moved to OAuth yet, use `mcp.mixshift.io/admin` for now.
+
 3. Done. Every plugin command now authenticates as the service credential when no human sign-in is present. Data queries, report pulls, and pricing calls all work identically.
 
-**Amazon Ads writes from an unattended run** need the credential to carry the `ads:write` scope. An interactive human session holds it implicitly; a service credential needs it issued explicitly by the tenant admin at `https://mcp.mixshift.io/admin`. Without it, reads work but a write returns `insufficient_scope`.
+**Amazon Ads writes from an unattended run** need the credential to carry the `ads:write` scope. An interactive human session holds it implicitly; a service credential needs it issued explicitly by the tenant admin at People & access (`https://build.mixshift.ai/people`; legacy single sign-in tenants that haven't moved to OAuth yet: `mcp.mixshift.io/admin`). Without it, reads work but a write returns `insufficient_scope`.
 
 ### Setup (raw secret, for CI / secret managers)
 
-When a pipeline holds the secret itself, the admin uses "Create with raw secret" at `/admin` instead and you deliver it via file or env:
+When a pipeline holds the secret itself, the admin uses "Create with raw secret" at People & access (legacy single sign-in tenants: `/admin`) instead and you deliver it via file or env:
 
 ```bash
 # Secret from a file:
@@ -282,11 +286,11 @@ Configure once inside the scheduled task's workspace (the same place your `MIXSH
 
 ### When it stops working
 
-One failure mode: HTTP 401 from the token endpoint, which means the credential was **revoked** or **rotated** past its overlap window. The error message says exactly that. Fix: your tenant admin checks the credential at `https://mcp.mixshift.io/admin`, and you re-run `mixshift auth service-setup` with the current secret. The plugin never deletes the block itself; only an admin action can invalidate it.
+One failure mode: HTTP 401 from the token endpoint, which means the credential was **revoked** or **rotated** past its overlap window. The error message says exactly that. Fix: your tenant admin checks the credential at People & access (`https://build.mixshift.ai/people`; legacy single sign-in tenants that haven't moved to OAuth yet: `https://mcp.mixshift.io/admin`), and you re-run `mixshift auth service-setup` with the current secret. The plugin never deletes the block itself; only an admin action can invalidate it.
 
 ### Rotation (admin side)
 
-Admins rotate without downtime: rotate at `/admin` (both old and new secrets work during the overlap), update the automation's secret at your own pace, verify it mints, then confirm the rotation (old secret dies). Revocation is instant and kills new token mints immediately.
+Admins rotate without downtime: rotate at People & access, or `/admin` on a legacy single sign-in tenant (both old and new secrets work during the overlap), update the automation's secret at your own pace, verify it mints, then confirm the rotation (old secret dies). Revocation is instant and kills new token mints immediately.
 
 ---
 
@@ -298,7 +302,7 @@ This path reads **your own tenant database**. A service credential resolves serv
 
 ### 1. Get a service credential
 
-Your tenant admin creates one at `https://mcp.mixshift.io/admin` with "Create with raw secret" and gives you the `client_id` and `client_secret`. It is read-only and revocable at any time. Because raw SQL spans every data domain, this path needs the credential to carry the full read set (`account:read`, `ads:read`, `retail:read`, `brand_analytics:read`), which is the default for a read-only credential. The narrower per-domain scopes apply to the `/v1` endpoints, not to raw SQL. You do not need the plugin or `mixshift auth service-setup` for this path, only the two strings. Keep the secret in your app's secret store, not in source control.
+Your tenant admin creates one at People & access (`https://build.mixshift.ai/people`; legacy single sign-in tenants that haven't moved to OAuth yet: `https://mcp.mixshift.io/admin`) with "Create with raw secret" and gives you the `client_id` and `client_secret`. It is read-only and revocable at any time. Because raw SQL spans every data domain, this path needs the credential to carry the full read set (`account:read`, `ads:read`, `retail:read`, `brand_analytics:read`), which is the default for a read-only credential. The narrower per-domain scopes apply to the `/v1` endpoints, not to raw SQL. You do not need the plugin or `mixshift auth service-setup` for this path, only the two strings. Keep the secret in your app's secret store, not in source control.
 
 ### 2. Mint an access token
 

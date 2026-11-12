@@ -657,4 +657,17 @@ describe('auth service-setup - raw path env names', () => {
     expect(stdout).toMatch(/MIXSHIFT_SERVICE_CLIENT_SECRET/);
     expect(stdout).toMatch(/MIXSHIFT_CLIENT_SECRET/);
   });
+
+  it('--setup-code help points to People & access first with a labeled legacy /admin fallback', () => {
+    const program = newProgram();
+    const auth = program.commands.find((c) => c.name() === 'auth')!;
+    const svc = auth.commands.find((c) => c.name() === 'service-setup')!;
+    const opt = svc.options.find((o) => o.long === '--setup-code')!;
+    expect(opt.description).toContain('People & access (https://build.mixshift.ai/people)');
+    expect(opt.description).toMatch(/legacy single sign-in/i);
+    expect(opt.description).toContain('mcp.mixshift.io/admin');
+    expect(opt.description.indexOf('build.mixshift.ai/people')).toBeLessThan(
+      opt.description.indexOf('mcp.mixshift.io/admin'),
+    );
+  });
 });

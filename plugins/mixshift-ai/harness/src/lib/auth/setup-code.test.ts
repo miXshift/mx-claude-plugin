@@ -43,6 +43,24 @@ describe('exchangeSetupCode', () => {
     );
   });
 
+  it('points to People & access first and keeps /admin as a labeled legacy fallback', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, { error: 'invalid_setup_code' }),
+    );
+    let message = '';
+    try {
+      await exchangeSetupCode('https://svc.test', 'SVC-DEAD-CODE', fetchImpl);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain('People & access (https://build.mixshift.ai/people)');
+    expect(message).toMatch(/legacy single sign-in tenant/i);
+    expect(message).toContain('mcp.mixshift.io/admin');
+    expect(message.indexOf('build.mixshift.ai/people')).toBeLessThan(
+      message.indexOf('mcp.mixshift.io/admin'),
+    );
+  });
+
   it('surfaces rate limiting distinctly', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(429, {}));
     await expect(exchangeSetupCode('https://svc.test', 'SVC-AAAA-BBBB', fetchImpl)).rejects.toThrow(
