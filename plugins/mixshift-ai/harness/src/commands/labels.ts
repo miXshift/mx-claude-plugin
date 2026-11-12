@@ -57,7 +57,7 @@ import {
 } from '../lib/labels/client.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
-interface RootOptions {
+export interface RootOptions {
   json?: boolean;
   dataDir?: string;
 }
@@ -70,7 +70,7 @@ const DEFAULT_PAGE = 50;
 /** The most ids one `labels get` run takes (it looks them up 500 at a time). */
 export const MAX_IDS = 10_000;
 
-const UTF16_MESSAGE =
+export const UTF16_MESSAGE =
   'The --ids-file looks like a UTF-16 file (Windows PowerShell 5.1 `>` writes UTF-16). Save it as UTF-8 and run again, ' +
   'for example `Set-Content -Encoding utf8 ids.txt` or save it from your editor as UTF-8.';
 
@@ -95,16 +95,17 @@ export function normalizeIds(raw: string, entity: LabelEntity): string[] {
   return [...new Set(entity === 'item' ? parts.map((p) => p.toUpperCase()) : parts)];
 }
 
-type CallKind = 'state' | 'fields' | 'get' | 'search' | 'drift' | 'changes';
+export type CallKind = 'state' | 'fields' | 'get' | 'search' | 'drift' | 'changes' | 'preview' | 'commit' | 'undo' | 'sets' | 'set' | 'cancel' | 'field_name';
 
 export function registerLabelsCommands(program: Command): void {
   const labels = program
     .command('labels')
     .description(
-      'Read the labels on your items (ASINs) and Amazon campaigns: Item Group, Brand, Nickname, Parent ASIN, ' +
-        'Item Label 1 and 2, Tags 1 to 4, and for campaigns Manager and Objective. Reads only, and free. ' +
-        'Turned on account by account: until it is on for yours, each command says so. --account is the ' +
-        'legacy seller id from `mixshift amazon merchants`.',
+      'Read and change the labels on your items (ASINs) and Amazon campaigns: Item Group, Brand, Nickname, Parent ASIN, ' +
+        'Item Label 1 and 2, Tags 1 to 4, and for campaigns Manager and Objective. Reading is free (state, fields, get, ' +
+        'search, drift, changes). Changing is always preview first, then commit with --commit after the person confirms ' +
+        '(preview, commit, undo, sets, set, cancel, field-name). Turned on account by account: until it is on for yours, ' +
+        'each command says so. --account is the legacy seller id from `mixshift amazon merchants`.',
     );
 
   labels
@@ -393,7 +394,7 @@ export function parseAccount(raw: string): string | null {
 }
 
 /** The one entity named, as a list of one; null when it is neither item nor campaign. */
-function parseEntity(raw: string): LabelEntity[] | null {
+export function parseEntity(raw: string): LabelEntity[] | null {
   const v = raw.trim().toLowerCase();
   return (LABEL_ENTITIES as readonly string[]).includes(v) ? [v as LabelEntity] : null;
 }
@@ -418,8 +419,8 @@ function isRealTime(v: string): boolean {
   return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v.slice(0, 10);
 }
 
-const accountMessage = () => '--account must be the legacy seller id (digits). Run `mixshift amazon merchants` for the ids you can use (legacySellerId).';
-const entityMessage = () => `--entity must be one of ${LABEL_ENTITIES.join(' or ')}.`;
+export const accountMessage = () => '--account must be the legacy seller id (digits). Run `mixshift amazon merchants` for the ids you can use (legacySellerId).';
+export const entityMessage = () => `--entity must be one of ${LABEL_ENTITIES.join(' or ')}.`;
 const limitMessage = () => `--limit must be a whole number from 1 to ${PAGE_MAX}.`;
 
 // ---------------------------------------------------------------------------
@@ -458,17 +459,17 @@ function countStates(rows: readonly DescribedRow[]): Record<LabelState, number> 
 // Failure and output plumbing
 // ---------------------------------------------------------------------------
 
-function writeJson(obj: unknown): void {
+export function writeJson(obj: unknown): void {
   // One compact object on one line, last on stdout: a parent that reads the last line gets all of it.
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
 
-function withoutOk<T extends { ok: true }>(a: T): Omit<T, 'ok'> {
+export function withoutOk<T extends { ok: true }>(a: T): Omit<T, 'ok'> {
   const { ok: _ok, ...rest } = a;
   return rest;
 }
 
-function badInput(message: string, root: RootOptions): void {
+export function badInput(message: string, root: RootOptions): void {
   if (root.json) writeJson({ status: 'error', failure_kind: 'invalid_input', message });
   else process.stderr.write(`error: ${message}\n`);
   process.exitCode = 1;
@@ -504,7 +505,7 @@ async function fail(failure: LabelsFailure, kind: CallKind, startedAt: number, r
   process.exitCode = exitCodeForLabelsKind(failure.kind);
 }
 
-async function trackLabels(kind: CallKind, outcome: 'ok' | 'failed', startedAt: number, dataDir: string | undefined, payload: Record<string, unknown>): Promise<void> {
+export async function trackLabels(kind: CallKind, outcome: 'ok' | 'failed', startedAt: number, dataDir: string | undefined, payload: Record<string, unknown>): Promise<void> {
   await track(
     {
       event_name: EventName.LabelsCalled,
@@ -517,7 +518,7 @@ async function trackLabels(kind: CallKind, outcome: 'ok' | 'failed', startedAt: 
   );
 }
 
-function noteFreshness(state: LabelsServiceState): void {
+export function noteFreshness(state: LabelsServiceState): void {
   if (state === 'observing') {
     process.stderr.write('  (labels are a copy kept current from the Data Manager about every 15 minutes, so a label edited there can show here up to 15 minutes later)\n');
   }
@@ -529,14 +530,14 @@ function noteFreshness(state: LabelsServiceState): void {
 
 const MAX_CELL = 40;
 
-function cell(s: string | null | undefined, max = MAX_CELL): string {
+export function cell(s: string | null | undefined, max = MAX_CELL): string {
   if (s === null || s === undefined || s === '') return '-';
   const one = s.replace(/\s+/g, ' ').replace(/\|/g, '/');
   const points = Array.from(one);
   return points.length > max ? points.slice(0, max - 1).join('') + '…' : one;
 }
 
-const blank = (v: string | null | undefined, none = '(blank)'): string => (v === null || v === undefined ? none : v === '' ? '(blank)' : cell(v));
+export const blank = (v: string | null | undefined, none = '(blank)'): string => (v === null || v === undefined ? none : v === '' ? '(blank)' : cell(v));
 
 export function renderState(s: LabelsStateAnswer): string {
   const L: string[] = [];

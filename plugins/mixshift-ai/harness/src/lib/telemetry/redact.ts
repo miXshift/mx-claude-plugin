@@ -116,6 +116,31 @@ function isLabelsSearch(argv: readonly string[]): boolean {
 const LABELS_VALUE_FLAG = /^value$/;
 
 /**
+ * And for the labels WRITE commands (`labels preview`, `labels commit`, `labels field-name`): the VALUES of
+ * `--set`, `--where`, `--from`, `--to` and `--name` are labels the customer typed, and `--ids` names their own
+ * items or campaigns (the read commands keep ids, as every command does; a change set is a statement about
+ * what they are about to relabel, so its ids go too). `--approval-hash` is the proof that a preview was seen,
+ * so it goes as well. Kept: the account, the entity, the scope, the field keys (`--clear tag_1`,
+ * `--rename item_group`, `--field label_2`), the change set id, file paths and the flags. For `--set` and
+ * `--where` the field key in front of the `=` stays (`--set item_group=<redacted>`).
+ */
+function isLabelsWrite(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'labels', 'preview') || hasSubcommandLater(argv, 'labels', 'commit') || hasSubcommandLater(argv, 'labels', 'field-name');
+}
+
+const LABELS_WRITE_VALUE_FLAG = /^(set|where|from|to|name|ids|approval-hash)$/;
+const LABELS_WRITE_KEYED_FLAG = /^(set|where)$/;
+const FIELD_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+
+function redactLabelsWriteValue(name: string, value: string): string {
+  if (LABELS_WRITE_KEYED_FLAG.test(name)) {
+    const eq = value.indexOf('=');
+    if (eq > 0 && FIELD_KEY.test(value.slice(0, eq).trim())) return `${value.slice(0, eq)}=${REDACTED}`;
+  }
+  return REDACTED;
+}
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -128,12 +153,14 @@ export function redactArgs(argv: readonly string[]): string[] {
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
   const labels = isLabelsSearch(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
-  const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
+  const labelsWrite = isLabelsWrite(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : labelsWrite ? LABELS_WRITE_VALUE_FLAG : null;
+  const redactValue = (name: string, value: string) =>
+    budget ? redactBudgetValue(name, value) : labelsWrite ? redactLabelsWriteValue(name, value) : REDACTED;
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels;
+  const strictValue = subBrand || labels || labelsWrite;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;

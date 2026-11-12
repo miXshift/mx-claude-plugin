@@ -213,3 +213,40 @@ describe('value flags in every argv form the parser accepts (review of #268)', (
     expect(redactArgs(['brand', 'add', '--name', '-Northwind'])).toEqual(['brand', 'add', '--name', '-Northwind']);
   });
 });
+
+describe('labels write commands: label values and ids are customer data', () => {
+  const R = '<redacted>';
+  const ID = '11111111-2222-4333-8444-555555555555';
+  const HASH = 'ab'.repeat(32);
+
+  it('preview: --set and --where keep the field key and lose the value; --ids, --from and --to are redacted; the rest stays', () => {
+    expect(
+      redactArgs(['--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--ids', 'B0EXAMPLE01,B0EXAMPLE02', '--set', 'item_group=Example Line', '--clear', 'tag_1', '--scope', 'region']),
+    ).toEqual(['--json', 'labels', 'preview', '--account', '42', '--entity', 'item', '--ids', R, '--set', `item_group=${R}`, '--clear', 'tag_1', '--scope', 'region']);
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--where=item_group=Old Line', '--set=brand=New'])).toEqual(['labels', 'preview', '--account', '42', `--where=item_group=${R}`, `--set=brand=${R}`]);
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--rename', 'tag_2', '--from', 'Old Tag', '--to', 'New Tag'])).toEqual(['labels', 'preview', '--account', '42', '--rename', 'tag_2', '--from', R, '--to', R]);
+    expect(redactArgs(['labels', 'preview', '--account', '42', '--ids-file', 'ids.txt', '--file', 'changes.csv'])).toEqual(['labels', 'preview', '--account', '42', '--ids-file', 'ids.txt', '--file', 'changes.csv']);
+  });
+
+  it('preview: root options in between and values that start with a dash are still redacted', () => {
+    expect(redactArgs(['labels', '--json', 'preview', '--ids', 'B0EXAMPLE01', '--set', 'tag_1=-20% promo'])).toEqual(['labels', '--json', 'preview', '--ids', R, '--set', `tag_1=${R}`]);
+    expect(redactArgs(['labels', 'preview', '--rename', 'tag_1', '--from', '-Old', '--to', '--New'])).toEqual(['labels', 'preview', '--rename', 'tag_1', '--from', R, '--to', R]);
+    expect(redactArgs(['labels', 'preview', '--set', 'not a key = x'])).toEqual(['labels', 'preview', '--set', R]);
+  });
+
+  it('commit: the approval hash goes, the change set id and the confirmation flag stay', () => {
+    expect(redactArgs(['labels', 'commit', ID, '--commit', '--approval-hash', HASH])).toEqual(['labels', 'commit', ID, '--commit', '--approval-hash', R]);
+    expect(redactArgs(['labels', 'commit', ID, '--approval-hash=' + HASH, '--commit'])).toEqual(['labels', 'commit', ID, `--approval-hash=${R}`, '--commit']);
+  });
+
+  it('field-name: the display name goes, the account and field key stay', () => {
+    expect(redactArgs(['labels', 'field-name', '--account', '42', '--field', 'label_2', '--name', 'Pattern ID', '--commit'])).toEqual(['labels', 'field-name', '--account', '42', '--field', 'label_2', '--name', R, '--commit']);
+  });
+
+  it('other commands keep these flags; the read commands keep their ids', () => {
+    expect(redactArgs(['brand', 'add', '--name', 'Northwind', '--set', 'a=b'])).toEqual(['brand', 'add', '--name', 'Northwind', '--set', 'a=b']);
+    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
+    expect(redactArgs(['labels', 'undo', ID])).toEqual(['labels', 'undo', ID]);
+    expect(redactArgs(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z'])).toEqual(['labels', 'sets', '--account', '42', '--before', '2026-11-12T10:00:00.000000Z']);
+  });
+});

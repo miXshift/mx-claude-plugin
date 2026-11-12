@@ -286,10 +286,14 @@ export const EventName = {
   // reason counts at the end, outcome; never an ASIN, a seller or a price.
   ShelfFeaturedOfferCheck: 'shelf.featured_offer_check',
 
-  // Labels read surface (lib/labels/client.ts + `mixshift labels`). One event per
-  // call: kind (state, fields, get, search, drift, changes), the account the call
-  // was for, entity, how many rows, pages and ids, the service state, outcome and
-  // duration. Never a label value, a filter value, an id or the answer.
+  // Labels surface (lib/labels/client.ts, write-client.ts + `mixshift labels`). One
+  // event per call: kind (state, fields, get, search, drift, changes; and for the
+  // write commands preview, commit, undo, sets, set, cancel, field_name), the account
+  // the call was for, entity, how many rows, pages and ids, the service state,
+  // outcome and duration. A write adds the change set id (MixShift's own id), whether
+  // it was committed or a dry run, and counts (applied, unchanged, stale, refused).
+  // Never a label value, a filter value, an item or campaign id, the approval hash
+  // or the answer.
   LabelsCalled: 'labels.called',
 
   // MixShift Intelligence service consumption (lib/intelligence/ +
