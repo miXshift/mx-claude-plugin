@@ -324,7 +324,7 @@ function registerSettingsCommands(forecast: Command): void {
       process.stdout.write(
         patch.includeDspSpend === true
           ? '\nThe next computed forecast (FCT-BASELINE-01) adds the account\'s DSP spend by month to sponsored spend and reads spend_basis ads_plus_dsp; a budget entered with `mixshift forecast budget` stays sponsored only.\n'
-          : '\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is one more metered request, not a cache hit.\n',
+          : '\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is a fresh run (tracked as usage), not a cached answer.\n',
       );
     });
 }
