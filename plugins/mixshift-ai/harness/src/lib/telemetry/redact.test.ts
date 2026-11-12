@@ -161,3 +161,26 @@ describe('forecast sub-brand (red team 2026-10-12 on #215)', () => {
     expect(redactArgs(['brand', 'add', '--name', 'Northwind'])).toEqual(['brand', 'add', '--name', 'Northwind']);
   });
 });
+
+describe('labels search', () => {
+  it('drops the --value text in both flag forms, and keeps the account, field key and the flags', () => {
+    expect(
+      redactArgs(['--json', 'labels', 'search', '--account', '42', '--field', 'item_group', '--value', 'Example Line', '--limit', '10']),
+    ).toEqual(['--json', 'labels', 'search', '--account', '42', '--field', 'item_group', '--value', '<redacted>', '--limit', '10']);
+    expect(redactArgs(['labels', 'search', '--account', '42', '--field=tag_1', '--value=Spring Promo', '--all'])).toEqual([
+      'labels',
+      'search',
+      '--account',
+      '42',
+      '--field=tag_1',
+      '--value=<redacted>',
+      '--all',
+    ]);
+    // A following flag is never swallowed by a value-less --value.
+    expect(redactArgs(['labels', 'search', '--value', '--account', '42'])).toEqual(['labels', 'search', '--value', '--account', '42']);
+    // Elsewhere a --value is not a label and is kept.
+    expect(redactArgs(['ads', 'call', 'x', '--value', 'keep me'])).toEqual(['ads', 'call', 'x', '--value', 'keep me']);
+    // The other labels commands carry ids and a time, not label text.
+    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02']);
+  });
+});

@@ -95,6 +95,19 @@ function isForecastSubBrand(argv: readonly string[]): boolean {
 const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
 
 /**
+ * And for `labels search ...`: the VALUE of `--value` is a label the customer typed on an
+ * item or campaign (a product line, a nickname, a tag), which is their own business data
+ * and which the privacy page says is not collected. The field key (`--field item_group`),
+ * the account and the ids stay, as they do for every other command.
+ */
+function isLabelsSearch(argv: readonly string[]): boolean {
+  const i = argv.indexOf('labels');
+  return i >= 0 && argv[i + 1] === 'search';
+}
+
+const LABELS_VALUE_FLAG = /^value$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -106,10 +119,11 @@ export function redactArgs(argv: readonly string[]): string[] {
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const labels = isLabelsSearch(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
-  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`).
+  // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
 
   for (const arg of argv) {
