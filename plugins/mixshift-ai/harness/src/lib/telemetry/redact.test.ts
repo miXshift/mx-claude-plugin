@@ -264,3 +264,45 @@ describe('labels: the subcommand is the first non-flag token, not any later toke
     expect(redactArgs(['labels', 'get', '--value', 'search'])).toEqual(['labels', 'get', '--value', 'search']);
   });
 });
+
+describe('labels: redaction fails closed when the subcommand is not resolved (second review of #270)', () => {
+  const SECRET = 'S3cretValue';
+
+  it('lines that are rejected by the parser, or carry a stray flag first, are still redacted', () => {
+    const lines: string[][] = [
+      ['labels', '--account', '42', 'search', '--field', 'brand', '--value', SECRET],
+      ['labels', '--account', '42', 'preview', '--set', `item_group=${SECRET}`],
+      ['--surface', 'labels', 'labels', 'search', '--value', SECRET],
+      ['--data-dir', 'labels', 'labels', 'preview', '--set', `item_group=${SECRET}`],
+      ['labels', 'previw', '--set', `item_group=${SECRET}`],
+    ];
+    for (const argv of lines) expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
+    expect(redactArgs(['labels', '--account', '42', 'preview', '--set', `item_group=${SECRET}`])).toEqual(['labels', '--account', '42', 'preview', '--set', 'item_group=<redacted>']);
+    // The field key and account stay, as everywhere else.
+    expect(redactArgs(['--data-dir', 'labels', 'labels', 'search', '--field', 'brand', '--value', SECRET])).toEqual(['--data-dir', 'labels', 'labels', 'search', '--field', 'brand', '--value', '<redacted>']);
+  });
+
+  it('a value flag never leaks: every flag, both forms, before or after the subcommand, for every write or unknown subcommand', () => {
+    const flags = ['value', 'set', 'where', 'from', 'to', 'name', 'ids', 'approval-hash'];
+    const subs: Array<string | null> = ['search', 'preview', 'commit', 'field-name', 'previw', null];
+    for (const flag of flags) {
+      for (const sub of subs) {
+        const secret = flag === 'set' || flag === 'where' ? `item_group=${SECRET}` : SECRET;
+        const forms: string[][] = [[`--${flag}`, secret], [`--${flag}=${secret}`]];
+        for (const form of forms) {
+          const after = ['labels', ...(sub ? [sub] : []), '--account', '42', ...form];
+          const before = ['labels', ...form, ...(sub ? [sub] : []), '--account', '42'];
+          const root = ['--json', 'labels', '--data-dir', 'x', ...(sub ? [sub] : []), ...form];
+          for (const argv of [after, before, root]) {
+            expect(redactArgs(argv).join(' '), argv.join(' ')).not.toContain(SECRET);
+          }
+        }
+      }
+    }
+  });
+
+  it('known read subcommands and other groups are unchanged', () => {
+    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
+    expect(redactArgs(['ads', 'call', 'x', '--value', 'keep me', '--set', 'a=b'])).toEqual(['ads', 'call', 'x', '--value', 'keep me', '--set', 'a=b']);
+  });
+});

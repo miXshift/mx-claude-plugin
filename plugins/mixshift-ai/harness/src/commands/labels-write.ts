@@ -114,7 +114,7 @@ export function registerLabelsWriteCommands(program: Command): void {
     .option('--ids <list>', 'comma-separated ASINs (or campaign ids with --entity campaign) to change')
     .option('--ids-file <path>', 'a text file of ids, separated by commas, spaces or new lines')
     .option('--where <field=value>', 'every item or campaign whose field equals this exact value (case and spacing included), for example item_group="Water Bottles"')
-    .option('--file <path>', `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}`)
+    .option('--file <path>', `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}. A cell cannot start with = + - or @ (a spreadsheet would read it as a formula): set such a value with --set instead`)
     .option('--set <field=value>', 'with --ids, --ids-file or --where: set a field to a value (repeatable), for example --set brand="Acme Home"', collect)
     .option('--clear <field>', 'with --ids, --ids-file or --where: remove the label from a field (repeatable)', collect)
     .option('--rename <field>', 'rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)')
@@ -133,7 +133,8 @@ export function registerLabelsWriteCommands(program: Command): void {
         'and confirmed it. Without --commit it shows the change set again and sends nothing. ' +
         'The approval hash is read from the preview made on this machine. ' +
         'Each item or campaign is checked against what the preview saw: one changed since is left as it is and reported stale. ' +
-        'Exit 17 when anything was stale, refused or failed. Committing the same change set again is safe.',
+        'Exit 17 when anything was stale, refused or failed. Committing the same change set again is safe. ' +
+        'With --json, an already committed change set answers committed: true, already_committed: true and sent: false (this run wrote nothing).',
     )
     .option('--commit', 'actually apply the change set (default: show it and send nothing). Use only after explicit confirmation of the preview')
     .option('--approval-hash <hash>', 'the approval hash the preview returned, for a change set previewed on another machine (this machine keeps its own)')
@@ -497,7 +498,9 @@ async function runCommit(id: string, opts: { commit?: boolean; approvalHash?: st
       const settled = settledStatus(known);
       if (settled) {
         await trackLabels('commit', settled.exit === 0 ? 'ok' : 'failed', startedAt, root.dataDir, { committed: true, sent: false, change_set_id: setId, status: known.status, approval_source: 'none', service_state: known.state, ...(settled.exit === 0 ? {} : { kind_failed: settled.kind }) });
-        if (root.json) writeJson({ status: settled.exit === 0 ? 'ok' : 'error', committed: false, sent: false, ...(settled.exit === 0 ? {} : { failure_kind: settled.kind }), message: settled.message, change_set: viewJson(known, undefined, false) });
+        // One shape: `committed` says whether the change set IS committed (even partly), `sent` says whether THIS run wrote.
+        const wasCommitted = ['committed', 'partial', 'stale', 'failed'].includes(known.status);
+        if (root.json) writeJson({ status: settled.exit === 0 ? 'ok' : 'error', committed: wasCommitted, already_committed: wasCommitted, sent: false, ...(settled.exit === 0 ? {} : { failure_kind: settled.kind }), message: settled.message, change_set: viewJson(known, undefined, false) });
         else {
           process.stderr.write(`\n${settled.exit === 0 ? '✓' : '✗'} ${settled.message}\n`);
           process.stdout.write(renderChangeSet(known, undefined) + '\n');
@@ -570,7 +573,8 @@ function settledStatus(v: ChangeSetView): { exit: number; kind: string; message:
     case 'expired':
       return { exit: 16, kind: 'change_set_expired', message: 'Nothing sent: this preview expired. Preview the change again.' };
     case 'preview':
-      return Date.parse(v.expires_at) < Date.now() ? { exit: 16, kind: 'change_set_expired', message: 'Nothing sent: this preview expired. Preview the change again.' } : null;
+      // The service's status is the truth; a local clock only ever says "appears".
+      return Date.parse(v.expires_at) < Date.now() ? { exit: 16, kind: 'change_set_expired', message: 'Nothing sent: this preview appears to have expired. Preview the change again.' } : null;
     default:
       return { exit: 16, kind: 'not_open', message: `Nothing sent: this change set is ${v.status}, not an open preview.` };
   }

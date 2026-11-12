@@ -611,7 +611,8 @@ describe('labels commit: nothing is written without --commit', () => {
     expect(process.exitCode ?? 0).toBe(exit);
     stdout = '';
     await run('--json', 'labels', 'commit', SET_ID, '--commit');
-    expect(lastLineJson()).toMatchObject({ committed: false, sent: false });
+    const wasCommitted = ['committed', 'partial', 'stale', 'failed'].includes(status);
+    expect(lastLineJson()).toMatchObject({ committed: wasCommitted, already_committed: wasCommitted, sent: false });
     expect(lastLineJson().status).toBe(exit === 0 ? 'ok' : 'error');
   });
 
@@ -619,7 +620,7 @@ describe('labels commit: nothing is written without --commit', () => {
     gateway = () => ({ status: 200, body: view({ expires_at: '2020-01-01T00:00:00.000000Z' }) });
     await run('labels', 'commit', SET_ID, '--commit');
     expect(process.exitCode).toBe(16);
-    expect(stderr).toContain('expired');
+    expect(stderr).toContain('appears to have expired');
     expect(writesSeen()).toHaveLength(0);
   });
 

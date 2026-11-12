@@ -109,31 +109,49 @@ const SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
  * and which the privacy page says is not collected. The field key (`--field item_group`),
  * the account and the ids stay, as they do for every other command.
  */
-function isLabelsSearch(argv: readonly string[]): boolean {
-  return labelsSubcommand(argv) === 'search';
-}
+const ROOT_VALUE_FLAGS = new Set(['--data-dir', '--surface']);
 
 /**
- * The `labels` subcommand: the FIRST token after `labels` that is not a flag (or a root flag's value). Never
- * "a token anywhere later": a flag value can be the word `search` or `preview` (`--from search`,
- * `--ids-file search`), and treating that as the subcommand would pick the wrong redaction rules and leak.
+ * The first token at or after `from` that is not a flag (or the value of a root flag that takes one).
+ * Returns its index, or -1.
  */
-function labelsSubcommand(argv: readonly string[]): string | null {
-  const i = argv.indexOf('labels');
-  if (i < 0) return null;
-  for (let j = i + 1; j < argv.length; j += 1) {
+function firstWord(argv: readonly string[], from: number): number {
+  for (let j = from; j < argv.length; j += 1) {
     const a = argv[j]!;
-    if (a === '--data-dir' || a === '--surface') {
+    if (ROOT_VALUE_FLAGS.has(a)) {
       j += 1;
       continue;
     }
     if (a.startsWith('-')) continue;
-    return a;
+    return j;
   }
-  return null;
+  return -1;
 }
 
-const LABELS_VALUE_FLAG = /^value$/;
+type LabelsMode = 'none' | 'search' | 'write' | 'union';
+
+/** The subcommands that carry no label text or ids in a value flag. They keep every flag as typed. */
+const LABELS_PLAIN_SUBCOMMANDS = new Set(['state', 'fields', 'get', 'drift', 'changes', 'undo', 'sets', 'set', 'cancel']);
+
+/**
+ * Which redaction rules `labels ...` gets. The command is the first non-flag token of the whole line (a root
+ * flag's value, like `--data-dir labels`, is not the command), and the subcommand is the first non-flag token after
+ * it, never "a token anywhere later" (`--from search` is a value, not the subcommand). Fails CLOSED: when `labels`
+ * is the command and the subcommand is not one we know (a typo, a stray flag such as `labels --account 42 preview`,
+ * or none at all), the flags of every labels command are redacted together, because the line is captured before it
+ * is parsed and a rejected line still reaches telemetry.
+ */
+function labelsMode(argv: readonly string[]): LabelsMode {
+  const cmd = firstWord(argv, 0);
+  if (cmd < 0 || argv[cmd] !== 'labels') return 'none';
+  const subIdx = firstWord(argv, cmd + 1);
+  const sub = subIdx < 0 ? null : argv[subIdx]!;
+  if (sub === 'search') return 'search';
+  if (sub === 'preview' || sub === 'commit' || sub === 'field-name') return 'write';
+  if (sub !== null && LABELS_PLAIN_SUBCOMMANDS.has(sub)) return 'none';
+  return 'union';
+}
+
 
 /**
  * And for the labels WRITE commands (`labels preview`, `labels commit`, `labels field-name`): the VALUES of
@@ -144,12 +162,8 @@ const LABELS_VALUE_FLAG = /^value$/;
  * `--rename item_group`, `--field label_2`), the change set id, file paths and the flags. For `--set` and
  * `--where` the field key in front of the `=` stays (`--set item_group=<redacted>`).
  */
-function isLabelsWrite(argv: readonly string[]): boolean {
-  const sub = labelsSubcommand(argv);
-  return sub === 'preview' || sub === 'commit' || sub === 'field-name';
-}
+const LABELS_UNION_VALUE_FLAG = /^(value|set|where|from|to|name|ids|approval-hash)$/;
 
-const LABELS_WRITE_VALUE_FLAG = /^(set|where|from|to|name|ids|approval-hash)$/;
 const LABELS_WRITE_KEYED_FLAG = /^(set|where)$/;
 const FIELD_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
@@ -173,15 +187,23 @@ export function redactArgs(argv: readonly string[]): string[] {
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
-  const labels = isLabelsSearch(argv);
-  const labelsWrite = isLabelsWrite(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : labelsWrite ? LABELS_WRITE_VALUE_FLAG : null;
+  const mode = labelsMode(argv);
+  // Every labels mode redacts the union of the labels value flags (fail closed): the parser may reject a flag
+  // on this subcommand, but the line is captured before it is parsed.
+  const labelsWrite = mode !== 'none';
+  const valueFlag = budget
+    ? BUDGET_VALUE_FLAG
+    : subBrand
+      ? SUB_BRAND_VALUE_FLAG
+      : labelsWrite
+        ? LABELS_UNION_VALUE_FLAG
+        : null;
   const redactValue = (name: string, value: string) =>
     budget ? redactBudgetValue(name, value) : labelsWrite ? redactLabelsWriteValue(name, value) : REDACTED;
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels || labelsWrite;
+  const strictValue = subBrand || labelsWrite;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
