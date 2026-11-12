@@ -13,7 +13,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ALL_CAP, describeRow, parseSince, registerLabelsCommands, renderChanges, renderRows } from './labels.js';
+import { ALL_CAP, MAX_IDS, describeRow, normalizeIds, parseSince, registerLabelsCommands, renderChanges, renderRows } from './labels.js';
 import { track } from '../lib/telemetry/index.js';
 
 vi.mock('../lib/auth/credentials.js', () => ({
@@ -372,7 +372,7 @@ describe('labels search', () => {
     gateway = () => ({ status: 200, body: itemsPage([{ id: '111', labels: { objective: label('Example') } }], null, 'campaign') });
     await run('--json', 'labels', 'search', '--account', ACCOUNT, '--entity', 'campaign');
     expect(calls()[0].pathname).toBe('/api/labels/campaigns');
-    expect((lastLineJson() as { items: unknown[] }).items).toHaveLength(1);
+    expect((lastLineJson() as { rows: unknown[] }).rows).toHaveLength(1);
   });
 
   it('--all follows the cursors to the end (page size 200) and says how many pages', async () => {
@@ -452,7 +452,7 @@ describe('labels changes', () => {
     gateway = () => ({ status: 200, body: feed([change('c1', null, 'Spring'), change('c2', 'Spring', ''), change('c3', '', 'Summer')], false) });
     await run('labels', 'changes', '--account', ACCOUNT, '--since', '2026-11-12', '--limit', '10');
     expect(Object.fromEntries(calls()[0].searchParams)).toEqual({ account: ACCOUNT, since: '2026-11-12T00:00:00Z', limit: '10' });
-    expect(stdout).toContain('| 2026-11-12T09:00:00.123456Z | item | B0CHANGE001 | tag_1 | (never set) | Spring | dash | - |');
+    expect(stdout).toContain('| 2026-11-12T09:00:00.123456Z | item | B0CHANGE001 | tag_1 | (never set) | Spring | Data Manager | - |');
     expect(stdout).toContain('| Spring | (cleared) |');
     expect(stdout).toContain('| (blank) | Summer |');
     expect(stdout).toContain('Up to date. To poll for newer changes later, pass --cursor POS-1');
@@ -528,5 +528,117 @@ describe('output rules', () => {
 
   it('an empty result says so', () => {
     expect(renderRows([], ['tag_1'])).toBe('_(none)_');
+  });
+});
+
+describe('review fixes (#268)', () => {
+  const lookupAll = (init: RequestInit) => ({
+    status: 200,
+    body: { ok: true, state: 'observing', account: 12345, merchant_type: 'Seller', entity: 'item', fields: [], results: (JSON.parse(String(init.body)).ids as string[]).map((id) => ({ id, status: 'seen', labels: {} })), unseen: [] },
+  });
+
+  it('search --json puts the rows under one stable key, rows, for items and campaigns, with entity in the envelope', async () => {
+    gateway = (url) => ({ status: 200, body: url.pathname === '/api/labels/items' ? itemsPage([{ id: 'B0ONE' }], null) : itemsPage([{ id: '111' }], null, 'campaign') });
+    await run('--json', 'labels', 'search', '--account', ACCOUNT);
+    expect(lastLineJson()).toMatchObject({ entity: 'item', rows: [{ id: 'B0ONE' }] });
+    expect(lastLineJson()).not.toHaveProperty('items');
+    stdout = '';
+    await run('--json', 'labels', 'search', '--account', ACCOUNT, '--entity', 'campaign');
+    expect(lastLineJson()).toMatchObject({ entity: 'campaign', rows: [{ id: '111' }] });
+    expect(lastLineJson()).not.toHaveProperty('campaigns');
+  });
+
+  it('an ids file saved as UTF-16 (a byte-order mark, either order, or NUL bytes) fails plainly before any call', async () => {
+    const utf16le = join(tmp, 'le.txt');
+    await writeFile(utf16le, Buffer.from('﻿B0EXAMPLE01\r\nB0EXAMPLE02\r\n', 'utf16le'));
+    const utf16be = join(tmp, 'be.txt');
+    await writeFile(utf16be, Buffer.from([0xfe, 0xff, 0x00, 0x42, 0x00, 0x30]));
+    const nul = join(tmp, 'nul.txt');
+    await writeFile(nul, Buffer.from([0x42, 0x00, 0x30, 0x00, 0x45]));
+    for (const f of [utf16le, utf16be, nul]) {
+      process.exitCode = undefined;
+      stderr = '';
+      await run('labels', 'get', '--account', ACCOUNT, '--ids-file', f);
+      expect(stderr, f).toContain('Save it as UTF-8');
+      expect(process.exitCode, f).toBe(1);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    stdout = '';
+    await run('--json', 'labels', 'get', '--account', ACCOUNT, '--ids-file', utf16le);
+    expect(lastLineJson()).toMatchObject({ status: 'error', failure_kind: 'invalid_input' });
+  });
+
+  it('a UTF-8 file with a byte-order mark works: the mark never sticks to the first id', async () => {
+    const f = join(tmp, 'bom.txt');
+    await writeFile(f, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('b0example01\r\nB0EXAMPLE02\r\n', 'utf8')]));
+    gateway = (_u, init) => lookupAll(init);
+    await run('--json', 'labels', 'get', '--account', ACCOUNT, '--ids-file', f);
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)).ids).toEqual(['B0EXAMPLE01', 'B0EXAMPLE02']);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it(`more than ${MAX_IDS} ids in one run is refused with a clear message before any call; exactly ${MAX_IDS} goes through`, async () => {
+    const make = (n: number) => Array.from({ length: n }, (_, i) => `B0EX${String(i).padStart(7, '0')}`).join(',');
+    await run('labels', 'get', '--account', ACCOUNT, '--ids', make(MAX_IDS + 1));
+    expect(stderr).toContain(`That is ${MAX_IDS + 1} ids; one run takes at most ${MAX_IDS}`);
+    expect(process.exitCode).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    process.exitCode = undefined;
+    gateway = (_u, init) => lookupAll(init);
+    await run('--json', 'labels', 'get', '--account', ACCOUNT, '--ids', make(MAX_IDS));
+    expect(fetchMock).toHaveBeenCalledTimes(20);
+    expect(lastLineJson()).toMatchObject({ requested: MAX_IDS, batches: 20 });
+  });
+
+  it('item ids are trimmed and upper-cased before repeats are dropped, so a repeat cannot straddle a batch boundary; campaign ids stay as given', async () => {
+    expect(normalizeIds(' b0x ,B0X\nb0y', 'item')).toEqual(['B0X', 'B0Y']);
+    expect(normalizeIds('0123,0123, 456', 'campaign')).toEqual(['0123', '456']);
+    // 500 distinct ids, then the first again in lower case: one call of 500, not two.
+    const ids = Array.from({ length: 500 }, (_, i) => `B0EX${String(i).padStart(6, '0')}`);
+    gateway = (_u, init) => lookupAll(init);
+    await run('--json', 'labels', 'get', '--account', ACCOUNT, '--ids', [...ids, ids[0].toLowerCase()].join(','));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(lastLineJson()).toMatchObject({ requested: 500, batches: 1 });
+  });
+
+  it('changes show the source in plain words in the table, and the raw value in --json', async () => {
+    const change = (id: string, source: string) => ({ id, entity: 'item', entity_id: 'B0CHANGE001', field: 'tag_1', before: null, after: 'A', result: 'applied', source, actor: null, time: '2026-11-12T09:00:00Z' });
+    gateway = () => ({ status: 200, body: { ok: true, state: 'observing', account: 12345, merchant_type: 'Seller', changes: [change('1', 'service'), change('2', 'dash'), change('3', 'backfill'), change('4', 'inherit'), change('5', 'other')], position: {}, next_cursor: 'P', has_more: false, limit: 50 } });
+    await run('labels', 'changes', '--account', ACCOUNT);
+    for (const [word, raw] of [['MixShift', 'service'], ['Data Manager', 'dash'], ['first import', 'backfill'], ['carried over', 'inherit']]) {
+      expect(stdout, word).toContain(`| ${word} |`);
+      expect(stdout, raw).not.toContain(`| ${raw} |`);
+    }
+    expect(stdout).toContain('| other |');
+    stdout = '';
+    await run('--json', 'labels', 'changes', '--account', ACCOUNT);
+    expect((lastLineJson() as { changes: Array<{ source: string }> }).changes.map((c) => c.source)).toEqual(['service', 'dash', 'backfill', 'inherit', 'other']);
+  });
+
+  it('the service freshness note is shown verbatim, even when it says Dash', async () => {
+    gateway = () => ({ status: 200, body: { ...STATE_OBSERVING, freshness: { typical_lag_minutes: 15, note: 'The store is a copy kept current from Dash.' } } });
+    await run('labels', 'state');
+    expect(stdout).toContain('The store is a copy kept current from Dash.');
+  });
+
+  it('a repeated cursor under --all ends the run instead of spinning, and says there is more', async () => {
+    gateway = () => ({ status: 200, body: itemsPage([{ id: 'B0A' }, { id: 'B0B' }], 'SAME') });
+    await run('--json', 'labels', 'search', '--account', ACCOUNT, '--all');
+    expect(fetchMock).toHaveBeenCalledTimes(2); // the first page, then the page behind SAME, which hands back SAME again
+    expect(lastLineJson()).toMatchObject({ truncated: true, has_more: true, next_cursor: 'SAME', pages: 2 });
+    stdout = '';
+    await run('labels', 'search', '--account', ACCOUNT, '--all');
+    expect(stdout).toContain('Continue with --cursor SAME');
+    expect(stdout).not.toContain('--all cap');
+  });
+
+  it('account_limited with no friendly text still gets the plain sentence and exit 11', async () => {
+    gateway = () => ({ status: 403, body: { ok: false, kind: 'account_limited' } });
+    await run('labels', 'drift', '--account', ACCOUNT);
+    expect(stderr).toContain('✗ This credential is limited to other accounts, so it cannot read labels.');
+    expect(process.exitCode).toBe(11);
+    stdout = '';
+    await run('--json', 'labels', 'drift', '--account', ACCOUNT);
+    expect(lastLineJson()).toMatchObject({ status: 'error', failure_kind: 'account_limited', http_status: 403 });
   });
 });

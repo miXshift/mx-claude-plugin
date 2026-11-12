@@ -176,11 +176,40 @@ describe('labels search', () => {
       '--value=<redacted>',
       '--all',
     ]);
-    // A following flag is never swallowed by a value-less --value.
-    expect(redactArgs(['labels', 'search', '--value', '--account', '42'])).toEqual(['labels', 'search', '--value', '--account', '42']);
     // Elsewhere a --value is not a label and is kept.
     expect(redactArgs(['ads', 'call', 'x', '--value', 'keep me'])).toEqual(['ads', 'call', 'x', '--value', 'keep me']);
     // The other labels commands carry ids and a time, not label text.
     expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01,B0EXAMPLE02']);
+  });
+});
+
+describe('value flags in every argv form the parser accepts (review of #268)', () => {
+  const R = '<redacted>';
+
+  it('labels search: root options between `labels` and `search` do not hide the command', () => {
+    expect(redactArgs(['labels', '--json', 'search', '--account', '42', '--value', 'Secret Line'])).toEqual(['labels', '--json', 'search', '--account', '42', '--value', R]);
+    expect(redactArgs(['--json', 'labels', '--data-dir', 'x', 'search', '--value=Secret Line'])).toEqual(['--json', 'labels', '--data-dir', 'x', 'search', `--value=${R}`]);
+    expect(redactArgs(['labels', '--verbose', '--json', 'search', '--account', '42', '--field', 'tag_1', '--value', 'Secret Line', '--all'])).toEqual(['labels', '--verbose', '--json', 'search', '--account', '42', '--field', 'tag_1', '--value', R, '--all']);
+  });
+
+  it('labels search: a value that starts with a dash is still the value (commander takes it)', () => {
+    expect(redactArgs(['labels', 'search', '--value', '-Secret Line'])).toEqual(['labels', 'search', '--value', R]);
+    expect(redactArgs(['labels', 'search', '--value', '--promo', '--account', '42'])).toEqual(['labels', 'search', '--value', R, '--account', '42']);
+    expect(redactArgs(['labels', 'search', '--value', '-5'])).toEqual(['labels', 'search', '--value', R]);
+    expect(redactArgs(['labels', 'search', '--value=-Secret'])).toEqual(['labels', 'search', `--value=${R}`]);
+    // A trailing bare --value has nothing to redact and nothing to leak.
+    expect(redactArgs(['labels', 'search', '--account', '42', '--value'])).toEqual(['labels', 'search', '--account', '42', '--value']);
+  });
+
+  it('labels: other subcommands and other groups keep --value', () => {
+    expect(redactArgs(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01'])).toEqual(['labels', 'get', '--account', '42', '--ids', 'B0EXAMPLE01']);
+    expect(redactArgs(['search', '--value', 'keep'])).toEqual(['search', '--value', 'keep']);
+  });
+
+  it('forecast sub-brand: root options in between, and dash-leading values, in both flag forms', () => {
+    expect(redactArgs(['forecast', '--json', 'sub-brand', 'add', '--seller', '42', '--name', 'Northwind Outdoors'])).toEqual(['forecast', '--json', 'sub-brand', 'add', '--seller', '42', '--name', R]);
+    expect(redactArgs(['--json', 'forecast', '--data-dir', 'x', 'sub-brand', 'add', '--item-label=Northwind', '--campaign-label', 'north'])).toEqual(['--json', 'forecast', '--data-dir', 'x', 'sub-brand', 'add', `--item-label=${R}`, '--campaign-label', R]);
+    expect(redactArgs(['forecast', 'sub-brand', 'add', '--name', '-Northwind', '--item-label', '--promo', '--campaign-label=-x'])).toEqual(['forecast', 'sub-brand', 'add', '--name', R, '--item-label', R, `--campaign-label=${R}`]);
+    expect(redactArgs(['brand', 'add', '--name', '-Northwind'])).toEqual(['brand', 'add', '--name', '-Northwind']);
   });
 });

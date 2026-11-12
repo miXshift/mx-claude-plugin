@@ -67,6 +67,34 @@ export const ALL_CAP = 2000;
 
 const DEFAULT_PAGE = 50;
 
+/** The most ids one `labels get` run takes (it looks them up 500 at a time). */
+export const MAX_IDS = 10_000;
+
+const UTF16_MESSAGE =
+  'The --ids-file looks like a UTF-16 file (Windows PowerShell 5.1 `>` writes UTF-16). Save it as UTF-8 and run again, ' +
+  'for example `Set-Content -Encoding utf8 ids.txt` or save it from your editor as UTF-8.';
+
+/**
+ * The text of an ids file, or null when it is UTF-16 (a byte-order mark, or NUL bytes, which no id file
+ * in UTF-8 holds). A UTF-8 byte-order mark is dropped so it never sticks to the first id.
+ */
+export function decodeIdsFile(bytes: Buffer): string | null {
+  if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) return null;
+  if (bytes.includes(0)) return null;
+  const text = bytes.toString('utf8');
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/**
+ * Split a list of ids on commas and white space. Item ids (ASINs) are trimmed and upper-cased BEFORE
+ * repeats are dropped, so `b0x,B0X` is one id and a repeat can never straddle a batch boundary;
+ * campaign ids are kept as given.
+ */
+export function normalizeIds(raw: string, entity: LabelEntity): string[] {
+  const parts = raw.split(/[\s,]+/).filter((s) => s.length > 0);
+  return [...new Set(entity === 'item' ? parts.map((p) => p.toUpperCase()) : parts)];
+}
+
 type CallKind = 'state' | 'fields' | 'get' | 'search' | 'drift' | 'changes';
 
 export function registerLabelsCommands(program: Command): void {
@@ -146,13 +174,21 @@ export function registerLabelsCommands(program: Command): void {
       const entity = parsedEntity[0]!;
       if ((opts.ids === undefined) === (opts.idsFile === undefined)) return badInput('Pass either --ids <a,b,c> or --ids-file <path>.', root);
       let raw: string;
-      try {
-        raw = opts.ids !== undefined ? opts.ids : await readFile(opts.idsFile as string, 'utf8');
-      } catch (err) {
-        return badInput(`Cannot read --ids-file: ${err instanceof Error ? err.message : String(err)}`, root);
+      if (opts.ids !== undefined) raw = opts.ids;
+      else {
+        let bytes: Buffer;
+        try {
+          bytes = await readFile(opts.idsFile as string);
+        } catch (err) {
+          return badInput(`Cannot read --ids-file: ${err instanceof Error ? err.message : String(err)}`, root);
+        }
+        const text = decodeIdsFile(bytes);
+        if (text === null) return badInput(UTF16_MESSAGE, root);
+        raw = text;
       }
-      const ids = [...new Set(raw.split(/[\s,]+/).filter((s) => s.length > 0))];
+      const ids = normalizeIds(raw, entity);
       if (ids.length === 0) return badInput('No ids given.', root);
+      if (ids.length > MAX_IDS) return badInput(`That is ${ids.length} ids; one run takes at most ${MAX_IDS}. Split the list and run it in parts.`, root);
       if (entity === 'campaign') {
         const bad = ids.find((id) => !/^[0-9]{1,20}$/.test(id));
         if (bad !== undefined) return badInput('A campaign id is the Amazon campaign id: 1 to 20 digits. Check --ids.', root);
@@ -185,7 +221,7 @@ export function registerLabelsCommands(program: Command): void {
 
   labels
     .command('search')
-    .description('List the items or campaigns of one account with their labels, a page at a time. With --field and --value, only those whose field equals that exact value (take it from `labels fields`).')
+    .description('List the items or campaigns of one account with their labels, a page at a time (rows under `rows` in --json, for both entities). With --field and --value, only those whose field equals that exact value (take it from `labels fields`).')
     .requiredOption('--account <id>', 'legacy seller id (digits), from `mixshift amazon merchants`')
     .option('--entity <entity>', 'item (default) or campaign')
     .option('--field <key>', 'a field key from `labels fields` (for example item_group); needs --value')
@@ -229,14 +265,14 @@ export function registerLabelsCommands(program: Command): void {
           has_more: more,
           truncated: opts.all ? paged.truncated : false,
           next_cursor: nextCursor,
-          items: rows,
+          rows,
         });
       }
       process.stderr.write(`\n✓ ${rows.length} ${entity === 'item' ? 'item' : 'campaign'}(s)${opts.all ? ` over ${paged.pages} page(s)` : ''}${opts.field !== undefined ? ' matching the filter' : ''}\n`);
       noteFreshness(paged.first.state);
       process.stdout.write(renderRows(rows, paged.first.fields) + '\n');
       if (opts.all && paged.truncated) {
-        process.stdout.write(`\nStopped after ${rows.length} rows (the --all cap is ${ALL_CAP}); there are more. Continue with --cursor ${nextCursor}\n`);
+        process.stdout.write(`\nStopped after ${rows.length} rows${rows.length >= ALL_CAP ? ` (the --all cap is ${ALL_CAP})` : ''}; there are more. Continue with --cursor ${nextCursor}\n`);
       } else if (!opts.all && more) {
         process.stdout.write(`\nMore rows: add --cursor ${nextCursor} (or use --all).\n`);
       }
@@ -285,7 +321,7 @@ export function registerLabelsCommands(program: Command): void {
       noteFreshness(paged.first.state);
       process.stdout.write(renderDrift(paged.rows) + '\n');
       if (opts.all && paged.truncated) {
-        process.stdout.write(`\nStopped after ${paged.rows.length} rows (the --all cap is ${ALL_CAP}); there are more. Continue with --cursor ${nextCursor}\n`);
+        process.stdout.write(`\nStopped after ${paged.rows.length} rows${paged.rows.length >= ALL_CAP ? ` (the --all cap is ${ALL_CAP})` : ''}; there are more. Continue with --cursor ${nextCursor}\n`);
       } else if (!opts.all && more) {
         process.stdout.write(`\nMore rows: add --cursor ${nextCursor} (or use --all).\n`);
       }
@@ -576,13 +612,17 @@ export function renderDrift(rows: readonly DriftRow[]): string {
   return L.join('\n');
 }
 
+/** Where a change came from, in plain words for the table. --json keeps the service's own value. */
+const SOURCE_WORDS: Record<string, string> = { service: 'MixShift', dash: 'Data Manager', backfill: 'first import', inherit: 'carried over' };
+export const sourceWords = (source: string): string => SOURCE_WORDS[source] ?? cell(source);
+
 export function renderChanges(rows: readonly LabelChange[]): string {
   if (rows.length === 0) return '_(no changes in this window)_';
   const L = ['| time | entity | id | field | before | after | source | by |', '|---|---|---|---|---|---|---|---|'];
   for (const c of rows) {
     const before = c.before === null ? '(never set)' : blank(c.before);
     const after = c.after === null || c.after === '' ? '(cleared)' : cell(c.after);
-    L.push(`| ${c.time} | ${c.entity} | ${cell(c.entity_id, 24)} | ${c.field} | ${before} | ${after} | ${c.source} | ${cell(c.actor)} |`);
+    L.push(`| ${c.time} | ${c.entity} | ${cell(c.entity_id, 24)} | ${c.field} | ${before} | ${after} | ${sourceWords(c.source)} | ${cell(c.actor)} |`);
   }
   L.push('', 'before (never set): the field had no value. after (cleared): the value was removed.');
   return L.join('\n');

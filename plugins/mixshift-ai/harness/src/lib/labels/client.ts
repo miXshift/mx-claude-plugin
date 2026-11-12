@@ -451,7 +451,9 @@ export async function collectPages<R, P extends { ok: true; rows: R[]; next_curs
   let last: P | undefined;
   let cursor = opts.cursor;
   let pages = 0;
+  const used = new Set<string>();
   for (;;) {
+    if (cursor !== undefined) used.add(cursor);
     const page = await fetchPage(cursor);
     if (!page.ok) return page;
     first ??= page;
@@ -459,8 +461,8 @@ export async function collectPages<R, P extends { ok: true; rows: R[]; next_curs
     pages += 1;
     rows.push(...page.rows);
     cursor = page.next_cursor ?? undefined;
-    // A page that advances nothing would loop forever.
-    if (!page.has_more || cursor === undefined || page.rows.length === 0) break;
+    // A page that advances nothing, or a cursor already used, would loop forever.
+    if (!page.has_more || cursor === undefined || page.rows.length === 0 || used.has(cursor)) break;
     if (rows.length >= opts.cap) break;
   }
   const l = last as P;
