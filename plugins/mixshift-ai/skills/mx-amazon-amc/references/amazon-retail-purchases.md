@@ -81,24 +81,30 @@ mixshift ads call amc.get_instance --legacy-seller-id <id> \
   --path marketplaceId=<the marketplace that found this instance> --json
 ```
 
-`instance.optionalDatasets` is an array of `{ label, activationTime }`. Look for
-a `label` of `PURCHASE_RETAIL_PROGRAM`. Its `activationTime` tells you when the
-advertiser subscribed and **nothing about where the data starts**, so do not
-build a window from it. `amc.list_instances` returns
+`instance.optionalDatasets` is an array of `{ label, activationTime }`. A `label`
+of `PURCHASE_RETAIL_PROGRAM` says the advertiser subscribed. Its `activationTime`
+tells you when, and **nothing about where the data starts**, so do not build a
+window from it. `amc.list_instances` returns
 the same array for every instance it lists, so either call answers the question;
 prefer `amc.get_instance` once you hold an instance id, since the list pages at
 100 and a real entity had more than 100 instances.
 
-There is a second, independent signal: the schema call below returns
-`isPremium: true` on this data source. A paid table you cannot reach usually
-will not resolve there at all, so a successful schema read is corroboration in
-its own right.
+The decisive signal is the schema call below: the full schema back, with
+`isPremium: true`, means this instance can query the table; a `bad_request`
+whose detail says the data source does not exist means it cannot. A `dryRun`
+submission is the other free check.
 
-Two honest limits. A missing label is a reliable no. A present label is
-**necessary but not proven sufficient**, since the entry carries an activation
-time and no expiry, so a lapsed subscription may still list. If a query is
-rejected at compile time despite the label being present, suspect a lapsed
-subscription rather than your SQL.
+Two honest limits on the label. A present label is **not proven sufficient**,
+since the entry carries an activation time and no expiry, so a lapsed
+subscription may still list; if a query that used to work is rejected at compile
+time, suspect a lapsed subscription rather than your SQL. **A missing label is
+not a reliable no.** Observed 2026-11-12 on a STANDARD US instance: no
+`PURCHASE_RETAIL_PROGRAM` label at all (its labels were the attributed-events
+and new-to-brand datasets), yet `amazon_retail_purchases` passed a dry run, a
+live one-day query returned rows, and the schema call reported `isPremium:
+true`. Which label enables the table there is not known. An earlier version of
+this file called the missing label a reliable no; it is not, so never refuse the
+table on the label alone.
 
 To see the live column list rather than trusting this file:
 
@@ -115,8 +121,8 @@ header defaults to the seller row's marketplace, and an instance that lives
 under a different one returns 404. A 404 from this call is inconclusive on its
 own: it can mean a mistyped table name, the wrong marketplace, the wrong entity,
 or a table this instance genuinely cannot see. It is **not** proof that the
-subscription is off. The `isPremium` flag on the response, or the
-`PURCHASE_RETAIL_PROGRAM` label on the instance, speaks to that.
+subscription is off. The full schema back (with `isPremium: true`) or a
+`bad_request` saying the data source does not exist is what speaks to that.
 
 **This call also answers the threshold question**, which is the one that decides
 what your query may return. Every column comes back with a `sensitivity` of

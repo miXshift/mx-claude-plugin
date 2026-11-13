@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.5.0"
+version: "0.5.1"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
@@ -146,10 +146,14 @@ notes: >
 
   Paid datasets: some AMC tables require a subscription the advertiser holds,
   and querying one without it fails at COMPILE TIME with a message that never
-  names the subscription, so it reads as broken SQL. amc.get_instance returns
-  instance.optionalDatasets; the label PURCHASE_RETAIL_PROGRAM means
-  amazon_retail_purchases is queryable. Subscriptions are time-limited, so
-  re-check this first when a working query starts failing. That label's
+  names the subscription, so it reads as broken SQL. Settle a paid table with
+  amc.get_data_source for that table (the full schema with isPremium true means
+  on; a bad_request saying the data source does not exist means off) or a
+  dryRun submission. amc.get_instance returns instance.optionalDatasets; the
+  label PURCHASE_RETAIL_PROGRAM says the advertiser subscribed, but a missing
+  label is NOT a no (2026-11-12: an instance with no such label queried
+  amazon_retail_purchases fine). Subscriptions are time-limited, so re-check
+  the table first when a working query starts failing. That label's
   activationTime is the SUBSCRIPTION date and NOT where the data starts: Amazon
   backfills roughly five years behind it (instance activated 2025-08-05, earliest
   purchase row 2021-09-13, measured 2026-09-13). No API field reports the floor,
