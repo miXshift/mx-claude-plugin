@@ -11,13 +11,16 @@
  *   shelfSeller   -> POST /api/shelf/seller   { seller_id, country?, fresh? }
  *   shelfZips     -> GET  /api/shelf/zips?country=
  *   shelfUsage    -> GET  /api/shelf/usage
+ *   shelfRankHistory -> GET /api/shelf/rank-history?query=&zip=&surface=&from=&to=&asin=&country=
+ *                    (free; only a keyword, zip and view the organization's tracking lists, else not_tracked)
  *
  * What the service promises (and this client relies on):
  *   - A public shelf observation is joined to nothing of the account's and
  *     never uses the account's Amazon credentials.
  *   - Every data answer counts one against the organization's monthly shelf
  *     allowance, whether the service observed the shelf for it or already had
- *     a recent observation; the zip list and the usage read are free.
+ *     a recent observation; the zip list, the usage read and the rank-history
+ *     read are free.
  *   - Every data answer carries `observed_at`, the date the shelf looked like
  *     this. `fresh: true` asks for the shelf as of now (same cost).
  *   - Nothing in an answer names the provider; neither does anything here.
@@ -189,6 +192,36 @@ export interface ShelfUsage {
   source: 'discovery_first_month' | 'discovery' | 'entitlement' | string;
 }
 
+/** One ASIN at one snapshot (one day's tracked search, all its pages) of a tracked keyword. */
+export interface ShelfRankPoint {
+  /** When the snapshot was taken. */
+  observed_at: string;
+  asin: string;
+  /** Best position counting sponsored and organic together, across the pages tracked. */
+  absolute_rank: number;
+  /** Position among organic results; null when the ASIN held no organic position on the pages tracked. */
+  organic_rank: number | null;
+  /** Position among sponsored results; null likewise. */
+  sponsored_rank: number | null;
+}
+
+/** The rank history of one tracked keyword at one zip and view over a range. Nothing in it says how it was produced. */
+export interface ShelfRankHistory {
+  ok: true;
+  retailer: string;
+  country: string;
+  surface: ShelfSurface;
+  /** The keyword as the service stores it (lower-cased, single-spaced). */
+  query: string;
+  zip: string;
+  from: string;
+  to: string;
+  /** One point per snapshot and ASIN, oldest first. */
+  points: ShelfRankPoint[];
+  /** Present only when the series was longer than one answer carries and its oldest points were cut. */
+  truncated?: true;
+}
+
 /** Kinds the service emits (ShelfErrorKind in mx-gateway src/shelf/errors.ts,
  *  plus the route-level ones), and local-only kinds for client-side states. */
 export type ShelfFailureKind =
@@ -198,6 +231,7 @@ export type ShelfFailureKind =
   | 'shelf_not_enrolled' // 403: this MixShift account has no organization row yet
   | 'shelf_allowance_exhausted' // 402: the month's included shelf requests are used
   | 'zip_unavailable' // 400: that zip is not one shelf data can observe from
+  | 'not_tracked' // 400: the keyword, zip and view are not in the organization's rank tracking
   | 'bad_request' // 400: the provider refused it (e.g. no such ASIN or seller)
   | 'invalid_request' // 400: MixShift refused it before sending; change the request
   | 'throttled' // 429: busy; retry shortly
@@ -287,7 +321,8 @@ export function exitCodeForShelfKind(kind: ShelfFailureKind): number {
       return 11;
     case 'bad_request':
     case 'zip_unavailable':
-      return 12; // terminal as sent: fix the request
+    case 'not_tracked':
+      return 12; // terminal as sent: fix the request (or ask MixShift to track it)
     case 'invalid_request':
       return 15; // MixShift refused it before sending: change the request
     case 'upstream_unavailable':
@@ -366,6 +401,61 @@ export async function shelfUsage(opts: ShelfClientOptions = {}): Promise<ShelfUs
     remaining: Number(j.remaining ?? Math.max(0, j.allowance - Number(j.used ?? 0))),
     resets_at: String(j.resets_at ?? ''),
     source: String(j.source ?? ''),
+  };
+}
+
+export interface ShelfRankHistoryInput {
+  /** A keyword the organization's rank tracking lists. */
+  query: string;
+  /** A tracked shopper location; omit for the default location. */
+  zip?: string;
+  /** desktop (default) or mobile. */
+  surface?: ShelfSurface;
+  /** ISO date or time; the service defaults to 30 days before `to`. */
+  from?: string;
+  /** ISO date or time; the service defaults to now. */
+  to?: string;
+  /** One ASIN; the service defaults to the ASINs the tracking lists. */
+  asin?: string;
+  country?: ShelfCountry;
+}
+
+/** The rank history MixShift tracks for the organization: one keyword at one zip and view over a range. Free. */
+export async function shelfRankHistory(input: ShelfRankHistoryInput, opts: ShelfClientOptions = {}): Promise<ShelfRankHistory | ShelfFailure> {
+  const params = new URLSearchParams();
+  params.set('query', input.query.trim());
+  if (input.zip?.trim()) params.set('zip', input.zip.trim());
+  if (input.surface) params.set('surface', input.surface);
+  if (input.from?.trim()) params.set('from', input.from.trim());
+  if (input.to?.trim()) params.set('to', input.to.trim());
+  if (input.asin?.trim()) params.set('asin', input.asin.trim().toUpperCase());
+  if (input.country) params.set('country', input.country);
+  const r = await shelfRequest({ method: 'GET', path: `/api/shelf/rank-history?${params.toString()}` }, { ...opts, timeoutMs: opts.timeoutMs ?? FREE_TIMEOUT_MS });
+  if (!r.ok) return r;
+  const j = r.json as Partial<ShelfRankHistory>;
+  if (j.ok !== true || typeof j.query !== 'string' || !Array.isArray(j.points)) return unrecognizedShape(r.httpStatus, 'rank-history');
+  const points: ShelfRankPoint[] = [];
+  for (const raw of j.points as Array<Partial<ShelfRankPoint>>) {
+    if (typeof raw?.asin !== 'string' || typeof raw.observed_at !== 'string' || typeof raw.absolute_rank !== 'number') continue;
+    points.push({
+      observed_at: raw.observed_at,
+      asin: raw.asin,
+      absolute_rank: raw.absolute_rank,
+      organic_rank: typeof raw.organic_rank === 'number' ? raw.organic_rank : null,
+      sponsored_rank: typeof raw.sponsored_rank === 'number' ? raw.sponsored_rank : null,
+    });
+  }
+  return {
+    ok: true,
+    retailer: String(j.retailer ?? 'amazon'),
+    country: String(j.country ?? input.country ?? 'us'),
+    surface: j.surface === 'mobile' ? 'mobile' : 'desktop',
+    query: j.query,
+    zip: String(j.zip ?? ''),
+    from: String(j.from ?? ''),
+    to: String(j.to ?? ''),
+    points,
+    ...(j.truncated === true ? { truncated: true as const } : {}),
   };
 }
 
@@ -520,6 +610,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ShelfFailureKind>([
   'shelf_not_enrolled',
   'shelf_allowance_exhausted',
   'zip_unavailable',
+  'not_tracked',
   'bad_request',
   'invalid_request',
   'throttled',
@@ -597,6 +688,8 @@ export function defaultFriendly(kind: ShelfFailureKind): string {
       return "Your organization's included shelf requests for this month are used. They reset next month, or say \"request more shelf requests\" to ask MixShift for more now.";
     case 'zip_unavailable':
       return 'That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.';
+    case 'not_tracked':
+      return 'That keyword, zip and view are not tracked for your organization. Say "track these keywords" to ask MixShift to add them to your rank tracking.';
     case 'bad_request':
       return 'The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.';
     case 'invalid_request':

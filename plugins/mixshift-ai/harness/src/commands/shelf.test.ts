@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 
-import { registerShelfCommands, renderBuybox, renderOffers, renderSearch } from './shelf.js';
-import { shelfBuybox, shelfOffers, shelfSearch, shelfSeller, shelfUsage, shelfZips } from '../lib/shelf/client.js';
+import { registerShelfCommands, renderBuybox, renderOffers, renderRankHistory, renderSearch } from './shelf.js';
+import { shelfBuybox, shelfOffers, shelfRankHistory, shelfSearch, shelfSeller, shelfUsage, shelfZips } from '../lib/shelf/client.js';
 import { SHELF_CATALOG } from '../lib/shelf/catalog.js';
 import { track } from '../lib/telemetry/index.js';
 
@@ -20,6 +20,7 @@ vi.mock('../lib/shelf/client.js', async (importOriginal) => {
     shelfOffers: vi.fn(),
     shelfSearch: vi.fn(),
     shelfProduct: vi.fn(),
+    shelfRankHistory: vi.fn(),
     shelfSeller: vi.fn(),
     shelfZips: vi.fn(),
     shelfUsage: vi.fn(),
@@ -66,7 +67,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const m of [shelfBuybox, shelfOffers, shelfSearch, shelfSeller, shelfZips, shelfUsage]) vi.mocked(m).mockReset();
+  for (const m of [shelfBuybox, shelfOffers, shelfSearch, shelfRankHistory, shelfSeller, shelfZips, shelfUsage]) vi.mocked(m).mockReset();
   vi.mocked(track).mockClear();
   process.exitCode = undefined;
 });
@@ -194,6 +195,86 @@ describe('shelf search', () => {
   });
 });
 
+describe('shelf rank-history', () => {
+  // Two tracked ASINs over two daily snapshots; made-up subjects (public repo).
+  const HISTORY = {
+    ok: true as const,
+    retailer: 'amazon',
+    country: 'us',
+    surface: 'mobile' as const,
+    query: 'trail mix',
+    zip: '10001',
+    from: '2026-10-14T00:00:00.000Z',
+    to: '2026-11-13T23:59:59.999Z',
+    points: [
+      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPLE01', absolute_rank: 1, organic_rank: null, sponsored_rank: 1 },
+      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPLE02', absolute_rank: 14, organic_rank: 11, sponsored_rank: null },
+      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPLE01', absolute_rank: 2, organic_rank: 9, sponsored_rank: 1 },
+      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPLE02', absolute_rank: 9, organic_rank: 6, sponsored_rank: null },
+    ],
+  };
+
+  it('maps flags to the client call, prints the --json envelope, and tracks the shape of the read without the subject', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce(HISTORY);
+    // --asin is checked locally for the 10-character shape, so the fake here is 10 characters (the fixture ASINs above are 11).
+    await run('--json', 'shelf', 'rank-history', 'Trail Mix', '--zip', '10001', '--view', 'mobile', '--from', '2026-10-14', '--to', '2026-11-13', '--asin', 'b0exampl02');
+    expect(shelfRankHistory).toHaveBeenCalledWith(
+      { query: 'Trail Mix', zip: '10001', surface: 'mobile', from: '2026-10-14', to: '2026-11-13', asin: 'b0exampl02', country: 'us' },
+      { dataDirOverride: undefined },
+    );
+    const out = JSON.parse(stdout);
+    expect(out).toMatchObject({ status: 'ok', query: 'trail mix', surface: 'mobile', zip: '10001' });
+    expect(out.points).toHaveLength(4);
+    expect(process.exitCode).toBeUndefined();
+
+    const t = lastTrack();
+    expect(t.event_name).toBe('shelf.rank_history_read');
+    expect(t.outcome).toBe('ok');
+    expect(t.payload).toMatchObject({ country: 'us', surface: 'mobile', has_zip: true, has_asin: true, has_range: true, range_days: 31, points: 4, days: 2, asins: 2, truncated: false });
+    expect(JSON.stringify(t)).not.toMatch(/trail mix|B0EXAMPLE|10001/i);
+  });
+
+  it('defaults to desktop with no range and no ASIN, and the free read counts no allowance fields', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ...HISTORY, surface: 'desktop', points: [] });
+    await run('shelf', 'rank-history', 'trail mix');
+    expect(vi.mocked(shelfRankHistory).mock.calls[0][0]).toEqual({ query: 'trail mix', zip: undefined, surface: undefined, from: undefined, to: undefined, asin: undefined, country: 'us' });
+    expect(lastTrack().payload).toMatchObject({ surface: 'desktop', has_zip: false, has_asin: false, has_range: false, points: 0, days: 0, asins: 0 });
+    expect(stderr).toContain('rank history for "trail mix" at 10001 (us, desktop), 2026-10-14 to 2026-11-13');
+    expect(stdout).toContain('no observations in this range');
+  });
+
+  it('renders the latest-per-ASIN table with movement, then every point', () => {
+    const md = renderRankHistory(HISTORY);
+    expect(md).toContain('**Rank history for "trail mix" at 10001, mobile, 2026-10-14 to 2026-11-13**');
+    expect(md).toContain('4 point(s) over 2 day(s)');
+    expect(md).toContain('| B0EXAMPLE01 | 2026-11-13 | 2 | 9 | 1 | new |');
+    expect(md).toContain('| B0EXAMPLE02 | 2026-11-13 | 9 | 6 | - | up 5 |');
+    expect(md).toContain('| 2026-11-12 | B0EXAMPLE01 | 1 | - | 1 |');
+    expect(md).not.toContain('oldest points were cut');
+    expect(renderRankHistory({ ...HISTORY, truncated: true })).toContain('oldest points were cut');
+  });
+
+  it('not_tracked prints the friendly line, the tracking hint and exit 12; the kind reaches telemetry', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_tracked', friendly: 'not tracked here', httpStatus: 400, source: 'request', retryable: false });
+    await run('shelf', 'rank-history', 'trail mix', '--zip', '10001');
+    expect(stderr).toContain('not tracked here');
+    expect(stderr).toContain('track these keywords');
+    expect(process.exitCode).toBe(12);
+    const t = lastTrack();
+    expect(t.outcome).toBe('failed');
+    expect(t.error_class).toBe('not_tracked');
+    expect(t.payload).toMatchObject({ kind_failed: 'not_tracked', http_status: 400, source: 'request', retryable: false, has_zip: true });
+  });
+
+  it('refuses a bad --from, --view or --asin before any call', async () => {
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--from', 'last month');
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--view', 'tablet');
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--asin', 'B0');
+    expect(shelfRankHistory).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+});
+
 describe('shelf offers, seller, zips, usage, catalog', () => {
   it('offers renders the featured offer and the sorted list; seller takes no zip', async () => {
     const offers = { ...ANSWER, kind: 'offers' as const, data: { product: { ...ANSWER.data, price: '$7.99', price_num: 7.99, fba: true, conditions: null, title: 'Example', rating: 4.4, reviews: 2500 }, offers: [{ price: '$8.40', price_num: 8.4, fba: null, sold_by: 'Example Seller B', ships_from: 'Example Seller B', free_shipping: true, free_delivery: 'Wed', fastest_delivery: 'Oct 19 - 20', order_within: null, conditions: 'New', seller_id: 'A3EXAMPLESELLB', promise_days_free: 6, promise_days_fastest: 4 }], offer_count: 1 } };
@@ -227,7 +308,7 @@ describe('shelf offers, seller, zips, usage, catalog', () => {
     await run('--json', 'shelf', 'catalog');
     const out = JSON.parse(stdout);
     expect(out.count).toBe(SHELF_CATALOG.length);
-    expect(out.catalog.map((e: { id: string }) => e.id)).toEqual(['buybox', 'offers', 'search', 'product', 'seller', 'zips', 'usage']);
+    expect(out.catalog.map((e: { id: string }) => e.id)).toEqual(['buybox', 'offers', 'search', 'rank-history', 'product', 'seller', 'zips', 'usage']);
     for (const e of SHELF_CATALOG) {
       expect(e.explain.length).toBeGreaterThan(80);
       expect(e.cost === 'free' || e.cost === 'counts 1').toBe(true);

@@ -11,7 +11,7 @@
 
 export interface ShelfCatalogEntry {
   /** `mixshift shelf <id>` */
-  id: 'buybox' | 'offers' | 'search' | 'product' | 'seller' | 'zips' | 'usage';
+  id: 'buybox' | 'offers' | 'search' | 'rank-history' | 'product' | 'seller' | 'zips' | 'usage';
   /** The service tool this is the CLI form of. */
   tool: string;
   /** One line: what the call answers. */
@@ -73,6 +73,23 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
     cost: 'counts 1',
     say: 'where do we rank for "backpacking meals" in New York?',
     example: 'mixshift shelf search "backpacking meals" --zip 10001 --json',
+  },
+  {
+    id: 'rank-history',
+    tool: 'shelf_get_rank_history',
+    what: 'Where your ASINs ranked for a keyword MixShift tracks for you, day by day, at one zip, on desktop or mobile.',
+    explain:
+      'MixShift can track keywords for your organization: once a day it takes the search results page for each tracked ' +
+      'keyword at each tracked shopper location, on desktop and mobile, and keeps every position. This reads that history ' +
+      'back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored ' +
+      'rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views ' +
+      'MixShift tracks for you answer (anything else is not_tracked); say "track these keywords" to ask for more. The daily ' +
+      'observations count against the allowance; reading them back is free.',
+    inputs: 'a tracked keyword; optional --zip, --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country',
+    returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated',
+    cost: 'free',
+    say: 'how has our rank for "backpacking meals" in New York moved this month?',
+    example: 'mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --json',
   },
   {
     id: 'product',

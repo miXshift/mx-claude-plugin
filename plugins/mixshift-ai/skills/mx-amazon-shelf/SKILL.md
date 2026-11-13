@@ -6,13 +6,15 @@ description: >
   offer on a listing with each seller's price, where ASINs rank for a keyword
   (organic and sponsored, desktop and mobile) with badges, coupons and stock
   warnings, the product page as it renders today, and who a third-party
-  seller is. Public shelf observations through MixShift's service, never your
-  Amazon credentials; each answer counts one against your organization's
+  seller is. Reads back, free, the rank history MixShift tracks for your
+  organization: where your ASINs ranked for a tracked keyword day by day.
+  Public shelf observations through MixShift's service, never your Amazon
+  credentials; each on-demand answer counts one against your organization's
   monthly shelf allowance. Runs a guided demo on your own ASIN and keyword
   (demo Amazon shelf) and a catalog with a plain what-is-this per call. Uses
   the MixShift plugin sign-in. Does not require brand setup. Beta.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - shelf data
@@ -44,6 +46,9 @@ trigger_phrases:
   - track my keyword rank
   - keyword rank tracking
   - rank history
+  - how has our rank changed
+  - rank over time
+  - rank trend
 ---
 
 # Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)
@@ -80,6 +85,15 @@ When characterizing this capability to the user, use these facts:
   for it. `mixshift shelf usage` shows allowance, used, remaining and the
   reset date; `shelf zips` and `shelf usage` are free. Unused requests do not
   roll over.
+- **Tracked over time, on request:** MixShift can track keywords for an
+  organization. Once a day it takes the search results page for each tracked
+  keyword at each tracked zip, on desktop and mobile, and keeps every
+  position; `mixshift shelf rank-history` reads that history back, free, as
+  the absolute, organic and sponsored rank per day and ASIN. Only keywords,
+  zips and views MixShift tracks for the organization answer (anything else
+  is `not_tracked`). MixShift sets tracking up on request ("Tracking keywords
+  over time" below); the daily observations count against the allowance like
+  any other answer.
 - **Read-only:** nothing here changes anything, anywhere.
 - **Beta:** every enrolled organization has shelf data on from 2026-10-20, on
   the discovery allowance (`shelf_not_enabled` means MixShift switched it off
@@ -88,9 +102,9 @@ When characterizing this capability to the user, use these facts:
   missing; its answer says `beta: true`).
 
 If this conversation also has MixShift connector tools named `shelf_get_buybox`,
-`shelf_get_offers`, `shelf_search`, `shelf_get_product`, `shelf_get_seller`,
-`shelf_list_zips` and `shelf_get_usage`, they are the same seven calls. Use one
-path, not both; prefer the CLI below.
+`shelf_get_offers`, `shelf_search`, `shelf_get_rank_history`, `shelf_get_product`,
+`shelf_get_seller`, `shelf_list_zips` and `shelf_get_usage`, they are the same
+eight calls. Use one path, not both; prefer the CLI below.
 
 ### How this differs from the account's own data
 
@@ -99,6 +113,7 @@ path, not both; prefer the CLI below.
 | "Did *my account* lose the featured offer, and what share of views does that segment carry?" | `mx-amazon-retail` / `mx-amazon-report` (SP-API pricing: the account's own featured-offer and competitive-summary data) |
 | "Who has the Buy Box *at this zip*, with what promise, and who else is on the listing?" | **this skill** (the shopper's view) |
 | "Where do we rank for a keyword, with badges and sponsored positions, as a shopper sees it?" | **this skill** |
+| "How has our rank for that keyword moved over the last month?" | **this skill** (`shelf rank-history`, for keywords MixShift tracks for you) |
 | "How did our ads perform on that keyword?" | `mx-amazon-ads` / `mx-data-explore` |
 
 The two sides join by ASIN and by date: an SP-API loss says *that* it
@@ -114,6 +129,8 @@ Trigger when the user asks what the **shelf** looks like, for example:
 - "List every seller on this ASIN and their prices." / "Is anyone undercutting
   us?"
 - "Where do we rank for 'backpacking meals' in Chicago, desktop and mobile?"
+- "How has our rank for 'backpacking meals' in Chicago moved this month?" /
+  "Show me the rank history." Run `shelf rank-history` (Starter jobs).
 - "What does the product page for B07BDBDT21 show right now?"
 - "Who is seller A1EXAMPLESELLER?"
 - "Demo Amazon shelf." / "Walk me through shelf data." Run the Demo section.
@@ -146,7 +163,7 @@ mixshift shelf catalog          # chat markdown: what each call answers, takes, 
 mixshift shelf catalog --json
 ```
 
-Seven calls. Read the entry before calling; it carries the inputs, the fields
+Eight calls. Read the entry before calling; it carries the inputs, the fields
 worth reading first, and a question it answers:
 
 | Call | What it answers | Cost |
@@ -154,6 +171,7 @@ worth reading first, and a question it answers:
 | `shelf buybox <asin>` | the Buy Box at a zip: price, seller, ships-from, Prime, stock, delivery promise as text and days | counts 1 |
 | `shelf offers <asin>` | every offer at a zip: each seller's price, FBA or not, condition, promise days; the seller ids | counts 1 |
 | `shelf search <query>` | the results page for a keyword at a zip: rank and absolute rank, sponsored or organic, price, rating, reviews, bought in past month, badges, coupon, stock text, banners | counts 1 per page |
+| `shelf rank-history <query>` | where your ASINs ranked for a keyword MixShift tracks for you, day by day at one zip, desktop or mobile: absolute, organic and sponsored rank per day and ASIN; `not_tracked` for anything not tracked | free |
 | `shelf product <asin>` | the product page: title, bullets, details, images, best-seller ranks, rating, badge, Buy Box block, customers say (beta) | counts 1 |
 | `shelf seller <seller-id>` | who a third-party seller is: storefront name, rating, business details | counts 1 |
 | `shelf zips` | the shopper locations per country | free |
@@ -165,6 +183,7 @@ worth reading first, and a question it answers:
 mixshift shelf buybox B0055QS6AK --zip 75201 --json
 mixshift shelf offers B0055QS6AK --zip 10001 --json
 mixshift shelf search "backpacking meals" --zip 10001 --view desktop --page 1 --json
+mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --from 2026-10-01 --to 2026-10-31 --json
 mixshift shelf product B07BDBDT21 --json
 mixshift shelf seller A1EXAMPLESELLER --json
 mixshift shelf zips --country us --json
@@ -183,26 +202,49 @@ A success envelope is
 (`beta: true` on product). `observed_at` is when the shelf looked like this:
 quote it with every number you report ("as of 23:01 UTC today").
 
-## Tracking keywords over time ("track these keywords for me")
+A rank-history envelope is
+`{ status: "ok", retailer, country, surface, query, zip, from, to, points[], truncated? }`
+with one point per day and ASIN, oldest first:
+`{ observed_at, asin, absolute_rank, organic_rank, sponsored_rank }`.
+`organic_rank` counts organic positions only and `sponsored_rank` sponsored
+ones; `null` means the ASIN held no position of that kind on the pages
+tracked. `absolute_rank` counts both together. `truncated: true` means the
+oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.
 
-Every answer is dated and MixShift keeps every observation it takes, so the same
-keyword at the same zip asked again next week is a dated series the user can
-compare. A MixShift-run tracked keyword list (daily observations, the history
-on a page, feeding the daily health check and the monthly report) is being
-built on this data. When the user asks to track keywords, or asks for rank
-history MixShift does not hold yet, offer to send the request. With their yes,
-run:
+## Tracking keywords over time ("track these keywords", "rank history")
+
+MixShift tracks keywords for an organization on request: a tracking set of
+keywords, shopper locations, views (desktop, mobile) and the ASINs the user
+cares about. Once a day MixShift takes the results page for every keyword at
+every location on both views and keeps every position, so the history builds
+without anyone asking. Reading it back is free:
 
 ```bash
-mixshift feedback "Track keyword rank for this organization: keywords <list>; locations <zips or metros>; cadence <daily|weekly>; devices <desktop, mobile or both>. <one line on what they will use it for, if they said>" --category feature_request --skill mx-amazon-shelf --command "shelf search"
+mixshift shelf rank-history "<keyword>" --zip <zip> --view desktop --json
+mixshift shelf rank-history "<keyword>" --zip <zip> --view mobile --from 2026-10-01 --to 2026-10-31 --json
 ```
 
-Tell the user MixShift sets the tracking up and gets back to them, that the daily
-observations count against the allowance like any other answer, and that the
-price of keeping history, if any, is decided before it is charged. Emailing
-MixShift the same list is the other route. Until then, the user can repeat the
-search themselves (or schedule it with the scheduled-task skill) and keep the
-dated answers.
+Each call is one keyword at one zip on one view; run one per combination the
+user asks about. Without `--from` and `--to` the answer covers the last 30
+days; the range may be up to a year. Without `--asin` the points cover the
+ASINs on the organization's tracking.
+
+When a call answers `not_tracked` (exit 12), or the user asks to track
+keywords MixShift does not track yet, offer to send the request. With their
+yes, run:
+
+```bash
+mixshift feedback "Track keyword rank for this organization: keywords <list>; locations <zips or metros>; devices <desktop, mobile or both>; ASINs <list>. <one line on what they will use it for, if they said>" --category feature_request --skill mx-amazon-shelf --command "shelf rank-history"
+```
+
+Tell the user MixShift sets the tracking up and gets back to them, that the
+daily observations count against the allowance like any other answer (keywords
+x locations x views a day, so ten keywords at three locations on both views is
+60 a day), and that the price of keeping history, if any, is decided before it
+is charged. Emailing MixShift the same list is the other route. Until then the
+user can repeat `shelf search` themselves (or schedule it with the
+scheduled-task skill) and keep the dated answers. Emit `shelf.insight` with
+`tracking_requested` when the request is sent.
 
 ## Requesting more ("request more shelf requests")
 
@@ -246,6 +288,24 @@ Report the account's ASINs by `absolute_rank` with `is_sponsored`, the badge,
 the coupon and the stock text; the top of the page (who is sponsored, which
 banners); and `related_keywords` as harvest candidates. Deeper pages:
 `--page 2` (each page is one answer; 5 pages at most).
+
+### "How has our rank moved?" (tracked keywords)
+
+`shelf rank-history "<keyword>" --zip <zip>` (desktop), then `--view mobile`,
+for each location the user asks about. Lead with the latest point per ASIN
+(the command prints that table first): organic rank, sponsored rank, and the
+movement since the first point in the range, in the user's direction (up 5 is
+five positions better). Then the pattern over the days: steady, drifting, a
+step on one date (ask what changed that day: a price, a bid, a stock-out). Keep
+desktop and mobile apart, and one zip apart from another; the same keyword can
+move differently at each. An ASIN with `organic_rank: null` and a
+`sponsored_rank` held only a sponsored position that day; say so rather than
+calling it "not ranking". A day with no point for an ASIN means it was not on
+the pages tracked that day. If the user's keyword or zip answers
+`not_tracked`, offer the tracking request ("Tracking keywords over time").
+
+Emit `shelf.insight` with `rank_improved`, `rank_dropped` or `rank_steady` for
+the organic movement of the ASIN the user asked about (one event per read).
 
 ### "What does the product page show today?"
 
@@ -404,6 +464,7 @@ kind has its own exit code. Reads are always safe to retry.
 | `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are). Run `shelf zips` and pick one. |
+| `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking. Do not resend; offer the tracking request ("Tracking keywords over time"). |
 | `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace. Check the inputs; do not resend as-is. |
 | `invalid_request` | 15 | MixShift refused it before sending anything (a schema miss; `invalid_params` names the fields). Change the request. |
 | `upstream_unavailable` | 1 | Shelf data is temporarily unavailable. Try again in a minute. |
@@ -442,7 +503,8 @@ lower price to a faster promise), `price_undercut` (a seller below the user's
 price on the listing), `no_featured_offer` (no Buy Box at that location),
 `unauthorized_seller_suspected` (an unrecognized storefront below the user's
 floor), `listing_issue` (a missing image, bullet or badge on the product page),
-`tracking_requested`, `more_requested`:
+`rank_improved`, `rank_dropped`, `rank_steady` (the organic movement in a
+rank-history read), `tracking_requested`, `more_requested`:
 
 ```bash
 mixshift telemetry emit shelf.insight --skill mx-amazon-shelf --payload-json '{"label":"promise_loss"}'
@@ -452,7 +514,9 @@ This is how MixShift learns which of the shelf jobs people run and what the
 shelf tells them, without the subject. One event per conclusion, not per call.
 
 You do **not** need to emit per-call events. The harness fires `shelf.called`
-(plus `shelf.catalog_listed`, `shelf.zips_listed`, `shelf.usage_read`) on
-each `shelf` command, with the call kind, country, whether a zip was given,
-surface and page, fresh, the observation's age and the outcome. It never
-records the ASIN, the keyword, the seller id or the answer.
+(plus `shelf.catalog_listed`, `shelf.zips_listed`, `shelf.usage_read` and
+`shelf.rank_history_read`) on each `shelf` command, with the call kind,
+country, whether a zip was given, surface and page, fresh, the observation's
+age and the outcome; for a rank-history read, the range in days and how many
+points, days and ASINs came back. It never records the ASIN, the keyword, the
+seller id, the ranks or the answer.

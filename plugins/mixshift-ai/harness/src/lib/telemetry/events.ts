@@ -275,6 +275,12 @@ export const EventName = {
   ShelfZipsListed: 'shelf.zips_listed',
   ShelfUsageRead: 'shelf.usage_read',
   ShelfCalled: 'shelf.called',
+  // `mixshift shelf rank-history` (free read of the rank MixShift tracks for
+  // the organization): country, view, whether a zip or an ASIN was given, the
+  // range in days, how many points, days and ASINs came back, whether the
+  // series was cut, outcome and duration; never the keyword, the zip, the
+  // ASINs or the ranks.
+  ShelfRankHistoryRead: 'shelf.rank_history_read',
   // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
   // it reaches for the user: payload.label from the closed list in its
   // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never

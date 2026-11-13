@@ -9,12 +9,15 @@
  *   shelf buybox <asin> [--zip Z]             the Buy Box at a zip
  *   shelf offers <asin> [--zip Z]             every offer at a zip
  *   shelf search <query> [--view desktop|mobile] [--page N] [--zip Z]
+ *   shelf rank-history <query> [--zip Z] [--view desktop|mobile] [--from D] [--to D] [--asin A]
+ *                                             where tracked ASINs ranked, day by day (free)
  *   shelf product <asin> [--zip Z]            the product page (beta)
  *   shelf seller <seller-id>                  who a seller is
  *   (data calls also take --country, --fresh, --origin, --json)
  *
  * Reads only; nothing here can change anything. Every data answer counts one
- * against the organization's monthly shelf allowance (`shelf usage` shows it).
+ * against the organization's monthly shelf allowance (`shelf usage` shows it);
+ * zips, usage and rank-history are free.
  *
  * Exit / telemetry contract matches the amazon, ads and walmart commands:
  * handlers set process.exitCode and return; telemetry captures the call kind,
@@ -32,6 +35,7 @@ import {
   shelfBuybox,
   shelfOffers,
   shelfProduct,
+  shelfRankHistory,
   shelfSearch,
   shelfSeller,
   shelfUsage,
@@ -43,6 +47,8 @@ import {
   type ShelfOffers,
   type ShelfOrigin,
   type ShelfProduct,
+  type ShelfRankHistory,
+  type ShelfRankPoint,
   type ShelfSearch,
   type ShelfSeller,
   type ShelfSurface,
@@ -67,7 +73,19 @@ interface DataOptions {
   page?: string;
 }
 
+interface RankHistoryOptions {
+  zip?: string;
+  view?: string;
+  from?: string;
+  to?: string;
+  asin?: string;
+  country?: string;
+}
+
 const ORIGINS = new Set(['on_demand', 'featured_offer_check', 'demo', 'subscription']);
+const ASIN_RE = /^[A-Z0-9]{10}$/i;
+/** An ISO date (YYYY-MM-DD) or time, the shapes the service's range parser accepts; checked here so a typo never leaves the machine. */
+const ISO_DATE_OR_TIME_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 
 export function registerShelfCommands(program: Command): void {
   const shelf = program
@@ -128,6 +146,72 @@ export function registerShelfCommands(program: Command): void {
       });
       if (root.json) writeJson({ status: 'ok', ...result });
       else process.stdout.write(renderUsage(result) + '\n');
+    });
+
+  shelf
+    .command('rank-history <query>')
+    .description(
+      'Where your ASINs ranked for a keyword MixShift tracks for your organization, day by day at one zip, on desktop or ' +
+        'mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer ' +
+        '(anything else is not_tracked; say "track these keywords" to ask MixShift).',
+    )
+    .option('--zip <zip>', 'a tracked shopper location; omit for the default location')
+    .option('--view <view>', 'desktop (default) or mobile')
+    .option('--from <date>', 'start, an ISO date (YYYY-MM-DD) or time; default 30 days before --to')
+    .option('--to <date>', 'end, an ISO date or time (a date means the end of that day); default now')
+    .option('--asin <asin>', 'one ASIN; default the ASINs on your tracking')
+    .option('--country <code>', 'marketplace country: us (default), ca, uk, de, fr, it, es, in')
+    .action(async (query: string, opts: RankHistoryOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        const country = parseCountry(opts.country);
+        if (!country) return emitError(new Error(`--country must be one of ${SHELF_COUNTRIES.join(', ')}.`), !!root.json);
+        let surface: ShelfSurface | undefined;
+        if (opts.view !== undefined) {
+          if (!(SHELF_SURFACES as readonly string[]).includes(opts.view)) {
+            return emitError(new Error(`--view must be ${SHELF_SURFACES.join(' or ')}.`), !!root.json);
+          }
+          surface = opts.view as ShelfSurface;
+        }
+        const asin = opts.asin?.trim() || undefined;
+        if (asin !== undefined && !ASIN_RE.test(asin)) return emitError(new Error('--asin must be a 10-character ASIN.'), !!root.json);
+        const from = opts.from?.trim() || undefined;
+        const to = opts.to?.trim() || undefined;
+        for (const [flag, v] of [
+          ['--from', from],
+          ['--to', to],
+        ] as const) {
+          if (v !== undefined && !ISO_DATE_OR_TIME_RE.test(v)) return emitError(new Error(`${flag} must be an ISO date (YYYY-MM-DD) or time.`), !!root.json);
+        }
+        const zip = opts.zip?.trim() || undefined;
+        // Telemetry names the shape of the read, never the keyword, zip, ASIN or ranks.
+        const telemetry = { country, surface: surface ?? 'desktop', has_zip: !!zip, has_asin: !!asin, has_range: !!(from || to) };
+        const result = await shelfRankHistory({ query, zip, surface, from, to, asin, country }, { dataDirOverride: root.dataDir });
+        if (isShelfFailure(result)) {
+          await trackShelf(EventName.ShelfRankHistoryRead, 'failed', startedAt, root.dataDir, failurePayload(result, telemetry));
+          return emitFailure(result, !!root.json);
+        }
+        const rangeMs = Date.parse(result.to) - Date.parse(result.from);
+        await trackShelf(EventName.ShelfRankHistoryRead, 'ok', startedAt, root.dataDir, {
+          ...telemetry,
+          range_days: Number.isFinite(rangeMs) ? Math.round(rangeMs / 86400_000) : null,
+          points: result.points.length,
+          days: new Set(result.points.map((p) => p.observed_at.slice(0, 10))).size,
+          asins: new Set(result.points.map((p) => p.asin)).size,
+          truncated: result.truncated === true,
+        });
+        if (root.json) {
+          writeJson({ status: 'ok', ...result });
+          return;
+        }
+        process.stderr.write(
+          `\n✓ rank history for "${result.query}"${result.zip ? ` at ${result.zip}` : ''} (${result.country}, ${result.surface}), ${day(result.from)} to ${day(result.to)}\n\n`,
+        );
+        process.stdout.write(renderRankHistory(result) + '\n');
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
     });
 
   registerData(shelf, 'buybox', '<asin>', 'The Buy Box (featured offer) a shopper at a zip sees for an ASIN: price, seller, delivery promise.', true);
@@ -294,6 +378,9 @@ function emitFailure(failure: ShelfFailure, json: boolean): void {
       if (failure.resetsAt) process.stderr.write(`  used ${failure.used ?? '?'} of ${failure.allowance ?? '?'} for ${failure.period ?? 'this month'}; resets ${failure.resetsAt}\n`);
       process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
     }
+    if (failure.kind === 'not_tracked') {
+      process.stderr.write('  To ask MixShift to track it: say "track these keywords" (the skill sends the request with the keywords, locations and views).\n');
+    }
     if (failure.retryable === false && failure.source === 'request') {
       process.stderr.write('  Not retryable as sent: change the request before calling again.\n');
     }
@@ -404,6 +491,46 @@ export function renderSearch(s: ShelfSearch): string {
   }
   if (s.related_keywords.length > 0) L.push('', 'Related keywords: ' + s.related_keywords.join(', '));
   if (s.has_more) L.push('', `More positions: \`--page ${s.page + 1}\` (one answer per page).`);
+  return L.join('\n');
+}
+
+const day = (iso: string): string => (iso.length >= 10 ? iso.slice(0, 10) : iso || '-');
+const rankCell = (n: number | null): string => (typeof n === 'number' ? String(n) : '-');
+
+/** Movement of a rank number between two points, in the reader's direction: a smaller number is up. */
+function movement(first: number | null, latest: number | null): string {
+  if (first === null && latest === null) return '-';
+  if (first === null) return 'new';
+  if (latest === null) return 'gone';
+  const d = first - latest;
+  return d === 0 ? 'same' : d > 0 ? `up ${d}` : `down ${-d}`;
+}
+
+export function renderRankHistory(h: ShelfRankHistory): string {
+  const L: string[] = [];
+  L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ''}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
+  if (h.points.length === 0) {
+    L.push('', '_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_');
+    return L.join('\n');
+  }
+  const first = new Map<string, ShelfRankPoint>();
+  const latest = new Map<string, ShelfRankPoint>();
+  for (const p of h.points) {
+    if (!first.has(p.asin)) first.set(p.asin, p);
+    latest.set(p.asin, p);
+  }
+  const days = new Set(h.points.map((p) => day(p.observed_at))).size;
+  L.push('', `${h.points.length} point(s) over ${days} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
+  L.push('', '**Latest per ASIN**', '', '| asin | as of | absolute | organic | sponsored | organic since first point |', '|---|---|---|---|---|---|');
+  for (const asin of [...latest.keys()].sort()) {
+    const p = latest.get(asin)!;
+    const f = first.get(asin)!;
+    const move = f.observed_at === p.observed_at ? '-' : movement(f.organic_rank, p.organic_rank);
+    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
+  }
+  L.push('', '**Every point** (oldest first)', '', '| date | asin | absolute | organic | sponsored |', '|---|---|---|---|---|');
+  for (const p of h.points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
+  if (h.truncated) L.push('', 'The series was longer than one answer carries, so its oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.');
   return L.join('\n');
 }
 
