@@ -575,8 +575,8 @@ interface ServiceSetupOptions {
  * scheduled tasks, cloud automations, CI.
  *
  * Preferred path: `--setup-code SVC-XXXX-XXXX`. The admin mints a one-time
- * code at People & access (https://build.mixshift.ai/people; legacy single
- * sign-in tenants use {api_base}/admin); the exchange creates the credential server-side
+ * code at People & access (https://build.mixshift.ai/people; organizations
+ * on one shared team login use {api_base}/admin); the exchange creates the credential server-side
  * and delivers the secret straight into credentials.json. Nobody handles
  * the secret, and the code in argv is fine by design (single-use, 10-min
  * TTL, burned by the exchange).
@@ -603,8 +603,8 @@ function registerServiceSetupSubcommand(auth: Command): void {
     .option(
       '--setup-code <code>',
       'One-time setup code (SVC-XXXX-XXXX) minted by your admin at People & access ' +
-        '(https://build.mixshift.ai/people). Legacy single sign-in tenants that have ' +
-        'not moved to OAuth yet can use mcp.mixshift.io/admin for now.',
+        '(https://build.mixshift.ai/people). Organizations still on one shared ' +
+        'team login can use mcp.mixshift.io/admin for now.',
     )
     .option(
       '--client-id <id>',

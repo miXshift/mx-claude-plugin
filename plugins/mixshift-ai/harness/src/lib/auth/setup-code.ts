@@ -2,8 +2,8 @@
  * Exchange a one-time admin-minted setup code for a service credential.
  *
  * The no-secret-handling path: the admin creates a SETUP CODE at People &
- * access (https://build.mixshift.ai/people; legacy single sign-in tenants
- * that have not moved to OAuth use {api_base}/admin) (single-use, 10-minute
+ * access (https://build.mixshift.ai/people; organizations on one shared
+ * team login use {api_base}/admin) (single-use, 10-minute
  * TTL); the user pastes the code in
  * chat; this helper exchanges it at POST /oauth/service-setup/exchange. The
  * server creates the credential AT EXCHANGE TIME and returns id+secret
@@ -56,8 +56,8 @@ export async function exchangeSetupCode(
           'single-use and last 10 minutes, and a gateway deploy drops any ' +
           'pending code. Mint a fresh one at People & access ' +
           '(https://build.mixshift.ai/people) and retry right away. ' +
-          "On a legacy single sign-in tenant that hasn't moved to OAuth " +
-          'yet? Use mcp.mixshift.io/admin for now.',
+          'If your organization still signs in with one shared team login, ' +
+          'use mcp.mixshift.io/admin for now.',
       );
     }
     throw new Error('The exchange endpoint rejected the request (invalid_request).');

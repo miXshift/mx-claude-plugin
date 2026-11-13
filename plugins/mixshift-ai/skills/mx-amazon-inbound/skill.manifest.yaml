@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-inbound
 display_name: FBA inbound shipment walk (look up, build, confirm, label, cancel)
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Walk an FBA inbound shipment from start to finish, one confirmed step at a
   time: create the plan, packing, placement, carrier, labels and tracking, or

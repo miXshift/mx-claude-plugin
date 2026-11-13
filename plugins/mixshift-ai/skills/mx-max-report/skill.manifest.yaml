@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-max-report   # max-tier convention: mx-max-<job> (mx-max-report, mx-max-forecast); was mx-monthly-report-max until 2026-10-11, and the run ledger folder keeps that name
 display_name: Monthly Performance Report Max
-version: "2.6.1"
+version: "2.6.2"
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -96,8 +96,8 @@ trigger_phrases:
   - anything I should flag before this call
 notes: >
   The max tier of the monthly report: mx-monthly-report stays the standard tier and is
-  never modified by this skill's releases. One run consumes one metered intelligence
-  request (INS-MONTHLY-01), plus one per account for the optional forecast (FCT-TRACK-01; two when units are on and the revenue forecast is current) unless the forecast setting is off; re-reads of the artifacts are free. Produces TWO
+  never modified by this skill's releases. One run counts as one intelligence request
+  of usage (INS-MONTHLY-01; tracked, not charged per run), plus one per account for the optional forecast (FCT-TRACK-01; two when units are on and the revenue forecast is current) unless the forecast setting is off; re-reads of the artifacts are free. Produces TWO
   documents (client brief + internal companion) by default; the internal one carries
   owner-attributed commitments and numbers to keep off the call, and the handover must
   say which URL is shareable. Verdict maps to footing plus caveats: GREEN means the

@@ -304,8 +304,10 @@ const DATAHUB_ENVELOPE: Credentials = {
 /** The exact revoked-credential message doMintServiceToken throws on 401. */
 const MINT_REJECTED_MESSAGE =
   'Service credential rejected (revoked, or rotated without updating this ' +
-  'machine). Ask your tenant admin to check the credential at ' +
-  'https://svc.test/admin, then re-run `mixshift auth service-setup` with ' +
+  'machine). Ask whoever manages credentials in your organization to check it ' +
+  'at People & access (https://build.mixshift.ai/people), or at ' +
+  'https://svc.test/admin if your organization signs in with one shared team ' +
+  'login, then re-run `mixshift auth service-setup` with a fresh setup code or ' +
   'the current secret.';
 
 /** The fetch-level wrap doMintServiceToken throws on a transport failure. */
