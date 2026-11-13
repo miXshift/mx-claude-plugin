@@ -591,8 +591,8 @@ function registerServiceSetupSubcommand(auth: Command): void {
     .command('service-setup')
     .description(
       'Configure a service credential for unattended runs (scheduled ' +
-        'tasks, cloud automations, CI). Preferred: --setup-code from your ' +
-        'tenant admin (one-time, no secret handling). Raw path: --client-id ' +
+        'tasks, cloud automations, CI). Preferred: --setup-code from People & ' +
+        'access (one-time, no secret handling). Raw path: --client-id ' +
         'plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias ' +
         'MIXSHIFT_CLIENT_SECRET), never argv.',
     )

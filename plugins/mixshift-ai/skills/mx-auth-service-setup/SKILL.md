@@ -15,7 +15,7 @@ description: >
   (anchor folder, generated task instructions, verified first run) belongs to
   mx-scheduled-task; this skill is the credential step inside it.
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
   author: "MixShift"
 trigger_phrases:
   - set up a service credential

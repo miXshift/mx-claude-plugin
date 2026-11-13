@@ -79,8 +79,8 @@ export const datahubCredsSchema = z.object({
 // mints short-lived (~1h) access tokens on demand and caches them next to
 // this file. Unlike the datahub block there is NO refresh token and nothing
 // rotates on use, so the block works from read-only credential stores and
-// fresh sandboxes. Issued + revoked + rotated by a tenant admin at
-// {api_base}/admin.
+// fresh sandboxes. Issued and revoked at People & access
+// (https://build.mixshift.ai/people) or {api_base}/admin; rotated at /admin.
 
 export const serviceCredsSchema = z.object({
   api_base: z.url(),

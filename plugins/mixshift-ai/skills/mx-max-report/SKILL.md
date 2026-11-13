@@ -130,7 +130,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
 | Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list; per-brand ADDITIONS via `clients/<brand>/report-sections/` (see "Custom sections") |
 | Review | `full`: nothing publishes before the review packet is approved. After three zero-edit approvals on a brand the skill may OFFER `claims_only`; `auto` only by explicit choice | `reporting.review`: `full`, `claims_only`, `auto` |
-| Live probes | up to 5 read-only probes per run to turn questions into findings; probes that count as usage disclosed before running | `reporting.max_live_probes` |
+| Live probes | up to 5 read-only probes per run to turn questions into findings; probes that count as usage are disclosed first | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
 | Vendor revenue basis | ordered revenue and units | `reporting.vc_revenue_basis: shipped` in context.yaml; `mixshift report battery --brand` reads it, an explicit `--seller-id` run needs `--revenue-basis shipped` passed by hand |
 | Attribution basis | `legacy_sales`: Amazon's reported Sales and Orders per campaign, the figures Report Center prints (Sponsored Display includes view-attributed sales; Sponsored Products is click-attributed 7 day on Seller Central and 14 day on Vendor Central) | `--attribution legacy_sales\|all_14\|sc_default` on the battery call (`all_14` = 14 day click for every type, Vendor Central rows only; `sc_default` = the Seller Central house rule, Sponsored Products 7 day else 14). The document records the basis applied under `thresholds_applied.attribution` with an `attribution_note` and an `attribution_detail` sentence, which the brief quotes verbatim; `management.attribution_window_days` records the convention, the command does not read it |
@@ -334,8 +334,8 @@ figure covers, because a client with both 1P and 3P will otherwise assume the wr
 ## Step 3: Pull the figures
 
 Three sources, each with its own job, plus the optional forecast (3d). Disclose before the
-first envelope run of the session: one run counts as one intelligence request of usage (usage
-is tracked, not charged per run), and
+first envelope run of the session: one run is recorded as one intelligence request on the
+account's usage (tracked, not charged per run), and
 the forecast adds one per account (two when units are on and the revenue forecast is
 current) unless `reporting.forecast` is `off`; re-reads of the artifacts on disk are free.
 

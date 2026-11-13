@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-auth-service-setup
 display_name: MixShift Service Credential Setup
-version: "0.3.2"
+version: "0.3.3"
 description: >
   Chat-orchestrated setup of an admin-issued service credential (OAuth
   client_credentials) so MixShift skills run unattended: scheduled Cowork
@@ -67,4 +67,5 @@ notes: >
   the folder). Whole-task lifecycle phrases moved to mx-scheduled-task in
   0.3.0. Server-side mechanics: mx-legacy-auth /oauth/token
   grant_type=client_credentials, ~1h access tokens, dual-secret
-  zero-downtime rotation at People & access (legacy: /admin).
+  zero-downtime rotation at /admin (team-login organizations); People &
+  access creates and revokes only.

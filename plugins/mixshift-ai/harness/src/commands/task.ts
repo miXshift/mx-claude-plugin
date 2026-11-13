@@ -345,7 +345,7 @@ async function pathExists(path: string): Promise<boolean> {
  * handful of message shapes those two functions are known to produce:
  *
  *   - service 401  -> "Service credential rejected (revoked, or rotated
- *     without updating this machine). Ask your tenant admin..."
+ *     without updating this machine). Ask whoever manages credentials..."
  *   - datahub 401  -> "Your MixShift session expired. Run `mixshift auth
  *     login`..." (doRefresh), or getValidAccessToken's own "No credentials
  *     found..." after clearDatahub() runs following a replay-revocation 401.
@@ -746,7 +746,8 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
             `a discovered credential was rejected (revoked or rotated) before this one ` +
             `verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ''}. ` +
             'Delete stale credentials files and revoke unused credentials at People & access ' +
-            '(https://build.mixshift.ai/people; one shared team login: /admin) ' +
+            '(https://build.mixshift.ai/people; organizations on one shared team login: ' +
+            'mcp.mixshift.io/admin) ' +
             'so discovery stays unambiguous.';
           warnings.push(w);
           lines.push(statusLine('warn', w));

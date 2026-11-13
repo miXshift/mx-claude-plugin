@@ -129,12 +129,12 @@ components:
     what: >
       The INS-MONTHLY-01 acquisition pattern: MoM + YoY pairs with ops/ads companions,
       async poll for oversize accounts, degrade-and-label on service error, publish-day
-      re-pull + diff (restatement discipline), metered disclosure, probe-before-limit.
+      re-pull + diff (restatement discipline), usage disclosure, probe-before-limit.
     home: SKILL.md Step 3a (pattern) + harness lib/intelligence (the client)
     depends_on: [mixshift intelligence CLI (0.8.7+)]
     how_to_lift: >
       Any skill consuming an INS-* entry: copy Step 3a's structure and keep all four
-      behaviors (degrade-and-label, async patience, re-pull+diff, metered disclosure).
+      behaviors (degrade-and-label, async patience, re-pull+diff, usage disclosure).
       The CLI client is already shared; do not write your own HTTP.
     provenance: house pattern (gateway Phase 2) + mpr-v2 operating notes.
 
@@ -206,7 +206,7 @@ components:
     what: >
       Question-to-probe table: before a question ships to the reader, check whether a
       bounded read-only call answers it now, budgeted by reporting.max_live_probes with
-      metered-probe disclosure. Founding case: three Buy Box flags plus one live offers
+      usage-probe disclosure. Founding case: three Buy Box flags plus one live offers
       batch turned "why did Buy Box fall" into "a named second seller at price parity".
     home: SKILL.md Step 6 probe rule; the probe catalog itself is maintained by MixShift beside the battery
     depends_on: [the curated Amazon call catalog and the read-only gateway]

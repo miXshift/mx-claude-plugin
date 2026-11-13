@@ -1162,6 +1162,7 @@ describe('task preflight (command)', () => {
     expect(parsed.data_dir).toBe(olderDir);
     expect(parsed.credential.label).toBe('svc:older-valid');
     expect(parsed.warnings.some((w) => w.includes('rejected'))).toBe(true);
+    expect(parsed.warnings.some((w) => w.includes('https://build.mixshift.ai/people') && w.includes('mcp.mixshift.io/admin'))).toBe(true);
 
     const [input] = vi.mocked(track).mock.calls[0];
     expect(input.payload).toMatchObject({ mint_attempts: 2, fallback_used: true });

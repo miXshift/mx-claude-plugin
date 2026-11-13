@@ -13,7 +13,7 @@ description: >
   context. Credential minting alone belongs to mx-auth-service-setup; this
   skill orchestrates the full task setup around it.
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   author: "MixShift"
 trigger_phrases:
   - set up a scheduled task
@@ -111,8 +111,8 @@ brand, digest delivered, no Amazon writes).
 3. **Use the raw client-id path, not a setup code.** A setup code is single-use
    with a 10-minute lifetime, which does not fit a sandbox that starts fresh on
    every fire. Have the admin create the credential with a raw secret at
-   People & access (https://build.mixshift.ai/people; legacy single sign-in
-   tenants that have not moved to OAuth yet: mcp.mixshift.io/admin), then set
+   People & access (https://build.mixshift.ai/people; organizations still on
+   one shared team login: mcp.mixshift.io/admin), then set
    in the environment:
    `MIXSHIFT_SERVICE_CLIENT_SECRET` (the older name `MIXSHIFT_CLIENT_SECRET`
    also works) and, optionally, `MIXSHIFT_SERVICE_CLIENT_ID` so the prompt need
@@ -176,8 +176,8 @@ per task.
 Invoke `mx-auth-service-setup` and follow it, with one instruction pinned: the
 data dir is `[anchor folder]/.mixshift` (on Claude Code, the default
 `~/.mixshift`). The admin mints a setup code at People & access (https://build.mixshift.ai/people),
-the user pastes it, and the credential lands inside the anchor. On a legacy
-single sign-in tenant that hasn't moved to OAuth yet? Use mcp.mixshift.io/admin for now.
+the user pastes it, and the credential lands inside the anchor. If the organization
+still signs in with one shared team login, use mcp.mixshift.io/admin for now.
 
 Scopes: request read-only for read-only work. A monthly forecast refresh does
 not need `ads:write` or `listings:write`. One credential per task keeps People & access
