@@ -16,7 +16,7 @@ description: >
   dry-run first and `--commit` only after the user confirms. No brand setup
   needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -189,7 +189,7 @@ operations, used in the order below, then the five audience operations:
 |---|---|
 | `amc.list_accounts` | Entity accounts (ENTITY ids + names + marketplaceIds) this login can reach. No params, no entity header. |
 | `amc.list_instances` | Instances visible to one `(entityId, marketplaceId)` pair. |
-| `amc.get_instance` | One instance, including `optionalDatasets`: which PAID datasets are active on it. |
+| `amc.get_instance` | One instance, including `optionalDatasets`: which PAID datasets Amazon lists as active on it (a hint; step 4 has the decisive check). |
 | `amc.list_data_sources` | Every data source (table) in an instance, with columns. Pages, and the response is large. |
 | `amc.get_data_source` | Full column schema for ONE named table. Prefer it when you know the table. |
 | `amc.create_workflow_execution` | Submit an ad-hoc AMC SQL workflow execution. |
@@ -303,7 +303,9 @@ mixshift ads call amc.get_instance --legacy-seller-id <id>   --path instanceId=<
 ```
 
 `instance.optionalDatasets` is an array of `{ label, activationTime }`. A `label`
-of `PURCHASE_RETAIL_PROGRAM` means `amazon_retail_purchases` is queryable here.
+of `PURCHASE_RETAIL_PROGRAM` says the advertiser subscribed to Amazon Retail
+Purchases, so `amazon_retail_purchases` should be queryable here. The label is
+corroboration, not the verdict; the decisive check is below.
 
 `activationTime` is when the advertiser **subscribed**, and it is not where the
 data starts. Amazon backfills roughly five years behind it, so an instance
@@ -318,11 +320,22 @@ wrong without it.
 either call answers this; prefer `amc.get_instance` once you hold an instance
 id, since the list pages at 100.
 
-A missing label is a reliable no. A present label is necessary but not proven
-sufficient, since the entry carries no expiry and a lapsed subscription may
-still list. If a query is rejected at compile time with the label present,
-suspect the subscription before rewriting the SQL. The schema call in step 5
-gives a second signal for free: a paid table reports `isPremium: true`.
+**The label answers neither direction on its own.** A present label is not
+proven sufficient, since the entry carries no expiry and a lapsed subscription
+may still list. A missing label is not a reliable no either: on 2026-11-12 a
+STANDARD US instance listed no `PURCHASE_RETAIL_PROGRAM` label (its labels were
+the attributed-events and new-to-brand datasets), yet `amazon_retail_purchases`
+passed a dry run, a live one-day query returned rows, and its schema reported
+`isPremium: true`. Which label enables the table on such an instance is not
+known, so do not refuse the table because the label is absent.
+
+**Settle it with the table itself.** Run `amc.get_data_source` for
+`amazon_retail_purchases` on the instance (the call in step 5): the full schema
+back, with `isPremium: true`, means the instance can query it; a `bad_request`
+whose detail says the data source does not exist means it cannot. A `dryRun`
+submission ("Validate cheaply", below) is the other free check. Read the label
+for the subscription date and nothing else. If a query that used to work is
+rejected, suspect a lapsed subscription before rewriting the SQL.
 
 ### 5. Find the schema before writing SQL
 
@@ -350,10 +363,12 @@ mixshift ads call amc.list_data_sources --legacy-seller-id <id>   --path instanc
 falls back to the seller row's marketplace, and an instance under a different
 one returns 404.
 
-A 404, or a table absent from the list, is **inconclusive**: it can be a
-mistyped name, the wrong marketplace, the wrong entity, or a table this instance
-cannot see. It is not proof that a subscription is off. Only step 4 answers
-that.
+A 404 (it also arrives as `bad_request`, with `status: 404` and no "does not
+exist" detail), or a table absent from the list, is **inconclusive**: it can be
+a mistyped name, the wrong marketplace, the wrong entity, or a table this
+instance cannot see. It is not proof that a subscription is off. The proof is
+the full schema back (on) or a `bad_request` whose detail says the data source
+does not exist (off), as step 4 says.
 
 Both calls return, per column, its `name`, `columnType` (DIMENSION or METRIC),
 `dataType`, `description`, and — the one that matters most — its
