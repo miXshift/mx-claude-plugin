@@ -705,9 +705,11 @@ async function doMintServiceToken(
     // window. NOT cleared locally — only a tenant admin can fix this.
     throw new Error(
       'Service credential rejected (revoked, or rotated without updating ' +
-        'this machine). Ask your tenant admin to check the credential at ' +
-        `${service.api_base}/admin, then re-run \`mixshift auth service-setup\` ` +
-        'with the current secret.',
+        'this machine). Ask whoever manages credentials in your organization ' +
+        'to check it at People & access (https://build.mixshift.ai/people), or ' +
+        `at ${service.api_base}/admin if your organization signs in with one ` +
+        'shared team login, then re-run `mixshift auth service-setup` with a ' +
+        'fresh setup code or the current secret.',
     );
   }
   if (res.status === 429) {

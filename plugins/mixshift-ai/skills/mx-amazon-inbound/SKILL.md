@@ -14,7 +14,7 @@ description: >
   create an inbound shipment, send inventory to FBA, confirm placement,
   cancel an inbound plan, reuse box contents.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - create an inbound shipment
@@ -101,9 +101,12 @@ Then read `credential` (from the folder that applies):
 
   "Your sign-in lets me look up your shipments, tracking and past boxes, but
   not build or change one. To build a shipment from here, ask your MixShift
-  admin for a service credential with shipment write access. They create it in
-  the MixShift admin page and tick the shipment write box (it is off by
-  default). They then send you a one-time setup code, and I can finish the
+  admin for a service credential with shipment write access. They create it at
+  People & access (https://build.mixshift.ai/people) and give it the
+  `shipping:write` scope, which is off by default and which only an owner or
+  admin can grant (an organization on one shared team login uses
+  mcp.mixshift.io/admin and ticks the shipment write box there). They then send
+  you a one-time setup code, and I can finish the
   setup with you in a minute. Until then I can do everything on the look-up
   side. Want to start there?"
 

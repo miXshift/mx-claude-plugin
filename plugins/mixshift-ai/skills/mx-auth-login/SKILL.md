@@ -14,7 +14,7 @@ description: >
   raw-MySQL path; the CLI `mixshift auth setup` command exists only
   for backward compatibility and should not be recommended.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   author: "MixShift"
 trigger_phrases:
   - sign in to mixshift
@@ -131,7 +131,7 @@ One more case arrives in chat rather than in the poll JSON: the user reports the
 
 ## Path C — Service credential (unattended runs): delegate
 
-Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at People & access (https://build.mixshift.ai/people; legacy single sign-in tenants that have not moved to OAuth yet: mcp.mixshift.io/admin), secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
+Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations have their own dedicated skill: **invoke `mx-auth-service-setup`** and follow it. It owns the whole flow — workspace + MIXSHIFT_DATA_DIR resolution (critical in Cowork, where sandbox homes don't persist), admin credential creation at People & access (https://build.mixshift.ai/people; organizations still on one shared team login: mcp.mixshift.io/admin), secret handoff without argv exposure, running `mixshift auth service-setup` itself, deleting the secret file after verification, and wiring the schedule to the same data dir. Do not inline those steps here; the dedicated skill is the source of truth.
 
 One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` block) and a service credential both exist in the same data dir, the human session wins and the service credential is the fallback.
 
@@ -226,7 +226,7 @@ If the user gets stuck mid-flow:
 
 - **Scheduled task aborts with "No credentials found":** the task's sandbox has no credential. Route to Path C — and check `MIXSHIFT_DATA_DIR`: the service credential must live in the data dir the scheduled task actually reads.
 
-- **Service credential 401 invalid_client:** revoked or rotated. Admin checks People & access (legacy single sign-in tenants: /admin); re-run `service-setup` with the current secret. (Path C failure section has the full phrasing.)
+- **Service credential 401 invalid_client:** revoked or rotated. Admin checks People & access (organizations still on one shared team login: mcp.mixshift.io/admin); re-run `service-setup` with a fresh setup code or the current secret. (Path C failure section has the full phrasing.)
 
 - **User asks about the legacy raw-MySQL path (`mixshift auth setup`):** that path is retired, and per-user IP whitelisting is gone with it. The command remains in the CLI only for backward compatibility; do not recommend it. Say: *"The old `auth setup` raw-MySQL path has been retired. `mixshift auth login` is the supported way to sign in, and unattended runs use a service credential (the mx-auth-service-setup flow)."*
 

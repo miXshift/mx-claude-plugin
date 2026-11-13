@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.6.1
+version: 2.6.2
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -130,7 +130,7 @@ settings' for everything else."; that line is how a hidden config system stays f
 | Figure source | Intelligence envelope for core figures, warehouse battery for the rest, live API for offer state | automatic; degrade and label |
 | Sections | data-driven presence; a section renders when its gating data exists and is omitted rather than faked when it does not | `reporting.sections` include/exclude list; per-brand ADDITIONS via `clients/<brand>/report-sections/` (see "Custom sections") |
 | Review | `full`: nothing publishes before the review packet is approved. After three zero-edit approvals on a brand the skill may OFFER `claims_only`; `auto` only by explicit choice | `reporting.review`: `full`, `claims_only`, `auto` |
-| Live probes | up to 5 read-only probes per run to turn questions into findings; metered probes disclosed before running | `reporting.max_live_probes` |
+| Live probes | up to 5 read-only probes per run to turn questions into findings; probes that count as usage are disclosed first | `reporting.max_live_probes` |
 | Lifecycle | items declared in `item_lifecycle` report as their declared state, never as anomalies | `item_lifecycle` map in context.yaml |
 | Vendor revenue basis | ordered revenue and units | `reporting.vc_revenue_basis: shipped` in context.yaml; `mixshift report battery --brand` reads it, an explicit `--seller-id` run needs `--revenue-basis shipped` passed by hand |
 | Attribution basis | `legacy_sales`: Amazon's reported Sales and Orders per campaign, the figures Report Center prints (Sponsored Display includes view-attributed sales; Sponsored Products is click-attributed 7 day on Seller Central and 14 day on Vendor Central) | `--attribution legacy_sales\|all_14\|sc_default` on the battery call (`all_14` = 14 day click for every type, Vendor Central rows only; `sc_default` = the Seller Central house rule, Sponsored Products 7 day else 14). The document records the basis applied under `thresholds_applied.attribution` with an `attribution_note` and an `attribution_detail` sentence, which the brief quotes verbatim; `management.attribution_window_days` records the convention, the command does not read it |
@@ -334,7 +334,8 @@ figure covers, because a client with both 1P and 3P will otherwise assume the wr
 ## Step 3: Pull the figures
 
 Three sources, each with its own job, plus the optional forecast (3d). Disclose before the
-first envelope run of the session: one run consumes one metered intelligence request, and
+first envelope run of the session: one run is recorded as one intelligence request on the
+account's usage (tracked, not charged per run), and
 the forecast adds one per account (two when units are on and the revenue forecast is
 current) unless `reporting.forecast` is `off`; re-reads of the artifacts on disk are free.
 
@@ -429,7 +430,7 @@ treated the same way.)
 **Re-pull on the day you publish, and diff.** Amazon restates recent data, at magnitudes
 measured from low hundreds to about $10K within days of a build. If two runs disagree, it
 is time, not grain. A figure quoted from a stale envelope is a defect. The re-pull is a
-second metered request: skip it when the envelope was already pulled the same day, and say
+second intelligence request: skip it when the envelope was already pulled the same day, and say
 which day the envelope is from either way.
 
 **Resolve offer identities, always.** The offers call serves seller IDs, not names:
@@ -935,7 +936,7 @@ For each flagged item, four questions in order:
 
 **The probe rule, generalized.** Before ANY question ships in Things-to-check, ask: can a
 read-only call answer it right now? If yes and the probe budget allows (`max_live_probes`,
-default 5; disclose metered ones first), run it and promote the question to a finding with
+default 5; disclose the ones that count as usage first), run it and promote the question to a finding with
 the probe as its provenance. MixShift maintains the catalog of question-to-probe mappings
 beside the battery; write each probe as a documented read-only query and record it in the run
 record. The featured-offer diagnosis above is the founding example: three Buy Box flags plus one live offers batch turned "why did Buy Box
