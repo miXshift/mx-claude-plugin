@@ -191,7 +191,9 @@ mixshift shelf usage --json
 ```
 
 - `--zip` is a shopper location from `shelf zips` (omit for the default
-  location; `seller` takes none). `--country` is `us` by default.
+  location; `seller` takes none; `rank-history` requires it, a zip on the
+  tracking set, because there is no default location for tracked history).
+  `--country` is `us` by default.
 - `--fresh` observes the shelf now instead of serving a recent observation
   (same cost). `--origin demo` marks demo calls (attribution only).
 - `--json` returns the full envelope and is what to parse. Without it, the
@@ -226,8 +228,11 @@ mixshift shelf rank-history "<keyword>" --zip <zip> --view mobile --from 2026-10
 
 Each call is one keyword at one zip on one view; run one per combination the
 user asks about. Without `--from` and `--to` the answer covers the last 30
-days; the range may be up to a year. Without `--asin` the points cover the
-ASINs on the organization's tracking.
+days; the range may be up to a year (`bad_request` beyond that, or with
+`--from` after `--to`). `--zip` is required: the tracked location, since
+tracked history has no default location. Without `--asin` the points cover
+the ASINs on the organization's tracking; a set that lists no ASINs answers
+`bad_request` ("Name an ASIN"), so pass `--asin` then.
 
 When a call answers `not_tracked` (exit 12), or the user asks to track
 keywords MixShift does not track yet, offer to send the request. With their
@@ -465,7 +470,7 @@ kind has its own exit code. Reads are always safe to retry.
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are). Run `shelf zips` and pick one. |
 | `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking. Do not resend; offer the tracking request ("Tracking keywords over time"). |
-| `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace. Check the inputs; do not resend as-is. |
+| `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace; for `rank-history` also a range over a year, `--from` after `--to`, or a tracking set with no ASINs (name one `--asin`). Check the inputs; do not resend as-is. |
 | `invalid_request` | 15 | MixShift refused it before sending anything (a schema miss; `invalid_params` names the fields). Change the request. |
 | `upstream_unavailable` | 1 | Shelf data is temporarily unavailable. Try again in a minute. |
 | `host_unreachable`, `unknown` | 1 | Could not reach MixShift, or an unrecognized reply. Retry once; then report. |

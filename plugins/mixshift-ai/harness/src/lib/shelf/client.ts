@@ -407,8 +407,8 @@ export async function shelfUsage(opts: ShelfClientOptions = {}): Promise<ShelfUs
 export interface ShelfRankHistoryInput {
   /** A keyword the organization's rank tracking lists. */
   query: string;
-  /** A tracked shopper location; omit for the default location. */
-  zip?: string;
+  /** The tracked shopper location. Required for an answer: the service matches it against the tracking set as given, and no set lists a default location. */
+  zip: string;
   /** desktop (default) or mobile. */
   surface?: ShelfSurface;
   /** ISO date or time; the service defaults to 30 days before `to`. */
@@ -424,7 +424,7 @@ export interface ShelfRankHistoryInput {
 export async function shelfRankHistory(input: ShelfRankHistoryInput, opts: ShelfClientOptions = {}): Promise<ShelfRankHistory | ShelfFailure> {
   const params = new URLSearchParams();
   params.set('query', input.query.trim());
-  if (input.zip?.trim()) params.set('zip', input.zip.trim());
+  params.set('zip', input.zip.trim());
   if (input.surface) params.set('surface', input.surface);
   if (input.from?.trim()) params.set('from', input.from.trim());
   if (input.to?.trim()) params.set('to', input.to.trim());

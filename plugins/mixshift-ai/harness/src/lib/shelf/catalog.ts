@@ -85,7 +85,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views ' +
       'MixShift tracks for you answer (anything else is not_tracked); say "track these keywords" to ask for more. The daily ' +
       'observations count against the allowance; reading them back is free.',
-    inputs: 'a tracked keyword; optional --zip, --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country',
+    inputs: 'a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country',
     returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated',
     cost: 'free',
     say: 'how has our rank for "backpacking meals" in New York moved this month?',

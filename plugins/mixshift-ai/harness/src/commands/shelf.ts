@@ -92,8 +92,9 @@ export function registerShelfCommands(program: Command): void {
     .command('shelf')
     .description(
       'Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, ' +
-        'search rank, product page, seller), through the MixShift service. Reads only; each data answer ' +
-        "counts one against your organization's monthly shelf allowance.",
+        'search rank, product page, seller), plus the rank history for keywords MixShift tracks for you, ' +
+        'through the MixShift service. Reads only; each data answer counts one against your organization\'s ' +
+        'monthly shelf allowance (rank-history, zips and usage are free).',
     );
 
   shelf
@@ -155,7 +156,9 @@ export function registerShelfCommands(program: Command): void {
         'mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer ' +
         '(anything else is not_tracked; say "track these keywords" to ask MixShift).',
     )
-    .option('--zip <zip>', 'a tracked shopper location; omit for the default location')
+    // Required, unlike the other shelf calls: the service matches the zip against the tracking set as given, and no
+    // set lists a "default location", so a missing zip would always answer not_tracked.
+    .requiredOption('--zip <zip>', 'the tracked shopper location (one of the zips on your tracking set)')
     .option('--view <view>', 'desktop (default) or mobile')
     .option('--from <date>', 'start, an ISO date (YYYY-MM-DD) or time; default 30 days before --to')
     .option('--to <date>', 'end, an ISO date or time (a date means the end of that day); default now')
@@ -185,6 +188,7 @@ export function registerShelfCommands(program: Command): void {
           if (v !== undefined && !ISO_DATE_OR_TIME_RE.test(v)) return emitError(new Error(`${flag} must be an ISO date (YYYY-MM-DD) or time.`), !!root.json);
         }
         const zip = opts.zip?.trim() || undefined;
+        if (!zip) return emitError(new Error('--zip is required: a tracked shopper location from your tracking set.'), !!root.json);
         // Telemetry names the shape of the read, never the keyword, zip, ASIN or ranks.
         const telemetry = { country, surface: surface ?? 'desktop', has_zip: !!zip, has_asin: !!asin, has_range: !!(from || to) };
         const result = await shelfRankHistory({ query, zip, surface, from, to, asin, country }, { dataDirOverride: root.dataDir });
@@ -513,14 +517,16 @@ export function renderRankHistory(h: ShelfRankHistory): string {
     L.push('', '_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_');
     return L.join('\n');
   }
+  // The service sends oldest first; sort anyway so first/latest (and the movement sign) never depend on it.
+  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
   const first = new Map<string, ShelfRankPoint>();
   const latest = new Map<string, ShelfRankPoint>();
-  for (const p of h.points) {
+  for (const p of points) {
     if (!first.has(p.asin)) first.set(p.asin, p);
     latest.set(p.asin, p);
   }
-  const days = new Set(h.points.map((p) => day(p.observed_at))).size;
-  L.push('', `${h.points.length} point(s) over ${days} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
+  const days = new Set(points.map((p) => day(p.observed_at))).size;
+  L.push('', `${points.length} point(s) over ${days} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
   L.push('', '**Latest per ASIN**', '', '| asin | as of | absolute | organic | sponsored | organic since first point |', '|---|---|---|---|---|---|');
   for (const asin of [...latest.keys()].sort()) {
     const p = latest.get(asin)!;
@@ -529,7 +535,7 @@ export function renderRankHistory(h: ShelfRankHistory): string {
     L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
   }
   L.push('', '**Every point** (oldest first)', '', '| date | asin | absolute | organic | sponsored |', '|---|---|---|---|---|');
-  for (const p of h.points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
+  for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
   if (h.truncated) L.push('', 'The series was longer than one answer carries, so its oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.');
   return L.join('\n');
 }

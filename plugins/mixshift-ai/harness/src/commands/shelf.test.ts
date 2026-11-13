@@ -196,7 +196,7 @@ describe('shelf search', () => {
 });
 
 describe('shelf rank-history', () => {
-  // Two tracked ASINs over two daily snapshots; made-up subjects (public repo).
+  // Two tracked ASINs over two daily snapshots; made-up 10-character subjects (public repo; the command checks the ASIN shape).
   const HISTORY = {
     ok: true as const,
     retailer: 'amazon',
@@ -207,16 +207,16 @@ describe('shelf rank-history', () => {
     from: '2026-10-14T00:00:00.000Z',
     to: '2026-11-13T23:59:59.999Z',
     points: [
-      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPLE01', absolute_rank: 1, organic_rank: null, sponsored_rank: 1 },
-      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPLE02', absolute_rank: 14, organic_rank: 11, sponsored_rank: null },
-      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPLE01', absolute_rank: 2, organic_rank: 9, sponsored_rank: 1 },
-      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPLE02', absolute_rank: 9, organic_rank: 6, sponsored_rank: null },
+      // Newest first on purpose: the render must sort, so the movement sign never depends on the service's order.
+      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPL01', absolute_rank: 2, organic_rank: 9, sponsored_rank: 1 },
+      { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPL02', absolute_rank: 9, organic_rank: 6, sponsored_rank: null },
+      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPL01', absolute_rank: 1, organic_rank: null, sponsored_rank: 1 },
+      { observed_at: '2026-11-12T10:05:00.000Z', asin: 'B0EXAMPL02', absolute_rank: 14, organic_rank: 11, sponsored_rank: null },
     ],
   };
 
   it('maps flags to the client call, prints the --json envelope, and tracks the shape of the read without the subject', async () => {
     vi.mocked(shelfRankHistory).mockResolvedValueOnce(HISTORY);
-    // --asin is checked locally for the 10-character shape, so the fake here is 10 characters (the fixture ASINs above are 11).
     await run('--json', 'shelf', 'rank-history', 'Trail Mix', '--zip', '10001', '--view', 'mobile', '--from', '2026-10-14', '--to', '2026-11-13', '--asin', 'b0exampl02');
     expect(shelfRankHistory).toHaveBeenCalledWith(
       { query: 'Trail Mix', zip: '10001', surface: 'mobile', from: '2026-10-14', to: '2026-11-13', asin: 'b0exampl02', country: 'us' },
@@ -231,25 +231,29 @@ describe('shelf rank-history', () => {
     expect(t.event_name).toBe('shelf.rank_history_read');
     expect(t.outcome).toBe('ok');
     expect(t.payload).toMatchObject({ country: 'us', surface: 'mobile', has_zip: true, has_asin: true, has_range: true, range_days: 31, points: 4, days: 2, asins: 2, truncated: false });
-    expect(JSON.stringify(t)).not.toMatch(/trail mix|B0EXAMPLE|10001/i);
+    expect(JSON.stringify(t)).not.toMatch(/trail mix|B0EXAMPL|10001/i);
   });
 
-  it('defaults to desktop with no range and no ASIN, and the free read counts no allowance fields', async () => {
+  it('defaults to desktop with no range and no ASIN; --zip is required (tracked history has no default location)', async () => {
     vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ...HISTORY, surface: 'desktop', points: [] });
-    await run('shelf', 'rank-history', 'trail mix');
-    expect(vi.mocked(shelfRankHistory).mock.calls[0][0]).toEqual({ query: 'trail mix', zip: undefined, surface: undefined, from: undefined, to: undefined, asin: undefined, country: 'us' });
-    expect(lastTrack().payload).toMatchObject({ surface: 'desktop', has_zip: false, has_asin: false, has_range: false, points: 0, days: 0, asins: 0 });
+    await run('shelf', 'rank-history', 'trail mix', '--zip', '10001');
+    expect(vi.mocked(shelfRankHistory).mock.calls[0][0]).toEqual({ query: 'trail mix', zip: '10001', surface: undefined, from: undefined, to: undefined, asin: undefined, country: 'us' });
+    expect(lastTrack().payload).toMatchObject({ surface: 'desktop', has_zip: true, has_asin: false, has_range: false, points: 0, days: 0, asins: 0 });
     expect(stderr).toContain('rank history for "trail mix" at 10001 (us, desktop), 2026-10-14 to 2026-11-13');
     expect(stdout).toContain('no observations in this range');
+
+    vi.mocked(shelfRankHistory).mockClear();
+    await expect(run('--json', 'shelf', 'rank-history', 'trail mix')).rejects.toThrow(/--zip/);
+    expect(shelfRankHistory).not.toHaveBeenCalled();
   });
 
-  it('renders the latest-per-ASIN table with movement, then every point', () => {
+  it('renders the latest-per-ASIN table with movement, then every point oldest first, whatever order the points arrive in', () => {
     const md = renderRankHistory(HISTORY);
     expect(md).toContain('**Rank history for "trail mix" at 10001, mobile, 2026-10-14 to 2026-11-13**');
     expect(md).toContain('4 point(s) over 2 day(s)');
-    expect(md).toContain('| B0EXAMPLE01 | 2026-11-13 | 2 | 9 | 1 | new |');
-    expect(md).toContain('| B0EXAMPLE02 | 2026-11-13 | 9 | 6 | - | up 5 |');
-    expect(md).toContain('| 2026-11-12 | B0EXAMPLE01 | 1 | - | 1 |');
+    expect(md).toContain('| B0EXAMPL01 | 2026-11-13 | 2 | 9 | 1 | new |');
+    expect(md).toContain('| B0EXAMPL02 | 2026-11-13 | 9 | 6 | - | up 5 |');
+    expect(md.indexOf('| 2026-11-12 | B0EXAMPL01 | 1 | - | 1 |')).toBeLessThan(md.indexOf('| 2026-11-13 | B0EXAMPL01 | 2 | 9 | 1 |'));
     expect(md).not.toContain('oldest points were cut');
     expect(renderRankHistory({ ...HISTORY, truncated: true })).toContain('oldest points were cut');
   });
@@ -267,9 +271,9 @@ describe('shelf rank-history', () => {
   });
 
   it('refuses a bad --from, --view or --asin before any call', async () => {
-    await run('--json', 'shelf', 'rank-history', 'trail mix', '--from', 'last month');
-    await run('--json', 'shelf', 'rank-history', 'trail mix', '--view', 'tablet');
-    await run('--json', 'shelf', 'rank-history', 'trail mix', '--asin', 'B0');
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--from', 'last month');
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--view', 'tablet');
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--asin', 'B0');
     expect(shelfRankHistory).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
