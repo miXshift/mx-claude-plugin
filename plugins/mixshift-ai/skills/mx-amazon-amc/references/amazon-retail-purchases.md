@@ -96,8 +96,8 @@ submission is the other free check.
 
 Two honest limits on the label. A present label is **not proven sufficient**,
 since the entry carries an activation time and no expiry, so a lapsed
-subscription may still list; if a query that used to work is rejected at compile
-time, suspect a lapsed subscription rather than your SQL. **A missing label is
+subscription may still list; if a query that used to work is rejected, suspect
+a lapsed subscription rather than your SQL. **A missing label is
 not a reliable no.** Observed 2026-11-12 on a STANDARD US instance: no
 `PURCHASE_RETAIL_PROGRAM` label at all (its labels were the attributed-events
 and new-to-brand datasets), yet `amazon_retail_purchases` passed a dry run, a

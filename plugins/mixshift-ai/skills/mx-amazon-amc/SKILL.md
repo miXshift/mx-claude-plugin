@@ -335,7 +335,7 @@ back, with `isPremium: true`, means the instance can query it; a `bad_request`
 whose detail says the data source does not exist means it cannot. A `dryRun`
 submission ("Validate cheaply", below) is the other free check. Read the label
 for the subscription date and nothing else. If a query that used to work is
-rejected at compile time, suspect a lapsed subscription before rewriting the SQL.
+rejected, suspect a lapsed subscription before rewriting the SQL.
 
 ### 5. Find the schema before writing SQL
 
@@ -363,11 +363,12 @@ mixshift ads call amc.list_data_sources --legacy-seller-id <id>   --path instanc
 falls back to the seller row's marketplace, and an instance under a different
 one returns 404.
 
-A 404, or a table absent from the list, is **inconclusive**: it can be a
-mistyped name, the wrong marketplace, the wrong entity, or a table this instance
-cannot see. It is not proof that a subscription is off. The proof is the full
-schema back (on) or a `bad_request` whose detail says the data source does not
-exist (off), as step 4 says.
+A 404 (it also arrives as `bad_request`, with `status: 404` and no "does not
+exist" detail), or a table absent from the list, is **inconclusive**: it can be
+a mistyped name, the wrong marketplace, the wrong entity, or a table this
+instance cannot see. It is not proof that a subscription is off. The proof is
+the full schema back (on) or a `bad_request` whose detail says the data source
+does not exist (off), as step 4 says.
 
 Both calls return, per column, its `name`, `columnType` (DIMENSION or METRIC),
 `dataType`, `description`, and — the one that matters most — its
