@@ -74,7 +74,7 @@ const view = (over: Record<string, unknown> = {}) => ({
   status: 'preview',
   scope: 'region',
   created_at: '2026-11-12T10:00:00.000000Z',
-  expires_at: '2026-11-13T10:00:00.000000Z',
+  expires_at: '2999-01-01T10:00:00.000000Z',
   committed_at: null,
   approval_hash: HASH,
   can_commit: true,
@@ -209,7 +209,7 @@ describe('labels preview', () => {
     expect(stderr).toContain('Preview: nothing has been changed.');
     expect(stdout).toContain(`**Change set ${SET_ID}** (preview, nothing changed yet)`);
     expect(stdout).toContain('- scope: region, reaching 2 accounts');
-    expect(stdout).toContain('- expires: 2026-11-13T10:00:00.000000Z');
+    expect(stdout).toContain('- expires: 2999-01-01T10:00:00.000000Z');
     expect(stdout).toContain('- would change: 5 of 6 items (6 fields); 1 already has these values');
     expect(stdout).toContain('| 12345 | 1 | 3 | 2 | 1 |');
     expect(stdout).toContain('account 12345: 1 item MixShift has not read yet');
@@ -223,7 +223,7 @@ describe('labels preview', () => {
     // The person never has to see or retype the hash.
     expect(stdout + stderr).not.toContain(HASH);
     const kept = JSON.parse(await readFile(pendingFile(), 'utf8')) as Record<string, unknown>;
-    expect(kept).toMatchObject({ change_set_id: SET_ID, approval_hash: HASH, account: 12345, scope: 'region', expires_at: '2026-11-13T10:00:00.000000Z' });
+    expect(kept).toMatchObject({ change_set_id: SET_ID, approval_hash: HASH, account: 12345, scope: 'region', expires_at: '2999-01-01T10:00:00.000000Z' });
     // The kept record holds no label value and no id.
     const text = await readFile(pendingFile(), 'utf8');
     expect(text).not.toContain(SECRET_VALUE);
@@ -720,7 +720,7 @@ describe('failures: every kind, its exit code and what to do next', () => {
   const cases: Array<[string, number, string, Record<string, unknown> | undefined, number, string | undefined]> = [
     // kind, http status, friendly, extra body, exit code, a fragment of the next step
     ['approval_mismatch', 409, 'The approval hash does not match this change set. Nothing was changed.', undefined, 16, 'Preview the change again'],
-    ['change_set_expired', 409, 'This preview expired (a preview is good for 24 hours). Nothing was changed. Preview the change again.', { expires_at: '2026-11-13T10:00:00.000000Z' }, 16, 'Preview the change again'],
+    ['change_set_expired', 409, 'This preview expired (a preview is good for 24 hours). Nothing was changed. Preview the change again.', { expires_at: '2999-01-01T10:00:00.000000Z' }, 16, 'Preview the change again'],
     ['change_set_cancelled', 409, 'This change set was cancelled, so it cannot be committed. Preview the change again.', undefined, 16, 'Preview the change again'],
     ['commit_retry', 409, 'The commit hit a database conflict, so nothing was written and the change set is still a preview. Commit it again.', { retryable: true }, 10, `Run the same command again: \`mixshift labels commit ${SET_ID} --commit\``],
     ['commit_in_flight', 409, 'This change set is being committed right now. Read it again in a moment.', { retryable: true }, 10, 'Run the same command again'],
@@ -898,7 +898,7 @@ describe('labels undo, sets, set, cancel', () => {
       surface: 'http',
       undoes: null,
       created_at: '2026-11-12T10:00:00.000000Z',
-      expires_at: '2026-11-13T10:00:00.000000Z',
+      expires_at: '2999-01-01T10:00:00.000000Z',
       committed_at: null,
       ...extra,
     });
