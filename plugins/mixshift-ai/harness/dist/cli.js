@@ -1506,7 +1506,7 @@ var require_request = __commonJS({
         method,
         body,
         headers,
-        query,
+        query: query2,
         idempotent,
         blocking,
         upgrade,
@@ -1587,7 +1587,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? buildURL(path2, query) : path2;
+        this.path = query2 ? buildURL(path2, query2) : path2;
         this.origin = origin;
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
         this.blocking = blocking == null ? false : blocking;
@@ -3132,8 +3132,8 @@ var require_data_url = __commonJS({
       return input.slice(start2, position.position);
     }
     function stringPercentDecode(input) {
-      const bytes = encoder.encode(input);
-      return percentDecode(bytes);
+      const bytes2 = encoder.encode(input);
+      return percentDecode(bytes2);
     }
     function isHexCharByte(byte) {
       return byte >= 48 && byte <= 57 || byte >= 65 && byte <= 70 || byte >= 97 && byte <= 102;
@@ -4116,7 +4116,7 @@ var require_util2 = __commonJS({
         return false;
       }
     }
-    function bytesMatch(bytes, metadataList) {
+    function bytesMatch(bytes2, metadataList) {
       if (crypto === void 0) {
         return true;
       }
@@ -4132,7 +4132,7 @@ var require_util2 = __commonJS({
       for (const item of metadata) {
         const algorithm = item.algo;
         const expectedValue = item.hash;
-        let actualValue = crypto.createHash(algorithm).update(bytes).digest("base64");
+        let actualValue = crypto.createHash(algorithm).update(bytes2).digest("base64");
         if (actualValue[actualValue.length - 1] === "=") {
           if (actualValue[actualValue.length - 2] === "=") {
             actualValue = actualValue.slice(0, -2);
@@ -4410,17 +4410,17 @@ var require_util2 = __commonJS({
       return input;
     }
     async function readAllBytes(reader) {
-      const bytes = [];
+      const bytes2 = [];
       let byteLength = 0;
       while (true) {
         const { done, value: chunk2 } = await reader.read();
         if (done) {
-          return Buffer.concat(bytes, byteLength);
+          return Buffer.concat(bytes2, byteLength);
         }
         if (!isUint8Array(chunk2)) {
           throw new TypeError("Received non-Uint8Array chunk");
         }
-        bytes.push(chunk2);
+        bytes2.push(chunk2);
         byteLength += chunk2.length;
       }
     }
@@ -4935,9 +4935,9 @@ var require_formdata_parser = __commonJS({
     var filenameBuffer = Buffer.from("; filename");
     var dd = Buffer.from("--");
     var ddcrlf = Buffer.from("--\r\n");
-    function isAsciiString(chars) {
-      for (let i = 0; i < chars.length; ++i) {
-        if ((chars.charCodeAt(i) & ~127) !== 0) {
+    function isAsciiString(chars2) {
+      for (let i = 0; i < chars2.length; ++i) {
+        if ((chars2.charCodeAt(i) & ~127) !== 0) {
           return false;
         }
       }
@@ -5374,19 +5374,19 @@ Content-Type: ${value.type || "application/octet-stream"}\r
     function bodyMixinMethods(instance) {
       const methods = {
         blob() {
-          return consumeBody(this, (bytes) => {
+          return consumeBody(this, (bytes2) => {
             let mimeType = bodyMimeType(this);
             if (mimeType === null) {
               mimeType = "";
             } else if (mimeType) {
               mimeType = serializeAMimeType(mimeType);
             }
-            return new Blob2([bytes], { type: mimeType });
+            return new Blob2([bytes2], { type: mimeType });
           }, instance);
         },
         arrayBuffer() {
-          return consumeBody(this, (bytes) => {
-            return new Uint8Array(bytes).buffer;
+          return consumeBody(this, (bytes2) => {
+            return new Uint8Array(bytes2).buffer;
           }, instance);
         },
         text() {
@@ -5425,8 +5425,8 @@ Content-Type: ${value.type || "application/octet-stream"}\r
           }, instance);
         },
         bytes() {
-          return consumeBody(this, (bytes) => {
-            return new Uint8Array(bytes);
+          return consumeBody(this, (bytes2) => {
+            return new Uint8Array(bytes2);
           }, instance);
         }
       };
@@ -5461,8 +5461,8 @@ Content-Type: ${value.type || "application/octet-stream"}\r
       const body = object2[kState].body;
       return body != null && (body.stream.locked || util.isDisturbed(body.stream));
     }
-    function parseJSONFromBytes(bytes) {
-      return JSON.parse(utf8DecodeBytes(bytes));
+    function parseJSONFromBytes(bytes2) {
+      return JSON.parse(utf8DecodeBytes(bytes2));
     }
     function bodyMimeType(requestOrResponse) {
       const headers = requestOrResponse[kState].headersList;
@@ -10456,13 +10456,13 @@ var require_mock_utils = __commonJS({
       }
     }
     function buildKey(opts) {
-      const { path: path2, method, body, headers, query } = opts;
+      const { path: path2, method, body, headers, query: query2 } = opts;
       return {
         path: path2,
         method,
         body,
         headers,
-        query
+        query: query2
       };
     }
     function generateKeyValues(data) {
@@ -12063,10 +12063,10 @@ var require_response = __commonJS({
         if (init !== null) {
           init = webidl.converters.ResponseInit(init);
         }
-        const bytes = textEncoder.encode(
+        const bytes2 = textEncoder.encode(
           serializeJavascriptValueToJSONString(data)
         );
-        const body = extractBody(bytes);
+        const body = extractBody(bytes2);
         const responseObject = fromInnerResponse(makeResponse({}), "response");
         initializeResponse(responseObject, init, { body: body[0], type: "application/json" });
         return responseObject;
@@ -13523,12 +13523,12 @@ var require_fetch = __commonJS({
           processBodyError(response.error);
           return;
         }
-        const processBody = (bytes) => {
-          if (!bytesMatch(bytes, request3.integrity)) {
+        const processBody = (bytes2) => {
+          if (!bytesMatch(bytes2, request3.integrity)) {
             processBodyError("integrity mismatch");
             return;
           }
-          response.body = safelyExtractBody(bytes)[0];
+          response.body = safelyExtractBody(bytes2)[0];
           fetchFinale(fetchParams, response);
         };
         await fullyReadBody(response.body, processBody, processBodyError);
@@ -13941,12 +13941,12 @@ var require_fetch = __commonJS({
       if (request3.body == null && fetchParams.processRequestEndOfBody) {
         queueMicrotask(() => fetchParams.processRequestEndOfBody());
       } else if (request3.body != null) {
-        const processBodyChunk = async function* (bytes) {
+        const processBodyChunk = async function* (bytes2) {
           if (isCancelled(fetchParams)) {
             return;
           }
-          yield bytes;
-          fetchParams.processRequestBodyChunkLength?.(bytes.byteLength);
+          yield bytes2;
+          fetchParams.processRequestBodyChunkLength?.(bytes2.byteLength);
         };
         const processEndOfBody = () => {
           if (isCancelled(fetchParams)) {
@@ -13968,8 +13968,8 @@ var require_fetch = __commonJS({
         };
         requestBody = (async function* () {
           try {
-            for await (const bytes of request3.body.stream) {
-              yield* processBodyChunk(bytes);
+            for await (const bytes2 of request3.body.stream) {
+              yield* processBodyChunk(bytes2);
             }
             processEndOfBody();
           } catch (err) {
@@ -14020,33 +14020,33 @@ var require_fetch = __commonJS({
       fetchParams.controller.on("terminated", onAborted);
       fetchParams.controller.resume = async () => {
         while (true) {
-          let bytes;
+          let bytes2;
           let isFailure;
           try {
             const { done, value } = await fetchParams.controller.next();
             if (isAborted(fetchParams)) {
               break;
             }
-            bytes = done ? void 0 : value;
+            bytes2 = done ? void 0 : value;
           } catch (err) {
             if (fetchParams.controller.ended && !timingInfo.encodedBodySize) {
-              bytes = void 0;
+              bytes2 = void 0;
             } else {
-              bytes = err;
+              bytes2 = err;
               isFailure = true;
             }
           }
-          if (bytes === void 0) {
+          if (bytes2 === void 0) {
             readableStreamClose(fetchParams.controller.controller);
             finalizeResponse(fetchParams, response);
             return;
           }
-          timingInfo.decodedBodySize += bytes?.byteLength ?? 0;
+          timingInfo.decodedBodySize += bytes2?.byteLength ?? 0;
           if (isFailure) {
-            fetchParams.controller.terminate(bytes);
+            fetchParams.controller.terminate(bytes2);
             return;
           }
-          const buffer = new Uint8Array(bytes);
+          const buffer = new Uint8Array(bytes2);
           if (buffer.byteLength) {
             fetchParams.controller.controller.enqueue(buffer);
           }
@@ -14172,9 +14172,9 @@ var require_fetch = __commonJS({
               if (fetchParams.controller.dump) {
                 return;
               }
-              const bytes = chunk2;
-              timingInfo.encodedBodySize += bytes.byteLength;
-              return this.body.push(bytes);
+              const bytes2 = chunk2;
+              timingInfo.encodedBodySize += bytes2.byteLength;
+              return this.body.push(bytes2);
             },
             onComplete() {
               if (this.abort) {
@@ -14623,7 +14623,7 @@ var require_util4 = __commonJS({
       fr[kError] = null;
       const stream = blob.stream();
       const reader = stream.getReader();
-      const bytes = [];
+      const bytes2 = [];
       let chunkPromise = reader.read();
       let isFirstChunk = true;
       (async () => {
@@ -14637,7 +14637,7 @@ var require_util4 = __commonJS({
             }
             isFirstChunk = false;
             if (!done && types.isUint8Array(value)) {
-              bytes.push(value);
+              bytes2.push(value);
               if ((fr[kLastProgressEventFired] === void 0 || Date.now() - fr[kLastProgressEventFired] >= 50) && !fr[kAborted]) {
                 fr[kLastProgressEventFired] = Date.now();
                 queueMicrotask(() => {
@@ -14649,7 +14649,7 @@ var require_util4 = __commonJS({
               queueMicrotask(() => {
                 fr[kState] = "done";
                 try {
-                  const result = packageData(bytes, type, blob.type, encodingName);
+                  const result = packageData(bytes2, type, blob.type, encodingName);
                   if (fr[kAborted]) {
                     return;
                   }
@@ -14689,7 +14689,7 @@ var require_util4 = __commonJS({
       });
       reader.dispatchEvent(event);
     }
-    function packageData(bytes, type, mimeType, encodingName) {
+    function packageData(bytes2, type, mimeType, encodingName) {
       switch (type) {
         case "DataURL": {
           let dataURL = "data:";
@@ -14699,7 +14699,7 @@ var require_util4 = __commonJS({
           }
           dataURL += ";base64,";
           const decoder = new StringDecoder("latin1");
-          for (const chunk2 of bytes) {
+          for (const chunk2 of bytes2) {
             dataURL += btoa2(decoder.write(chunk2));
           }
           dataURL += btoa2(decoder.end());
@@ -14719,16 +14719,16 @@ var require_util4 = __commonJS({
           if (encoding === "failure") {
             encoding = "UTF-8";
           }
-          return decode3(bytes, encoding);
+          return decode3(bytes2, encoding);
         }
         case "ArrayBuffer": {
-          const sequence = combineByteSequences(bytes);
+          const sequence = combineByteSequences(bytes2);
           return sequence.buffer;
         }
         case "BinaryString": {
           let binaryString = "";
           const decoder = new StringDecoder("latin1");
-          for (const chunk2 of bytes) {
+          for (const chunk2 of bytes2) {
             binaryString += decoder.write(chunk2);
           }
           binaryString += decoder.end();
@@ -14737,14 +14737,14 @@ var require_util4 = __commonJS({
       }
     }
     function decode3(ioQueue, encoding) {
-      const bytes = combineByteSequences(ioQueue);
-      const BOMEncoding = BOMSniffing(bytes);
+      const bytes2 = combineByteSequences(ioQueue);
+      const BOMEncoding = BOMSniffing(bytes2);
       let slice = 0;
       if (BOMEncoding !== null) {
         encoding = BOMEncoding;
         slice = BOMEncoding === "UTF-8" ? 3 : 2;
       }
-      const sliced = bytes.slice(slice);
+      const sliced = bytes2.slice(slice);
       return new TextDecoder(encoding).decode(sliced);
     }
     function BOMSniffing(ioQueue) {
@@ -15297,9 +15297,9 @@ var require_cache = __commonJS({
           // 16.
         };
         operations.push(operation);
-        const bytes = await bodyReadPromise.promise;
+        const bytes2 = await bodyReadPromise.promise;
         if (clonedResponse.body != null) {
-          clonedResponse.body.source = bytes;
+          clonedResponse.body.source = bytes2;
         }
         const cacheJobPromise = createDeferredPromise();
         let errorData = null;
@@ -24682,9 +24682,9 @@ var require_timestamp = __commonJS({
         const match = str7.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
-        const [, year, month, day, hour, minute, second] = match.map(Number);
+        const [, year, month, day2, hour, minute, second] = match.map(Number);
         const millisec = match[7] ? Number((match[7] + "00").substr(1, 3)) : 0;
-        let date5 = Date.UTC(year, month - 1, day, hour || 0, minute || 0, second || 0, millisec);
+        let date5 = Date.UTC(year, month - 1, day2, hour || 0, minute || 0, second || 0, millisec);
         const tz = match[8];
         if (tz && tz !== "Z") {
           let d = parseSexagesimal(tz, false);
@@ -29299,10 +29299,10 @@ function promiseAllObject(promisesObj) {
   });
 }
 function randomString(length = 10) {
-  const chars = "abcdefghijklmnopqrstuvwxyz";
+  const chars2 = "abcdefghijklmnopqrstuvwxyz";
   let str7 = "";
   for (let i = 0; i < length; i++) {
-    str7 += chars[Math.floor(Math.random() * chars.length)];
+    str7 += chars2[Math.floor(Math.random() * chars2.length)];
   }
   return str7;
 }
@@ -29690,16 +29690,16 @@ function cleanEnum(obj2) {
 }
 function base64ToUint8Array(base643) {
   const binaryString = atob(base643);
-  const bytes = new Uint8Array(binaryString.length);
+  const bytes2 = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+    bytes2[i] = binaryString.charCodeAt(i);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToBase64(bytes) {
+function uint8ArrayToBase64(bytes2) {
   let binaryString = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binaryString += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes2.length; i++) {
+    binaryString += String.fromCharCode(bytes2[i]);
   }
   return btoa(binaryString);
 }
@@ -29708,22 +29708,22 @@ function base64urlToUint8Array(base64url4) {
   const padding = "=".repeat((4 - base643.length % 4) % 4);
   return base64ToUint8Array(base643 + padding);
 }
-function uint8ArrayToBase64url(bytes) {
-  return uint8ArrayToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+function uint8ArrayToBase64url(bytes2) {
+  return uint8ArrayToBase64(bytes2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 function hexToUint8Array(hex3) {
   const cleanHex = hex3.replace(/^0x/, "");
   if (cleanHex.length % 2 !== 0) {
     throw new Error("Invalid hex string length");
   }
-  const bytes = new Uint8Array(cleanHex.length / 2);
+  const bytes2 = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < cleanHex.length; i += 2) {
-    bytes[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
+    bytes2[i / 2] = Number.parseInt(cleanHex.slice(i, i + 2), 16);
   }
-  return bytes;
+  return bytes2;
 }
-function uint8ArrayToHex(bytes) {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+function uint8ArrayToHex(bytes2) {
+  return Array.from(bytes2).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var EVALUATING, captureStackTrace, allowsEval, getParsedType, propertyKeyTypes, primitiveTypes, NUMBER_FORMAT_RANGES, BIGINT_FORMAT_RANGES, Class;
 var init_util = __esm({
@@ -44786,7 +44786,7 @@ var require_lib = __commonJS({
       tab: 9,
       carriageReturn: 13
     };
-    var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    var isRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
     var isWordChar = (code) => code >= 65 && code <= 90 || code >= 97 && code <= 122 || code >= 48 && code <= 57 || code === 95;
     var isWhitespace = (code) => code === charCode.space || code === charCode.tab || code === charCode.newline || code === charCode.carriageReturn;
     var hasOnlyWhitespaceBetween = (sql, start2, end) => {
@@ -44913,7 +44913,7 @@ var require_lib = __commonJS({
         return "NULL";
       let year;
       let month;
-      let day;
+      let day2;
       let hour;
       let minute;
       let second;
@@ -44921,7 +44921,7 @@ var require_lib = __commonJS({
       if (timezone === "local") {
         year = date5.getFullYear();
         month = date5.getMonth() + 1;
-        day = date5.getDate();
+        day2 = date5.getDate();
         hour = date5.getHours();
         minute = date5.getMinutes();
         second = date5.getSeconds();
@@ -44934,13 +44934,13 @@ var require_lib = __commonJS({
         const adjustedDate = new Date(time3);
         year = adjustedDate.getUTCFullYear();
         month = adjustedDate.getUTCMonth() + 1;
-        day = adjustedDate.getUTCDate();
+        day2 = adjustedDate.getUTCDate();
         hour = adjustedDate.getUTCHours();
         minute = adjustedDate.getUTCMinutes();
         second = adjustedDate.getUTCSeconds();
         millisecond = adjustedDate.getUTCMilliseconds();
       }
-      return escapeString(pad4(year) + "-" + pad2(month) + "-" + pad2(day) + " " + pad2(hour) + ":" + pad2(minute) + ":" + pad2(second) + "." + pad3(millisecond));
+      return escapeString(pad4(year) + "-" + pad2(month) + "-" + pad2(day2) + " " + pad2(hour) + ":" + pad2(minute) + ":" + pad2(second) + "." + pad3(millisecond));
     };
     exports.dateToString = dateToString;
     var escapeId = (value, forbidQualified) => {
@@ -45020,7 +45020,7 @@ var require_lib = __commonJS({
             return String(value.toSqlString());
           if (!(stringifyObjects === void 0 || stringifyObjects === null))
             return escapeString(String(value));
-          if (isRecord(value))
+          if (isRecord2(value))
             return (0, exports.objectToValues)(value, timezone);
           return escapeString(String(value));
         }
@@ -45059,7 +45059,7 @@ var require_lib = __commonJS({
         else if (typeof currentValue === "object" && currentValue !== null && !stringifyObjects) {
           if (setIndex === -2)
             setIndex = findSetKeyword(sql);
-          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord(currentValue)) {
+          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord2(currentValue)) {
             escapedValue = (0, exports.objectToValues)(currentValue, timezone);
             setIndex = findSetKeyword(sql, placeholderEnd);
           } else
@@ -50605,20 +50605,20 @@ var require_umd = __commonJS({
             lo & 255
           ];
         };
-        Long.fromBytes = function fromBytes(bytes, unsigned, le) {
-          return le ? Long.fromBytesLE(bytes, unsigned) : Long.fromBytesBE(bytes, unsigned);
+        Long.fromBytes = function fromBytes(bytes2, unsigned, le) {
+          return le ? Long.fromBytesLE(bytes2, unsigned) : Long.fromBytesBE(bytes2, unsigned);
         };
-        Long.fromBytesLE = function fromBytesLE(bytes, unsigned) {
+        Long.fromBytesLE = function fromBytesLE(bytes2, unsigned) {
           return new Long(
-            bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24,
-            bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24,
+            bytes2[0] | bytes2[1] << 8 | bytes2[2] << 16 | bytes2[3] << 24,
+            bytes2[4] | bytes2[5] << 8 | bytes2[6] << 16 | bytes2[7] << 24,
             unsigned
           );
         };
-        Long.fromBytesBE = function fromBytesBE(bytes, unsigned) {
+        Long.fromBytesBE = function fromBytesBE(bytes2, unsigned) {
           return new Long(
-            bytes[4] << 24 | bytes[5] << 16 | bytes[6] << 8 | bytes[7],
-            bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3],
+            bytes2[4] << 24 | bytes2[5] << 16 | bytes2[6] << 8 | bytes2[7],
+            bytes2[0] << 24 | bytes2[1] << 16 | bytes2[2] << 8 | bytes2[3],
             unsigned
           );
         };
@@ -52313,18 +52313,18 @@ var require_dbcs_codec = __commonJS({
     DBCSCodec.prototype.encoder = DBCSEncoder;
     DBCSCodec.prototype.decoder = DBCSDecoder;
     DBCSCodec.prototype._getDecodeTrieNode = function(addr) {
-      var bytes = [];
+      var bytes2 = [];
       for (; addr > 0; addr >>>= 8) {
-        bytes.push(addr & 255);
+        bytes2.push(addr & 255);
       }
-      if (bytes.length == 0) {
-        bytes.push(0);
+      if (bytes2.length == 0) {
+        bytes2.push(0);
       }
       var node = this.decodeTables[0];
-      for (var i2 = bytes.length - 1; i2 > 0; i2--) {
-        var val = node[bytes[i2]];
+      for (var i2 = bytes2.length - 1; i2 > 0; i2--) {
+        var val = node[bytes2[i2]];
         if (val == UNASSIGNED) {
-          node[bytes[i2]] = NODE_START - this.decodeTables.length;
+          node[bytes2[i2]] = NODE_START - this.decodeTables.length;
           this.decodeTables.push(node = UNASSIGNED_NODE.slice(0));
         } else if (val <= NODE_START) {
           node = this.decodeTables[NODE_START - val];
@@ -58533,8 +58533,8 @@ var require_server_handshake = __commonJS({
         }
         return _ServerHandshake.prototype.dispatchCommands;
       }
-      _isStatement(query, name) {
-        const firstWord = query.split(" ")[0].toUpperCase();
+      _isStatement(query2, name) {
+        const firstWord = query2.split(" ")[0].toUpperCase();
         return firstWord === name;
       }
       dispatchCommands(packet, connection) {
@@ -58544,8 +58544,8 @@ var require_server_handshake = __commonJS({
         switch (commandCode) {
           case CommandCode.STMT_PREPARE:
             if (connection.listeners("stmt_prepare").length) {
-              const query = packet.readString(void 0, encoding);
-              connection.emit("stmt_prepare", query);
+              const query2 = packet.readString(void 0, encoding);
+              connection.emit("stmt_prepare", query2);
             } else {
               connection.writeError({
                 code: Errors.HA_ERR_INTERNAL_ERROR,
@@ -58587,12 +58587,12 @@ var require_server_handshake = __commonJS({
             break;
           case CommandCode.QUERY:
             if (connection.listeners("query").length) {
-              const query = packet.readString(void 0, encoding);
-              if (this._isStatement(query, "PREPARE") || this._isStatement(query, "SET")) {
-                connection.emit("stmt_prepare", query);
-              } else if (this._isStatement(query, "EXECUTE")) {
-                connection.emit("stmt_execute", null, null, null, null, query);
-              } else connection.emit("query", query);
+              const query2 = packet.readString(void 0, encoding);
+              if (this._isStatement(query2, "PREPARE") || this._isStatement(query2, "SET")) {
+                connection.emit("stmt_prepare", query2);
+              } else if (this._isStatement(query2, "EXECUTE")) {
+                connection.emit("stmt_execute", null, null, null, null, query2);
+              } else connection.emit("query", query2);
             } else {
               connection.writeError({
                 code: Errors.HA_ERR_INTERNAL_ERROR,
@@ -60315,8 +60315,8 @@ var require_prepare = __commonJS({
     var CloseStatement = require_close_statement2();
     var Execute = require_execute2();
     var PreparedStatementInfo = class {
-      constructor(query, id, columns, parameters, connection) {
-        this.query = query;
+      constructor(query2, id, columns, parameters, connection) {
+        this.query = query2;
         this.id = id;
         this.columns = columns;
         this.parameters = parameters;
@@ -61451,8 +61451,8 @@ var require_named_placeholders = __commonJS({
     var DQUOTE = 34;
     var SQUOTE = 39;
     var BSLASH = 92;
-    function parse4(query) {
-      let ppos = RE_PARAM.exec(query);
+    function parse4(query2) {
+      let ppos = RE_PARAM.exec(query2);
       let curpos = 0;
       let start2 = 0;
       let end;
@@ -61467,7 +61467,7 @@ var require_named_placeholders = __commonJS({
       if (ppos) {
         do {
           for (i = curpos, end = ppos.index; i < end; ++i) {
-            const chr = query.charCodeAt(i);
+            const chr = query2.charCodeAt(i);
             if (chr === BSLASH) escape = !escape;
             else {
               if (escape) {
@@ -61475,7 +61475,7 @@ var require_named_placeholders = __commonJS({
                 continue;
               }
               if (inQuote && chr === qchr) {
-                if (query.charCodeAt(i + 1) === qchr) {
+                if (query2.charCodeAt(i + 1) === qchr) {
                   ++i;
                   continue;
                 }
@@ -61487,21 +61487,21 @@ var require_named_placeholders = __commonJS({
             }
           }
           if (!inQuote) {
-            parts.push(query.substring(start2, end));
+            parts.push(query2.substring(start2, end));
             tokens.push(ppos[0].length === 1 ? qcnt++ : ppos[1]);
             start2 = end + ppos[0].length;
             lastTokenEndPos = start2;
           }
           curpos = end + ppos[0].length;
-        } while (ppos = RE_PARAM.exec(query));
+        } while (ppos = RE_PARAM.exec(query2));
         if (tokens.length) {
-          if (curpos < query.length) {
-            parts.push(query.substring(lastTokenEndPos));
+          if (curpos < query2.length) {
+            parts.push(query2.substring(lastTokenEndPos));
           }
           return [parts, tokens];
         }
       }
-      return [query];
+      return [query2];
     }
     function createCompiler(config2) {
       if (!config2) config2 = {};
@@ -61540,7 +61540,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join36(tree) {
+      function join38(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61561,14 +61561,14 @@ var require_named_placeholders = __commonJS({
         }
         return [unnamed, tree[1]];
       }
-      function compile(query, paramsObj) {
+      function compile(query2, paramsObj) {
         let tree;
-        if (cache && (tree = cache.get(query))) {
+        if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join36(parse4(query));
+        tree = join38(parse4(query2));
         if (cache) {
-          cache.set(query, tree);
+          cache.set(query2, tree);
         }
         return toArrayParams(tree, paramsObj);
       }
@@ -62680,7 +62680,7 @@ var require_connection3 = __commonJS({
       release() {
         this.connection.release();
       }
-      query(query, params) {
+      query(query2, params) {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.query);
         if (typeof params === "function") {
@@ -62691,13 +62691,13 @@ var require_connection3 = __commonJS({
         return new this.Promise((resolve6, reject) => {
           const done = makeDoneCb(resolve6, reject, stackHolder);
           if (params !== void 0) {
-            c.query(query, params, done);
+            c.query(query2, params, done);
           } else {
-            c.query(query, done);
+            c.query(query2, done);
           }
         });
       }
-      execute(query, params) {
+      execute(query2, params) {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.execute);
         if (typeof params === "function") {
@@ -62708,9 +62708,9 @@ var require_connection3 = __commonJS({
         return new this.Promise((resolve6, reject) => {
           const done = makeDoneCb(resolve6, reject, stackHolder);
           if (params !== void 0) {
-            c.execute(query, params, done);
+            c.execute(query2, params, done);
           } else {
-            c.execute(query, done);
+            c.execute(query2, done);
           }
         });
       }
@@ -63491,18 +63491,18 @@ var require_pool_cluster = __commonJS({
        * @returns query
        */
       query(sql, values, cb) {
-        const query = Connection.createQuery(sql, values, cb, {});
+        const query2 = Connection.createQuery(sql, values, cb, {});
         this.getConnection((err, conn) => {
           if (err) {
-            if (typeof query.onResult === "function") {
-              query.onResult(err);
+            if (typeof query2.onResult === "function") {
+              query2.onResult(err);
             } else {
-              query.emit("error", err);
+              query2.emit("error", err);
             }
             return;
           }
           try {
-            conn.query(query).once("end", () => {
+            conn.query(query2).once("end", () => {
               conn.release();
             });
           } catch (e) {
@@ -63510,7 +63510,7 @@ var require_pool_cluster = __commonJS({
             throw e;
           }
         });
-        return query;
+        return query2;
       }
       /**
        * pool cluster execute
@@ -64026,7 +64026,7 @@ function insufficientScopeCopy(reason, scopes) {
   }
 }
 function reverifyCopy() {
-  return "Your sign-in needs to be re-verified. Run `mixshift auth login` to sign in again, with Google if your organization uses it.";
+  return "Your sign-in needs to be re-verified. Run `mixshift auth login` to sign in again, with Google or Microsoft if your organization uses member sign-in.";
 }
 var ASK_ADMIN;
 var init_refusal_copy = __esm({
@@ -64797,11 +64797,11 @@ async function claimQueue(dataDirOverride) {
   }
   let known = liveBuf.length;
   const { events, malformed: malformed2 } = parseJsonl(adopted.reduce((acc, a) => joinJsonl(acc, a.raw), liveBuf.toString("utf-8")));
-  const handBack = async (bytes) => {
+  const handBack = async (bytes2) => {
     try {
       await mkdir3(dir, { recursive: true });
-      const tail = bytes.length && bytes[bytes.length - 1] === 10 ? Buffer.alloc(0) : NEWLINE;
-      await appendFile(queuePath, Buffer.concat([NEWLINE, bytes, tail]));
+      const tail = bytes2.length && bytes2[bytes2.length - 1] === 10 ? Buffer.alloc(0) : NEWLINE;
+      await appendFile(queuePath, Buffer.concat([NEWLINE, bytes2, tail]));
       return true;
     } catch {
       return false;
@@ -65177,7 +65177,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
     ...setAside.length ? { dead_lettered: setAside.length, set_aside: setAside } : {},
     ...requeue.length ? { requeued: requeue.length } : {}
   });
-  const fail6 = async (unsent, err) => {
+  const fail9 = async (unsent, err) => {
     await claim.release([...unsent, ...requeue]);
     return { status: "failed", events_sent: sentCount, ...summary(), error: errText(err) };
   };
@@ -65205,7 +65205,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       };
     }
     if (allRefusedStreak >= 2) {
-      return fail6(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
+      return fail9(recs(i), new Error("the server refused every event in two batches in a row; treating it as systemic and keeping the rest queued"));
     }
     const refusedBefore = setAside.length + requeue.length;
     const batch = events.slice(i, i + batch_size);
@@ -65214,7 +65214,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
       sentCount += batch.length;
       allRefusedStreak = 0;
     } catch (err) {
-      if (!isPermanentRejection(err)) return fail6(recs(i), err);
+      if (!isPermanentRejection(err)) return fail9(recs(i), err);
       for (let j = 0; j < batch.length; j++) {
         const one = batch[j];
         if (j > 0 && Date.now() - startedAt > FLUSH_BUDGET_MS) {
@@ -65232,7 +65232,7 @@ async function flushQueue(dataDirOverride, timeoutMs = DEFAULT_TIMEOUT_MS) {
           sentCount++;
         } catch (rowErr) {
           if (!isPermanentRejection(rowErr)) {
-            return fail6([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
+            return fail9([...batch.slice(j).map((e) => e.rec), ...recs(i + batch_size)], rowErr);
           }
           await putAside(one.rec, rowErr.status, rowErr.message);
         }
@@ -65305,12 +65305,12 @@ function normalizeRecord(rec) {
     error_class: rec.error_class ?? null,
     trigger_phrase: rec.trigger_phrase ?? null
   });
-  const bytes = Buffer.byteLength(JSON.stringify(row), "utf-8");
-  if (bytes > MAX_ROW_BYTES) {
+  const bytes2 = Buffer.byteLength(JSON.stringify(row), "utf-8");
+  if (bytes2 > MAX_ROW_BYTES) {
     const p = row.payload;
     row.payload = {
       payload_truncated: true,
-      original_row_bytes: bytes,
+      original_row_bytes: bytes2,
       keys: p && typeof p === "object" ? Object.keys(p).slice(0, 50).map((k) => k.slice(0, 100)) : []
     };
     if (Buffer.byteLength(JSON.stringify(row), "utf-8") > MAX_ROW_BYTES) {
@@ -65523,6 +65523,12 @@ var init_events = __esm({
       // Payload: preset, line item / skipped / target / batch counts,
       // legacy_seller_id; on failure kind + stage. Never an id from Amazon.
       DspSupplyPresetPlanned: "dsp.supply_preset_planned",
+      // The responsive creative map (lib/ads/dsp-creative-map.ts): `dsp
+      // creative-map confirm|remove`, and the plugin_build record written after
+      // `ads call dsp.create_ads --commit --for-order`. Payload: action, dry_run,
+      // added/removed counts, reuse flag; on failure the kind. Never an order,
+      // creative or advertiser id.
+      DspCreativeMapChanged: "dsp.creative_map_changed",
       // Ads proposals (lib/ads/proposals.ts + `mixshift ads proposals` and
       // `ads call --propose`). Payloads carry the proposal id, operation id,
       // items count and guard counts, never the change set, rationale or evidence.
@@ -65551,6 +65557,12 @@ var init_events = __esm({
       ShelfZipsListed: "shelf.zips_listed",
       ShelfUsageRead: "shelf.usage_read",
       ShelfCalled: "shelf.called",
+      // `mixshift shelf rank-history` (free read of the rank MixShift tracks for
+      // the organization): country, view, whether a zip or an ASIN was given, the
+      // range in days, how many points, days and ASINs came back, whether the
+      // series was cut, outcome and duration; never the keyword, the zip, the
+      // ASINs or the ranks.
+      ShelfRankHistoryRead: "shelf.rank_history_read",
       // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
       // it reaches for the user: payload.label from the closed list in its
       // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never
@@ -65561,6 +65573,15 @@ var init_events = __esm({
       // one event per invocation with phase, ASIN/flagged/shelf-call counts, the
       // reason counts at the end, outcome; never an ASIN, a seller or a price.
       ShelfFeaturedOfferCheck: "shelf.featured_offer_check",
+      // Labels surface (lib/labels/client.ts, write-client.ts + `mixshift labels`). One
+      // event per call: kind (state, fields, get, search, drift, changes; and for the
+      // write commands preview, commit, undo, sets, set, cancel, field_name), the account
+      // the call was for, entity, how many rows, pages and ids, the service state,
+      // outcome and duration. A write adds the change set id (MixShift's own id), whether
+      // it was committed or a dry run, and counts (applied, unchanged, stale, refused).
+      // Never a label value, a filter value, an item or campaign id, the approval hash
+      // or the answer.
+      LabelsCalled: "labels.called",
       // MixShift Intelligence service consumption (lib/intelligence/ +
       // `mixshift intelligence`). Privacy: capture insight id + run id + duration
       // + outcome + cache hit/miss + limitation COUNT only — never the insight
@@ -66098,6 +66119,37 @@ var init_classify = __esm({
   }
 });
 
+// src/lib/net/gateway-url.ts
+function resolveGatewayBase(raw) {
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:") return stripTrailingSlash(raw);
+    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) {
+      return stripTrailingSlash(raw);
+    }
+  } catch {
+  }
+  return "";
+}
+async function resolveGatewayBaseSafe() {
+  try {
+    const { gateway } = await loadPluginDefaults();
+    return resolveGatewayBase(gateway.base_url);
+  } catch {
+    return "";
+  }
+}
+function stripTrailingSlash(s) {
+  return s.replace(/\/+$/, "");
+}
+var init_gateway_url = __esm({
+  "src/lib/net/gateway-url.ts"() {
+    "use strict";
+    init_load3();
+  }
+});
+
 // src/lib/net/api-base.ts
 function resolveApiBaseHost(apiBase) {
   try {
@@ -66106,10 +66158,14 @@ function resolveApiBaseHost(apiBase) {
     return new URL(DEFAULT_API_BASE).host;
   }
 }
+async function resolveDefaultApiBase() {
+  return await resolveGatewayBaseSafe() || DEFAULT_API_BASE;
+}
 var DEFAULT_API_BASE;
 var init_api_base = __esm({
   "src/lib/net/api-base.ts"() {
     "use strict";
+    init_gateway_url();
     DEFAULT_API_BASE = "https://mcp.mixshift.io";
   }
 });
@@ -69436,10 +69492,10 @@ function createTimelineClient(options = {}) {
     return res;
   }
   return {
-    async listEvents(query = {}) {
+    async listEvents(query2 = {}) {
       try {
         const params = new URLSearchParams();
-        for (const [key, value] of Object.entries(query)) {
+        for (const [key, value] of Object.entries(query2)) {
           if (value === void 0) continue;
           params.set(key, String(value));
         }
@@ -69507,12 +69563,12 @@ function createTimelineClient(options = {}) {
     }
   };
 }
-async function listAllEvents(client, query = {}, cap2 = LIST_ALL_CAP) {
+async function listAllEvents(client, query2 = {}, cap2 = LIST_ALL_CAP) {
   const events = [];
   let cursor;
   do {
     const page = await client.listEvents({
-      ...query,
+      ...query2,
       ...cursor !== void 0 ? { cursor } : {}
     });
     if (!page.ok) return page;
@@ -79384,7 +79440,7 @@ function utcDatePart(iso) {
   return iso.slice(0, 10);
 }
 function buildCoverageStakePayload(report) {
-  const day = utcDatePart(report.generated_at);
+  const day2 = utcDatePart(report.generated_at);
   const interpretation = summarizeCoverage(report).slice(0, MAX_INTERPRETATION_CHARS2);
   return {
     brand_slug: accountNamespaceSlug(report.seller_id),
@@ -79404,7 +79460,7 @@ function buildCoverageStakePayload(report) {
       match_rate: report.match.match_rate === null ? null : round24(report.match.match_rate),
       classification_proposal: report.classification.proposal
     },
-    idempotency_key: coverageIdempotencyKey(report.seller_id, day)
+    idempotency_key: coverageIdempotencyKey(report.seller_id, day2)
   };
 }
 function round24(n) {
@@ -83436,7 +83492,7 @@ async function initDeviceFlow(opts) {
       `--person-label must be an email address (got "${opts.personLabel}").`
     );
   }
-  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const apiBase = opts.apiBase ?? await resolveDefaultApiBase();
   const deviceLabel = opts.deviceLabel ?? hostname3();
   const clientId = resolveClientId(opts.clientId);
   const init = await deviceInitFetch(
@@ -83456,7 +83512,7 @@ async function initDeviceFlow(opts) {
   };
 }
 async function pollDeviceFlow(opts) {
-  const apiBase = opts.apiBase ?? DEFAULT_API_BASE;
+  const apiBase = opts.apiBase ?? await resolveDefaultApiBase();
   const deviceLabel = opts.deviceLabel ?? hostname3();
   const clientId = resolveClientId(opts.clientId);
   const maxWaitMs = opts.maxWaitMs ?? 3e4;
@@ -83586,7 +83642,7 @@ async function runAuthLogin(opts) {
     );
   }
   const resolved = {
-    apiBase: opts.apiBase ?? DEFAULT_API_BASE,
+    apiBase: opts.apiBase ?? await resolveDefaultApiBase(),
     personLabel: opts.personLabel,
     deviceLabel: opts.deviceLabel ?? hostname3(),
     clientId: resolveClientId(opts.clientId),
@@ -84163,7 +84219,7 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
     const body = await res.json().catch(() => ({}));
     if (body.error === "invalid_setup_code") {
       throw new Error(
-        "That setup code is unknown, expired, or already used. Codes are single-use and last 10 minutes; ask your admin to mint a fresh one at /admin and try again."
+        "That setup code is unknown, expired, or already used. Codes are single-use and last 10 minutes, and a gateway deploy drops any pending code. Mint a fresh one at People & access (https://build.mixshift.ai/people) and retry right away. On a legacy single sign-in tenant that hasn't moved to OAuth yet? Use mcp.mixshift.io/admin for now."
       );
     }
     throw new Error("The exchange endpoint rejected the request (invalid_request).");
@@ -84378,7 +84434,7 @@ function registerLoginSubcommand(auth) {
     "Sign in to the MixShift warehouse via the mx-legacy-auth MCP service. Opens a browser (PKCE) or falls back to a device-code flow when no browser is available. Recommended over `auth setup` for new installs \u2014 no IP whitelist, no raw MySQL credentials."
   ).option(
     "--person-label <email>",
-    'Your work email. A prefill hint for the sign-in page, not your identity: if your organization uses member sign-in, you choose "Sign in with Google" there and the sign-in itself proves who you are. On a shared login it is the typed name admins see against your actions. Still required here.'
+    'Your work email. A prefill hint for the sign-in page, not your identity: if your organization uses member sign-in, you choose "Sign in with Google" or "Sign in with Microsoft" there and the sign-in itself proves who you are. On a shared login it is the typed name admins see against your actions. Still required here.'
   ).option(
     "--device-label <label>",
     "Friendly device name shown on the login confirmation page (default: this machine's hostname)."
@@ -84387,7 +84443,7 @@ function registerLoginSubcommand(auth) {
     "Override the surface-attribution client_id. Defaults to `mx-claude-plugin` (or MIXSHIFT_PLUGIN_CLIENT_ID env var). Use `mx-claude-plugin-dev` for plugin development."
   ).option(
     "--api-base <url>",
-    "Override the auth service URL (default: https://mcp.mixshift.io). Used for local mx-legacy-auth development."
+    "Override the auth service URL (default: https://mcp.mixshift.io, or MIXSHIFT_GATEWAY_BASE_URL). Used for local mx-legacy-auth development."
   ).option(
     "--mode <flow>",
     "Login flow: `pkce` (browser callback), `device` (device-code paste-URL), or `auto` (PKCE first, fall back to device on browser-open failure).",
@@ -84513,9 +84569,12 @@ Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 function registerServiceSetupSubcommand(auth) {
   auth.command("service-setup").description(
     "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from your tenant admin (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias MIXSHIFT_CLIENT_SECRET), never argv."
-  ).option("--api-base <url>", "mx-legacy-auth service URL.", "https://mcp.mixshift.io").option(
+  ).option(
+    "--api-base <url>",
+    "mx-legacy-auth service URL (default: https://mcp.mixshift.io, or MIXSHIFT_GATEWAY_BASE_URL)."
+  ).option(
     "--setup-code <code>",
-    "One-time setup code (SVC-XXXX-XXXX) minted by your admin at /admin."
+    "One-time setup code (SVC-XXXX-XXXX) minted by your admin at People & access (https://build.mixshift.ai/people). Legacy single sign-in tenants that have not moved to OAuth yet can use mcp.mixshift.io/admin for now."
   ).option(
     "--client-id <id>",
     "Service client id (svc_...). Raw path only. Defaults to the MIXSHIFT_SERVICE_CLIENT_ID env var."
@@ -84525,7 +84584,7 @@ function registerServiceSetupSubcommand(auth) {
   ).option("--label <label>", "Informational label, e.g. svc:my-cron (for telemetry).").option("--skip-verify", "Save without minting a test token.", false).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     try {
-      const apiBase = opts.apiBase ?? "https://mcp.mixshift.io";
+      const apiBase = opts.apiBase ?? await resolveDefaultApiBase();
       let clientId;
       let secret;
       let label = opts.label;
@@ -86276,8 +86335,8 @@ function formatDate2(d) {
   if (!Number.isFinite(d.getTime())) return "";
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const day2 = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day2}`;
 }
 
 // src/lib/output/csv-file-sink.ts
@@ -86611,16 +86670,16 @@ function planInlineDelivery(rows, opts = {}) {
   };
   if (rows.length > rowCeiling) return spill("row_ceiling");
   if (byteGuardActive) {
-    const bytes = Buffer.byteLength(JSON.stringify(rows), "utf8");
-    if (bytes > INLINE_BYTE_CEILING) return spill("byte_ceiling");
+    const bytes2 = Buffer.byteLength(JSON.stringify(rows), "utf8");
+    if (bytes2 > INLINE_BYTE_CEILING) return spill("byte_ceiling");
   }
   return { mode: "inline", rowCeiling, columns, preview: [] };
 }
 var DEFAULT_INLINE_DOC_BYTE_CEILING = 256 * 1024;
 var INLINE_DOC_PREVIEW_LINES = 40;
-function planInlineDocument(bytes, opts = {}) {
+function planInlineDocument(bytes2, opts = {}) {
   const ceiling = opts.inline === true ? Infinity : DEFAULT_INLINE_DOC_BYTE_CEILING;
-  return { mode: bytes > ceiling ? "spill" : "inline", ceiling };
+  return { mode: bytes2 > ceiling ? "spill" : "inline", ceiling };
 }
 function previewLines(text, maxLines = INLINE_DOC_PREVIEW_LINES) {
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
@@ -87094,8 +87153,8 @@ function formatCellForMd(v) {
     const d = v;
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(d.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+    const day2 = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day2}`;
   }
   const s = String(v);
   return s.replace(/\|/g, "\\|");
@@ -87570,33 +87629,8 @@ async function saveUpdateNoticeState(state, dataDirOverride) {
   }
 }
 
-// src/lib/net/gateway-url.ts
-init_load3();
-function resolveGatewayBase(raw) {
-  if (!raw) return "";
-  try {
-    const u = new URL(raw);
-    if (u.protocol === "https:") return stripTrailingSlash(raw);
-    if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost")) {
-      return stripTrailingSlash(raw);
-    }
-  } catch {
-  }
-  return "";
-}
-async function resolveGatewayBaseSafe() {
-  try {
-    const { gateway } = await loadPluginDefaults();
-    return resolveGatewayBase(gateway.base_url);
-  } catch {
-    return "";
-  }
-}
-function stripTrailingSlash(s) {
-  return s.replace(/\/+$/, "");
-}
-
 // src/lib/version-check.ts
+init_gateway_url();
 var MARKETPLACE_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/.claude-plugin/marketplace.json";
 var RELEASES_TAG_BASE = "https://github.com/miXshift/mx-claude-plugin/releases/tag/";
 var CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
@@ -87898,8 +87932,9 @@ function renderWelcome(args) {
   lines.push("");
   lines.push("  Sign in so the plugin can read your Amazon ads + retail data.");
   lines.push("  You'll need your MixShift account. If your organization uses member");
-  lines.push('  sign-in, choose "Sign in with Google" (or "Continue as <you>" when');
-  lines.push("  already signed in on the web); otherwise use your team login as before.");
+  lines.push('  sign-in, choose "Sign in with Google" or "Sign in with Microsoft"');
+  lines.push('  (whichever it uses), or "Continue as <you>" when already signed in on');
+  lines.push("  the web; otherwise use your team login as before.");
   lines.push("  Your credentials stay in your browser; the plugin only holds a token after.");
   lines.push("");
   for (const l of NO_ACCOUNT_TERMINAL.trimEnd().split("\n")) {
@@ -88069,7 +88104,7 @@ function renderWelcomeChat(args) {
   lines.push("### Step 1 \u2014 Sign in to MixShift");
   lines.push("");
   lines.push(
-    `Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" (or "Continue as <you>" when already signed in on the web); otherwise use your team login as before. Your credentials stay in your browser; the plugin only holds a token after.`
+    `Sign in so the plugin can read your Amazon ads + retail data. You'll need your MixShift account. If your organization uses member sign-in, choose "Sign in with Google" or "Sign in with Microsoft" (whichever it uses), or "Continue as <you>" when already signed in on the web; otherwise use your team login as before. Your credentials stay in your browser; the plugin only holds a token after.`
   );
   lines.push("");
   lines.push(NO_ACCOUNT_CHAT);
@@ -88395,6 +88430,7 @@ init_telemetry();
 init_resolve();
 import { readFile as readFile33, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
 import { dirname as dirname28, join as join21 } from "node:path";
+init_gateway_url();
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
 var CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
@@ -88677,6 +88713,7 @@ import { readdir as readdir5 } from "node:fs/promises";
 import { dirname as dirname30, join as join23 } from "node:path";
 init_credentials();
 init_clients();
+init_gateway_url();
 var ACTIONS_URL_DEFAULT = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/releases/actions.yaml";
 var CACHE_TTL_MS3 = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS3 = 5e3;
@@ -92896,9 +92933,9 @@ function registerReportGet(report) {
         return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
       }
       const document = result.document ?? "";
-      const bytes = result.bytes ?? Buffer.byteLength(document, "utf-8");
-      await trackRetrieved(startedAt, bytes, root.dataDir);
-      const plan = planInlineDocument(bytes, { inline: opts.inline });
+      const bytes2 = result.bytes ?? Buffer.byteLength(document, "utf-8");
+      await trackRetrieved(startedAt, bytes2, root.dataDir);
+      const plan = planInlineDocument(bytes2, { inline: opts.inline });
       if (plan.mode === "spill") {
         const spillPath = resolvePath2(
           `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`
@@ -92910,7 +92947,7 @@ function registerReportGet(report) {
           writeJson3({
             status: "ok",
             ready: true,
-            bytes,
+            bytes: bytes2,
             out_path: spillPath,
             spilled_to_file: true,
             preview_truncated: truncated,
@@ -92921,7 +92958,7 @@ function registerReportGet(report) {
         } else {
           process.stderr.write(
             `
-\u2713 ${bytes} bytes. Document is large, so I saved it to a file and show a preview below:
+\u2713 ${bytes2} bytes. Document is large, so I saved it to a file and show a preview below:
   ${spillPath}
   Tip: pass --out <path> to choose the destination, or --inline to print the full document.
 `
@@ -92934,10 +92971,10 @@ function registerReportGet(report) {
         return;
       }
       if (root.json) {
-        writeJson3({ status: "ok", ready: true, bytes, document });
+        writeJson3({ status: "ok", ready: true, bytes: bytes2, document });
       } else {
         process.stderr.write(`
-\u2713 ${bytes} bytes (use --out <file> to save)
+\u2713 ${bytes2} bytes (use --out <file> to save)
 `);
         process.stdout.write(document);
         if (!document.endsWith("\n")) process.stdout.write("\n");
@@ -93070,15 +93107,15 @@ function registerReportRun(report) {
           await trackFailure2(EventName.ReportFailed, streamed, startedAt, root.dataDir, reportType, runId);
           return emitFailure4(streamed, !!root.json);
         }
-        const bytes2 = streamed.bytes;
-        await trackRetrieved(startedAt, bytes2, root.dataDir, reportType);
+        const bytes3 = streamed.bytes;
+        await trackRetrieved(startedAt, bytes3, root.dataDir, reportType);
         if (root.json) {
-          writeJson3({ status: "ok", ready: true, run_id: runId, out_path: outPath2, bytes: bytes2, polls });
+          writeJson3({ status: "ok", ready: true, run_id: runId, out_path: outPath2, bytes: bytes3, polls });
         } else {
           process.stderr.write(
             `
 \u2713 ${reportType} done in ${((Date.now() - startedAt) / 1e3).toFixed(1)}s (${polls} poll(s))
-  wrote ${bytes2} bytes to ${outPath2}
+  wrote ${bytes3} bytes to ${outPath2}
 `
           );
         }
@@ -93183,17 +93220,17 @@ function registerReportRun(report) {
       const outPath = resolvePath2(
         opts.out ?? await defaultOutPath(sellerId, reportType, root.dataDir)
       );
-      let bytes;
+      let bytes2;
       try {
         const merged = mergeSqpDocuments(docs, fullAsinList);
-        bytes = Buffer.byteLength(merged, "utf8");
+        bytes2 = Buffer.byteLength(merged, "utf8");
         await mkdir30(dirname36(outPath), { recursive: true });
         await writeFile27(outPath, merged, "utf8");
       } catch (mergeErr) {
         emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
         return;
       }
-      await trackRetrieved(startedAt, bytes, root.dataDir, reportType);
+      await trackRetrieved(startedAt, bytes2, root.dataDir, reportType);
       if (root.json) {
         writeJson3({
           status: "ok",
@@ -93203,14 +93240,14 @@ function registerReportRun(report) {
           chunks: chunks.length,
           asin_count: asinList.length,
           out_path: outPath,
-          bytes,
+          bytes: bytes2,
           polls: totalPolls
         });
       } else {
         process.stderr.write(
           `
 \u2713 ${reportType} done in ${((Date.now() - startedAt) / 1e3).toFixed(1)}s (${chunks.length} chunk(s), ${totalPolls} poll(s) total)
-  wrote ${bytes} bytes to ${outPath} (${asinList.length} ASINs)
+  wrote ${bytes2} bytes to ${outPath} (${asinList.length} ASINs)
 `
         );
       }
@@ -93363,14 +93400,14 @@ async function startAndPollUntilReady(input, ctx) {
   }
   return { outcome: "ready", runId, polls };
 }
-async function trackRetrieved(startedAt, bytes, dataDir, reportType) {
+async function trackRetrieved(startedAt, bytes2, dataDir, reportType) {
   await track(
     {
       event_name: EventName.ReportRetrieved,
       outcome: "ok",
       duration_ms: Date.now() - startedAt,
       // bytes is a size, not content — safe. No document bytes, no sellerId.
-      payload: { bytes, ...reportType ? { report_type: reportType } : {} }
+      payload: { bytes: bytes2, ...reportType ? { report_type: reportType } : {} }
     },
     dataDir
   );
@@ -93697,7 +93734,7 @@ function sleep(ms) {
 }
 
 // src/commands/ads.ts
-import { readFile as readFile43 } from "node:fs/promises";
+import { readFile as readFile44 } from "node:fs/promises";
 
 // src/lib/amazon/ads-call.ts
 async function listAdsProfiles(opts = {}) {
@@ -94178,6 +94215,164 @@ function debugLog4(env, message) {
 `);
 }
 
+// src/lib/ads/dsp-creative-map.ts
+init_zod();
+init_resolve();
+init_credentials();
+init_token_claims();
+init_service_attribution_cache();
+import { mkdir as mkdir31, readFile as readFile43, rename as rename23, writeFile as writeFile28, chmod as chmod6 } from "node:fs/promises";
+import { dirname as dirname37, join as join26 } from "node:path";
+var NUMERIC_ID = /^\d{1,30}$/;
+var entrySchema = external_exports.object({
+  tenant: external_exports.string().min(1),
+  advertiser_id: external_exports.string().regex(NUMERIC_ID),
+  order_id: external_exports.string().regex(NUMERIC_ID),
+  creative_id: external_exports.string().regex(NUMERIC_ID),
+  source: external_exports.enum(["plugin_build", "user_confirmed"]),
+  recorded_at: external_exports.iso.datetime(),
+  recorded_by: external_exports.string().min(1).optional(),
+  /** plugin_build: the audit id of the dsp.create_ads commit that made it. */
+  audit_id: external_exports.string().min(1).max(128).optional(),
+  /** user_confirmed: the user said this creative is shared with another order on purpose. */
+  reuse: external_exports.boolean().optional()
+});
+var fileSchema = external_exports.object({
+  schema_version: external_exports.literal(1),
+  entries: external_exports.array(entrySchema)
+});
+function creativeMapPath(dataDirOverride) {
+  return join26(resolveDataDir(dataDirOverride), "dsp", "creative-map.json");
+}
+async function loadCreativeMap(dataDirOverride) {
+  const path2 = creativeMapPath(dataDirOverride);
+  let raw;
+  try {
+    raw = await readFile43(path2, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") return { ok: true, entries: [] };
+    return { ok: false, reason: `could not read ${path2}: ${err.message}` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: `${path2} is not valid JSON` };
+  }
+  const res = fileSchema.safeParse(parsed);
+  if (!res.success) return { ok: false, reason: `${path2} does not match the creative map format` };
+  return { ok: true, entries: res.data.entries };
+}
+async function saveCreativeMap(file2, dataDirOverride) {
+  const validated = fileSchema.parse(file2);
+  const path2 = creativeMapPath(dataDirOverride);
+  await mkdir31(dirname37(path2), { recursive: true, mode: 448 });
+  const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile28(tmp, JSON.stringify(validated, null, 2) + "\n", { encoding: "utf8", mode: 384 });
+  await chmod6(tmp, 384);
+  await rename23(tmp, path2);
+}
+var sameKey = (a, b) => a.tenant === b.tenant && a.advertiser_id === b.advertiser_id && a.order_id === b.order_id && a.creative_id === b.creative_id;
+async function recordCreativeMappings(entries, dataDirOverride) {
+  const loaded2 = await loadCreativeMap(dataDirOverride);
+  if (!loaded2.ok) throw new Error(`${loaded2.reason}; fix or move the file, nothing was recorded.`);
+  const all = [...loaded2.entries];
+  const added = [];
+  const existing = [];
+  for (const raw of entries) {
+    const e = entrySchema.parse(raw);
+    const found = all.find((x) => sameKey(x, e));
+    if (found) {
+      existing.push(found);
+      continue;
+    }
+    all.push(e);
+    added.push(e);
+  }
+  if (added.length) await saveCreativeMap({ schema_version: 1, entries: all }, dataDirOverride);
+  return { added, existing };
+}
+async function removeCreativeMapping(key, dataDirOverride) {
+  const loaded2 = await loadCreativeMap(dataDirOverride);
+  if (!loaded2.ok) throw new Error(`${loaded2.reason}; fix or move the file, nothing was removed.`);
+  const removed = loaded2.entries.filter((x) => sameKey(x, key));
+  if (removed.length) {
+    await saveCreativeMap(
+      { schema_version: 1, entries: loaded2.entries.filter((x) => !sameKey(x, key)) },
+      dataDirOverride
+    );
+  }
+  return removed;
+}
+function scopedEntries(entries, tenant, advertiserId) {
+  return entries.filter((e) => e.tenant === tenant && e.advertiser_id === advertiserId);
+}
+async function resolveMappingIdentity(dataDirOverride) {
+  try {
+    const { credentials } = await loadCredentials(dataDirOverride);
+    const datahub = credentials?.datahub;
+    if (datahub) {
+      const claims = decodeAccessTokenClaims(datahub.access_token);
+      const id = claims.user_id ?? datahub.user_id;
+      if (!id) return { ok: false, reason: "the signed-in session carries no tenant id" };
+      return {
+        ok: true,
+        identity: { tenant: `user:${id}`, actor: claims.actor ?? datahub.person_label, automation: false }
+      };
+    }
+    const service = credentials?.service;
+    if (service) {
+      const attr = await readServiceAttributionCache(service.client_id, dataDirOverride);
+      if (!attr.owner_user_id) {
+        return { ok: false, reason: "the service credential has not reported its owning tenant yet" };
+      }
+      return {
+        ok: true,
+        identity: { tenant: `user:${attr.owner_user_id}`, actor: service.label ?? service.client_id, automation: true }
+      };
+    }
+    return { ok: false, reason: "not signed in to MixShift" };
+  } catch (err) {
+    return { ok: false, reason: `could not read the sign-in: ${err.message}` };
+  }
+}
+async function creativeMapForReadiness(dataDirOverride) {
+  const who = await resolveMappingIdentity(dataDirOverride);
+  if (!who.ok) return { status: "unavailable", reason: who.reason };
+  const loaded2 = await loadCreativeMap(dataDirOverride);
+  if (!loaded2.ok) return { status: "unavailable", reason: loaded2.reason };
+  return { status: "ok", tenant: who.identity.tenant, entries: loaded2.entries };
+}
+function createdAdIds(payload) {
+  const out2 = [];
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return out2;
+  const p = payload;
+  for (const key of ["success", "partialSuccess"]) {
+    const list2 = p[key];
+    if (!Array.isArray(list2)) continue;
+    for (const row of list2) {
+      const ad = row?.ad;
+      const id = ad?.adId;
+      const s = typeof id === "string" ? id : typeof id === "number" && Number.isFinite(id) ? String(id) : void 0;
+      if (s && NUMERIC_ID.test(s) && !out2.includes(s)) out2.push(s);
+    }
+  }
+  return out2;
+}
+function buildEntriesFromCreate(input) {
+  const at = (input.now ?? /* @__PURE__ */ new Date()).toISOString();
+  return createdAdIds(input.payload).map((creativeId) => ({
+    tenant: input.tenant,
+    advertiser_id: input.advertiserId,
+    order_id: input.orderId,
+    creative_id: creativeId,
+    source: "plugin_build",
+    recorded_at: at,
+    ...input.actor ? { recorded_by: input.actor } : {},
+    ...input.auditId && /^[A-Za-z0-9_-]{1,128}$/.test(input.auditId) ? { audit_id: input.auditId } : {}
+  }));
+}
+
 // src/commands/ads.ts
 init_telemetry();
 function registerAdsCommands(program3) {
@@ -94315,6 +94510,9 @@ function registerCall2(ads) {
   ).option(
     "--expires-hours <n>",
     "with --propose: hours the proposal stays open (1-168, default 72)"
+  ).option(
+    "--for-order <campaignId>",
+    "dsp.create_ads only: the DSP order (campaign) these responsive ads are built for. On a successful --commit each created ad id is recorded against it on this machine, so `dsp readiness` can tell this order's responsive ad from another order's."
   ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
@@ -94354,6 +94552,28 @@ function registerCall2(ads) {
           return emitError11(new Error(`${stray[0]} only applies with --propose.`), !!root.json);
         }
       }
+      if (opts.forOrder !== void 0) {
+        if (operation !== "dsp.create_ads") {
+          return emitError11(new Error("--for-order only applies to dsp.create_ads."), !!root.json);
+        }
+        if (!/^\d{1,30}$/.test(opts.forOrder)) {
+          return emitError11(new Error("--for-order must be the numeric DSP order (campaign) id."), !!root.json);
+        }
+        if (opts.propose) {
+          return emitError11(
+            new Error(
+              "--for-order cannot ride a proposal: a DSP build is committed by a signed-in person. After the commit, record the order with `mixshift dsp creative-map confirm`."
+            ),
+            !!root.json
+          );
+        }
+        if (!/^\d{1,30}$/.test(opts.path?.advertiserId ?? "")) {
+          return emitError11(
+            new Error("--for-order needs the numeric DSP advertiser id in --path advertiserId=<id>."),
+            !!root.json
+          );
+        }
+      }
       let expiresInHours;
       if (opts.expiresHours !== void 0) {
         expiresInHours = Number(opts.expiresHours);
@@ -94369,7 +94589,7 @@ function registerCall2(ads) {
         return emitError11(new Error("Pass --body-file or --body, not both."), !!root.json);
       }
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile43(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile44(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -94390,7 +94610,7 @@ function registerCall2(ads) {
       if (opts.propose) {
         let evidence;
         if (opts.evidenceFile) {
-          evidence = JSON.parse(await readFile43(opts.evidenceFile, "utf8"));
+          evidence = JSON.parse(await readFile44(opts.evidenceFile, "utf8"));
         }
         const created = await createProposal(
           {
@@ -94486,6 +94706,14 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
         ...typeof result.itemsCount === "number" ? { items_count: result.itemsCount } : {},
         ...result.auditId ? { audit_id: result.auditId } : {}
       });
+      const creativeMap = opts.forOrder !== void 0 && result.dryRun === false ? await recordBuildMapping({
+        advertiserId: opts.path.advertiserId,
+        orderId: opts.forOrder,
+        payload: result.payload,
+        ...result.auditId ? { auditId: result.auditId } : {},
+        dataDir: root.dataDir,
+        startedAt
+      }) : void 0;
       if (root.json) {
         writeJson4({
           status: "ok",
@@ -94498,7 +94726,8 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
           ...result.auditId ? { audit_id: result.auditId } : {},
           ...result.beforeState !== void 0 ? { before_state: result.beforeState } : {},
           ...result.preview !== void 0 ? { preview: result.preview } : {},
-          ...result.payload !== void 0 ? { payload: result.payload } : {}
+          ...result.payload !== void 0 ? { payload: result.payload } : {},
+          ...creativeMap ? { creative_map: creativeMap } : {}
         });
       } else if (result.dryRun === true) {
         const commitHint = result.auditId ? `--commit --proposal-id ${result.auditId}` : "--commit";
@@ -94507,8 +94736,8 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
 \u2713 DRY RUN ${result.operation} (profile ${result.profileId}): ${result.itemsCount ?? "?"} item(s) validated, nothing applied.
 ` + (result.auditId ? `  audit: ${result.auditId}
 ` : "") + `  Re-run with ${commitHint} AFTER the user confirms this change set.
-
-`
+` + (opts.forOrder ? `  On commit, each created ad is recorded as built for order ${opts.forOrder} (on this machine only).
+` : "") + "\n"
         );
         process.stdout.write(
           JSON.stringify({ preview: result.preview, beforeState: result.beforeState }, null, 2) + "\n"
@@ -94522,6 +94751,9 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
 `
         );
         process.stdout.write(JSON.stringify(result.payload, null, 2) + "\n");
+        if (creativeMap) process.stderr.write(`
+${creativeMap.message}
+`);
       } else {
         process.stderr.write(`
 \u2713 ${result.operation} (profile ${result.profileId})
@@ -94549,6 +94781,49 @@ PROPOSED ${p.operation || operation}: ${p.itemsCount ?? "?"} item(s) stored, not
       emitError11(err, !!root.json);
     }
   });
+}
+async function recordBuildMapping(input) {
+  try {
+    const who = await resolveMappingIdentity(input.dataDir);
+    if (!who.ok) {
+      return {
+        recorded: [],
+        message: `The order mapping was NOT recorded (${who.reason}). Record it with \`mixshift dsp creative-map confirm ${input.orderId} --advertiser-id ${input.advertiserId} --creative-id <adId>\`.`
+      };
+    }
+    const entries = buildEntriesFromCreate({
+      tenant: who.identity.tenant,
+      ...who.identity.actor ? { actor: who.identity.actor } : {},
+      advertiserId: input.advertiserId,
+      orderId: input.orderId,
+      payload: input.payload,
+      ...input.auditId ? { auditId: input.auditId } : {}
+    });
+    if (!entries.length) {
+      return { recorded: [], message: "No ad was created, so no order mapping was recorded." };
+    }
+    const res = await recordCreativeMappings(entries, input.dataDir);
+    await track(
+      {
+        event_name: EventName.DspCreativeMapChanged,
+        outcome: "ok",
+        duration_ms: Date.now() - input.startedAt,
+        payload: { action: "build", added: res.added.length, existing: res.existing.length }
+      },
+      input.dataDir
+    );
+    const ids = entries.map((e) => e.creative_id);
+    return {
+      recorded: ids,
+      message: `Recorded responsive ad ${ids.join(", ")} as built for order ${input.orderId} (intended identity from this build; \`dsp readiness\` checks line items against it).`
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      recorded: [],
+      message: `The order mapping was NOT recorded: ${message}`
+    };
+  }
 }
 async function proposalFailed(failure3, action, startedAt, root, proposalId, operation) {
   await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
@@ -94788,7 +95063,7 @@ async function trackAds(eventName, outcome, startedAt, dataDir, payload) {
 function writeJson4(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
-function emitFailure5(failure3, json3, nextStep) {
+function emitFailure5(failure3, json3, nextStep2) {
   if (json3) {
     writeJson4({
       status: "error",
@@ -94813,7 +95088,7 @@ function emitFailure5(failure3, json3, nextStep) {
       // A failed commit names the proposal and its state (FAILED, UNCERTAIN).
       proposal_id: failure3.proposalId,
       proposal_status: failure3.proposalStatus,
-      next_step: nextStep,
+      next_step: nextStep2,
       automatic_retry: failure3.automaticRetry,
       concurrency_cap: failure3.concurrencyCap,
       // The skill's `throttled` row has promised this; it was never emitted.
@@ -94835,7 +95110,7 @@ function emitFailure5(failure3, json3, nextStep) {
 `
       );
     }
-    if (nextStep) process.stderr.write(`  ${nextStep}
+    if (nextStep2) process.stderr.write(`  ${nextStep2}
 `);
   }
   process.exitCode = exitCodeForKind(failure3.kind);
@@ -94899,6 +95174,284 @@ function mdCell2(s) {
   return s.replaceAll("|", "\\|");
 }
 
+// src/lib/ads/dsp-creative-identity.ts
+var NON_REC_INVENTORY = /* @__PURE__ */ new Set(["AUDIO", "ONLINE_VIDEO", "STREAMING_TV"]);
+var uniq = (xs) => [...new Set(xs)];
+function evidenceOf(entries) {
+  const sources = uniq(entries.map((e) => e.source)).sort();
+  if (sources.length === 0) return "none";
+  return sources.join("+");
+}
+function describeEvidence(entries) {
+  return uniq(
+    entries.map(
+      (e) => e.source === "plugin_build" ? `recorded by a MixShift build${e.audit_id ? ` (audit ${e.audit_id})` : ""} on ${e.recorded_at.slice(0, 10)}` : `confirmed by the user on ${e.recorded_at.slice(0, 10)}${e.reuse ? " as an intentional reuse" : ""}`
+    )
+  ).join("; ");
+}
+function fmtCreative(c) {
+  const products = c.products && c.products.length ? `, products ${c.products.slice(0, 5).join(", ")}${c.products.length > 5 ? ", ..." : ""}` : "";
+  return `${c.creativeId}${c.name ? ` "${c.name}"` : ""}${products}${c.state && c.state !== "ACTIVE" ? `, attachment ${c.state}` : ""}`;
+}
+function evaluateResponsiveIdentity(input) {
+  const { orderId, advertiserId } = input;
+  const mapOk = input.creativeMap.status === "ok";
+  const mine = mapOk ? scopedEntries(
+    input.creativeMap.entries,
+    input.creativeMap.tenant,
+    advertiserId
+  ) : [];
+  const forOrder = mine.filter((e) => e.order_id === orderId);
+  const expected = uniq(forOrder.map((e) => e.creative_id));
+  const ordersOf = (cid) => uniq(mine.filter((e) => e.creative_id === cid).map((e) => e.order_id));
+  const evidenceSource = mapOk ? evidenceOf(forOrder) : "unavailable";
+  const mapNote = mapOk ? "" : ` (the creative map could not be used: ${input.creativeMap.reason})`;
+  const results = [];
+  const checks = [];
+  const confirmCmd = (cid, reuse = false) => `mixshift dsp creative-map confirm ${orderId} --advertiser-id ${advertiserId} --creative-id ${cid}${reuse ? " --reuse" : ""}`;
+  for (const li of input.lineItems) {
+    const L = li.adGroupId;
+    const label = `Responsive creative on line item ${li.name ? `"${li.name}" ` : ""}${L}`;
+    const base2 = {
+      adGroupId: L,
+      orderId,
+      expectedCreativeIds: expected,
+      evidenceSource
+    };
+    const push2 = (r) => {
+      const full = { ...base2, ...r };
+      results.push(full);
+      if (full.verdict !== "not_applicable") {
+        checks.push({
+          id: "responsive_creative_identity",
+          adGroupId: L,
+          level: full.verdict,
+          label,
+          detail: full.detail,
+          ...full.fix ? { fix: full.fix } : {}
+        });
+      }
+    };
+    if (!input.attachments.ok) {
+      push2({
+        verdict: "unchecked",
+        reason: "attachments_unreadable",
+        attachedCreativeIds: [],
+        creatives: [],
+        detail: `Could not read the creatives attached to order ${orderId} line item ${L}: ${input.attachments.error}`
+      });
+      continue;
+    }
+    const attached = input.attachments.value.get(L) ?? [];
+    const attachedIds = uniq(attached.map((a) => a.creativeId));
+    if (input.attachments.truncated) {
+      push2({
+        verdict: "unchecked",
+        reason: "attachments_truncated",
+        attachedCreativeIds: attachedIds,
+        creatives: [],
+        detail: `The attachment read for order ${orderId} stopped early, so line item ${L} may carry creatives not seen here.`
+      });
+      continue;
+    }
+    const applicable = !li.inventoryType || !NON_REC_INVENTORY.has(li.inventoryType);
+    if (attachedIds.length === 0 && (expected.length === 0 || !applicable)) {
+      push2({
+        verdict: "not_applicable",
+        reason: "no_creative",
+        attachedCreativeIds: [],
+        creatives: [],
+        detail: "No creative attached and no responsive creative recorded for this order."
+      });
+      continue;
+    }
+    if (input.details && !input.details.ok) {
+      push2({
+        verdict: "unchecked",
+        reason: "details_unreadable",
+        attachedCreativeIds: attachedIds,
+        creatives: [],
+        detail: `Could not read the creative details for order ${orderId} line item ${L}: ${input.details.error}`
+      });
+      continue;
+    }
+    if (input.details?.ok && input.details.truncated) {
+      push2({
+        verdict: "unchecked",
+        reason: "details_truncated",
+        attachedCreativeIds: attachedIds,
+        creatives: [],
+        detail: `The creative details read stopped early, so the creatives on order ${orderId} line item ${L} were not all identified.`
+      });
+      continue;
+    }
+    const details = input.details?.ok ? input.details.value : /* @__PURE__ */ new Map();
+    const byId = /* @__PURE__ */ new Map();
+    for (const a of attached) byId.set(a.creativeId, [...byId.get(a.creativeId) ?? [], a]);
+    const creatives = attachedIds.map((cid) => {
+      const rows = byId.get(cid) ?? [];
+      const exps = uniq(rows.flatMap((r) => r.experiences));
+      const d = details.get(cid);
+      const isRec4 = exps.includes("RESPONSIVE_ECOMMERCE") || d?.responsive === true;
+      const typeKnown = exps.length > 0 || d !== void 0;
+      const state = rows.some((r) => r.state === "ACTIVE") ? "ACTIVE" : rows.find((r) => r.state)?.state;
+      const recordedForOrders = ordersOf(cid);
+      const role = expected.includes(cid) ? "expected" : recordedForOrders.length ? "other_order" : isRec4 ? "unmatched_rec" : !typeKnown ? "unknown_type" : "non_rec";
+      return {
+        creativeId: cid,
+        role,
+        ...state ? { state } : {},
+        ...d?.name ? { name: d.name } : {},
+        ...d && d.products.length ? { products: d.products } : {},
+        recordedForOrders,
+        _detail: d,
+        _isRec: isRec4
+      };
+    });
+    const strip = (cs) => cs.map(({ _detail, _isRec, ...rest }) => rest);
+    const relevant = strip(creatives.filter((c) => c.role !== "non_rec"));
+    const of = (role) => creatives.filter((c) => c.role === role);
+    const exp = of("expected");
+    const other = of("other_order");
+    const unmatched = of("unmatched_rec");
+    const unknown2 = of("unknown_type");
+    if (other.length) {
+      const lines = other.map((c) => {
+        const ev = describeEvidence(mine.filter((e) => e.creative_id === c.creativeId));
+        return `${fmtCreative(c)} is recorded for order ${c.recordedForOrders.join(", ")} (${ev})`;
+      });
+      push2({
+        verdict: "fail",
+        reason: "other_order_attached",
+        attachedCreativeIds: attachedIds,
+        creatives: relevant,
+        detail: `Order ${orderId} line item ${L} carries another order's responsive creative: ${lines.join("; ")}.` + (expected.length ? ` This order's recorded creative is ${expected.join(", ")}` + (exp.length ? " (attached as well)." : " (not attached).") : " This order has no recorded responsive creative of its own."),
+        fix: `Remove ${other.map((c) => c.creativeId).join(", ")} from line item ${L} in the DSP console (MixShift cannot detach a creative), then attach this order's own responsive creative` + (expected.length && !exp.length ? ` (${expected.join(", ")}, with dsp.create_ad_associations after a preview)` : "") + `. Only if the user says the creative is shared with this order on purpose, record that: ${confirmCmd(
+          other[0].creativeId,
+          true
+        )}. Nothing was changed.`
+      });
+      continue;
+    }
+    if (expected.length) {
+      if (!exp.length) {
+        if (!applicable && !unmatched.length && !unknown2.length) {
+          push2({
+            verdict: "not_applicable",
+            reason: "line_type_not_rec",
+            attachedCreativeIds: attachedIds,
+            creatives: relevant,
+            detail: `Line item inventory type ${li.inventoryType} does not carry a responsive ecommerce creative.`
+          });
+          continue;
+        }
+        const gone = input.details?.ok ? expected.filter((cid) => !details.has(cid)) : [];
+        const stale = gone.length === expected.length;
+        push2({
+          verdict: "fail",
+          reason: stale ? "expected_stale" : "expected_missing",
+          attachedCreativeIds: attachedIds,
+          creatives: relevant,
+          detail: (stale ? `The responsive creative recorded for order ${orderId} (${expected.join(", ")}; ${describeEvidence(forOrder)}) was not found on the advertiser: it was deleted, or the mapping is stale.` : `Line item ${L} does not carry the responsive creative recorded for order ${orderId} (${expected.join(", ")}; ${describeEvidence(forOrder)}).`) + (unmatched.length || unknown2.length ? ` Attached instead: ${[...unmatched, ...unknown2].map(fmtCreative).join("; ")} (origin not recorded).` : attachedIds.length ? ` Attached: ${attachedIds.join(", ")}.` : " Nothing is attached."),
+          fix: stale ? `Check the order's creative in the DSP console with the user, then replace the record: mixshift dsp creative-map remove ${orderId} --advertiser-id ${advertiserId} --creative-id ${expected[0]} and ${confirmCmd("<creative id>")}.` : `Attach ${expected.join(" or ")} to line item ${L} (dsp.create_ad_associations, previewed and confirmed by the user)` + (unmatched.length ? ", and remove the other responsive creative in the DSP console if it is not meant to be there" : "") + ". Nothing was changed."
+        });
+        continue;
+      }
+      if (unmatched.length || unknown2.length) {
+        push2({
+          verdict: "confirm",
+          reason: unmatched.length ? "extra_unmatched_rec" : "unknown_type",
+          attachedCreativeIds: attachedIds,
+          creatives: relevant,
+          detail: `The recorded creative ${exp.map((c) => c.creativeId).join(", ")} is attached, and so is ` + [...unmatched, ...unknown2].map((c) => `${fmtCreative(c)}${c.role === "unknown_type" ? " (could not tell whether it is a responsive creative)" : ""}`).join("; ") + `, whose originating order is not recorded.`,
+          fix: `Ask the user whether that creative belongs on this line item. If it was made for this order, record it (${confirmCmd(unmatched[0]?.creativeId ?? unknown2[0].creativeId)}); if not, remove it in the DSP console. Do not decide from its name, products or dates.`
+        });
+        continue;
+      }
+      const missingDetail = exp.filter((c) => !c._detail && !c._isRec);
+      const notRec = exp.filter((c) => c._detail && !c._isRec);
+      if (notRec.length || missingDetail.length) {
+        push2({
+          verdict: "confirm",
+          reason: notRec.length ? "expected_not_rec" : "expected_no_details",
+          attachedCreativeIds: attachedIds,
+          creatives: relevant,
+          detail: notRec.length ? `The recorded creative ${notRec.map(fmtCreative).join("; ")} is attached, but Amazon does not describe it as a responsive ecommerce creative.` : `The recorded creative ${missingDetail.map((c) => c.creativeId).join(", ")} is attached, but Amazon returned no details for it.`,
+          fix: "Check the creative in the DSP console with the user; if the record is wrong, remove it with `mixshift dsp creative-map remove`."
+        });
+        continue;
+      }
+      const live = exp.filter((c) => c.state === "ACTIVE");
+      if (!live.length) {
+        push2({
+          verdict: "warn",
+          reason: "expected_inactive",
+          attachedCreativeIds: attachedIds,
+          creatives: relevant,
+          detail: `The recorded creative ${exp.map(fmtCreative).join("; ")} is attached, but the attachment is not active, so it does not serve until it is switched on.`,
+          fix: "Switch the attachment on in the DSP console (MixShift cannot change an attachment state)."
+        });
+        continue;
+      }
+      push2({
+        verdict: "pass",
+        reason: "expected_attached",
+        attachedCreativeIds: attachedIds,
+        creatives: relevant,
+        detail: `${exp.map(fmtCreative).join("; ")} is this order's responsive creative (${describeEvidence(forOrder)}).`
+      });
+      continue;
+    }
+    if (unmatched.length) {
+      push2({
+        verdict: "confirm",
+        reason: "unverified_origin",
+        attachedCreativeIds: attachedIds,
+        creatives: relevant,
+        detail: `Responsive creative attached, originating order unverified: order ${orderId} line item ${L} carries ${unmatched.map(fmtCreative).join("; ")}${mapNote}.`,
+        fix: `Ask the user which order ${unmatched.length > 1 ? "these were" : "it was"} made for. If it was made for order ${orderId}, record it: ${confirmCmd(unmatched[0].creativeId)} (a dry run; add --commit after the user confirms). If it belongs to another order, remove it from this line item in the DSP console. Never decide from its name, products or dates.`
+      });
+      continue;
+    }
+    if (unknown2.length) {
+      push2({
+        verdict: "confirm",
+        reason: "unknown_type",
+        attachedCreativeIds: attachedIds,
+        creatives: relevant,
+        detail: `Could not tell whether ${unknown2.map((c) => c.creativeId).join(", ")} on order ${orderId} line item ${L} is a responsive ecommerce creative: Amazon returned neither its ad experiences nor its details.`,
+        fix: "Check the creative in the DSP console with the user."
+      });
+      continue;
+    }
+    push2({
+      verdict: "not_applicable",
+      reason: "no_rec",
+      attachedCreativeIds: attachedIds,
+      creatives: relevant,
+      detail: "No responsive creative attached and none recorded for this order."
+    });
+  }
+  if (input.trackedAsins && input.trackedAsins.length && input.details?.ok && !input.details.truncated) {
+    const tracked = new Set(input.trackedAsins);
+    for (const r of results) {
+      const off = r.creatives.filter(
+        (c) => c.role !== "other_order" && c.products && c.products.length && !c.products.some((p) => tracked.has(p))
+      );
+      if (!off.length) continue;
+      checks.push({
+        id: "responsive_creative_products",
+        adGroupId: r.adGroupId,
+        level: "warn",
+        label: `Responsive creative products on line item ${r.adGroupId}`,
+        detail: `${off.map(fmtCreative).join("; ")} features none of order ${orderId}'s tracked products. Featured and tracked products need not match, so this alone does not mean the creative belongs to another order.`,
+        fix: "Check with the user that the creative advertises what this order sells."
+      });
+    }
+  }
+  return { results, checks };
+}
+
 // src/lib/ads/dsp-readiness.ts
 var DSP = { include: ["AMAZON_DSP"] };
 var RETAIL_KPIS = /* @__PURE__ */ new Set(["ROAS", "ROAS_PROMOTED", "RETURN_ON_AD_SPEND", "TOTAL_RETURN_ON_AD_SPEND"]);
@@ -94927,6 +95480,7 @@ var INVENTORY_TO_MEDIA = {
 var MAX_PAGES = 20;
 var CM_AD_GROUP_FILTER_MAX = 20;
 var V1_AD_GROUP_CHUNK = 50;
+var AD_ID_FILTER_MAX = 100;
 var TRACKED_PRODUCTS_PAGE = 1e4;
 function asRec(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? v : void 0;
@@ -95005,7 +95559,11 @@ function fmtCounts(m) {
   const parts = Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, v]) => `${k} ${v}`);
   return parts.length ? parts.join(", ") : "none";
 }
-async function checkDspReadiness(call, advertiserId, campaignId) {
+async function checkDspReadiness(call, advertiserId, campaignId, options = {}) {
+  const creativeMap = options.creativeMap ?? {
+    status: "unavailable",
+    reason: "no creative map was given to this check"
+  };
   const path2 = { advertiserId };
   const checks = [];
   const add = (c) => {
@@ -95110,6 +95668,7 @@ async function checkDspReadiness(call, advertiserId, campaignId) {
     "query"
   );
   const retail = kpi !== void 0 && RETAIL_KPIS.has(kpi);
+  const trackedAsins = isReportFailure(tpRes) || tpRes.truncated ? void 0 : tpRes.rows.map((r) => str2(asRec(r)?.productId)).filter((x) => !!x);
   if (isReportFailure(tpRes)) {
     add({
       id: "tracked_products",
@@ -95387,8 +95946,82 @@ async function checkDspReadiness(call, advertiserId, campaignId) {
       });
     }
   }
+  const attachments = creativeReadError ? { ok: false, error: creativeReadError } : { ok: true, truncated: creativeTruncated, value: groupAttachments(ids, assoc, mods) };
+  const expectedIds = creativeMap.status === "ok" ? [
+    ...new Set(
+      scopedEntries(creativeMap.entries, creativeMap.tenant, advertiserId).filter((e) => e.order_id === campaignId).map((e) => e.creative_id)
+    )
+  ] : [];
+  const wanted = [
+    .../* @__PURE__ */ new Set([...attachments.ok ? [...attachments.value.values()].flat().map((a) => a.creativeId) : [], ...expectedIds])
+  ];
+  const details = wanted.length && attachments.ok ? await readCreativeDetails(call, path2, wanted) : void 0;
+  const identity = evaluateResponsiveIdentity({
+    advertiserId,
+    orderId: campaignId,
+    lineItems: report.lineItems,
+    creativeMap,
+    attachments,
+    ...details ? { details } : {},
+    ...trackedAsins ? { trackedAsins } : {}
+  });
+  report.responsiveCreativeIdentity = identity.results;
+  for (const c of identity.checks) add(c);
   add(automatedRec(responsive));
   return finish(report);
+}
+function groupAttachments(ids, assoc, mods) {
+  const out2 = /* @__PURE__ */ new Map();
+  const mine = new Set(ids);
+  for (const a of assoc) {
+    const gid = str2(a.adGroupId);
+    const cid = str2(a.adCreativeId);
+    if (!gid || !cid || !mine.has(gid)) continue;
+    const mod = mods.find((m) => str2(m.adGroupId) === gid && str2(m.adCreativeId) === cid);
+    const experiences = [
+      .../* @__PURE__ */ new Set([...approvalOf(mod, void 0).experiences, ...approvalOf(void 0, a).experiences])
+    ];
+    const list2 = out2.get(gid) ?? [];
+    list2.push({ creativeId: cid, ...str2(a.state) ? { state: str2(a.state) } : {}, experiences });
+    out2.set(gid, list2);
+  }
+  return out2;
+}
+async function readCreativeDetails(call, path2, creativeIds) {
+  const value = /* @__PURE__ */ new Map();
+  let truncated = false;
+  for (const part of chunk(creativeIds, AD_ID_FILTER_MAX)) {
+    const res = await pageAll(
+      call,
+      {
+        operation: "dsp.query_ads",
+        pathParams: path2,
+        body: { adProductFilter: DSP, adIdFilter: { include: part }, maxResults: AD_ID_FILTER_MAX }
+      },
+      "ads",
+      "body"
+    );
+    if (isReportFailure(res)) return { ok: false, error: readFailureText(res) };
+    truncated ||= res.truncated;
+    for (const row of res.rows) {
+      const d = detailOf(asRec(row));
+      if (d && part.includes(d.creativeId)) value.set(d.creativeId, d);
+    }
+  }
+  return { ok: true, truncated, value };
+}
+function detailOf(ad) {
+  const creativeId = str2(ad?.adId);
+  if (!ad || !creativeId) return void 0;
+  const rec = asRec(asRec(asRec(ad.creative)?.componentCreative)?.responsiveEcommerceSettings);
+  const products = Array.isArray(rec?.products) ? (rec?.products).map((p) => str2(asRec(p)?.productId)).filter((x) => !!x) : [];
+  return {
+    creativeId,
+    ...str2(ad.name) ? { name: str2(ad.name) } : {},
+    ...str2(ad.adType) ? { adType: str2(ad.adType) } : {},
+    responsive: rec !== void 0,
+    products
+  };
 }
 function automatedRec(responsive) {
   const seen = responsive && responsive.length ? [...new Set(responsive)] : [];
@@ -95530,10 +96163,10 @@ function renderSupplyPlan(plan) {
 // src/commands/dsp.ts
 init_resolve();
 init_telemetry();
-import { mkdir as mkdir31, writeFile as writeFile28 } from "node:fs/promises";
-import { join as join26, resolve as resolve2 } from "node:path";
+import { mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
+import { join as join27, resolve as resolve2 } from "node:path";
 var EXIT_NOT_READY2 = 3;
-var NUMERIC_ID = /^\d{1,30}$/;
+var NUMERIC_ID2 = /^\d{1,30}$/;
 function registerDspCommands(program3) {
   const dsp = program3.command("dsp").description("Amazon DSP checks built on the Ads API (reads and dry-run previews; never commits).");
   dsp.command("readiness <campaignId>").description(
@@ -95549,10 +96182,10 @@ function registerDspCommands(program3) {
       if (!opts.advertiserId) {
         return usage("--advertiser-id is required (the DSP advertiser that owns the order).", json3);
       }
-      if (!NUMERIC_ID.test(opts.advertiserId)) {
+      if (!NUMERIC_ID2.test(opts.advertiserId)) {
         return usage("--advertiser-id must be the numeric DSP advertiser id.", json3);
       }
-      if (!NUMERIC_ID.test(campaignId)) {
+      if (!NUMERIC_ID2.test(campaignId)) {
         return usage("<campaignId> must be the numeric DSP order (campaign) id.", json3);
       }
       const call = (input) => adsCall(
@@ -95565,7 +96198,8 @@ function registerDspCommands(program3) {
         },
         { dataDirOverride: root.dataDir }
       );
-      const result = await checkDspReadiness(call, opts.advertiserId, campaignId);
+      const creativeMap = await creativeMapForReadiness(root.dataDir);
+      const result = await checkDspReadiness(call, opts.advertiserId, campaignId, { creativeMap });
       if (isReportFailure(result)) {
         await trackReadiness("failed", startedAt, root.dataDir, {
           kind: result.kind,
@@ -95585,6 +96219,10 @@ function registerDspCommands(program3) {
         // Stable check ids only (e.g. "creative", "tracked_products"): which
         // gates real orders trip, never what Amazon said about them.
         failed_checks: [...new Set(result.checks.filter((c) => c.level === "fail").map((c) => c.id))],
+        // Responsive creative identity: verdict counts and reason codes only,
+        // never a creative, line item or order id.
+        rec_identity: identityCounts(result.responsiveCreativeIdentity ?? []),
+        creative_map: creativeMap.status,
         ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {}
       });
       if (json3) {
@@ -95602,6 +96240,267 @@ function registerDspCommands(program3) {
     }
   });
   registerSupplyPreset(dsp);
+  registerCreativeMap(dsp);
+}
+function identityCounts(results) {
+  const counts = {};
+  for (const r of results) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
+  return { ...counts, reasons: [...new Set(results.map((r) => r.reason))].sort() };
+}
+function registerCreativeMap(dsp) {
+  const map2 = dsp.command("creative-map").description(
+    "The record of which responsive ecommerce creative each DSP order is meant to carry, checked by `dsp readiness` on every line item. Kept on this machine for the signed-in tenant; never sent to Amazon."
+  );
+  map2.command("list").description("List the recorded order -> responsive creative mappings for the signed-in tenant.").option("--advertiser-id <id>", "only this DSP advertiser").option("--order <campaignId>", "only this DSP order").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const json3 = !!root.json;
+    try {
+      if (opts.advertiserId !== void 0 && !NUMERIC_ID2.test(opts.advertiserId)) {
+        return usage("--advertiser-id must be the numeric DSP advertiser id.", json3);
+      }
+      if (opts.order !== void 0 && !NUMERIC_ID2.test(opts.order)) {
+        return usage("--order must be the numeric DSP order (campaign) id.", json3);
+      }
+      const who = await resolveMappingIdentity(root.dataDir);
+      if (!who.ok) return usage(`No creative map can be read: ${who.reason}.`, json3);
+      const loaded2 = await loadCreativeMap(root.dataDir);
+      if (!loaded2.ok) return usage(loaded2.reason, json3);
+      const rows = loaded2.entries.filter(
+        (e) => e.tenant === who.identity.tenant && (opts.advertiserId === void 0 || e.advertiser_id === opts.advertiserId) && (opts.order === void 0 || e.order_id === opts.order)
+      );
+      if (json3) {
+        process.stdout.write(JSON.stringify({ status: "ok", count: rows.length, entries: rows.map(publicEntry) }, null, 2) + "\n");
+        return;
+      }
+      process.stdout.write(
+        rows.length ? rows.map(renderEntry).join("\n") + "\n" : "No responsive creative is recorded for an order" + (opts.advertiserId ? ` on advertiser ${opts.advertiserId}` : "") + ". `dsp readiness` shows every responsive creative as unverified until one is.\n"
+      );
+    } catch (err) {
+      fail2(err, json3);
+    }
+  });
+  map2.command("confirm <campaignId>").description(
+    "Record that a responsive ecommerce creative belongs to this order, after the user said so. Reads the order and the creative from Amazon first; a dry run unless --commit. Never infer the order from a creative's name, products, dates or attachments."
+  ).option("--advertiser-id <id>", "DSP advertiser id that owns the order and the creative").option("--creative-id <id>", "the responsive ecommerce creative (adCreativeId / adId)").option("--reuse", "the creative is already recorded for another order and the user says it is shared on purpose").option("--commit", "write the record (only after the user confirmed the dry run)").option("--profile-id <id>", "Ads profileId from `ads profiles`").option("--legacy-seller-id <id>", "exact per-marketplace seller record id").option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").action(async (campaignId, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const json3 = !!root.json;
+    const startedAt = Date.now();
+    try {
+      const bad = idProblem(campaignId, opts);
+      if (bad) return usage(bad, json3);
+      const advertiserId = opts.advertiserId;
+      const creativeId = opts.creativeId;
+      const who = await resolveMappingIdentity(root.dataDir);
+      if (!who.ok) return usage(`Nothing can be recorded: ${who.reason}.`, json3);
+      if (who.identity.automation) {
+        return usage(
+          "A creative mapping records what a person confirmed; it cannot be written under a service credential. Sign in as a person (`mixshift auth login`) to confirm it.",
+          json3
+        );
+      }
+      const loaded2 = await loadCreativeMap(root.dataDir);
+      if (!loaded2.ok) return usage(loaded2.reason, json3);
+      const mine = scopedEntries(loaded2.entries, who.identity.tenant, advertiserId);
+      const already = mine.find((e) => e.order_id === campaignId && e.creative_id === creativeId);
+      const elsewhere = [...new Set(mine.filter((e) => e.creative_id === creativeId && e.order_id !== campaignId).map((e) => e.order_id))];
+      if (elsewhere.length && !opts.reuse && !already) {
+        return usage(
+          `Creative ${creativeId} is already recorded for order ${elsewhere.join(", ")}. If the user says it is shared with order ${campaignId} on purpose, run this again with --reuse; otherwise ask which order it belongs to.`,
+          json3
+        );
+      }
+      const selector = {
+        profileId: opts.profileId,
+        legacySellerId: opts.legacySellerId,
+        sellerId: opts.sellerId,
+        marketplace: opts.marketplace
+      };
+      const verified = await verifyOrderAndCreative(
+        (input) => adsCall({ ...input, ...selector }, { dataDirOverride: root.dataDir }),
+        advertiserId,
+        campaignId,
+        creativeId
+      );
+      if (isReportFailure(verified)) {
+        await trackCreativeMap("failed", startedAt, root.dataDir, { action: "confirm", kind: verified.kind });
+        return emitFailure6(verified, json3);
+      }
+      if (!verified.ok) {
+        await trackCreativeMap("failed", startedAt, root.dataDir, { action: "confirm", kind: verified.code });
+        return usage(verified.message, json3);
+      }
+      const entry = {
+        tenant: who.identity.tenant,
+        advertiser_id: advertiserId,
+        order_id: campaignId,
+        creative_id: creativeId,
+        source: "user_confirmed",
+        recorded_at: (/* @__PURE__ */ new Date()).toISOString(),
+        ...who.identity.actor ? { recorded_by: who.identity.actor } : {},
+        ...opts.reuse ? { reuse: true } : {}
+      };
+      const plan = `order ${campaignId}${verified.orderName ? ` "${verified.orderName}"` : ""} -> responsive creative ${creativeId}${verified.creativeName ? ` "${verified.creativeName}"` : ""}` + (verified.products.length ? `, products ${verified.products.slice(0, 5).join(", ")}${verified.products.length > 5 ? ", ..." : ""}` : "") + ` (advertiser ${advertiserId}${opts.reuse ? `; shared on purpose with order ${elsewhere.join(", ")}` : ""})`;
+      if (already) {
+        if (json3) process.stdout.write(JSON.stringify({ status: "ok", recorded: false, already: publicEntry(already) }, null, 2) + "\n");
+        else process.stdout.write(`Already recorded: ${renderEntry(already)}
+`);
+        return;
+      }
+      if (!opts.commit) {
+        await trackCreativeMap("ok", startedAt, root.dataDir, { action: "confirm", dry_run: true, reuse: !!opts.reuse });
+        if (json3) {
+          process.stdout.write(JSON.stringify({ status: "ok", dry_run: true, would_record: publicEntry(entry) }, null, 2) + "\n");
+        } else {
+          process.stdout.write(
+            `DRY RUN: would record ${plan}.
+Nothing was written. After the user confirms this is the order the creative was made for, run the same command with --commit.
+`
+          );
+        }
+        return;
+      }
+      const res = await recordCreativeMappings([entry], root.dataDir);
+      await trackCreativeMap("ok", startedAt, root.dataDir, {
+        action: "confirm",
+        dry_run: false,
+        added: res.added.length,
+        reuse: !!opts.reuse
+      });
+      if (json3) {
+        process.stdout.write(JSON.stringify({ status: "ok", recorded: res.added.length > 0, entry: publicEntry(entry), file: creativeMapPath(root.dataDir) }, null, 2) + "\n");
+      } else {
+        process.stdout.write(`Recorded ${plan}.
+  ${creativeMapPath(root.dataDir)}
+Run \`mixshift dsp readiness ${campaignId} --advertiser-id ${advertiserId}\` to check its line items.
+`);
+      }
+    } catch (err) {
+      fail2(err, json3);
+    }
+  });
+  map2.command("remove <campaignId>").description("Remove one recorded order -> responsive creative mapping (a stale or wrong one). A dry run unless --commit.").option("--advertiser-id <id>", "DSP advertiser id").option("--creative-id <id>", "the recorded creative id").option("--commit", "remove the record (only after the user confirmed)").action(async (campaignId, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const json3 = !!root.json;
+    const startedAt = Date.now();
+    try {
+      const bad = idProblem(campaignId, opts);
+      if (bad) return usage(bad, json3);
+      const who = await resolveMappingIdentity(root.dataDir);
+      if (!who.ok) return usage(`Nothing can be removed: ${who.reason}.`, json3);
+      if (who.identity.automation) {
+        return usage("A creative mapping is removed by a person, not under a service credential.", json3);
+      }
+      const key = {
+        tenant: who.identity.tenant,
+        advertiser_id: opts.advertiserId,
+        order_id: campaignId,
+        creative_id: opts.creativeId
+      };
+      const loaded2 = await loadCreativeMap(root.dataDir);
+      if (!loaded2.ok) return usage(loaded2.reason, json3);
+      const found = loaded2.entries.filter(
+        (e) => e.tenant === key.tenant && e.advertiser_id === key.advertiser_id && e.order_id === key.order_id && e.creative_id === key.creative_id
+      );
+      if (!found.length) {
+        return usage(`No record of creative ${key.creative_id} for order ${campaignId} on advertiser ${key.advertiser_id}.`, json3);
+      }
+      if (!opts.commit) {
+        if (json3) process.stdout.write(JSON.stringify({ status: "ok", dry_run: true, would_remove: found.map(publicEntry) }, null, 2) + "\n");
+        else process.stdout.write(`DRY RUN: would remove ${found.map(renderEntry).join("; ")}.
+Nothing was changed; add --commit after the user confirms.
+`);
+        return;
+      }
+      const removed = await removeCreativeMapping(key, root.dataDir);
+      await trackCreativeMap("ok", startedAt, root.dataDir, { action: "remove", removed: removed.length });
+      if (json3) process.stdout.write(JSON.stringify({ status: "ok", removed: removed.map(publicEntry) }, null, 2) + "\n");
+      else process.stdout.write(`Removed ${removed.map(renderEntry).join("; ")}.
+`);
+    } catch (err) {
+      fail2(err, json3);
+    }
+  });
+}
+function idProblem(campaignId, opts) {
+  if (!opts.advertiserId || !NUMERIC_ID2.test(opts.advertiserId)) {
+    return "--advertiser-id is required: the numeric DSP advertiser id.";
+  }
+  if (!NUMERIC_ID2.test(campaignId)) return "<campaignId> must be the numeric DSP order (campaign) id.";
+  if (!opts.creativeId || !NUMERIC_ID2.test(opts.creativeId)) {
+    return "--creative-id is required: the numeric id of the responsive ecommerce creative.";
+  }
+  return void 0;
+}
+function publicEntry(e) {
+  const { tenant: _tenant, ...rest } = e;
+  return rest;
+}
+function renderEntry(e) {
+  return `advertiser ${e.advertiser_id} order ${e.order_id} -> creative ${e.creative_id} (${e.source === "plugin_build" ? `MixShift build${e.audit_id ? `, audit ${e.audit_id}` : ""}` : "confirmed by user"}${e.reuse ? ", shared on purpose" : ""}, ${e.recorded_at.slice(0, 10)})`;
+}
+async function verifyOrderAndCreative(call, advertiserId, campaignId, creativeId) {
+  const path2 = { advertiserId };
+  const dsp = { include: ["AMAZON_DSP"] };
+  const camp = await call({
+    operation: "dsp.query_campaigns",
+    pathParams: path2,
+    body: { adProductFilter: dsp, campaignIdFilter: { include: [campaignId] }, maxResults: 10 }
+  });
+  if (isReportFailure(camp)) return camp;
+  const campaigns = camp.payload?.campaigns;
+  const order = Array.isArray(campaigns) ? campaigns.find((c) => String(c?.campaignId ?? "") === campaignId) : void 0;
+  if (!order) {
+    return { ok: false, code: "order_not_found", message: `No DSP order ${campaignId} under advertiser ${advertiserId}; nothing was recorded.` };
+  }
+  const ads = await call({
+    operation: "dsp.query_ads",
+    pathParams: path2,
+    body: { adProductFilter: dsp, adIdFilter: { include: [creativeId] }, maxResults: 10 }
+  });
+  if (isReportFailure(ads)) return ads;
+  const rows = ads.payload?.ads;
+  const ad = Array.isArray(rows) ? rows.find((a) => String(a?.adId ?? "") === creativeId) : void 0;
+  if (!ad) {
+    return {
+      ok: false,
+      code: "creative_not_found",
+      message: `Creative ${creativeId} was not found on advertiser ${advertiserId}; nothing was recorded.`
+    };
+  }
+  const settings = ad.creative?.componentCreative?.responsiveEcommerceSettings ?? void 0;
+  if (!settings || typeof settings !== "object") {
+    return {
+      ok: false,
+      code: "not_responsive",
+      message: `Creative ${creativeId} is not a responsive ecommerce creative (Amazon lists it as ${String(ad.adType ?? "an unknown type")}); this record is only for responsive ecommerce creatives. Nothing was recorded.`
+    };
+  }
+  const products = Array.isArray(settings.products) ? settings.products.map((p) => String(p?.productId ?? "")).filter((x) => x.length > 0) : [];
+  return {
+    ok: true,
+    ...typeof order.name === "string" && order.name ? { orderName: order.name } : {},
+    ...typeof ad.name === "string" && ad.name ? { creativeName: ad.name } : {},
+    products
+  };
+}
+async function trackCreativeMap(outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: EventName.DspCreativeMapChanged,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind === "string" ? { error_class: payload.kind } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function fail2(err, json3) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json3) process.stdout.write(JSON.stringify({ status: "error", message }, null, 2) + "\n");
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
 }
 function registerSupplyPreset(dsp) {
   dsp.command("supply-preset <adGroupIds...>").description(
@@ -95611,10 +96510,10 @@ function registerSupplyPreset(dsp) {
     const json3 = !!root.json;
     const startedAt = Date.now();
     try {
-      if (!opts.advertiserId || !NUMERIC_ID.test(opts.advertiserId)) {
+      if (!opts.advertiserId || !NUMERIC_ID2.test(opts.advertiserId)) {
         return usage("--advertiser-id is required: the numeric DSP advertiser id.", json3);
       }
-      const bad = adGroupIds.find((id) => !NUMERIC_ID.test(id));
+      const bad = adGroupIds.find((id) => !NUMERIC_ID2.test(id));
       if (bad !== void 0) return usage(`line item id "${bad}" is not a numeric DSP ad group id.`, json3);
       if (!SUPPLY_PRESETS.includes(opts.preset)) {
         return usage(`--preset must be one of: ${SUPPLY_PRESETS.join(", ")}.`, json3);
@@ -95631,13 +96530,13 @@ function registerSupplyPreset(dsp) {
         await trackSupply("failed", startedAt, root.dataDir, { kind: plan.kind, stage: "plan" });
         return emitFailure6(plan, json3);
       }
-      const outDir = resolve2(opts.outDir ?? join26(resolveDataDir(root.dataDir), "dsp"));
+      const outDir = resolve2(opts.outDir ?? join27(resolveDataDir(root.dataDir), "dsp"));
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
       const previews = [];
-      if (plan.batches.length) await mkdir31(outDir, { recursive: true });
+      if (plan.batches.length) await mkdir32(outDir, { recursive: true });
       for (const [i, targetIds] of plan.batches.entries()) {
-        const bodyFile = join26(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
-        await writeFile28(bodyFile, JSON.stringify({ targetIds }, null, 2) + "\n", "utf8");
+        const bodyFile = join27(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
+        await writeFile29(bodyFile, JSON.stringify({ targetIds }, null, 2) + "\n", "utf8");
         const res = await adsCall(
           {
             operation: "dsp.delete_targets",
@@ -95784,7 +96683,7 @@ function emitFailure6(failure3, json3) {
 }
 
 // src/commands/walmart.ts
-import { readFile as readFile44 } from "node:fs/promises";
+import { readFile as readFile45 } from "node:fs/promises";
 
 // src/lib/walmart/ads-call.ts
 init_credentials();
@@ -96506,14 +97405,14 @@ function registerCall3(mp) {
       if (opts.environment && opts.environment !== "sandbox" && opts.environment !== "production") {
         return emitError12(new Error("--environment must be sandbox or production."), !!root.json);
       }
-      const query = parseJsonObject("--query", opts.query);
+      const query2 = parseJsonObject("--query", opts.query);
       const path2 = parseJsonObject("--path", opts.path);
       const result = await marketplaceCall(
         {
           operation,
           sellerId,
           ...opts.environment ? { environment: opts.environment } : {},
-          ...query ? { query } : {},
+          ...query2 ? { query: query2 } : {},
           ...path2 ? { path: path2 } : {}
         },
         { dataDirOverride: root.dataDir }
@@ -96528,7 +97427,7 @@ function registerCall3(mp) {
           ...result.walmartStatus ? { walmart_status: result.walmartStatus } : {},
           ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
           // Parameter NAMES only, never values.
-          ...query ? { query_keys: Object.keys(query).sort() } : {}
+          ...query2 ? { query_keys: Object.keys(query2).sort() } : {}
         });
         return emitFailure7(result, !!root.json);
       }
@@ -96774,7 +97673,7 @@ function registerCall4(ads) {
       }
       let body;
       if (opts.bodyFile) {
-        body = JSON.parse(await readFile44(opts.bodyFile, "utf8"));
+        body = JSON.parse(await readFile45(opts.bodyFile, "utf8"));
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
@@ -97002,8 +97901,9 @@ function exitCodeForShelfKind(kind) {
       return 11;
     case "bad_request":
     case "zip_unavailable":
+    case "not_tracked":
       return 12;
-    // terminal as sent: fix the request
+    // terminal as sent: fix the request (or ask MixShift to track it)
     case "invalid_request":
       return 15;
     // MixShift refused it before sending: change the request
@@ -97054,6 +97954,43 @@ async function shelfUsage(opts = {}) {
     remaining: Number(j.remaining ?? Math.max(0, j.allowance - Number(j.used ?? 0))),
     resets_at: String(j.resets_at ?? ""),
     source: String(j.source ?? "")
+  };
+}
+async function shelfRankHistory(input, opts = {}) {
+  const params = new URLSearchParams();
+  params.set("query", input.query.trim());
+  params.set("zip", input.zip.trim());
+  if (input.surface) params.set("surface", input.surface);
+  if (input.from?.trim()) params.set("from", input.from.trim());
+  if (input.to?.trim()) params.set("to", input.to.trim());
+  if (input.asin?.trim()) params.set("asin", input.asin.trim().toUpperCase());
+  if (input.country) params.set("country", input.country);
+  const r = await shelfRequest({ method: "GET", path: `/api/shelf/rank-history?${params.toString()}` }, { ...opts, timeoutMs: opts.timeoutMs ?? FREE_TIMEOUT_MS });
+  if (!r.ok) return r;
+  const j = r.json;
+  if (j.ok !== true || typeof j.query !== "string" || !Array.isArray(j.points)) return unrecognizedShape(r.httpStatus, "rank-history");
+  const points = [];
+  for (const raw of j.points) {
+    if (typeof raw?.asin !== "string" || typeof raw.observed_at !== "string" || typeof raw.absolute_rank !== "number") continue;
+    points.push({
+      observed_at: raw.observed_at,
+      asin: raw.asin,
+      absolute_rank: raw.absolute_rank,
+      organic_rank: typeof raw.organic_rank === "number" ? raw.organic_rank : null,
+      sponsored_rank: typeof raw.sponsored_rank === "number" ? raw.sponsored_rank : null
+    });
+  }
+  return {
+    ok: true,
+    retailer: String(j.retailer ?? "amazon"),
+    country: String(j.country ?? input.country ?? "us"),
+    surface: j.surface === "mobile" ? "mobile" : "desktop",
+    query: j.query,
+    zip: String(j.zip ?? ""),
+    from: String(j.from ?? ""),
+    to: String(j.to ?? ""),
+    points,
+    ...j.truncated === true ? { truncated: true } : {}
   };
 }
 function commonBody(input) {
@@ -97173,6 +98110,7 @@ var KNOWN_KINDS4 = /* @__PURE__ */ new Set([
   "shelf_not_enrolled",
   "shelf_allowance_exhausted",
   "zip_unavailable",
+  "not_tracked",
   "bad_request",
   "invalid_request",
   "throttled",
@@ -97242,6 +98180,8 @@ function defaultFriendly4(kind) {
       return `Your organization's included shelf requests for this month are used. They reset next month, or say "request more shelf requests" to ask MixShift for more now.`;
     case "zip_unavailable":
       return "That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.";
+    case "not_tracked":
+      return 'That keyword, zip and view are not tracked for your organization. Say "track these keywords" to ask MixShift to add them to your rank tracking.';
     case "bad_request":
       return "The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.";
     case "invalid_request":
@@ -97319,6 +98259,17 @@ var SHELF_CATALOG = [
     example: 'mixshift shelf search "backpacking meals" --zip 10001 --json'
   },
   {
+    id: "rank-history",
+    tool: "shelf_get_rank_history",
+    what: "Where your ASINs ranked for a keyword MixShift tracks for you, day by day, at one zip, on desktop or mobile.",
+    explain: 'MixShift can track keywords for your organization: once a day it takes the search results page for each tracked keyword at each tracked shopper location, on desktop and mobile, and keeps every position. This reads that history back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views MixShift tracks for you answer (anything else is not_tracked); say "track these keywords" to ask for more. The daily observations count against the allowance; reading them back is free.',
+    inputs: "a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country",
+    returns: "points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated",
+    cost: "free",
+    say: 'how has our rank for "backpacking meals" in New York moved this month?',
+    example: 'mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --json'
+  },
+  {
     id: "product",
     tool: "shelf_get_product",
     what: "The product page for an ASIN as a shopper at a zip sees it (beta).",
@@ -97390,7 +98341,7 @@ function renderShelfCatalogChat(entries = SHELF_CATALOG) {
 
 // src/commands/shelf-featured-offer-check.ts
 import { promises as fs } from "node:fs";
-import { join as join27, resolve as resolvePath3 } from "node:path";
+import { join as join28, resolve as resolvePath3 } from "node:path";
 
 // src/lib/shelf/featured-offer-check.ts
 var HELD_SHARE_FLOOR = 0.99;
@@ -97697,7 +98648,7 @@ async function start(opts, root, startedAt) {
   if (!merchant) throw new Error("No merchant you can act for matches that id. Run `mixshift amazon merchants --json` and pass its legacySellerId.");
   const country = COUNTRY_TO_SHELF[(merchant.countryCode ?? "US").toUpperCase()];
   if (!country) throw new Error(`Shelf data does not cover marketplace ${merchant.countryCode ?? "unknown"} yet (us, ca, uk, de, fr, it, es, in).`);
-  const dir = opts.out ? resolvePath3(opts.out) : join27(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
+  const dir = opts.out ? resolvePath3(opts.out) : join28(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
   await fs.mkdir(dir, { recursive: true });
   const state = {
     version: 1,
@@ -97824,9 +98775,9 @@ async function advance(state, dir, budget, root, startedAt) {
       return;
     }
     const report = buildReport(state);
-    const html = join27(dir, "report.html");
-    const md = join27(dir, "report.md");
-    const js = join27(dir, "report.json");
+    const html = join28(dir, "report.html");
+    const md = join28(dir, "report.md");
+    const js = join28(dir, "report.json");
     await fs.writeFile(html, renderReportHtml(report), "utf8");
     await fs.writeFile(md, renderReportMarkdown(report), "utf8");
     await fs.writeFile(js, JSON.stringify(report, null, 2), "utf8");
@@ -97866,12 +98817,12 @@ function buildReport(state) {
 }
 async function writeState(dir, state) {
   state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await fs.writeFile(join27(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
+  await fs.writeFile(join28(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 async function readState(dir) {
   let raw;
   try {
-    raw = await fs.readFile(join27(dir, "state.json"), "utf8");
+    raw = await fs.readFile(join28(dir, "state.json"), "utf8");
   } catch {
     throw new Error(`No check found at ${dir} (no state.json). Start one with \`mixshift shelf featured-offer-check start\`.`);
   }
@@ -97881,17 +98832,17 @@ async function readState(dir) {
 }
 async function resolveOutDir(out2, dataDir) {
   if (out2) return resolvePath3(out2);
-  const base2 = join27(outputDir(dataDir), "featured-offer-check");
+  const base2 = join28(outputDir(dataDir), "featured-offer-check");
   let entries;
   try {
     entries = (await fs.readdir(base2, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
   }
-  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join27(base2, name))).mtimeMs })));
+  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join28(base2, name))).mtimeMs })));
   stamped.sort((a, b) => b.mtime - a.mtime);
   if (!stamped[0]) throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
-  return join27(base2, stamped[0].name);
+  return join28(base2, stamped[0].name);
 }
 function parseBudget(raw) {
   if (raw === void 0) return DEFAULT_BUDGET;
@@ -97995,9 +98946,11 @@ function emitError14(err, json3) {
 // src/commands/shelf.ts
 init_telemetry();
 var ORIGINS = /* @__PURE__ */ new Set(["on_demand", "featured_offer_check", "demo", "subscription"]);
+var ASIN_RE = /^[A-Z0-9]{10}$/i;
+var ISO_DATE_OR_TIME_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 function registerShelfCommands(program3) {
   const shelf = program3.command("shelf").description(
-    "Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, search rank, product page, seller), through the MixShift service. Reads only; each data answer counts one against your organization's monthly shelf allowance."
+    "Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, search rank, product page, seller), plus the rank history for keywords MixShift tracks for you, through the MixShift service. Reads only; each data answer counts one against your organization's monthly shelf allowance (rank-history, zips and usage are free)."
   );
   shelf.command("catalog").description("Every shelf call, with a plain explanation of what it answers, what it takes and what it costs.").action(async (_opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -98040,6 +98993,63 @@ function registerShelfCommands(program3) {
     });
     if (root.json) writeJson7({ status: "ok", ...result });
     else process.stdout.write(renderUsage(result) + "\n");
+  });
+  shelf.command("rank-history <query>").description(
+    'Where your ASINs ranked for a keyword MixShift tracks for your organization, day by day at one zip, on desktop or mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer (anything else is not_tracked; say "track these keywords" to ask MixShift).'
+  ).requiredOption("--zip <zip>", "the tracked shopper location (one of the zips on your tracking set)").option("--view <view>", "desktop (default) or mobile").option("--from <date>", "start, an ISO date (YYYY-MM-DD) or time; default 30 days before --to").option("--to <date>", "end, an ISO date or time (a date means the end of that day); default now").option("--asin <asin>", "one ASIN; default the ASINs on your tracking").option("--country <code>", "marketplace country: us (default), ca, uk, de, fr, it, es, in").action(async (query2, opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const country = parseCountry(opts.country);
+      if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
+      let surface;
+      if (opts.view !== void 0) {
+        if (!SHELF_SURFACES.includes(opts.view)) {
+          return emitError15(new Error(`--view must be ${SHELF_SURFACES.join(" or ")}.`), !!root.json);
+        }
+        surface = opts.view;
+      }
+      const asin = opts.asin?.trim() || void 0;
+      if (asin !== void 0 && !ASIN_RE.test(asin)) return emitError15(new Error("--asin must be a 10-character ASIN."), !!root.json);
+      const from = opts.from?.trim() || void 0;
+      const to = opts.to?.trim() || void 0;
+      for (const [flag, v] of [
+        ["--from", from],
+        ["--to", to]
+      ]) {
+        if (v !== void 0 && !ISO_DATE_OR_TIME_RE.test(v)) return emitError15(new Error(`${flag} must be an ISO date (YYYY-MM-DD) or time.`), !!root.json);
+      }
+      const zip = opts.zip?.trim() || void 0;
+      if (!zip) return emitError15(new Error("--zip is required: a tracked shopper location from your tracking set."), !!root.json);
+      const telemetry = { country, surface: surface ?? "desktop", has_zip: !!zip, has_asin: !!asin, has_range: !!(from || to) };
+      const result = await shelfRankHistory({ query: query2, zip, surface, from, to, asin, country }, { dataDirOverride: root.dataDir });
+      if (isShelfFailure(result)) {
+        await trackShelf(EventName.ShelfRankHistoryRead, "failed", startedAt, root.dataDir, failurePayload(result, telemetry));
+        return emitFailure9(result, !!root.json);
+      }
+      const rangeMs = Date.parse(result.to) - Date.parse(result.from);
+      await trackShelf(EventName.ShelfRankHistoryRead, "ok", startedAt, root.dataDir, {
+        ...telemetry,
+        range_days: Number.isFinite(rangeMs) ? Math.round(rangeMs / 864e5) : null,
+        points: result.points.length,
+        days: new Set(result.points.map((p) => p.observed_at.slice(0, 10))).size,
+        asins: new Set(result.points.map((p) => p.asin)).size,
+        truncated: result.truncated === true
+      });
+      if (root.json) {
+        writeJson7({ status: "ok", ...result });
+        return;
+      }
+      process.stderr.write(
+        `
+\u2713 rank history for "${result.query}"${result.zip ? ` at ${result.zip}` : ""} (${result.country}, ${result.surface}), ${day(result.from)} to ${day(result.to)}
+
+`
+      );
+      process.stdout.write(renderRankHistory(result) + "\n");
+    } catch (err) {
+      emitError15(err, !!root.json);
+    }
   });
   registerData(shelf, "buybox", "<asin>", "The Buy Box (featured offer) a shopper at a zip sees for an ASIN: price, seller, delivery promise.", true);
   registerData(shelf, "offers", "<asin>", "Every offer a shopper at a zip sees on an ASIN (the other-sellers list), with promise days per offer.", true);
@@ -98186,6 +99196,9 @@ function emitFailure9(failure3, json3) {
 `);
       process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
     }
+    if (failure3.kind === "not_tracked") {
+      process.stderr.write('  To ask MixShift to track it: say "track these keywords" (the skill sends the request with the keywords, locations and views).\n');
+    }
     if (failure3.retryable === false && failure3.source === "request") {
       process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
     }
@@ -98287,6 +99300,43 @@ function renderSearch(s) {
   if (s.has_more) L.push("", `More positions: \`--page ${s.page + 1}\` (one answer per page).`);
   return L.join("\n");
 }
+var day = (iso) => iso.length >= 10 ? iso.slice(0, 10) : iso || "-";
+var rankCell = (n) => typeof n === "number" ? String(n) : "-";
+function movement(first, latest) {
+  if (first === null && latest === null) return "-";
+  if (first === null) return "new";
+  if (latest === null) return "gone";
+  const d = first - latest;
+  return d === 0 ? "same" : d > 0 ? `up ${d}` : `down ${-d}`;
+}
+function renderRankHistory(h) {
+  const L = [];
+  L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ""}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
+  if (h.points.length === 0) {
+    L.push("", "_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_");
+    return L.join("\n");
+  }
+  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  const first = /* @__PURE__ */ new Map();
+  const latest = /* @__PURE__ */ new Map();
+  for (const p of points) {
+    if (!first.has(p.asin)) first.set(p.asin, p);
+    latest.set(p.asin, p);
+  }
+  const days2 = new Set(points.map((p) => day(p.observed_at))).size;
+  L.push("", `${points.length} point(s) over ${days2} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
+  L.push("", "**Latest per ASIN**", "", "| asin | as of | absolute | organic | sponsored | organic since first point |", "|---|---|---|---|---|---|");
+  for (const asin of [...latest.keys()].sort()) {
+    const p = latest.get(asin);
+    const f = first.get(asin);
+    const move = f.observed_at === p.observed_at ? "-" : movement(f.organic_rank, p.organic_rank);
+    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
+  }
+  L.push("", "**Every point** (oldest first)", "", "| date | asin | absolute | organic | sponsored |", "|---|---|---|---|---|");
+  for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
+  if (h.truncated) L.push("", "The series was longer than one answer carries, so its oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.");
+  return L.join("\n");
+}
 function renderProduct(p) {
   const L = [];
   L.push(`**${cell2(p.title)}**${p.landing_asin ? ` (${p.landing_asin})` : ""}`);
@@ -98319,9 +99369,2052 @@ function renderSeller(s) {
   return L.join("\n");
 }
 
+// src/commands/labels.ts
+import { readFile as readFile46 } from "node:fs/promises";
+
+// src/lib/labels/client.ts
+init_credentials();
+init_intent();
+var LABEL_ENTITIES = ["item", "campaign"];
+var LOOKUP_MAX = 500;
+var PAGE_MAX = 200;
+function isLabelsFailure(x) {
+  return x.ok === false;
+}
+function exitCodeForLabelsKind(kind) {
+  switch (kind) {
+    case "not_authenticated":
+    case "session_expired":
+      return 2;
+    // sign in again
+    case "not_enabled":
+      return 6;
+    // labels are not turned on for this organization yet
+    case "not_found":
+      return 7;
+    // no such account for this login
+    case "insufficient_scope":
+    case "account_limited":
+      return 11;
+    // this credential may not read labels
+    case "bad_params":
+    case "invalid_value":
+    case "scope_not_supported":
+    case "empty_selection":
+    case "too_many_entities":
+    case "too_many_open_previews":
+    case "commit_too_large":
+    case "not_cancellable":
+    case "nothing_to_undo":
+    case "invalid_name":
+    case "name_in_use":
+      return 15;
+    // refused as sent: change the request
+    case "change_set_not_found":
+    case "account_not_accessible":
+      return 7;
+    // no such change set, or an account that is not usable
+    case "approval_mismatch":
+    case "change_set_expired":
+    case "change_set_cancelled":
+      return 16;
+    // the preview can no longer be committed as it stands: preview again
+    case "partially_applied":
+    case "stale":
+    case "failed":
+      return 17;
+    // the commit did not fully apply: read the per-item results, preview again for the rest
+    case "commit_in_flight":
+    case "commit_retry":
+      return 10;
+    // nothing was lost: run the same commit again
+    case "not_available":
+    case "internal":
+    case "host_unreachable":
+    case "unknown":
+    default:
+      return 1;
+  }
+}
+var TIMEOUT_MS = 3e4;
+async function labelsState(opts = {}) {
+  const r = await labelsRequest({ method: "GET", path: "/api/labels/state" }, opts);
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j.state)) return unrecognizedShape2(r.httpStatus, "state");
+  return {
+    ok: true,
+    state: j.state,
+    backfilled_at: strOrNull(j.backfilled_at),
+    last_run: j.last_run && typeof j.last_run === "object" ? j.last_run : null,
+    last_completed_at: strOrNull(j.last_completed_at),
+    running: j.running === true,
+    freshness: j.freshness && typeof j.freshness === "object" ? j.freshness : {}
+  };
+}
+async function labelsFields(input, opts = {}) {
+  const r = await labelsRequest({ method: "GET", path: `/api/labels/fields${query({ account: input.account, entity: input.entity })}` }, opts);
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j.state) || !Array.isArray(j.fields)) return unrecognizedShape2(r.httpStatus, "fields");
+  return { ...j, ok: true, entity: input.entity };
+}
+async function labelsList(input, opts = {}) {
+  const path2 = input.entity === "item" ? "/api/labels/items" : "/api/labels/campaigns";
+  const r = await labelsRequest(
+    { method: "GET", path: path2 + query({ account: input.account, field: input.field, value: input.value, cursor: input.cursor, limit: input.limit }) },
+    opts
+  );
+  if (!r.ok) return r;
+  const j = r.json;
+  const rows = input.entity === "item" ? j.items : j.campaigns;
+  if (!isState(j.state) || !Array.isArray(rows)) return unrecognizedShape2(r.httpStatus, "list");
+  const nextCursor = strOrNull(j.next_cursor);
+  return {
+    ok: true,
+    state: j.state,
+    account: Number(j.account),
+    merchant_type: String(j.merchant_type ?? ""),
+    entity: input.entity,
+    fields: Array.isArray(j.fields) ? j.fields.map(String) : [],
+    rows,
+    next_cursor: nextCursor,
+    has_more: j.has_more === true && nextCursor !== null,
+    limit: Number(j.limit ?? input.limit ?? 0)
+  };
+}
+async function labelsLookup(input, opts = {}) {
+  const ids = [...new Set(input.ids)];
+  const path2 = input.entity === "item" ? "/api/labels/items/lookup" : "/api/labels/campaigns/lookup";
+  let first;
+  const results = [];
+  const unseen = [];
+  let batches = 0;
+  for (let i = 0; i < ids.length || batches === 0; i += LOOKUP_MAX) {
+    const batch = ids.slice(i, i + LOOKUP_MAX);
+    const r = await labelsRequest({ method: "POST", path: path2, body: { account: Number(input.account), ids: batch } }, opts);
+    if (!r.ok) return r;
+    const j = r.json;
+    if (!isState(j.state) || !Array.isArray(j.results)) return unrecognizedShape2(r.httpStatus, "lookup");
+    first ??= j;
+    batches += 1;
+    results.push(...j.results);
+    if (Array.isArray(j.unseen)) unseen.push(...j.unseen.map(String));
+  }
+  const head = first;
+  return {
+    ok: true,
+    state: head.state,
+    account: Number(head.account),
+    merchant_type: String(head.merchant_type ?? ""),
+    entity: input.entity,
+    fields: Array.isArray(head.fields) ? head.fields.map(String) : [],
+    results,
+    unseen,
+    batches
+  };
+}
+async function labelsDrift(input, opts = {}) {
+  const r = await labelsRequest(
+    { method: "GET", path: `/api/labels/drift${query({ account: input.account, entity: input.entity, cursor: input.cursor, limit: input.limit })}` },
+    opts
+  );
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j.state) || !Array.isArray(j.drift)) return unrecognizedShape2(r.httpStatus, "drift");
+  const nextCursor = strOrNull(j.next_cursor);
+  return {
+    ok: true,
+    state: j.state,
+    account: Number(j.account),
+    merchant_type: String(j.merchant_type ?? ""),
+    rows: j.drift,
+    next_cursor: nextCursor,
+    has_more: j.has_more === true && nextCursor !== null,
+    limit: Number(j.limit ?? input.limit ?? 0)
+  };
+}
+async function labelsChanges(input, opts = {}) {
+  const r = await labelsRequest(
+    { method: "GET", path: `/api/labels/changes${query({ account: input.account, since: input.since, cursor: input.cursor, limit: input.limit })}` },
+    opts
+  );
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j.state) || !Array.isArray(j.changes)) return unrecognizedShape2(r.httpStatus, "changes");
+  return {
+    ok: true,
+    state: j.state,
+    account: Number(j.account),
+    merchant_type: String(j.merchant_type ?? ""),
+    rows: j.changes,
+    next_cursor: strOrNull(j.next_cursor),
+    has_more: j.has_more === true,
+    limit: Number(j.limit ?? input.limit ?? 0),
+    ...typeof j.as_of === "string" ? { as_of: j.as_of } : {},
+    ...typeof j.settle_seconds === "number" ? { settle_seconds: j.settle_seconds } : {}
+  };
+}
+async function collectPages(fetchPage, opts) {
+  const rows = [];
+  let first;
+  let last;
+  let cursor = opts.cursor;
+  let pages = 0;
+  const used = /* @__PURE__ */ new Set();
+  for (; ; ) {
+    if (cursor !== void 0) used.add(cursor);
+    const page = await fetchPage(cursor);
+    if (!page.ok) return page;
+    first ??= page;
+    last = page;
+    pages += 1;
+    rows.push(...page.rows);
+    cursor = page.next_cursor ?? void 0;
+    if (!page.has_more || cursor === void 0 || page.rows.length === 0 || used.has(cursor)) break;
+    if (rows.length >= opts.cap) break;
+  }
+  const l = last;
+  const more = l.has_more && l.next_cursor !== null && l.rows.length > 0;
+  return { ok: true, first, rows, pages, truncated: more, next_cursor: l.next_cursor };
+}
+var isState = (v) => v === "off" || v === "observing" || v === "on";
+var strOrNull = (v) => typeof v === "string" && v ? v : null;
+function query(params) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== void 0) qs.set(k, String(v));
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+function unrecognizedShape2(httpStatus, what) {
+  return {
+    ok: false,
+    kind: "unknown",
+    friendly: "MixShift answered the labels request but returned an unrecognized shape. Try again, or contact MixShift if it persists.",
+    message: `labels ${what} response missing its envelope fields`,
+    httpStatus
+  };
+}
+async function labelsRequest(spec, opts) {
+  const resolved = await resolveBaseAndToken5(opts);
+  if ("ok" in resolved) return resolved;
+  const { apiBase, tokenProvider } = resolved;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+  const doFetch = async (bearer) => {
+    try {
+      const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
+        method: spec.method,
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          ...spec.body ? { "Content-Type": "application/json" } : {},
+          ...intentHeader()
+        },
+        body: spec.body ? JSON.stringify(spec.body) : void 0,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      return { res: res2 };
+    } catch (err) {
+      return { networkError: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  const networkFailure = (a) => ({
+    ok: false,
+    kind: "host_unreachable",
+    friendly: defaultFriendly5("host_unreachable"),
+    message: a.networkError,
+    retryable: true
+  });
+  let token;
+  try {
+    token = await tokenProvider(false);
+  } catch (err) {
+    return sessionFailureFromError5(err);
+  }
+  let attempt = await doFetch(token);
+  if ("networkError" in attempt) return networkFailure(attempt);
+  let res = attempt.res;
+  if (res.status === 401) {
+    try {
+      token = await tokenProvider(true);
+    } catch (err) {
+      return sessionFailureFromError5(err);
+    }
+    attempt = await doFetch(token);
+    if ("networkError" in attempt) return networkFailure(attempt);
+    res = attempt.res;
+    if (res.status === 401) {
+      return { ok: false, kind: "session_expired", friendly: defaultFriendly5("session_expired"), httpStatus: 401 };
+    }
+  }
+  let json3;
+  try {
+    json3 = await res.json();
+  } catch {
+    return statusOnlyFailure5(res.status);
+  }
+  if (isServerFailureEnvelope4(json3)) return toLabelsFailure(json3, res.status);
+  if (!res.ok) return statusOnlyFailure5(res.status, safeJsonPreview5(json3));
+  return { ok: true, json: json3, httpStatus: res.status };
+}
+async function resolveBaseAndToken5(opts) {
+  let apiBase = opts.apiBaseOverride;
+  if (!apiBase) {
+    const { credentials } = await loadCredentials(opts.dataDirOverride);
+    const base2 = credentials?.datahub?.api_base ?? credentials?.service?.api_base;
+    if (!base2) {
+      return { ok: false, kind: "not_authenticated", friendly: defaultFriendly5("not_authenticated") };
+    }
+    apiBase = base2;
+  }
+  const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
+  return { apiBase, tokenProvider };
+}
+var KNOWN_KINDS5 = /* @__PURE__ */ new Set([
+  // Keep in step with the kinds the service's labels read API and route emit.
+  "not_enabled",
+  "not_available",
+  "not_found",
+  "bad_params",
+  "insufficient_scope",
+  "account_limited",
+  "internal",
+  "invalid_value",
+  "scope_not_supported",
+  "empty_selection",
+  "too_many_entities",
+  "too_many_open_previews",
+  "change_set_not_found",
+  "approval_mismatch",
+  "change_set_expired",
+  "change_set_cancelled",
+  "commit_in_flight",
+  "commit_retry",
+  "commit_too_large",
+  "not_cancellable",
+  "nothing_to_undo",
+  "account_not_accessible",
+  "invalid_name",
+  "name_in_use",
+  "partially_applied",
+  "stale",
+  "failed",
+  "unknown"
+]);
+function isServerFailureEnvelope4(json3) {
+  return typeof json3 === "object" && json3 !== null && json3.ok === false;
+}
+function toLabelsFailure(json3, httpStatus) {
+  const rawKind = typeof json3.kind === "string" ? json3.kind : "";
+  const recognized = KNOWN_KINDS5.has(rawKind);
+  const kind = recognized ? rawKind : kindForStatus3(httpStatus);
+  const sentence = typeof json3.friendly === "string" && json3.friendly.includes(" ") ? cleanServerText(json3.friendly) : void 0;
+  const friendly = sentence ?? (httpStatus === 404 && kind === "unknown" ? defaultFriendly5("route_missing") : defaultFriendly5(kind));
+  const issues = parseRouteIssues(json3.issues);
+  const message = typeof json3.message === "string" ? cleanServerText(json3.message) : issues?.detail;
+  return {
+    ok: false,
+    kind,
+    friendly,
+    httpStatus,
+    ...message !== void 0 ? { message } : {},
+    ...json3.retryable === true ? { retryable: true } : {},
+    ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
+    ...issues && issues.paths.length > 0 ? { invalidParams: issues.paths } : {},
+    body: json3
+  };
+}
+function kindForStatus3(httpStatus) {
+  if (httpStatus === 400) return "bad_params";
+  if (httpStatus === 500) return "internal";
+  return "unknown";
+}
+function statusOnlyFailure5(httpStatus, detail) {
+  const kind = kindForStatus3(httpStatus);
+  return {
+    ok: false,
+    kind,
+    friendly: defaultFriendly5(kind),
+    message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
+    httpStatus
+  };
+}
+function defaultFriendly5(kind) {
+  switch (kind) {
+    case "not_enabled":
+      return "Labels are not turned on for your account yet. Your MixShift contact can turn them on.";
+    case "not_available":
+      return "Labels are not available for this login right now. Try again in a minute, or ask your MixShift contact to check how it is connected.";
+    case "not_found":
+      return "No such account for this login. Run `mixshift amazon merchants` for the account ids you can use (the legacySellerId).";
+    case "bad_params":
+      return "The labels request was refused as sent. Check the inputs and run `mixshift labels --help`.";
+    case "insufficient_scope":
+      return "This credential cannot read labels. Sign in again, or ask your org admin for a credential that can read your data.";
+    case "account_limited":
+      return "This credential is limited to other accounts, so it cannot read labels. Sign in as yourself, or ask your org admin.";
+    case "internal":
+      return "The labels service hit an error. Try again shortly.";
+    case "invalid_value":
+    case "scope_not_supported":
+    case "empty_selection":
+    case "too_many_entities":
+    case "too_many_open_previews":
+    case "commit_too_large":
+    case "not_cancellable":
+    case "nothing_to_undo":
+    case "invalid_name":
+    case "name_in_use":
+      return "MixShift refused this label change as sent. Nothing was changed. Check the inputs and run `mixshift labels --help`.";
+    case "change_set_not_found":
+      return "No such change set for this account. A change set is found by the id the preview printed.";
+    case "approval_mismatch":
+    case "change_set_expired":
+    case "change_set_cancelled":
+      return "This change set can no longer be committed as it stands. Nothing was changed. Preview the change again.";
+    case "commit_in_flight":
+    case "commit_retry":
+      return "The commit did not go through this time and nothing was written. Run the same commit again.";
+    case "account_not_accessible":
+      return "This change reaches an account you can no longer use. Nothing was changed.";
+    case "partially_applied":
+    case "stale":
+    case "failed":
+      return "The change was not fully applied. Read the per-item results below.";
+    case "route_missing":
+      return "The MixShift service does not have labels yet. Update the plugin, or try again later.";
+    case "host_unreachable":
+      return "The MixShift service did not answer in time. Check your network or try again in a minute.";
+    case "not_authenticated":
+      return "You're not signed in to MixShift. Run `mixshift auth login` first.";
+    case "session_expired":
+      return "Your MixShift session expired and could not be refreshed. Run `mixshift auth login` to re-authenticate.";
+    default:
+      return "The labels request failed unexpectedly. Try again shortly.";
+  }
+}
+function sessionFailureFromError5(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  const expired = /expired|refresh/i.test(message);
+  return {
+    ok: false,
+    kind: expired ? "session_expired" : "not_authenticated",
+    friendly: defaultFriendly5(expired ? "session_expired" : "not_authenticated"),
+    message
+  };
+}
+function safeJsonPreview5(json3) {
+  try {
+    const s = JSON.stringify(json3);
+    return s.length > 300 ? s.slice(0, 300) + "..." : s;
+  } catch {
+    return String(json3);
+  }
+}
+
+// src/commands/labels.ts
+init_telemetry();
+var ALL_CAP = 2e3;
+var DEFAULT_PAGE = 50;
+var MAX_IDS = 1e4;
+var UTF16_MESSAGE = "The --ids-file looks like a UTF-16 file (Windows PowerShell 5.1 `>` writes UTF-16). Save it as UTF-8 and run again, for example `Set-Content -Encoding utf8 ids.txt` or save it from your editor as UTF-8.";
+function decodeIdsFile(bytes2) {
+  if (bytes2.length >= 2 && (bytes2[0] === 255 && bytes2[1] === 254 || bytes2[0] === 254 && bytes2[1] === 255)) return null;
+  if (bytes2.includes(0)) return null;
+  const text = bytes2.toString("utf8");
+  return text.charCodeAt(0) === 65279 ? text.slice(1) : text;
+}
+function normalizeIds(raw, entity) {
+  const parts = raw.split(/[\s,]+/).filter((s) => s.length > 0);
+  return [...new Set(entity === "item" ? parts.map((p) => p.toUpperCase()) : parts)];
+}
+function registerLabelsCommands(program3) {
+  const labels = program3.command("labels").description(
+    "Read and change the labels on your items (ASINs) and Amazon campaigns: Item Group, Brand, Nickname, Parent ASIN, Item Label 1 and 2, Tags 1 to 4, and for campaigns Manager and Objective. Reading is free (state, fields, get, search, drift, changes). Changing is always preview first, then commit with --commit after the person confirms (preview, commit, undo, sets, set, cancel, field-name). Turned on account by account: until it is on for yours, each command says so. --account is the legacy seller id from `mixshift amazon merchants`."
+  );
+  labels.command("state").description("Whether labels are turned on for your account, and how fresh the copy is.").action(async (_opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const result = await labelsState({ dataDirOverride: root.dataDir });
+    if (isLabelsFailure(result)) return fail3(result, "state", startedAt, root, {});
+    await trackLabels("state", "ok", startedAt, root.dataDir, { service_state: result.state, running: result.running });
+    if (root.json) return writeJson8({ status: "ok", ...withoutOk(result) });
+    process.stdout.write(renderState(result) + "\n");
+  });
+  labels.command("fields").description("The label fields of one account for items and campaigns, with the values in use and how many carry each.").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item or campaign (default: both)").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const account = parseAccount(opts.account);
+    if (!account) return badInput(accountMessage(), root);
+    const entities = opts.entity === void 0 ? [...LABEL_ENTITIES] : parseEntity(opts.entity);
+    if (!entities) return badInput(entityMessage(), root);
+    const answers = [];
+    for (const entity of entities) {
+      const result = await labelsFields({ account, entity }, { dataDirOverride: root.dataDir });
+      if (isLabelsFailure(result)) return fail3(result, "fields", startedAt, root, { account: Number(account), entity: entities.length === 1 ? entity : "both" });
+      answers.push(result);
+    }
+    await trackLabels("fields", "ok", startedAt, root.dataDir, {
+      account: Number(account),
+      entity: entities.length === 1 ? entities[0] : "both",
+      service_state: answers[0].state,
+      fields: answers.reduce((n, a) => n + a.fields.length, 0)
+    });
+    if (root.json) {
+      return writeJson8({
+        status: "ok",
+        account: Number(account),
+        state: answers[0].state,
+        merchant_type: answers[0].merchant_type,
+        entities: Object.fromEntries(answers.map((a) => [a.entity, withoutOk(a)]))
+      });
+    }
+    noteFreshness(answers[0].state);
+    process.stdout.write(answers.map(renderFields).join("\n\n") + "\n");
+  });
+  labels.command("get").description("The labels of specific items (ASINs) or campaigns (Amazon campaign ids) on one account, by id. Takes any number of ids (looked up 500 at a time).").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--ids <list>", "comma-separated ASINs (or campaign ids with --entity campaign)").option("--ids-file <path>", "a text file of ids, separated by commas, spaces or new lines").option("--entity <entity>", "item (default) or campaign").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const account = parseAccount(opts.account);
+    if (!account) return badInput(accountMessage(), root);
+    const parsedEntity = parseEntity(opts.entity ?? "item");
+    if (!parsedEntity || parsedEntity.length !== 1) return badInput(entityMessage(), root);
+    const entity = parsedEntity[0];
+    if (opts.ids === void 0 === (opts.idsFile === void 0)) return badInput("Pass either --ids <a,b,c> or --ids-file <path>.", root);
+    let raw;
+    if (opts.ids !== void 0) raw = opts.ids;
+    else {
+      let bytes2;
+      try {
+        bytes2 = await readFile46(opts.idsFile);
+      } catch (err) {
+        return badInput(`Cannot read --ids-file: ${err instanceof Error ? err.message : String(err)}`, root);
+      }
+      const text = decodeIdsFile(bytes2);
+      if (text === null) return badInput(UTF16_MESSAGE, root);
+      raw = text;
+    }
+    const ids = normalizeIds(raw, entity);
+    if (ids.length === 0) return badInput("No ids given.", root);
+    if (ids.length > MAX_IDS) return badInput(`That is ${ids.length} ids; one run takes at most ${MAX_IDS}. Split the list and run it in parts.`, root);
+    if (entity === "campaign") {
+      const bad = ids.find((id) => !/^[0-9]{1,20}$/.test(id));
+      if (bad !== void 0) return badInput("A campaign id is the Amazon campaign id: 1 to 20 digits. Check --ids.", root);
+    }
+    const result = await labelsLookup({ account, entity, ids }, { dataDirOverride: root.dataDir });
+    const base2 = { account: Number(account), entity };
+    if (isLabelsFailure(result)) return fail3(result, "get", startedAt, root, { ...base2, requested: ids.length, batches: Math.ceil(ids.length / LOOKUP_MAX) });
+    const rows = result.results.map(describeRow);
+    const counts = countStates(rows);
+    await trackLabels("get", "ok", startedAt, root.dataDir, { ...base2, service_state: result.state, requested: ids.length, batches: result.batches, unseen: counts.never_seen, blank: counts.blank, labeled: counts.labeled });
+    if (root.json) {
+      return writeJson8({
+        status: "ok",
+        account: result.account,
+        entity,
+        state: result.state,
+        merchant_type: result.merchant_type,
+        fields: result.fields,
+        requested: ids.length,
+        batches: result.batches,
+        counts,
+        unseen: result.unseen,
+        results: rows
+      });
+    }
+    process.stderr.write(`
+\u2713 ${ids.length} ${entity === "item" ? "item" : "campaign"} id(s): ${counts.labeled} labeled, ${counts.blank} blank, ${counts.never_seen} never seen
+`);
+    noteFreshness(result.state);
+    process.stdout.write(renderRows(rows, result.fields) + "\n");
+  });
+  labels.command("search").description("List the items or campaigns of one account with their labels, a page at a time (rows under `rows` in --json, for both entities). With --field and --value, only those whose field equals that exact value (take it from `labels fields`).").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").option("--field <key>", "a field key from `labels fields` (for example item_group); needs --value").option("--value <text>", "the exact value to match, case and spacing included; needs --field").option("--limit <n>", `rows a page, 1 to ${PAGE_MAX} (default ${DEFAULT_PAGE})`).option("--cursor <cursor>", "continue from the next_cursor of a previous page of the same search").option("--all", `follow every page, up to ${ALL_CAP} rows; says when it stopped and how to continue`).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const account = parseAccount(opts.account);
+    if (!account) return badInput(accountMessage(), root);
+    const parsedEntity = parseEntity(opts.entity ?? "item");
+    if (!parsedEntity || parsedEntity.length !== 1) return badInput(entityMessage(), root);
+    const entity = parsedEntity[0];
+    if (opts.field === void 0 !== (opts.value === void 0)) return badInput("Pass --field and --value together, or neither.", root);
+    if (opts.value !== void 0 && opts.value.length === 0) return badInput("--value must not be empty.", root);
+    const limit = parseLimit(opts.limit, opts.all ? PAGE_MAX : DEFAULT_PAGE);
+    if (limit === null) return badInput(limitMessage(), root);
+    const filter = opts.field !== void 0 ? { field: opts.field, value: opts.value } : {};
+    const base2 = { account: Number(account), entity, has_filter: opts.field !== void 0, all: !!opts.all };
+    const fetchPage = (cursor) => labelsList({ account, entity, ...filter, ...cursor !== void 0 ? { cursor } : {}, limit }, { dataDirOverride: root.dataDir });
+    const paged = await collectPages(fetchPage, { cap: opts.all ? ALL_CAP : 1, ...opts.cursor !== void 0 ? { cursor: opts.cursor } : {} });
+    if (isLabelsFailure(paged)) return fail3(paged, "search", startedAt, root, base2);
+    const rows = paged.rows.map(describeRow);
+    const counts = countStates(rows);
+    const more = paged.first.has_more && (opts.all ? paged.truncated : true);
+    const nextCursor = opts.all ? paged.truncated ? paged.next_cursor : null : paged.first.next_cursor;
+    await trackLabels("search", "ok", startedAt, root.dataDir, { ...base2, service_state: paged.first.state, rows: rows.length, pages: paged.pages, truncated: opts.all ? paged.truncated : false, has_more: more });
+    if (root.json) {
+      return writeJson8({
+        status: "ok",
+        account: paged.first.account,
+        entity,
+        state: paged.first.state,
+        merchant_type: paged.first.merchant_type,
+        fields: paged.first.fields,
+        count: rows.length,
+        pages: paged.pages,
+        counts,
+        has_more: more,
+        truncated: opts.all ? paged.truncated : false,
+        next_cursor: nextCursor,
+        rows
+      });
+    }
+    process.stderr.write(`
+\u2713 ${rows.length} ${entity === "item" ? "item" : "campaign"}(s)${opts.all ? ` over ${paged.pages} page(s)` : ""}${opts.field !== void 0 ? " matching the filter" : ""}
+`);
+    noteFreshness(paged.first.state);
+    process.stdout.write(renderRows(rows, paged.first.fields) + "\n");
+    if (opts.all && paged.truncated) {
+      process.stdout.write(`
+Stopped after ${rows.length} rows${rows.length >= ALL_CAP ? ` (the --all cap is ${ALL_CAP})` : ""}; there are more. Continue with --cursor ${nextCursor}
+`);
+    } else if (!opts.all && more) {
+      process.stdout.write(`
+More rows: add --cursor ${nextCursor} (or use --all).
+`);
+    }
+  });
+  labels.command("drift").description("Items and campaigns whose Data Manager rows disagree with each other on a label (for example a new SKU that inherited another marketplace's value), with the values each holds.").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item or campaign (default: both)").option("--limit <n>", `rows a page, 1 to ${PAGE_MAX} (default ${DEFAULT_PAGE})`).option("--cursor <cursor>", "continue from the next_cursor of a previous page").option("--all", `follow every page, up to ${ALL_CAP} rows; says when it stopped and how to continue`).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const account = parseAccount(opts.account);
+    if (!account) return badInput(accountMessage(), root);
+    const parsedEntity = opts.entity === void 0 ? void 0 : parseEntity(opts.entity);
+    if (parsedEntity === null || parsedEntity !== void 0 && parsedEntity.length !== 1) return badInput(entityMessage(), root);
+    const entity = parsedEntity?.[0];
+    const limit = parseLimit(opts.limit, opts.all ? PAGE_MAX : DEFAULT_PAGE);
+    if (limit === null) return badInput(limitMessage(), root);
+    const base2 = { account: Number(account), entity: entity ?? "both", all: !!opts.all };
+    const fetchPage = (cursor) => labelsDrift({ account, ...entity ? { entity } : {}, ...cursor !== void 0 ? { cursor } : {}, limit }, { dataDirOverride: root.dataDir });
+    const paged = await collectPages(fetchPage, { cap: opts.all ? ALL_CAP : 1, ...opts.cursor !== void 0 ? { cursor: opts.cursor } : {} });
+    if (isLabelsFailure(paged)) return fail3(paged, "drift", startedAt, root, base2);
+    const more = paged.first.has_more && (opts.all ? paged.truncated : true);
+    const nextCursor = opts.all ? paged.truncated ? paged.next_cursor : null : paged.first.next_cursor;
+    await trackLabels("drift", "ok", startedAt, root.dataDir, { ...base2, service_state: paged.first.state, rows: paged.rows.length, pages: paged.pages, truncated: opts.all ? paged.truncated : false, has_more: more });
+    if (root.json) {
+      return writeJson8({
+        status: "ok",
+        account: paged.first.account,
+        state: paged.first.state,
+        merchant_type: paged.first.merchant_type,
+        count: paged.rows.length,
+        pages: paged.pages,
+        has_more: more,
+        truncated: opts.all ? paged.truncated : false,
+        next_cursor: nextCursor,
+        drift: paged.rows
+      });
+    }
+    process.stderr.write(`
+\u2713 ${paged.rows.length} item(s) or campaign(s) whose rows disagree${opts.all ? ` over ${paged.pages} page(s)` : ""}
+`);
+    noteFreshness(paged.first.state);
+    process.stdout.write(renderDrift2(paged.rows) + "\n");
+    if (opts.all && paged.truncated) {
+      process.stdout.write(`
+Stopped after ${paged.rows.length} rows${paged.rows.length >= ALL_CAP ? ` (the --all cap is ${ALL_CAP})` : ""}; there are more. Continue with --cursor ${nextCursor}
+`);
+    } else if (!opts.all && more) {
+      process.stdout.write(`
+More rows: add --cursor ${nextCursor} (or use --all).
+`);
+    }
+  });
+  labels.command("changes").description("What changed in an account's labels, as a forward feed, oldest first: the field, what it was before, what it is now, where the change came from and when. Changes show after a two-minute settle delay.").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--since <time>", "start of the feed, a UTC time like 2026-11-12T08:30:00Z or a date like 2026-11-12 (inclusive); default: from the beginning").option("--limit <n>", `rows a page, 1 to ${PAGE_MAX} (default ${DEFAULT_PAGE})`).option("--cursor <cursor>", "continue a feed from the next_cursor of a previous page (not with --since)").option("--all", `follow every page, up to ${ALL_CAP} rows; says when it stopped and how to continue`).action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    const account = parseAccount(opts.account);
+    if (!account) return badInput(accountMessage(), root);
+    const limit = parseLimit(opts.limit, opts.all ? PAGE_MAX : DEFAULT_PAGE);
+    if (limit === null) return badInput(limitMessage(), root);
+    if (opts.since !== void 0 && opts.cursor !== void 0) return badInput("Pass --since to start a feed, or --cursor to continue one, not both.", root);
+    let since;
+    if (opts.since !== void 0) {
+      since = parseSince(opts.since) ?? void 0;
+      if (since === void 0) return badInput("--since must be a UTC time like 2026-11-12T08:30:00Z, or a date like 2026-11-12.", root);
+    }
+    const base2 = { account: Number(account), has_since: since !== void 0, all: !!opts.all };
+    const fetchPage = (cursor) => labelsChanges({ account, ...cursor === void 0 && since !== void 0 ? { since } : {}, ...cursor !== void 0 ? { cursor } : {}, limit }, { dataDirOverride: root.dataDir });
+    const paged = await collectPages(fetchPage, { cap: opts.all ? ALL_CAP : 1, ...opts.cursor !== void 0 ? { cursor: opts.cursor } : {} });
+    if (isLabelsFailure(paged)) return fail3(paged, "changes", startedAt, root, base2);
+    const last = paged.next_cursor;
+    await trackLabels("changes", "ok", startedAt, root.dataDir, { ...base2, service_state: paged.first.state, rows: paged.rows.length, pages: paged.pages, truncated: opts.all ? paged.truncated : false });
+    if (root.json) {
+      return writeJson8({
+        status: "ok",
+        account: paged.first.account,
+        state: paged.first.state,
+        merchant_type: paged.first.merchant_type,
+        count: paged.rows.length,
+        pages: paged.pages,
+        has_more: opts.all ? paged.truncated : paged.first.has_more,
+        truncated: opts.all ? paged.truncated : false,
+        next_cursor: last,
+        ...paged.first.as_of !== void 0 ? { as_of: paged.first.as_of } : {},
+        ...paged.first.settle_seconds !== void 0 ? { settle_seconds: paged.first.settle_seconds } : {},
+        changes: paged.rows
+      });
+    }
+    process.stderr.write(`
+\u2713 ${paged.rows.length} change(s)${opts.all ? ` over ${paged.pages} page(s)` : ""}
+`);
+    noteFreshness(paged.first.state);
+    process.stdout.write(renderChanges(paged.rows) + "\n");
+    if (opts.all ? paged.truncated : paged.first.has_more) {
+      process.stdout.write(`
+More changes: continue with --cursor ${last}
+`);
+    } else if (last !== null) {
+      process.stdout.write(`
+Up to date. To poll for newer changes later, pass --cursor ${last}
+`);
+    }
+  });
+}
+function parseAccount(raw) {
+  const v = raw.trim();
+  return /^[1-9][0-9]{0,15}$/.test(v) ? v : null;
+}
+function parseEntity(raw) {
+  const v = raw.trim().toLowerCase();
+  return LABEL_ENTITIES.includes(v) ? [v] : null;
+}
+function parseLimit(raw, fallback) {
+  if (raw === void 0) return fallback;
+  if (!/^[0-9]{1,4}$/.test(raw.trim())) return null;
+  const n = Number(raw.trim());
+  return n >= 1 && n <= PAGE_MAX ? n : null;
+}
+function parseSince(raw) {
+  const v = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return isRealTime(`${v}T00:00:00Z`) ? `${v}T00:00:00Z` : null;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/.test(v)) return isRealTime(v) ? v : null;
+  return null;
+}
+function isRealTime(v) {
+  const t = Date.parse(v);
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v.slice(0, 10);
+}
+var accountMessage = () => "--account must be the legacy seller id (digits). Run `mixshift amazon merchants` for the ids you can use (legacySellerId).";
+var entityMessage = () => `--entity must be one of ${LABEL_ENTITIES.join(" or ")}.`;
+var limitMessage = () => `--limit must be a whole number from 1 to ${PAGE_MAX}.`;
+function describeRow(row) {
+  const labels = {};
+  for (const [key, v] of Object.entries(row.labels ?? {})) labels[key] = { ...v, ...v.value === "" ? { cleared: true } : {} };
+  const labelState = row.status === "unseen" ? "never_seen" : Object.keys(labels).length === 0 ? "blank" : "labeled";
+  return { id: row.id, status: row.status, label_state: labelState, labels };
+}
+function countStates(rows) {
+  const c = { never_seen: 0, blank: 0, labeled: 0 };
+  for (const r of rows) c[r.label_state] += 1;
+  return c;
+}
+function writeJson8(obj2) {
+  process.stdout.write(JSON.stringify(obj2) + "\n");
+}
+function withoutOk(a) {
+  const { ok: _ok, ...rest } = a;
+  return rest;
+}
+function badInput(message, root) {
+  if (root.json) writeJson8({ status: "error", failure_kind: "invalid_input", message });
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
+}
+async function fail3(failure3, kind, startedAt, root, base2) {
+  await trackLabels(kind, "failed", startedAt, root.dataDir, {
+    ...base2,
+    kind_failed: failure3.kind,
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
+    ...failure3.retryable !== void 0 ? { retryable: failure3.retryable } : {}
+  });
+  if (root.json) {
+    writeJson8({
+      status: "error",
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      retryable: failure3.retryable,
+      invalid_params: failure3.invalidParams,
+      unrecognized_kind: failure3.unrecognizedKind
+    });
+  } else if (failure3.kind === "not_enabled") {
+    process.stderr.write(`${failure3.friendly}
+`);
+  } else {
+    process.stderr.write(`
+\u2717 ${failure3.friendly}
+`);
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
+`);
+    if (failure3.kind === "not_found") process.stderr.write("  Run `mixshift amazon merchants` for the account ids you can use (the legacySellerId).\n");
+  }
+  process.exitCode = exitCodeForLabelsKind(failure3.kind);
+}
+async function trackLabels(kind, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: EventName.LabelsCalled,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind_failed === "string" ? { error_class: payload.kind_failed } : {},
+      payload: { kind, ...payload }
+    },
+    dataDir
+  );
+}
+function noteFreshness(state) {
+  if (state === "observing") {
+    process.stderr.write("  (labels are a copy kept current from the Data Manager about every 15 minutes, so a label edited there can show here up to 15 minutes later)\n");
+  }
+}
+var MAX_CELL = 40;
+function cell3(s, max = MAX_CELL) {
+  if (s === null || s === void 0 || s === "") return "-";
+  const one = s.replace(/\s+/g, " ").replace(/\|/g, "/");
+  const points = Array.from(one);
+  return points.length > max ? points.slice(0, max - 1).join("") + "\u2026" : one;
+}
+var blank = (v, none = "(blank)") => v === null || v === void 0 ? none : v === "" ? "(blank)" : cell3(v);
+function renderState(s) {
+  const L = [];
+  const word = s.state === "off" ? "not turned on yet" : s.state === "observing" ? "on, observing (a copy kept current from the Data Manager)" : "on";
+  L.push(`**Labels: ${word}**`, "");
+  if (s.freshness.note) L.push(s.freshness.note, "");
+  L.push(`- state: ${s.state}`);
+  if (s.state !== "off") {
+    L.push(`- first full copy finished: ${s.backfilled_at ?? "not yet"}`);
+    L.push(`- last refresh completed: ${s.last_completed_at ?? "none yet"}`);
+    if (s.last_run) {
+      const r = s.last_run;
+      L.push(`- latest run: ${r.mode ?? "?"} ${r.status ?? "?"}${r.finished_at ? `, finished ${r.finished_at}` : ""}${r.complete === false ? " (incomplete)" : ""}`);
+      const counts = Object.entries(r.counts ?? {});
+      if (counts.length > 0) L.push(`  counts: ${counts.map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ")}`);
+    }
+    L.push(`- refreshing now: ${s.running ? "yes" : "no"}`);
+  } else {
+    L.push("- Your MixShift contact can turn labels on for your account.");
+  }
+  return L.join("\n");
+}
+function renderFields(a) {
+  const L = [];
+  L.push(`**${a.entity === "item" ? `${a.merchant_type ? a.merchant_type + " items" : "Items"}` : "Campaigns"}: ${a.fields.length} label fields**`, "");
+  L.push("| key | name | max length | labeled | distinct values | most used values |", "|---|---|---|---|---|---|");
+  for (const f of a.fields) L.push(renderFieldRow(f));
+  const cut = a.fields.filter((f) => f.values_truncated);
+  if (cut.length > 0) L.push("", `Value lists are cut to the most used for: ${cut.map((f) => f.key).join(", ")} (the full list stays in --json up to ${a.values_limit?.max_values ?? 500} values a field).`);
+  if (a.values_as_of) L.push("", `Values in use as of ${a.values_as_of} (kept up to a minute).`);
+  return L.join("\n");
+}
+function renderFieldRow(f) {
+  const name = f.display_name ? `${f.display_name} (${f.label})` : f.label;
+  const top = f.values.slice(0, 5).map((v) => `${cell3(v.value, 24)} (${v.count})`).join("; ");
+  return `| ${f.key} | ${cell3(name)} | ${f.max_length} ${f.length_unit} | ${f.items_labeled} | ${f.distinct_values}${f.values_truncated ? "+" : ""} | ${top || "-"} |`;
+}
+function renderRows(rows, fields) {
+  if (rows.length === 0) return "_(none)_";
+  const used = fields.filter((k) => rows.some((r) => r.labels[k] !== void 0));
+  const cols = ["id", "status", ...used];
+  const L = [`| ${cols.join(" | ")} |`, `|${cols.map(() => "---").join("|")}|`];
+  for (const r of rows) {
+    const status = r.label_state === "never_seen" ? "never seen" : r.label_state;
+    const cells = used.map((k) => {
+      const v = r.labels[k];
+      if (!v) return "-";
+      const text = v.cleared ? "(cleared)" : cell3(v.value);
+      return v.sync === "synced" ? text : `${text} [${v.sync}]`;
+    });
+    L.push(`| ${[cell3(r.id, 24), status, ...cells].join(" | ")} |`);
+  }
+  L.push("", "never seen: the service has not read this id yet. blank: known, no label set (a clear that has reached the Data Manager also reads blank). [pending] or [failed]: the change has not reached the Data Manager yet.");
+  return L.join("\n");
+}
+function renderDrift2(rows) {
+  if (rows.length === 0) return "_(no drift: every row agrees)_";
+  const L = ["| entity | id | field | values in the Data Manager rows | the Data Manager picks | MixShift holds | last seen |", "|---|---|---|---|---|---|---|"];
+  for (const r of rows) {
+    L.push(`| ${r.entity} | ${cell3(r.id, 24)} | ${r.field} | ${r.legacy_values.map((v) => blank(v)).join(" / ")} | ${blank(r.picked_value)} | ${blank(r.store_value, "(no row)")} | ${r.last_seen_at} |`);
+  }
+  return L.join("\n");
+}
+var SOURCE_WORDS = { service: "MixShift", dash: "Data Manager", backfill: "first import", inherit: "carried over" };
+var sourceWords = (source) => SOURCE_WORDS[source] ?? cell3(source);
+function renderChanges(rows) {
+  if (rows.length === 0) return "_(no changes in this window)_";
+  const L = ["| time | entity | id | field | before | after | source | by |", "|---|---|---|---|---|---|---|---|"];
+  for (const c of rows) {
+    const before = c.before === null ? "(never set)" : blank(c.before);
+    const after = c.after === null || c.after === "" ? "(cleared)" : cell3(c.after);
+    L.push(`| ${c.time} | ${c.entity} | ${cell3(c.entity_id, 24)} | ${c.field} | ${before} | ${after} | ${sourceWords(c.source)} | ${cell3(c.actor)} |`);
+  }
+  L.push("", "before (never set): the field had no value. after (cleared): the value was removed.");
+  return L.join("\n");
+}
+
+// src/commands/labels-write.ts
+import { readFile as readFile48 } from "node:fs/promises";
+
+// src/lib/labels/write-client.ts
+var LABEL_SCOPES = ["marketplace", "region", "all"];
+var CHANGE_SET_MAX = 1e3;
+var WRITE_TIMEOUT_MS = 6e4;
+var withTimeout = (opts) => ({ timeoutMs: WRITE_TIMEOUT_MS, ...opts });
+function attestation(env = process.env) {
+  const skill = env.MIXSHIFT_SKILL_ID?.trim();
+  const model = env.MIXSHIFT_MODEL_ID?.trim();
+  return {
+    ...skill && skill.length <= 128 ? { skill_id: skill } : {},
+    ...model && model.length <= 255 ? { model_id: model } : {}
+  };
+}
+function toView(json3, httpStatus, what) {
+  const j = json3;
+  if (!isState(j?.state) || typeof j.change_set_id !== "string" || typeof j.status !== "string") return unrecognizedShape2(httpStatus, what);
+  return {
+    ...j,
+    ok: true,
+    accounts: Array.isArray(j.accounts) ? j.accounts : [],
+    warnings: Array.isArray(j.warnings) ? j.warnings : [],
+    sample: Array.isArray(j.sample) ? j.sample : [],
+    can_commit: j.can_commit === true,
+    totals: j.totals ?? null,
+    dropped: j.dropped ?? null
+  };
+}
+async function labelsPreview(input, opts = {}) {
+  const body = {
+    account: Number(input.account),
+    entity: input.entity,
+    selection: input.selection,
+    ...input.set !== void 0 ? { set: input.set } : {},
+    ...input.scope !== void 0 ? { scope: input.scope } : {},
+    ...attestation()
+  };
+  const r = await labelsRequest({ method: "POST", path: "/api/labels/changes/preview", body }, withTimeout(opts));
+  if (!r.ok) return r;
+  return toView(r.json, r.httpStatus, "preview");
+}
+async function labelsCommit(input, opts = {}) {
+  const r = await labelsRequest(
+    { method: "POST", path: `/api/labels/changes/${encodeURIComponent(input.changeSetId)}/commit`, body: { approval_hash: input.approvalHash, ...attestation() } },
+    withTimeout(opts)
+  );
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j?.state) || typeof j.change_set_id !== "string" || typeof j.counts !== "object" || j.counts === null) return unrecognizedShape2(r.httpStatus, "commit");
+  return { ...j, ok: true };
+}
+async function labelsChangeSets(input, opts = {}) {
+  const r = await labelsRequest({ method: "GET", path: `/api/labels/changes/sets${query({ account: input.account, limit: input.limit, before: input.before })}` }, opts);
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j?.state) || !Array.isArray(j.change_sets)) return unrecognizedShape2(r.httpStatus, "change sets");
+  const next = typeof j.next_before === "string" && j.next_before ? j.next_before : null;
+  return {
+    ok: true,
+    state: j.state,
+    account: Number(j.account),
+    rows: j.change_sets,
+    has_more: j.has_more === true && next !== null,
+    next_before: next,
+    limit: Number(j.limit ?? input.limit ?? 0)
+  };
+}
+async function labelsChangeSet(id, opts = {}) {
+  const r = await labelsRequest({ method: "GET", path: `/api/labels/changes/sets/${encodeURIComponent(id)}` }, opts);
+  if (!r.ok) return r;
+  return toView(r.json, r.httpStatus, "change set");
+}
+async function labelsCancel(id, opts = {}) {
+  const r = await labelsRequest({ method: "POST", path: `/api/labels/changes/sets/${encodeURIComponent(id)}/cancel` }, opts);
+  if (!r.ok) return r;
+  const j = r.json;
+  if (!isState(j?.state) || typeof j.change_set_id !== "string") return unrecognizedShape2(r.httpStatus, "cancel");
+  return { ok: true, state: j.state, change_set_id: j.change_set_id, status: String(j.status ?? "cancelled"), ...typeof j.friendly === "string" ? { friendly: j.friendly } : {} };
+}
+async function labelsUndo(id, opts = {}) {
+  const r = await labelsRequest({ method: "POST", path: `/api/labels/changes/sets/${encodeURIComponent(id)}/undo`, body: { ...attestation() } }, withTimeout(opts));
+  if (!r.ok) return r;
+  return toView(r.json, r.httpStatus, "undo");
+}
+async function labelsSetFieldName(input, opts = {}) {
+  const r = await labelsRequest({ method: "PUT", path: "/api/labels/fields/names", body: { account: Number(input.account), entity: input.entity, field: input.field, name: input.name } }, opts);
+  if (!r.ok) return r;
+  return toName(r.json, r.httpStatus);
+}
+async function labelsRemoveFieldName(input, opts = {}) {
+  const r = await labelsRequest({ method: "DELETE", path: `/api/labels/fields/names${query({ account: input.account, entity: input.entity, field: input.field })}` }, opts);
+  if (!r.ok) return r;
+  return toName(r.json, r.httpStatus);
+}
+function toName(json3, httpStatus) {
+  const j = json3;
+  if (!isState(j?.state) || typeof j.field !== "string") return unrecognizedShape2(httpStatus, "field name");
+  return {
+    ok: true,
+    state: j.state,
+    account: Number(j.account),
+    entity: j.entity,
+    field: j.field,
+    display_name: typeof j.display_name === "string" ? j.display_name : null,
+    ...typeof j.removed === "boolean" ? { removed: j.removed } : {},
+    ...typeof j.friendly === "string" ? { friendly: j.friendly } : {}
+  };
+}
+
+// src/lib/labels/change-input.ts
+var FILE_GROUPS_MAX = 10;
+var CLEAR_MARKER = "<clear>";
+var TEXT_BYTES = 65535;
+var chars = (max) => ({ max, unit: "characters" });
+var bytes = (max) => ({ max, unit: "bytes" });
+var FIELD_LIMITS = {
+  item: {
+    item_group: chars(250),
+    nickname: bytes(TEXT_BYTES),
+    brand: chars(250),
+    parent_asin: chars(250),
+    label_1: bytes(TEXT_BYTES),
+    label_2: bytes(TEXT_BYTES),
+    tag_1: chars(250),
+    tag_2: chars(250),
+    tag_3: chars(250),
+    tag_4: chars(250)
+  },
+  campaign: {
+    item_group: chars(250),
+    brand: chars(200),
+    label_1: chars(200),
+    label_2: chars(200),
+    tag_1: chars(200),
+    tag_2: chars(200),
+    tag_3: chars(200),
+    tag_4: chars(200),
+    manager: chars(200),
+    objective: chars(200)
+  }
+};
+var fieldKeysFor = (entity) => Object.keys(FIELD_LIMITS[entity]);
+var UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
+function checkLabelValue(entity, field, raw) {
+  const limit = FIELD_LIMITS[entity][field];
+  if (!limit) return { ok: false, message: `${field} is not a label field of ${entity === "item" ? "items" : "campaigns"} (run \`mixshift labels fields\` for the keys)` };
+  const value = raw.trim();
+  if (value === "") return { ok: false, message: `a value cannot be blank (to remove the label, clear it)` };
+  if (UNSAFE_TEXT.test(value)) return { ok: false, message: "a label is plain text on one line: no tabs, line breaks or control characters" };
+  const size = limit.unit === "bytes" ? Buffer.byteLength(value, "utf8") : [...value].length;
+  if (size > limit.max) return { ok: false, message: `the value is longer than the ${limit.max} ${limit.unit} ${field} holds` };
+  return { ok: true, value };
+}
+function startsLikeFormula(value) {
+  return /^[=+\-@]/.test(value);
+}
+function checkEntityId(entity, raw) {
+  const id = raw.trim();
+  if (id === "") return { ok: false, message: "the id is empty" };
+  if (entity === "campaign") {
+    return /^[0-9]{1,20}$/.test(id) ? { ok: true, id } : { ok: false, message: "a campaign id is the Amazon campaign id: 1 to 20 digits" };
+  }
+  if (id.length > 250 || UNSAFE_TEXT.test(id) || /\s/.test(id)) return { ok: false, message: "an item id is an ASIN, with no spaces or control characters" };
+  return { ok: true, id: id.toUpperCase() };
+}
+function parseSetFlags(entity, sets, clears) {
+  const set2 = {};
+  for (const item of sets) {
+    const eq = item.indexOf("=");
+    if (eq <= 0) return { ok: false, message: '--set takes field=value, for example --set item_group="Water Bottles".' };
+    const field = item.slice(0, eq).trim().toLowerCase();
+    if (!FIELD_LIMITS[entity][field]) return { ok: false, message: `--set ${field}: ${field} is not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).` };
+    if (field in set2) return { ok: false, message: `${field} is named more than once.` };
+    const checked = checkLabelValue(entity, field, item.slice(eq + 1));
+    if (!checked.ok) return { ok: false, message: `--set ${field}: ${checked.message}.` };
+    set2[field] = checked.value;
+  }
+  for (const raw of clears) {
+    const field = raw.trim().toLowerCase();
+    if (!FIELD_LIMITS[entity][field]) return { ok: false, message: `--clear ${field}: ${field} is not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).` };
+    if (field in set2) return { ok: false, message: `${field} is named more than once (set and cleared, or cleared twice).` };
+    set2[field] = null;
+  }
+  return { ok: true, set: set2 };
+}
+function parseCsv(text) {
+  const records = [];
+  let cells = [];
+  let cell4 = "";
+  let inQuotes = false;
+  let quotedCell = false;
+  let line = 1;
+  let startLine = 1;
+  let pending = false;
+  const endCell = () => {
+    cells.push(cell4);
+    cell4 = "";
+    quotedCell = false;
+  };
+  const endRecord = () => {
+    if (pending) {
+      const wasQuoted = quotedCell;
+      endCell();
+      if (!(cells.length === 1 && cells[0] === "" && !wasQuoted)) records.push({ line: startLine, cells });
+    }
+    cells = [];
+    pending = false;
+  };
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell4 += '"';
+          i += 1;
+        } else inQuotes = false;
+      } else {
+        if (ch === "\n") line += 1;
+        cell4 += ch;
+      }
+      continue;
+    }
+    if (ch === '"' && cell4 === "" && !quotedCell) {
+      inQuotes = true;
+      quotedCell = true;
+      if (!pending) {
+        pending = true;
+        startLine = line;
+      }
+      continue;
+    }
+    if (ch === '"') return { ok: false, message: `line ${line}: a quote in the middle of a cell. Wrap the whole cell in double quotes and double any quote inside it.` };
+    if (ch === ",") {
+      if (!pending) {
+        pending = true;
+        startLine = line;
+      }
+      endCell();
+      continue;
+    }
+    if (ch === "\r" || ch === "\n") {
+      if (ch === "\r" && text[i + 1] === "\n") i += 1;
+      endRecord();
+      line += 1;
+      continue;
+    }
+    if (!pending) {
+      pending = true;
+      startLine = line;
+    }
+    if (quotedCell) return { ok: false, message: `line ${line}: text after a closing quote. Check the quotes in that row.` };
+    cell4 += ch;
+  }
+  if (inQuotes) return { ok: false, message: `line ${startLine}: a quoted cell is never closed.` };
+  endRecord();
+  return { ok: true, records };
+}
+var ERROR_LIST_MAX = 20;
+var identityHeader = (entity) => entity === "item" ? ["asin", "id"] : ["campaign_id", "id"];
+function parseChangeCsv(text, entity) {
+  const errors = [];
+  const fail9 = () => ({ ok: false, errors: errors.slice(0, ERROR_LIST_MAX), more: Math.max(0, errors.length - ERROR_LIST_MAX) });
+  const parsed = parseCsv(text);
+  if (!parsed.ok) return { ok: false, errors: [parsed.message], more: 0 };
+  const [header, ...rows] = parsed.records;
+  if (!header) return { ok: false, errors: ["The file is empty. It needs a header line, then one row per item or campaign."], more: 0 };
+  const names = header.cells.map((c) => c.trim().toLowerCase().replace(/[\s-]+/g, "_"));
+  if (names.length === 1 && header.cells[0].includes(";")) {
+    return { ok: false, errors: ["Line 1: cells are separated by semicolons. Save the file with commas (in a spreadsheet: CSV UTF-8, comma delimited)."], more: 0 };
+  }
+  const allowedIdentity = identityHeader(entity);
+  if (!allowedIdentity.includes(names[0])) {
+    errors.push(`Line ${header.line}: the first column must be ${entity === "item" ? '"asin"' : '"campaign_id"'} (or "id"), the item or campaign each row changes; it is "${names[0]}".`);
+  }
+  const fields = names.slice(1);
+  const seen = /* @__PURE__ */ new Set();
+  fields.forEach((f, i) => {
+    if (f === "") errors.push(`Line ${header.line}: column ${i + 2} has no name.`);
+    else if (!FIELD_LIMITS[entity][f]) errors.push(`Line ${header.line}: "${header.cells[i + 1].trim()}" is not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).`);
+    else if (seen.has(f)) errors.push(`Line ${header.line}: the column ${f} appears twice.`);
+    seen.add(f);
+  });
+  if (fields.length === 0) errors.push(`Line ${header.line}: the file has an id column and no label columns. Add at least one field key as a column.`);
+  if (rows.length === 0 && errors.length === 0) errors.push("The file has a header and no rows.");
+  if (rows.length > CHANGE_SET_MAX) {
+    errors.push(
+      `The file has ${rows.length} rows, and one change set holds at most ${CHANGE_SET_MAX} items or campaigns. Split it into files of at most ${CHANGE_SET_MAX} rows and preview each one.`
+    );
+  }
+  if (errors.length > 0) return fail9();
+  const idLine = /* @__PURE__ */ new Map();
+  const groups = /* @__PURE__ */ new Map();
+  for (const rec of rows) {
+    if (rec.cells.length !== names.length) {
+      errors.push(`Line ${rec.line}: ${rec.cells.length} cell${rec.cells.length === 1 ? "" : "s"}, but the header has ${names.length}.`);
+      continue;
+    }
+    const id = checkEntityId(entity, rec.cells[0]);
+    if (!id.ok) {
+      errors.push(`Line ${rec.line}: ${id.message}.`);
+      continue;
+    }
+    const first = idLine.get(id.id);
+    if (first !== void 0) {
+      errors.push(`Line ${rec.line}: this id already appears on line ${first}. Each item or campaign goes in once.`);
+      continue;
+    }
+    idLine.set(id.id, rec.line);
+    const set2 = {};
+    let bad = false;
+    fields.forEach((f, i) => {
+      const raw = rec.cells[i + 1].trim();
+      if (raw === "") return;
+      if (raw.toLowerCase() === CLEAR_MARKER) {
+        set2[f] = null;
+        return;
+      }
+      if (startsLikeFormula(raw)) {
+        errors.push(`Line ${rec.line}, ${f}: a value in a file cannot start with = + - or @ (a spreadsheet would read it as a formula). Change the value, or set it with BTlabels preview --setBT instead.`.replace(/BT/g, "`"));
+        bad = true;
+        return;
+      }
+      const checked = checkLabelValue(entity, f, raw);
+      if (!checked.ok) {
+        errors.push(`Line ${rec.line}, ${f}: ${checked.message}.`);
+        bad = true;
+      } else set2[f] = checked.value;
+    });
+    if (bad) continue;
+    if (Object.keys(set2).length === 0) {
+      errors.push(`Line ${rec.line}: every label cell is empty, so this row changes nothing. Fill a cell, or remove the row.`);
+      continue;
+    }
+    const key = JSON.stringify(Object.keys(set2).sort().map((k) => [k, set2[k]]));
+    const group = groups.get(key) ?? { ids: [], set: set2, lines: [] };
+    group.ids.push(id.id);
+    group.lines.push(rec.line);
+    groups.set(key, group);
+  }
+  if (errors.length > 0) return fail9();
+  if (groups.size > FILE_GROUPS_MAX) {
+    errors.push(
+      `This file makes ${groups.size} different combinations of values, and each combination is its own change set; one file may make at most ${FILE_GROUPS_MAX} (an organization may hold 25 uncommitted previews in all, and one file should not use them up). Files work best when many rows share the same values. Give more rows the same values, or split the file.`
+    );
+    return fail9();
+  }
+  return { ok: true, rows: rows.length, fields, groups: [...groups.values()] };
+}
+
+// src/lib/labels/pending.ts
+init_resolve();
+import { chmod as chmod7, mkdir as mkdir33, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile30 } from "node:fs/promises";
+import { dirname as dirname38, join as join29 } from "node:path";
+var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var HASH_RE = /^[0-9a-f]{64}$/i;
+var pendingDir = (dataDirOverride) => join29(resolveDataDir(dataDirOverride), "labels", "pending");
+var fileFor = (id, dataDirOverride) => join29(pendingDir(dataDirOverride), `${id.toLowerCase()}.json`);
+async function savePending(rec, dataDirOverride) {
+  if (!UUID_RE.test(rec.change_set_id) || !HASH_RE.test(rec.approval_hash)) return false;
+  try {
+    const path2 = fileFor(rec.change_set_id, dataDirOverride);
+    await mkdir33(dirname38(path2), { recursive: true, mode: 448 });
+    const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
+    await writeFile30(tmp, JSON.stringify({ ...rec, approval_hash: rec.approval_hash.toLowerCase() }, null, 2) + "\n", { encoding: "utf8", mode: 384 });
+    await chmod7(tmp, 384);
+    await rename24(tmp, path2);
+    await sweepExpired(dataDirOverride);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function loadPending(id, dataDirOverride) {
+  if (!UUID_RE.test(id)) return null;
+  try {
+    const j = JSON.parse(await readFile47(fileFor(id, dataDirOverride), "utf8"));
+    if (typeof j.change_set_id !== "string" || j.change_set_id.toLowerCase() !== id.toLowerCase()) return null;
+    if (typeof j.approval_hash !== "string" || !HASH_RE.test(j.approval_hash)) return null;
+    return {
+      change_set_id: j.change_set_id,
+      approval_hash: j.approval_hash.toLowerCase(),
+      account: Number(j.account),
+      kind: String(j.kind ?? ""),
+      scope: String(j.scope ?? ""),
+      created_at: String(j.created_at ?? ""),
+      expires_at: String(j.expires_at ?? "")
+    };
+  } catch {
+    return null;
+  }
+}
+async function removePending(id, dataDirOverride) {
+  if (!UUID_RE.test(id)) return;
+  await rm(fileFor(id, dataDirOverride), { force: true }).catch(() => void 0);
+}
+async function sweepExpired(dataDirOverride, now = Date.now()) {
+  const dir = pendingDir(dataDirOverride);
+  let names;
+  try {
+    names = await readdir6(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    try {
+      const j = JSON.parse(await readFile47(join29(dir, name), "utf8"));
+      const at = Date.parse(String(j.expires_at ?? ""));
+      if (!Number.isFinite(at) || now - at > 24 * 3600 * 1e3) await rm(join29(dir, name), { force: true });
+    } catch {
+      await rm(join29(dir, name), { force: true }).catch(() => void 0);
+    }
+  }
+}
+
+// src/commands/labels-write.ts
+var collect = (value, previous = []) => [...previous, value];
+var SHOW_ROWS = 50;
+var MATCH_MAX = 4e3;
+var NAME_MAX = 80;
+var SETS_PAGE_MAX = 200;
+var SETS_DEFAULT = 20;
+var SETS_ALL_CAP = 200;
+var commitCommand2 = (id) => `mixshift labels commit ${id} --commit`;
+function registerLabelsWriteCommands(program3) {
+  const labels = program3.commands.find((c) => c.name() === "labels");
+  if (!labels) throw new Error("registerLabelsCommands must run before registerLabelsWriteCommands");
+  labels.command("preview").description(
+    "Preview a label change. Changes NOTHING: it prints a change set id and a summary of exactly what would change (counts, the accounts reached, what was left out and why, warnings, a before and after sample) and expires in 24 hours. Pick items or campaigns with --ids / --ids-file, with --where field=value (everything whose field has that value), with --file (a CSV, one row per item or campaign), or rename a value everywhere with --rename. Apply it with `labels commit <id> --commit`, only after the person has confirmed this preview. Works once label editing is turned on for the account."
+  ).requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").option("--ids <list>", "comma-separated ASINs (or campaign ids with --entity campaign) to change").option("--ids-file <path>", "a text file of ids, separated by commas, spaces or new lines").option("--where <field=value>", 'every item or campaign whose field equals this exact value (case and spacing included), for example item_group="Water Bottles"').option("--file <path>", `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}. A cell cannot start with = + - or @ (a spreadsheet would read it as a formula): set such a value with --set instead`).option("--set <field=value>", 'with --ids, --ids-file or --where: set a field to a value (repeatable), for example --set brand="Acme Home"', collect).option("--clear <field>", "with --ids, --ids-file or --where: remove the label from a field (repeatable)", collect).option("--rename <field>", "rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)").option("--from <value>", "with --rename: the exact value to replace").option("--to <value>", "with --rename: the new value").option("--scope <scope>", "marketplace (this account only), region (every marketplace of the merchant; the usual default) or all (every account of that merchant type). Items only: a campaign belongs to one account").action(async (opts, cmd) => runPreview(opts, cmd.optsWithGlobals()));
+  labels.command("commit <change-set-id>").description(
+    "Commit a previewed label change. WRITES to your labels, so it is sent ONLY with --commit, and only after the person has seen the preview and confirmed it. Without --commit it shows the change set again and sends nothing. The approval hash is read from the preview made on this machine. Each item or campaign is checked against what the preview saw: one changed since is left as it is and reported stale. Exit 17 when anything was stale, refused or failed. Committing the same change set again is safe. With --json, an already committed change set answers committed: true, already_committed: true and sent: false (this run wrote nothing)."
+  ).option("--commit", "actually apply the change set (default: show it and send nothing). Use only after explicit confirmation of the preview").option("--approval-hash <hash>", "the approval hash the preview returned, for a change set previewed on another machine (this machine keeps its own)").action(async (id, opts, cmd) => runCommit(id, opts, cmd.optsWithGlobals()));
+  labels.command("undo <change-set-id>").description(
+    "Preview the reversal of a committed change set: a NEW change set that sets each field back to what it was. Changes nothing until you commit it with `labels commit <new id> --commit`. An item changed again since is left alone and reported stale, so nothing newer is overwritten."
+  ).action(async (id, _opts, cmd) => runUndo(id, cmd.optsWithGlobals()));
+  labels.command("sets").description("The label change sets that reach an account, newest first: id, kind, status, scope, what changed, who and when.").requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--limit <n>", `change sets a page, 1 to ${SETS_PAGE_MAX} (default ${SETS_DEFAULT})`).option("--before <time>", "continue from the next_before of a previous page").option("--all", `follow every page, up to ${SETS_ALL_CAP} change sets; says when it stopped and how to continue`).action(async (opts, cmd) => runSets(opts, cmd.optsWithGlobals()));
+  labels.command("set <change-set-id>").description("One change set: the preview (what would change) or, once committed, what happened to each item or campaign.").action(async (id, _opts, cmd) => runSet(id, cmd.optsWithGlobals()));
+  labels.command("cancel <change-set-id>").description("Cancel a preview you no longer want. Nothing was changed by it, and nothing is. Only a preview can be cancelled. Sent ONLY with --commit; without it the change set is shown and nothing is cancelled.").option("--commit", "actually cancel the preview (default: show it and send nothing). Use only after the person confirmed").action(async (id, opts, cmd) => runCancel(id, opts, cmd.optsWithGlobals()));
+  labels.command("field-name").description(
+    'Give an account its own name for a label field (for example "Pattern ID" for Item Label 2) that every label read then shows, or remove it. There is no preview for this: it is sent ONLY with --commit, after the person confirms. Without --commit it prints what it would do and sends nothing.'
+  ).requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").requiredOption("--field <key>", "a field key from `labels fields` (for example label_2)").option("--name <text>", `the display name, plain text on one line, at most ${NAME_MAX} characters`).option("--remove", "remove the custom name so the field shows its standard name again").option("--commit", "actually make the change (default: print it and send nothing). Use only after explicit confirmation").action(async (opts, cmd) => runFieldName(opts, cmd.optsWithGlobals()));
+}
+async function runPreview(opts, root) {
+  const startedAt = Date.now();
+  const account = parseAccount(opts.account);
+  if (!account) return badInput(accountMessage(), root);
+  const parsedEntity = parseEntity(opts.entity ?? "item");
+  if (!parsedEntity || parsedEntity.length !== 1) return badInput(entityMessage(), root);
+  const entity = parsedEntity[0];
+  let scope;
+  if (opts.scope !== void 0) {
+    const s = opts.scope.trim().toLowerCase();
+    if (!LABEL_SCOPES.includes(s)) return badInput(`--scope must be one of ${LABEL_SCOPES.join(", ")}.`, root);
+    scope = s;
+  }
+  if (entity === "campaign" && scope !== void 0 && scope !== "marketplace") {
+    return badInput("A campaign belongs to exactly one account, so a campaign change can only use --scope marketplace.", root);
+  }
+  const modes = [];
+  if (opts.ids !== void 0 || opts.idsFile !== void 0) modes.push("ids");
+  if (opts.where !== void 0) modes.push("where");
+  if (opts.file !== void 0) modes.push("file");
+  if (opts.rename !== void 0) modes.push("rename");
+  if (modes.length !== 1) {
+    return badInput("Pick exactly one way to choose what changes: --ids or --ids-file, --where, --file, or --rename (with --from and --to).", root);
+  }
+  const mode = modes[0];
+  if (opts.ids !== void 0 && opts.idsFile !== void 0) return badInput("Pass either --ids <a,b,c> or --ids-file <path>, not both.", root);
+  const hasFlagsSet = (opts.set?.length ?? 0) + (opts.clear?.length ?? 0) > 0;
+  if (mode === "file" || mode === "rename") {
+    if (hasFlagsSet) return badInput(`--set and --clear do not go with ${mode === "file" ? "--file (the file holds the values)" : "--rename (it has --from and --to)"}.`, root);
+  }
+  if (mode !== "rename" && (opts.from !== void 0 || opts.to !== void 0)) return badInput("--from and --to only go with --rename.", root);
+  if (mode === "rename" && (opts.from === void 0 || opts.to === void 0)) return badInput("--rename needs --from <current value> and --to <new value>.", root);
+  const requests = [];
+  let fileRows;
+  if (mode === "ids" || mode === "where") {
+    if (!hasFlagsSet) return badInput("Say what to change: --set <field=value> and/or --clear <field>.", root);
+    const flags = parseSetFlags(entity, opts.set ?? [], opts.clear ?? []);
+    if (!flags.ok) return badInput(flags.message, root);
+    if (mode === "ids") {
+      const read = await readIds(opts, entity);
+      if (!read.ok) return badInput(read.message, root);
+      requests.push({ selection: { ids: read.ids }, set: flags.set });
+    } else {
+      const eq = opts.where.indexOf("=");
+      if (eq <= 0) return badInput('--where takes field=value, for example --where item_group="Water Bottles".', root);
+      const field = opts.where.slice(0, eq).trim().toLowerCase();
+      const value = opts.where.slice(eq + 1);
+      if (!fieldKeysFor(entity).includes(field)) return badInput(`--where ${field}: not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).`, root);
+      if (value.length === 0 || value.length > MATCH_MAX) return badInput(`--where needs a value of 1 to ${MATCH_MAX} characters: the exact value to match.`, root);
+      requests.push({ selection: { filter: { field, value } }, set: flags.set });
+    }
+  } else if (mode === "rename") {
+    const field = opts.rename.trim().toLowerCase();
+    const from = opts.from;
+    if (!fieldKeysFor(entity).includes(field)) return badInput(`--rename ${field}: not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).`, root);
+    if (from.length === 0 || from.length > MATCH_MAX) return badInput(`--from needs 1 to ${MATCH_MAX} characters: the exact value to replace.`, root);
+    const to = checkLabelValue(entity, field, opts.to);
+    if (!to.ok) return badInput(`--to: ${to.message}.`, root);
+    if (to.value === from) return badInput("--to is the same as --from; there is nothing to rename.", root);
+    requests.push({ selection: { rename: { field, from, to: to.value } } });
+  } else {
+    let bytes2;
+    try {
+      bytes2 = await readFile48(opts.file);
+    } catch (err) {
+      return badInput(`Cannot read --file: ${err instanceof Error ? err.message : String(err)}`, root);
+    }
+    const text = decodeIdsFile(bytes2);
+    if (text === null) return badInput(UTF16_MESSAGE.replace("--ids-file", "--file").replace("ids.txt", "changes.csv"), root);
+    const parsed = parseChangeCsv(text, entity);
+    if (!parsed.ok) {
+      const lines = [...parsed.errors, ...parsed.more > 0 ? [`...and ${parsed.more} more.`] : []];
+      if (root.json) writeJson8({ status: "error", failure_kind: "invalid_input", message: `The file has ${parsed.errors.length + parsed.more} problem(s); nothing was sent.`, errors: parsed.errors, more: parsed.more });
+      else process.stderr.write(`error: the file has problems; nothing was sent.
+${lines.map((l) => `  ${l}`).join("\n")}
+`);
+      process.exitCode = 1;
+      return;
+    }
+    fileRows = parsed.rows;
+    for (const g of parsed.groups) requests.push({ selection: { ids: g.ids }, set: g.set });
+  }
+  const base2 = { account: Number(account), entity, mode, scope: scope ?? "default", ...fileRows !== void 0 ? { rows: fileRows } : {} };
+  const created = [];
+  let saved = 0;
+  for (const [i, req] of requests.entries()) {
+    const result = await labelsPreview(
+      { account, entity, selection: req.selection, ...req.set !== void 0 ? { set: req.set } : {}, ...scope !== void 0 ? { scope } : {} },
+      { dataDirOverride: root.dataDir }
+    );
+    if (isLabelsFailure(result)) {
+      const extra = created.length > 0 ? { change_sets: created.map((v) => viewJson(v)), failed_group: i + 1, groups: requests.length } : {};
+      if (!root.json && created.length > 0) {
+        printPreviews(created, entity, root, requests.length);
+        process.stderr.write(`
+Change set ${i + 1} of ${requests.length} could not be made; the ${created.length} above were. Previews change nothing, so you can use them, or cancel them with \`mixshift labels cancel <id>\`.
+`);
+      }
+      return fail4(result, "preview", startedAt, root, { ...base2, change_sets: requests.length }, extra);
+    }
+    created.push(result);
+    if (await rememberApproval(result, Number(account), root.dataDir)) saved += 1;
+  }
+  const totals = sumTotals(created);
+  await trackLabels("preview", "ok", startedAt, root.dataDir, {
+    ...base2,
+    service_state: created[0].state,
+    change_sets: created.length,
+    identities: totals.identities,
+    to_change: totals.to_change,
+    unchanged: totals.unchanged,
+    dropped: created.reduce((n, v) => n + (v.dropped?.identities ?? 0), 0),
+    warnings: created.reduce((n, v) => n + v.warnings.length, 0),
+    committable: created.every((v) => v.can_commit),
+    change_set_ids: created.map((v) => v.change_set_id)
+  });
+  if (root.json) {
+    return writeJson8({
+      status: "ok",
+      committed: false,
+      count: created.length,
+      ...fileRows !== void 0 ? { rows: fileRows } : {},
+      change_sets: created.map((v) => viewJson(v, saved === created.length))
+    });
+  }
+  printPreviews(created, entity, root, requests.length);
+  if (saved < created.length) {
+    process.stderr.write("  (This machine could not keep the approvals, so commit needs --approval-hash; run again with --json to see it.)\n");
+  }
+}
+async function readIds(opts, entity) {
+  let raw;
+  if (opts.ids !== void 0) raw = opts.ids;
+  else {
+    let bytes2;
+    try {
+      bytes2 = await readFile48(opts.idsFile);
+    } catch (err) {
+      return { ok: false, message: `Cannot read --ids-file: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    const text = decodeIdsFile(bytes2);
+    if (text === null) return { ok: false, message: UTF16_MESSAGE };
+    raw = text;
+  }
+  const ids = normalizeIds(raw, entity);
+  if (ids.length === 0) return { ok: false, message: "No ids given." };
+  if (ids.length > CHANGE_SET_MAX) {
+    return { ok: false, message: `That is ${ids.length} ids, and one change set holds at most ${CHANGE_SET_MAX}. Split the list and preview each part.` };
+  }
+  for (const id of ids) {
+    const checked = checkEntityId(entity, id);
+    if (!checked.ok) return { ok: false, message: `${checked.message}. Check --ids.` };
+  }
+  return { ok: true, ids };
+}
+async function rememberApproval(view, account, dataDir) {
+  if (!view.approval_hash) return false;
+  return savePending(
+    {
+      change_set_id: view.change_set_id,
+      approval_hash: view.approval_hash,
+      account: view.accounts[0]?.account ?? account,
+      kind: view.kind,
+      scope: view.scope,
+      created_at: view.created_at,
+      expires_at: view.expires_at
+    },
+    dataDir
+  );
+}
+function sumTotals(views) {
+  const t = { identities: 0, to_change: 0, unchanged: 0, fields_to_change: 0 };
+  for (const v of views) {
+    t.identities += v.totals?.identities ?? 0;
+    t.to_change += v.totals?.to_change ?? 0;
+    t.unchanged += v.totals?.unchanged ?? 0;
+    t.fields_to_change += v.totals?.fields_to_change ?? 0;
+  }
+  return t;
+}
+function viewJson(view, approvalSaved, withHash = true) {
+  const { approval_hash: hash2, ...rest } = withoutOk(view);
+  const preview = view.status === "preview";
+  return {
+    ...rest,
+    // Only a preview's own output carries the hash (a parent that must commit needs it); a read of a set never repeats it.
+    ...withHash && hash2 !== void 0 ? { approval_hash: hash2 } : {},
+    ...preview ? { commit_command: commitCommand2(view.change_set_id), ...approvalSaved !== void 0 ? { approval_saved: approvalSaved } : {} } : {}
+  };
+}
+function printPreviews(views, entity, _root, planned) {
+  views.forEach((v, i) => {
+    const heading = planned > 1 ? `Change set ${i + 1} of ${planned}` : v.kind === "undo" ? "Undo preview" : "Preview";
+    process.stderr.write(`
+${heading}: nothing has been changed.
+`);
+    process.stdout.write(renderChangeSet(v, entity) + "\n");
+  });
+  noteFreshness(views[0].state);
+  const ready = views.filter((v) => v.status === "preview");
+  if (ready.length === 0) return;
+  if (views.length > 1) {
+    process.stderr.write(
+      `
+This file made ${views.length} change sets, one for each different combination of values. Each is committed (and undone) separately:
+` + views.map((v) => `  ${v.change_set_id}`).join("\n") + "\n"
+    );
+  }
+  const blocked = ready.filter((v) => !v.can_commit);
+  const lines = [];
+  if (blocked.length > 0) lines.push(`  ${blockedText(blocked[0])}`);
+  if (blocked.length < ready.length) {
+    lines.push(
+      "  Show the person this preview and get their yes before committing. To apply exactly this change:",
+      ...ready.filter((v) => v.can_commit).map((v) => `    ${commitCommand2(v.change_set_id)}`),
+      "  To drop it instead: `mixshift labels cancel <id>`. A preview expires on its own after 24 hours."
+    );
+  }
+  process.stderr.write(`
+${lines.join("\n")}
+`);
+}
+function blockedText(v) {
+  if (v.blocked_by === "writes_off") return "Label changes are switched off right now, so this cannot be committed yet. Reading labels still works.";
+  if (v.blocked_by === "tenant_not_on") {
+    return "Label changes are not turned on for this account yet (its labels are still being copied and checked), so this preview cannot be committed until MixShift turns them on.";
+  }
+  return "This change set cannot be committed right now.";
+}
+async function runCommit(id, opts, root) {
+  const startedAt = Date.now();
+  if (!UUID_RE.test(id.trim())) return badInput("The change set id is the one `mixshift labels preview` printed (36 characters with dashes).", root);
+  const setId = id.trim().toLowerCase();
+  if (opts.approvalHash !== void 0 && !HASH_RE.test(opts.approvalHash.trim())) {
+    return badInput("--approval-hash is the 64-character hash the preview returned.", root);
+  }
+  if (!opts.commit) {
+    const view = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+    if (isLabelsFailure(view)) return fail4(view, "commit", startedAt, root, { committed: false, dry_run: true }, { change_set_id: setId });
+    const saved = await loadPending(setId, root.dataDir) !== null || opts.approvalHash !== void 0;
+    await trackLabels("commit", "ok", startedAt, root.dataDir, { dry_run: true, committed: false, change_set_id: setId, status: view.status, service_state: view.state, committable: view.can_commit, approval_available: saved });
+    if (root.json) {
+      return writeJson8({ status: "ok", committed: false, dry_run: true, approval_available: saved, change_set: viewJson(view, saved, false) });
+    }
+    process.stderr.write(`
+NOT COMMITTED (no --commit): nothing has been changed.
+`);
+    process.stdout.write(renderChangeSet(view, void 0) + "\n");
+    if (view.status !== "preview") {
+      process.stderr.write(`
+This change set is ${view.status}; there is nothing to commit.
+`);
+    } else if (!view.can_commit) {
+      process.stderr.write(`
+${blockedText(view)}
+`);
+    } else {
+      process.stderr.write(
+        `
+${saved ? "" : "No approval for this change set is kept on this machine, so the commit also needs --approval-hash (or preview it again here).\n"}Show the person this preview and get their yes. To apply exactly this change:
+  ${commitCommand2(setId)}
+`
+      );
+    }
+    return;
+  }
+  let hash2 = opts.approvalHash?.trim().toLowerCase();
+  const source = hash2 !== void 0 ? "flag" : "saved";
+  if (hash2 === void 0) {
+    const pending = await loadPending(setId, root.dataDir);
+    if (!pending) {
+      const known = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+      if (isLabelsFailure(known)) return fail4(known, "commit", startedAt, root, { committed: true, approval_source: "none" }, { change_set_id: setId });
+      const settled = settledStatus(known);
+      if (settled) {
+        await trackLabels("commit", settled.exit === 0 ? "ok" : "failed", startedAt, root.dataDir, { committed: true, sent: false, change_set_id: setId, status: known.status, approval_source: "none", service_state: known.state, ...settled.exit === 0 ? {} : { kind_failed: settled.kind } });
+        const wasCommitted = ["committed", "partial", "stale", "failed"].includes(known.status);
+        if (root.json) writeJson8({ status: settled.exit === 0 ? "ok" : "error", committed: wasCommitted, already_committed: wasCommitted, sent: false, ...settled.exit === 0 ? {} : { failure_kind: settled.kind }, message: settled.message, change_set: viewJson(known, void 0, false) });
+        else {
+          process.stderr.write(`
+${settled.exit === 0 ? "\u2713" : "\u2717"} ${settled.message}
+`);
+          process.stdout.write(renderChangeSet(known, void 0) + "\n");
+        }
+        process.exitCode = settled.exit;
+        return;
+      }
+      const message = "This machine has no approval for that change set, so nothing was sent. Preview it again here (`mixshift labels preview ...`), or pass --approval-hash with the hash the preview returned.";
+      await trackLabels("commit", "failed", startedAt, root.dataDir, { committed: true, change_set_id: setId, kind_failed: "no_approval" });
+      if (root.json) writeJson8({ status: "error", failure_kind: "no_approval", message, change_set_id: setId });
+      else process.stderr.write(`
+\u2717 ${message}
+`);
+      process.exitCode = 16;
+      return;
+    }
+    hash2 = pending.approval_hash;
+  }
+  const result = await labelsCommit({ changeSetId: setId, approvalHash: hash2 }, { dataDirOverride: root.dataDir });
+  if (isLabelsFailure(result)) {
+    if (result.kind === "partially_applied" || result.kind === "stale" || result.kind === "failed") {
+      await removePending(setId, root.dataDir);
+      return failedCommit(result, setId, startedAt, root, source);
+    }
+    if (result.kind === "change_set_expired" || result.kind === "change_set_cancelled") await removePending(setId, root.dataDir);
+    return fail4(result, "commit", startedAt, root, { committed: true, approval_source: source }, { change_set_id: setId });
+  }
+  await removePending(setId, root.dataDir);
+  const body = withoutOk(result);
+  const counts = result.counts;
+  const incomplete = counts.stale > 0 || counts.refused > 0;
+  await trackLabels("commit", incomplete ? "failed" : "ok", startedAt, root.dataDir, {
+    committed: true,
+    change_set_id: setId,
+    approval_source: source,
+    status: result.status,
+    already_committed: result.already_committed,
+    service_state: result.state,
+    ...countsPayload(counts),
+    ...incomplete ? { kind_failed: "partially_applied" } : {}
+  });
+  if (root.json) {
+    if (incomplete) writeJson8({ status: "error", failure_kind: "partially_applied", message: "Not every item was changed. See needs_attention.", ...stripBody(body) });
+    else writeJson8({ status: "ok", committed: true, ...stripBody(body) });
+  } else {
+    process.stderr.write(`
+${incomplete ? "\u2717 PARTLY COMMITTED" : "\u2713 COMMITTED"} ${setId}: ${commitSentence(counts)}${result.already_committed ? " This change set was already committed; nothing new was written." : ""}
+`);
+    process.stdout.write(renderCommitBody(body) + "\n");
+    if (result.sync?.note) process.stderr.write(`
+${result.sync.note}
+`);
+  }
+  if (incomplete) process.exitCode = 17;
+}
+function settledStatus(v) {
+  switch (v.status) {
+    case "committed":
+      return { exit: 0, kind: "already_committed", message: `Nothing sent: this change set is already committed${v.committed_at ? ` (${v.committed_at})` : ""}.` };
+    case "partial":
+      return { exit: 17, kind: "partially_applied", message: "Nothing sent: this change set was committed and only partly applied. The items that were not changed are listed below; preview the change again to include them." };
+    case "stale":
+    case "failed":
+      return { exit: 17, kind: v.status, message: `Nothing sent: this change set was committed and ${v.status === "stale" ? "every item had changed since the preview, so nothing was applied" : "nothing was applied"}. Preview the change again.` };
+    case "cancelled":
+      return { exit: 16, kind: "change_set_cancelled", message: "Nothing sent: this change set was cancelled. Preview the change again." };
+    case "expired":
+      return { exit: 16, kind: "change_set_expired", message: "Nothing sent: this preview expired. Preview the change again." };
+    case "preview":
+      return Date.parse(v.expires_at) < Date.now() ? { exit: 16, kind: "change_set_expired", message: "Nothing sent: this preview appears to have expired. Preview the change again." } : null;
+    default:
+      return { exit: 16, kind: "not_open", message: `Nothing sent: this change set is ${v.status}, not an open preview.` };
+  }
+}
+async function failedCommit(failure3, setId, startedAt, root, source) {
+  const b = failure3.body ?? {};
+  const counts = b.counts;
+  await trackLabels("commit", "failed", startedAt, root.dataDir, {
+    committed: true,
+    change_set_id: setId,
+    approval_source: source,
+    kind_failed: failure3.kind,
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...counts ? countsPayload(counts) : {}
+  });
+  if (root.json) {
+    const { ok: _ok, kind: _kind, friendly: _friendly, ...rest } = b;
+    writeJson8({ status: "error", failure_kind: failure3.kind, message: failure3.friendly, http_status: failure3.httpStatus, ...stripBody(rest) });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure3.kind === "stale" ? "NOTHING COMMITTED (all stale)" : failure3.kind === "failed" ? "NOTHING COMMITTED" : "PARTLY COMMITTED"} ${setId}: ${failure3.friendly}
+`);
+    if (counts) process.stdout.write(renderCommitBody(b) + "\n");
+    process.stderr.write(`
+To include the items that were left as they are, preview the change again: \`mixshift labels preview ...\`.
+`);
+  }
+  process.exitCode = 17;
+}
+var countsPayload = (c) => ({
+  identities: c.identities,
+  applied: c.applied,
+  unchanged: c.unchanged,
+  stale: c.stale,
+  refused: c.refused,
+  fields_changed: c.fields_changed
+});
+function stripBody(b) {
+  const { status: _s, ...rest } = b;
+  return { outcome: b.status, ...rest };
+}
+var commitSentence = (c) => `${c.applied} of ${c.identities} changed (${c.fields_changed} field${c.fields_changed === 1 ? "" : "s"}), ${c.unchanged} already had these values, ${c.stale} stale, ${c.refused} refused.`;
+async function runUndo(id, root) {
+  const startedAt = Date.now();
+  if (!UUID_RE.test(id.trim())) return badInput("The change set id is the one `mixshift labels preview` or `labels sets` printed (36 characters with dashes).", root);
+  const setId = id.trim().toLowerCase();
+  const result = await labelsUndo(setId, { dataDirOverride: root.dataDir });
+  if (isLabelsFailure(result)) return fail4(result, "undo", startedAt, root, { undoes: setId }, { change_set_id: setId });
+  const saved = await rememberApproval(result, 0, root.dataDir);
+  await trackLabels("undo", "ok", startedAt, root.dataDir, {
+    undoes: setId,
+    change_set_id: result.change_set_id,
+    service_state: result.state,
+    identities: result.totals?.identities ?? 0,
+    to_change: result.totals?.to_change ?? 0,
+    warnings: result.warnings.length,
+    committable: result.can_commit
+  });
+  if (root.json) return writeJson8({ status: "ok", committed: false, count: 1, change_sets: [viewJson(result, saved)] });
+  printPreviews([result], void 0, root, 1);
+}
+async function runSets(opts, root) {
+  const startedAt = Date.now();
+  const account = parseAccount(opts.account);
+  if (!account) return badInput(accountMessage(), root);
+  let limit = SETS_DEFAULT;
+  if (opts.limit !== void 0) {
+    if (!/^[0-9]{1,4}$/.test(opts.limit.trim()) || Number(opts.limit) < 1 || Number(opts.limit) > SETS_PAGE_MAX) return badInput(`--limit must be a whole number from 1 to ${SETS_PAGE_MAX}.`, root);
+    limit = Number(opts.limit);
+  } else if (opts.all) limit = SETS_PAGE_MAX;
+  if (opts.before !== void 0 && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(opts.before.trim())) {
+    return badInput("--before is the next_before value a previous page printed (a UTC time with six fraction digits).", root);
+  }
+  const rows = [];
+  let before = opts.before?.trim();
+  let first;
+  let last = void 0;
+  let pages = 0;
+  const used = /* @__PURE__ */ new Set();
+  for (; ; ) {
+    if (before !== void 0) used.add(before);
+    const page = await labelsChangeSets({ account, limit, ...before !== void 0 ? { before } : {} }, { dataDirOverride: root.dataDir });
+    if (isLabelsFailure(page)) return fail4(page, "sets", startedAt, root, { account: Number(account) });
+    first ??= page;
+    last = page;
+    pages += 1;
+    rows.push(...page.rows);
+    before = page.next_before ?? void 0;
+    if (!opts.all || !page.has_more || before === void 0 || page.rows.length === 0 || used.has(before) || rows.length >= SETS_ALL_CAP) break;
+  }
+  const ok = first;
+  const more = last.has_more && last.next_before !== null;
+  const next = more ? last.next_before : null;
+  await trackLabels("sets", "ok", startedAt, root.dataDir, { account: Number(account), service_state: ok.state, rows: rows.length, pages, has_more: more, all: !!opts.all });
+  if (root.json) {
+    return writeJson8({ status: "ok", account: ok.account, state: ok.state, count: rows.length, pages, has_more: more, next_before: next, change_sets: rows });
+  }
+  process.stderr.write(`
+\u2713 ${rows.length} change set(s)${opts.all ? ` over ${pages} page(s)` : ""}
+`);
+  process.stdout.write(renderSets(rows) + "\n");
+  if (more) process.stdout.write(`
+More change sets: add --before ${next}
+`);
+}
+async function runSet(id, root) {
+  const startedAt = Date.now();
+  if (!UUID_RE.test(id.trim())) return badInput("The change set id is the one `mixshift labels preview` or `labels sets` printed (36 characters with dashes).", root);
+  const setId = id.trim().toLowerCase();
+  const view = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+  if (isLabelsFailure(view)) return fail4(view, "set", startedAt, root, {}, { change_set_id: setId });
+  await trackLabels("set", "ok", startedAt, root.dataDir, { change_set_id: setId, status: view.status, service_state: view.state });
+  if (root.json) return writeJson8({ status: "ok", change_set: viewJson(view, void 0, false) });
+  process.stdout.write(renderChangeSet(view, void 0) + "\n");
+  if (view.status === "preview" && view.can_commit) {
+    process.stderr.write(`
+This is a preview; nothing has been changed. To apply it after the person confirms: ${commitCommand2(setId)}
+`);
+  }
+}
+async function runCancel(id, opts, root) {
+  const startedAt = Date.now();
+  if (!UUID_RE.test(id.trim())) return badInput("The change set id is the one `mixshift labels preview` or `labels sets` printed (36 characters with dashes).", root);
+  const setId = id.trim().toLowerCase();
+  if (!opts.commit) {
+    const view = await labelsChangeSet(setId, { dataDirOverride: root.dataDir });
+    if (isLabelsFailure(view)) return fail4(view, "cancel", startedAt, root, { cancelled: false, dry_run: true }, { change_set_id: setId });
+    await trackLabels("cancel", "ok", startedAt, root.dataDir, { dry_run: true, cancelled: false, change_set_id: setId, status: view.status, service_state: view.state });
+    if (root.json) return writeJson8({ status: "ok", cancelled: false, dry_run: true, change_set: viewJson(view, void 0, false) });
+    process.stderr.write(`
+NOT CANCELLED (no --commit): nothing has been changed.${view.status === "preview" ? " This would cancel the preview below; it expires on its own after 24 hours anyway." : ` This change set is ${view.status}, and only a preview can be cancelled.`}
+`);
+    process.stdout.write(renderChangeSet(view, void 0) + "\n");
+    if (view.status === "preview") process.stderr.write(`
+To cancel it: mixshift labels cancel ${setId} --commit
+`);
+    return;
+  }
+  const result = await labelsCancel(setId, { dataDirOverride: root.dataDir });
+  if (isLabelsFailure(result)) return fail4(result, "cancel", startedAt, root, {}, { change_set_id: setId });
+  await removePending(setId, root.dataDir);
+  await trackLabels("cancel", "ok", startedAt, root.dataDir, { change_set_id: setId, service_state: result.state });
+  if (root.json) return writeJson8({ status: "ok", change_set_id: result.change_set_id, outcome: result.status, message: result.friendly ?? "Cancelled. Nothing was changed." });
+  process.stderr.write(`
+\u2713 ${result.friendly ?? "Cancelled. Nothing was changed."}
+`);
+}
+async function runFieldName(opts, root) {
+  const startedAt = Date.now();
+  const account = parseAccount(opts.account);
+  if (!account) return badInput(accountMessage(), root);
+  const parsedEntity = parseEntity(opts.entity ?? "item");
+  if (!parsedEntity || parsedEntity.length !== 1) return badInput(entityMessage(), root);
+  const entity = parsedEntity[0];
+  const field = opts.field.trim().toLowerCase();
+  if (!fieldKeysFor(entity).includes(field)) return badInput(`--field ${field}: not a label field of ${entity === "item" ? "items" : "campaigns"} (keys: ${fieldKeysFor(entity).join(", ")}).`, root);
+  if (opts.name === void 0 === (opts.remove !== true)) return badInput("Pass --name <text> to set a display name, or --remove to remove it (not both).", root);
+  let name;
+  if (opts.name !== void 0) {
+    name = opts.name.trim();
+    if (name === "" || [...name].length > NAME_MAX || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(name)) {
+      return badInput(`--name must be plain text on one line, 1 to ${NAME_MAX} characters.`, root);
+    }
+  }
+  const base2 = { account: Number(account), entity, field, action: name !== void 0 ? "set" : "remove" };
+  if (!opts.commit) {
+    const what = name !== void 0 ? `show ${field} as "${name}"` : `show ${field} under its standard name again`;
+    await trackLabels("field_name", "ok", startedAt, root.dataDir, { ...base2, dry_run: true, committed: false });
+    if (root.json) return writeJson8({ status: "ok", committed: false, dry_run: true, account: Number(account), entity, field, action: base2.action, ...name !== void 0 ? { name } : {} });
+    process.stderr.write(
+      `
+NOT SENT (no --commit): nothing has been changed. This would ${what} on account ${account}, in every label read.
+  Get the person's yes first, then run the same command with --commit.
+`
+    );
+    return;
+  }
+  const result = name !== void 0 ? await labelsSetFieldName({ account, entity, field, name }, { dataDirOverride: root.dataDir }) : await labelsRemoveFieldName({ account, entity, field }, { dataDirOverride: root.dataDir });
+  if (isLabelsFailure(result)) return fail4(result, "field_name", startedAt, root, { ...base2, committed: true });
+  await trackLabels("field_name", "ok", startedAt, root.dataDir, { ...base2, committed: true, service_state: result.state, ...result.removed !== void 0 ? { removed: result.removed } : {} });
+  if (root.json) return writeJson8({ status: "ok", committed: true, ...withoutOk(result) });
+  process.stderr.write(`
+\u2713 ${result.friendly ?? "Done."}
+`);
+}
+function nextStep(failure3, kind, extra, base2 = {}) {
+  const id = typeof extra.change_set_id === "string" ? extra.change_set_id : "<id>";
+  switch (failure3.kind) {
+    case "approval_mismatch":
+    case "change_set_expired":
+    case "change_set_cancelled":
+      return "Preview the change again (`mixshift labels preview ...`) and commit the new change set.";
+    case "commit_retry":
+    case "commit_in_flight":
+      return `Nothing was lost. Run the same command again: \`${commitCommand2(id)}\`.`;
+    case "too_many_entities":
+      return base2.mode === "where" ? `List what matches with BTmixshift labels search --account <id> --field <key> --value <text>BT, save the ids to a file, and preview them in parts of at most ${CHANGE_SET_MAX} with --ids-file.`.replace(/BT/g, "`") : void 0;
+    case "commit_too_large":
+      return `Do not retry it as it is. Split the change into smaller change sets (at most ${CHANGE_SET_MAX} each) and preview and commit each one.`;
+    case "host_unreachable":
+      return kind === "commit" ? `The answer was lost, so the commit may or may not have gone through. Check with \`mixshift labels set ${id}\`; committing the same change set again is safe.` : void 0;
+    case "too_many_open_previews":
+      return "List them with `mixshift labels sets --account <id>` and cancel the ones you do not need with `mixshift labels cancel <id>`.";
+    case "change_set_not_found":
+      return "List the change sets of an account with `mixshift labels sets --account <id>`.";
+    default:
+      return void 0;
+  }
+}
+async function fail4(failure3, kind, startedAt, root, base2, extra = {}) {
+  const reason = typeof failure3.body?.reason === "string" ? failure3.body.reason : void 0;
+  const serviceState = typeof failure3.body?.state === "string" ? failure3.body.state : void 0;
+  await trackLabels(kind, "failed", startedAt, root.dataDir, {
+    ...base2,
+    ...typeof extra.change_set_id === "string" ? { change_set_id: extra.change_set_id } : {},
+    kind_failed: failure3.kind,
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
+    ...failure3.retryable !== void 0 ? { retryable: failure3.retryable } : {},
+    ...reason ? { reason } : {},
+    ...serviceState ? { service_state: serviceState } : {}
+  });
+  const serviceSentence = typeof failure3.body?.friendly === "string" && failure3.body.friendly.includes(" ");
+  const friendly = failure3.kind === "insufficient_scope" && !serviceSentence ? "This sign-in cannot change labels. Ask your organization admin for label-editing permission." : failure3.friendly;
+  const issues = Array.isArray(failure3.body?.issues) ? failure3.body?.issues : void 0;
+  const issueLines = (issues ?? []).flatMap((i) => isRecord(i) && typeof i.field === "string" && typeof i.message === "string" ? [`  ${i.field}: ${i.message}`] : []);
+  const step = nextStep(failure3, kind, extra, base2);
+  if (root.json) {
+    writeJson8({
+      status: "error",
+      failure_kind: failure3.kind,
+      message: friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      retryable: failure3.retryable,
+      reason,
+      state: serviceState,
+      issues,
+      invalid_params: failure3.invalidParams,
+      unrecognized_kind: failure3.unrecognizedKind,
+      next_step: step,
+      ...extra
+    });
+  } else if (failure3.kind === "not_enabled") {
+    process.stderr.write(`${friendly}
+`);
+  } else {
+    process.stderr.write(`
+\u2717 ${friendly}
+`);
+    if (failure3.message && failure3.message !== friendly) process.stderr.write(`  ${failure3.message}
+`);
+    for (const l of issueLines) process.stderr.write(`${l}
+`);
+    if (failure3.kind === "not_found") process.stderr.write("  Run `mixshift amazon merchants` for the account ids you can use (the legacySellerId).\n");
+    if (step) process.stderr.write(`  ${step}
+`);
+  }
+  process.exitCode = exitCodeForLabelsKind(failure3.kind);
+}
+var isRecord = (v) => typeof v === "object" && v !== null;
+var thing = (entity, n) => entity === "item" ? n === 1 ? "item" : "items" : entity === "campaign" ? n === 1 ? "campaign" : "campaigns" : n === 1 ? "item or campaign" : "items or campaigns";
+function entityOf(v, hint) {
+  if (hint) return hint;
+  const e = new Set(v.sample.map((s) => s.entity));
+  return e.size === 1 ? [...e][0] : void 0;
+}
+var KIND_WORDS = { set: "set or clear", rename: "rename a value", undo: "undo" };
+function renderChangeSet(v, entityHint) {
+  const entity = entityOf(v, entityHint);
+  const L = [];
+  const isPreview = v.status === "preview";
+  L.push(`**Change set ${v.change_set_id}** (${isPreview ? "preview, nothing changed yet" : v.status})`, "");
+  L.push(`- kind: ${KIND_WORDS[v.kind] ?? v.kind}${v.undoes ? `, undoing ${v.undoes}` : ""}`);
+  L.push(`- scope: ${v.scope}, reaching ${v.accounts.length} account${v.accounts.length === 1 ? "" : "s"}`);
+  if (isPreview) L.push(`- expires: ${v.expires_at}`);
+  else {
+    L.push(`- created: ${v.created_at}`);
+    if (v.committed_at) L.push(`- committed: ${v.committed_at}${v.commit_actor ? ` by ${cell3(v.commit_actor)}` : ""}`);
+  }
+  if (v.totals) {
+    L.push(`- ${isPreview ? "would change" : "selected"}: ${v.totals.to_change} of ${v.totals.identities} ${thing(entity, v.totals.identities)} (${v.totals.fields_to_change} field${v.totals.fields_to_change === 1 ? "" : "s"}); ${v.totals.unchanged} already ${v.totals.unchanged === 1 ? "has" : "have"} these values`);
+  }
+  const commit = v.commit;
+  if (!isPreview && commit && typeof commit.applied === "number") {
+    L.push(`- result: ${commit.applied} changed, ${commit.unchanged ?? 0} already had these values, ${commit.stale ?? 0} stale, ${commit.refused ?? 0} refused`);
+  }
+  if (isPreview && !v.can_commit) L.push(`- cannot be committed yet: ${blockedText(v)}`);
+  if (v.accounts.length > 0) {
+    L.push("", "| account | marketplace | selected | will change | already right |", "|---|---|---|---|---|");
+    for (const a of v.accounts) {
+      L.push(`| ${a.account} | ${a.marketplace_id ?? "-"} | ${a.identities ?? "-"} | ${a.to_change ?? "-"} | ${a.unchanged ?? "-"} |`);
+    }
+  }
+  const dropped = v.dropped;
+  if (dropped && (dropped.identities > 0 || dropped.accounts > 0)) {
+    L.push("", "**Left out**");
+    for (const d of dropped.details) {
+      if (d.reason === "not_seen") L.push(`- account ${d.account}: ${d.identities ?? "?"} ${thing(entity, d.identities ?? 2)} MixShift has not read yet (it only changes ones it has seen)`);
+      else if (d.reason === "account_not_accessible") L.push(`- account ${d.account}: not an account you can use, so it is not changed`);
+      else L.push(`- account ${d.account}: ${d.reason}`);
+    }
+  }
+  if (v.warnings.length > 0) {
+    L.push("", "**Warnings**");
+    for (const w of v.warnings) L.push(`- ${w.message}`);
+  }
+  if (v.sample.length > 0) {
+    L.push("", `**${isPreview ? "Before and after" : "Sample of changes"}** (first ${v.sample.length})`, "", "| account | id | field | before | after |", "|---|---|---|---|---|");
+    for (const s of v.sample) {
+      const before = s.before === null ? "(never set)" : blank(s.before);
+      const after = s.after === null || s.after === "" ? "(cleared)" : cell3(s.after);
+      L.push(`| ${s.account} | ${cell3(s.id, 24)} | ${s.field} | ${before} | ${after} |`);
+    }
+  }
+  if (!isPreview && v.needs_attention && v.needs_attention.length > 0) {
+    L.push("", renderNeedsAttention(v.needs_attention, v.needs_attention_truncated === true));
+  }
+  return L.join("\n");
+}
+function renderNeedsAttention(rows, truncated) {
+  const L = ["**Not changed (needs attention)**", "", "| account | id | result | reason | fields changed since |", "|---|---|---|---|---|"];
+  for (const r of rows.slice(0, SHOW_ROWS)) {
+    L.push(`| ${r.account} | ${cell3(r.id, 24)} | ${r.result} | ${cell3(r.reason)} | ${r.stale_fields ? r.stale_fields.join(", ") : "-"} |`);
+  }
+  if (rows.length > SHOW_ROWS) L.push("", `...and ${rows.length - SHOW_ROWS} more here (all of them are in --json).`);
+  if (truncated) L.push("", "The service lists the first 200 that need attention; there are more. Preview the change again to include the rest.");
+  L.push("", "stale: changed by someone else after the preview, so it was left exactly as it is. refused: not changed (see the reason).");
+  return L.join("\n");
+}
+function renderCommitBody(b) {
+  const L = [];
+  const c = b.counts;
+  if (c) {
+    L.push("| applied | already right | stale | refused | fields changed |", "|---|---|---|---|---|", `| ${c.applied} | ${c.unchanged} | ${c.stale} | ${c.refused} | ${c.fields_changed} |`);
+  }
+  if ((b.accounts?.length ?? 0) > 1) {
+    L.push("", "| account | applied | already right | stale | refused |", "|---|---|---|---|---|");
+    for (const a of b.accounts) L.push(`| ${a.account} | ${a.applied} | ${a.unchanged} | ${a.stale} | ${a.refused} |`);
+  }
+  if ((b.needs_attention?.length ?? 0) > 0) L.push("", renderNeedsAttention(b.needs_attention, b.needs_attention_truncated === true));
+  return L.join("\n");
+}
+function renderSets(rows) {
+  if (rows.length === 0) return "_(no change sets)_";
+  const L = ["| id | kind | status | scope | changed | by | created |", "|---|---|---|---|---|---|---|"];
+  for (const r of rows) {
+    const commit = r.commit;
+    const changed = commit && typeof commit.applied === "number" ? `${commit.applied} of ${commit.identities ?? r.totals?.identities ?? "?"}${(commit.stale ?? 0) + (commit.refused ?? 0) > 0 ? ` (${commit.stale ?? 0} stale, ${commit.refused ?? 0} refused)` : ""}` : r.totals ? `${r.totals.to_change} to change of ${r.totals.identities}` : "-";
+    L.push(`| ${r.change_set_id} | ${r.kind}${r.undoes ? " (undo)" : ""} | ${r.status} | ${r.scope} | ${changed} | ${cell3(r.commit_actor ?? r.preview_actor)} | ${r.created_at} |`);
+  }
+  return L.join("\n");
+}
+
 // src/commands/intelligence.ts
-import { readFile as readFile46, mkdir as mkdir33, writeFile as writeFile30 } from "node:fs/promises";
-import { resolve as resolvePath4, dirname as dirname38 } from "node:path";
+import { readFile as readFile50, mkdir as mkdir35, writeFile as writeFile32 } from "node:fs/promises";
+import { resolve as resolvePath4, dirname as dirname40 } from "node:path";
 
 // src/lib/intelligence/client.ts
 init_credentials();
@@ -98427,7 +101520,7 @@ async function getRunResult(runId, opts = {}) {
     return {
       ok: false,
       kind: "not_ready",
-      friendly: defaultFriendly5("not_ready"),
+      friendly: defaultFriendly6("not_ready"),
       runId
     };
   }
@@ -98442,7 +101535,7 @@ async function getRunResult(runId, opts = {}) {
   };
 }
 async function intelligenceRequest(spec, opts) {
-  const resolved = await resolveBaseAndToken5(opts);
+  const resolved = await resolveBaseAndToken6(opts);
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -98468,7 +101561,7 @@ async function intelligenceRequest(spec, opts) {
   try {
     token = await tokenProvider(false);
   } catch (err) {
-    return sessionFailureFromError5(err);
+    return sessionFailureFromError6(err);
   }
   let attempt = await doFetch(token);
   if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -98477,7 +101570,7 @@ async function intelligenceRequest(spec, opts) {
     try {
       token = await tokenProvider(true);
     } catch (err) {
-      return sessionFailureFromError5(err);
+      return sessionFailureFromError6(err);
     }
     attempt = await doFetch(token);
     if ("networkError" in attempt) return hostUnreachable2(attempt.networkError);
@@ -98495,17 +101588,17 @@ async function intelligenceRequest(spec, opts) {
   try {
     json3 = await res.json();
   } catch {
-    return statusOnlyFailure5(res.status);
+    return statusOnlyFailure6(res.status);
   }
-  if (isServerFailureEnvelope4(json3)) {
+  if (isServerFailureEnvelope5(json3)) {
     return toIntelligenceFailure(json3, res.status);
   }
   if (!res.ok) {
-    return statusOnlyFailure5(res.status, safeJsonPreview5(json3));
+    return statusOnlyFailure6(res.status, safeJsonPreview6(json3));
   }
   return { ok: true, json: json3, httpStatus: res.status };
 }
-async function resolveBaseAndToken5(opts) {
+async function resolveBaseAndToken6(opts) {
   let apiBase = opts.apiBaseOverride;
   if (!apiBase) {
     const { credentials } = await loadCredentials(opts.dataDirOverride);
@@ -98522,7 +101615,7 @@ async function resolveBaseAndToken5(opts) {
   const tokenProvider = opts.tokenProvider ?? ((forceRefresh) => getValidAccessToken(opts.dataDirOverride, forceRefresh));
   return { apiBase, tokenProvider };
 }
-var KNOWN_KINDS5 = /* @__PURE__ */ new Set([
+var KNOWN_KINDS6 = /* @__PURE__ */ new Set([
   "not_enrolled",
   "unknown_insight",
   "bad_params",
@@ -98543,19 +101636,19 @@ var KNOWN_KINDS5 = /* @__PURE__ */ new Set([
   "host_unreachable",
   "unknown"
 ]);
-function isServerFailureEnvelope4(json3) {
+function isServerFailureEnvelope5(json3) {
   return typeof json3 === "object" && json3 !== null && json3.ok === false;
 }
 function toIntelligenceFailure(json3, httpStatus) {
   const rawKind = typeof json3.kind === "string" ? json3.kind : "";
-  const recognized = KNOWN_KINDS5.has(rawKind);
+  const recognized = KNOWN_KINDS6.has(rawKind);
   const kind = recognized ? rawKind : safeKindForStatus2(httpStatus);
   const serverFriendly = typeof json3.friendly === "string" ? json3.friendly : void 0;
   const message = typeof json3.message === "string" ? json3.message : void 0;
   return {
     ok: false,
     kind,
-    friendly: serverFriendly ?? defaultFriendly5(kind),
+    friendly: serverFriendly ?? defaultFriendly6(kind),
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
     message,
     httpStatus,
@@ -98564,12 +101657,12 @@ function toIntelligenceFailure(json3, httpStatus) {
     reason: strOrUndef2(json3.reason)
   };
 }
-function statusOnlyFailure5(httpStatus, detail) {
+function statusOnlyFailure6(httpStatus, detail) {
   const kind = statusToKind2(httpStatus);
   return {
     ok: false,
     kind,
-    friendly: defaultFriendly5(kind),
+    friendly: defaultFriendly6(kind),
     message: `Service returned HTTP ${httpStatus} without a recognized error envelope${detail ? `: ${detail}` : "."}`,
     httpStatus
   };
@@ -98611,7 +101704,7 @@ function hostUnreachable2(message) {
     message
   };
 }
-function sessionFailureFromError5(err) {
+function sessionFailureFromError6(err) {
   const message = err instanceof Error ? err.message : String(err);
   const expired = /expired|refresh/i.test(message);
   return {
@@ -98621,7 +101714,7 @@ function sessionFailureFromError5(err) {
     message
   };
 }
-function defaultFriendly5(kind) {
+function defaultFriendly6(kind) {
   switch (kind) {
     case "not_enrolled":
       return "MixShift Intelligence is switched off for this account. Contact MixShift support (support@mixshift.io) to turn it on.";
@@ -98657,7 +101750,7 @@ function defaultFriendly5(kind) {
 function strOrUndef2(v) {
   return typeof v === "string" ? v : void 0;
 }
-function safeJsonPreview5(json3) {
+function safeJsonPreview6(json3) {
   try {
     const s = JSON.stringify(json3);
     return s.length > 300 ? s.slice(0, 300) + "..." : s;
@@ -98668,12 +101761,12 @@ function safeJsonPreview5(json3) {
 
 // src/lib/intelligence/ledger.ts
 init_resolve();
-import { mkdir as mkdir32, open as open2, readFile as readFile45, rename as rename23, stat as stat5, unlink as unlink9, writeFile as writeFile29 } from "node:fs/promises";
-import { dirname as dirname37 } from "node:path";
+import { mkdir as mkdir34, open as open2, readFile as readFile49, rename as rename25, stat as stat5, unlink as unlink9, writeFile as writeFile31 } from "node:fs/promises";
+import { dirname as dirname39 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
   try {
-    const raw = await readFile45(path2, "utf8");
+    const raw = await readFile49(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -98684,10 +101777,10 @@ async function loadLedger2(path2) {
   }
 }
 async function saveLedger2(path2, handles) {
-  await mkdir32(dirname37(path2), { recursive: true });
+  await mkdir34(dirname39(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
-  await writeFile29(tmp, JSON.stringify(handles, null, 2), "utf8");
-  await rename23(tmp, path2);
+  await writeFile31(tmp, JSON.stringify(handles, null, 2), "utf8");
+  await rename25(tmp, path2);
 }
 var LOCK_RETRY_ATTEMPTS = 15;
 var LOCK_RETRY_DELAY_MS = 100;
@@ -98731,7 +101824,7 @@ async function acquireLock(lockPath) {
 }
 async function withLedgerLock(ledgerPath, fn) {
   const lockPath = `${ledgerPath}.lock`;
-  await mkdir32(dirname37(lockPath), { recursive: true }).catch(() => {
+  await mkdir34(dirname39(lockPath), { recursive: true }).catch(() => {
   });
   const acquired = await acquireLock(lockPath);
   try {
@@ -99033,7 +102126,7 @@ function registerCatalogCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson8({ ok: true, entries: result.entries });
+        writeJson9({ ok: true, entries: result.entries });
       } else {
         process.stdout.write(`
 \u2713 ${result.entries.length} insight(s)
@@ -99097,7 +102190,7 @@ function registerRunCommand(intelligence) {
           root.dataDir
         );
         if (root.json) {
-          writeJson8(result);
+          writeJson9(result);
         } else {
           process.stdout.write(
             `
@@ -99142,7 +102235,7 @@ function registerPollCommand(intelligence) {
         root.dataDir
       );
       if (root.json) {
-        writeJson8(result);
+        writeJson9(result);
       } else {
         process.stdout.write(
           `${result.ready ? "\u2713 done" : "\u2026 still running"}  status=${result.status}
@@ -99197,7 +102290,7 @@ function registerRunsCommand2(intelligence) {
       const limit = Math.max(1, Math.min(Number(opts.limit) || 10, 50));
       const shown = runs.slice(0, limit);
       if (root.json) {
-        writeJson8({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
+        writeJson9({ ok: true, runs: shown, total_recorded: runs.length, ledger_path: path2 });
         return;
       }
       if (shown.length === 0) {
@@ -99231,7 +102324,7 @@ async function loadParams(file2, inline) {
   }
   let raw;
   if (file2) {
-    raw = await readFile46(file2, "utf8");
+    raw = await readFile50(file2, "utf8");
   } else if (inline) {
     raw = inline;
   } else {
@@ -99271,14 +102364,14 @@ async function paramsHint(id, dataDir) {
 }
 async function describeInsight(id, cmd, root) {
   if (!id) {
-    if (root.json) writeJson8({ ok: true, usage: cmd.helpInformation() });
+    if (root.json) writeJson9({ ok: true, usage: cmd.helpInformation() });
     else process.stdout.write(cmd.helpInformation());
     return;
   }
   const lookup3 = await catalogEntry(id, root.dataDir);
   if ("entry" in lookup3) {
     if (root.json) {
-      writeJson8({ ok: true, id, entry: lookup3.entry });
+      writeJson9({ ok: true, id, entry: lookup3.entry });
       return;
     }
     process.stdout.write(cmd.helpInformation());
@@ -99293,7 +102386,7 @@ ${renderCatalog([lookup3.entry])}
   const failure3 = "failure" in lookup3 ? lookup3.failure : { ok: false, kind: "unknown_insight", friendly: `${id} is not in the catalog this account can see.` };
   const hint = "failure" in lookup3 ? hintForKind(failure3.kind) : "Ids: mixshift intelligence catalog";
   if (root.json) {
-    writeJson8({ ok: false, id, kind: failure3.kind, message: failure3.friendly, detail: failure3.message, ...hint ? { hint } : {} });
+    writeJson9({ ok: false, id, kind: failure3.kind, message: failure3.friendly, detail: failure3.message, ...hint ? { hint } : {} });
   } else {
     process.stdout.write(cmd.helpInformation());
     process.stderr.write(`
@@ -99341,8 +102434,8 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir,
     runIdForTracking
   );
-  await mkdir33(dirname38(artifactPath), { recursive: true });
-  await writeFile30(artifactPath, JSON.stringify(result, null, 2), "utf8");
+  await mkdir35(dirname40(artifactPath), { recursive: true });
+  await writeFile32(artifactPath, JSON.stringify(result, null, 2), "utf8");
   await track(
     {
       event_name: EventName.IntelligenceRunRetrieved,
@@ -99360,7 +102453,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir
   );
   if (root.json) {
-    writeJson8({ ...result, artifact_path: artifactPath });
+    writeJson9({ ...result, artifact_path: artifactPath });
     return;
   }
   process.stdout.write("\n" + renderHeadline(headline) + "\n");
@@ -99423,7 +102516,7 @@ async function trackFailure3(op, insightId, failure3, startedAt, dataDir, runId)
 function emitFailure10(failure3, json3, hintOverride) {
   const hint = hintOverride ?? hintForKind(failure3.kind);
   if (json3) {
-    writeJson8({
+    writeJson9({
       ok: false,
       kind: failure3.kind,
       ...failure3.reason ? { reason: failure3.reason } : {},
@@ -99447,14 +102540,14 @@ function emitFailure10(failure3, json3, hintOverride) {
 function emitError16(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
   if (json3) {
-    writeJson8({ ok: false, kind: "unknown", message });
+    writeJson9({ ok: false, kind: "unknown", message });
   } else {
     process.stderr.write(`error: ${message}
 `);
   }
   process.exitCode = 1;
 }
-function writeJson8(obj2) {
+function writeJson9(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 function wrapIndented(text, width, indent) {
@@ -100039,7 +103132,7 @@ async function applySubBrandRemoval(plan, opts = {}) {
 }
 
 // src/commands/forecast.ts
-function collect(value, previous = []) {
+function collect2(value, previous = []) {
   return [...previous, value];
 }
 function registerForecastCommands(program3) {
@@ -100055,13 +103148,13 @@ function registerForecastCommands(program3) {
     const scopeId = scopeOrFail(opts.scope, !!root.json);
     if (!scopeId) return;
     const read = await readMonthRows(scopeId, { dataDirOverride: root.dataDir });
-    if (!read.ok) return fail2("show", scopeId, read, startedAt, root);
+    if (!read.ok) return fail5("show", scopeId, read, startedAt, root);
     const rows = budgetRows(read.rows);
     await track(
       { event_name: EventName.ForecastBudgetShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, months: rows.length } },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, budgets: rows });
+    if (root.json) return writeJson10({ ok: true, scope_id: scopeId, budgets: rows });
     if (rows.length === 0) {
       process.stdout.write(`
 No budget entered for ${scopeId}: the forecast estimates spend from ${isSubBrandScope(scopeId) ? "the sub-brand's" : "the account's"} history.
@@ -100077,7 +103170,7 @@ Sponsored-ads budgets for ${scopeId}:
 `);
     }
   });
-  budget.command("set").description("Enter the sponsored-ads budget for one or more months (one save: all months or none).").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--set <YYYY-MM=amount>", "a month and its sponsored budget; repeat per month", collect, []).option("--note <text>", "a note on each month that has none (e.g. where the budget came from); an existing note is kept").option("--dry-run", "show what would be saved, without saving").action(async (opts, cmd) => {
+  budget.command("set").description("Enter the sponsored-ads budget for one or more months (one save: all months or none).").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--set <YYYY-MM=amount>", "a month and its sponsored budget; repeat per month", collect2, []).option("--note <text>", "a note on each month that has none (e.g. where the budget came from); an existing note is kept").option("--dry-run", "show what would be saved, without saving").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const scopeId = scopeOrFail(opts.scope, !!root.json);
@@ -100086,36 +103179,36 @@ Sponsored-ads budgets for ${scopeId}:
     try {
       entries = parseBudgetEntries(opts.set);
     } catch (err) {
-      return badInput(err, !!root.json);
+      return badInput2(err, !!root.json);
     }
     const now = /* @__PURE__ */ new Date();
     const months = entries.map((e) => e.month);
     const past = pastMonths(months, now);
     if (past.length > 0) {
-      return badInput(new Error(`${past.join(", ")} ${past.length === 1 ? "is" : "are"} already closed; a budget there cannot change the forecast. Enter the month in progress or later.`), !!root.json);
+      return badInput2(new Error(`${past.join(", ")} ${past.length === 1 ? "is" : "are"} already closed; a budget there cannot change the forecast. Enter the month in progress or later.`), !!root.json);
     }
     const far = beyondHorizon(months, now);
     if (far.length > 0) {
-      return badInput(new Error(`${far.join(", ")} ${far.length === 1 ? "is" : "are"} past the furthest month a forecast reaches (${lastUsableMonth(now)}); enter months up to then.`), !!root.json);
+      return badInput2(new Error(`${far.join(", ")} ${far.length === 1 ? "is" : "are"} past the furthest month a forecast reaches (${lastUsableMonth(now)}); enter months up to then.`), !!root.json);
     }
     const note = opts.note?.trim() || void 0;
     const problem = note === void 0 ? null : noteProblem(note);
-    if (problem) return badInput(new Error(`--note: ${problem}.`), !!root.json);
+    if (problem) return badInput2(new Error(`--note: ${problem}.`), !!root.json);
     if (isSubBrandScope(scopeId)) {
       const defined = await subBrandExists(scopeId, { dataDirOverride: root.dataDir });
-      if (!defined.ok) return fail2("set", scopeId, defined, startedAt, root, entries.length);
+      if (!defined.ok) return fail5("set", scopeId, defined, startedAt, root, entries.length);
       if (!defined.exists) {
-        return badInput(new Error(`${scopeId} is not a defined sub-brand. Define it with \`mixshift forecast sub-brand add\`, or use the scope_id from its forecast answer.`), !!root.json);
+        return badInput2(new Error(`${scopeId} is not a defined sub-brand. Define it with \`mixshift forecast sub-brand add\`, or use the scope_id from its forecast answer.`), !!root.json);
       }
     }
     const r = await applyBudgetPlan(scopeId, (rows) => planBudgetSet(scopeId, rows, entries, note), {
       dataDirOverride: root.dataDir,
       dryRun: opts.dryRun === true
     });
-    if (!r.ok) return fail2("set", scopeId, r, startedAt, root, entries.length);
+    if (!r.ok) return fail5("set", scopeId, r, startedAt, root, entries.length);
     if (opts.dryRun) {
       const changes = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null, to: w.doc?.adBudget?.value ?? null }));
-      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
+      if (root.json) return writeJson10({ ok: true, dry_run: true, scope_id: scopeId, changes, unchanged: r.plan.unchanged, notes_kept: r.plan.notesKept });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -100139,7 +103232,7 @@ Already holding that budget: ${r.plan.unchanged.join(", ")}
       root.dataDir
     );
     if (root.json) {
-      return writeJson9({
+      return writeJson10({
         ok: true,
         scope_id: scopeId,
         written: r.written,
@@ -100159,7 +103252,7 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
 `);
     process.stdout.write("\nThe next computed forecast (FCT-BASELINE-01) uses these months as planned spend, within the horizon it is run for.\n");
   });
-  budget.command("clear").description("Remove the budget for one or more months; the forecast goes back to estimating that month's spend.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--month <YYYY-MM>", "a month to clear; repeat per month", collect, []).option("--dry-run", "show what would be cleared, without clearing").action(async (opts, cmd) => {
+  budget.command("clear").description("Remove the budget for one or more months; the forecast goes back to estimating that month's spend.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--month <YYYY-MM>", "a month to clear; repeat per month", collect2, []).option("--dry-run", "show what would be cleared, without clearing").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const scopeId = scopeOrFail(opts.scope, !!root.json);
@@ -100168,13 +103261,13 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
     try {
       months = parseMonths(opts.month);
     } catch (err) {
-      return badInput(err, !!root.json);
+      return badInput2(err, !!root.json);
     }
     const r = await applyBudgetPlan(scopeId, (rows) => planBudgetClear(scopeId, rows, months), { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
-    if (!r.ok) return fail2("clear", scopeId, r, startedAt, root, months.length);
+    if (!r.ok) return fail5("clear", scopeId, r, startedAt, root, months.length);
     if (opts.dryRun) {
       const clearing = r.plan.writes.map((w) => ({ month: w.key.slice(-10, -3), from: r.current.get(w.key) ?? null }));
-      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
+      if (root.json) return writeJson10({ ok: true, dry_run: true, scope_id: scopeId, clearing, not_set: r.plan.notSet });
       process.stdout.write(`
 Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} (${formatAmount(c.from ?? 0)})`).join(", ") || "nothing"}
 `);
@@ -100189,7 +103282,7 @@ Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} 
       },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
+    if (root.json) return writeJson10({ ok: true, scope_id: scopeId, cleared: r.written, not_set: r.plan.notSet });
     process.stdout.write(
       `
 \u2713 ${r.written} month(s) cleared for ${scopeId}` + (r.plan.notSet.length ? `; no budget was entered for ${r.plan.notSet.join(", ")}` : "") + ".\n"
@@ -100199,7 +103292,7 @@ Would clear for ${scopeId} (nothing cleared): ${clearing.map((c) => `${c.month} 
 function scopeOrFail(raw, json3) {
   const scopeId = canonicalScopeId(raw);
   if (scopeId) return scopeId;
-  badInput(
+  badInput2(
     new Error(
       isSubBrandScope(raw) ? `"${raw}" is not a sub-brand scope this service keeps: the key after :scope: is 4 to 32 lowercase letters and digits. Use the scope_id from the forecast answer or from \`mixshift forecast sub-brand list\`.` : `"${raw}" is not a forecast scope. Use the scope_id from the forecast answer, e.g. src:<database>:<seller id> (or ...:scope:<key> for a sub-brand).`
     ),
@@ -100226,7 +103319,7 @@ function registerSettingsCommands(forecast) {
       { event_name: EventName.ForecastSettingsShown, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, exists: read.account.exists } },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
+    if (root.json) return writeJson10({ ok: true, scope_id: scopeId, settings: read.account.settings, version: read.account.version, exists: read.account.exists });
     process.stdout.write(`
 Forecast settings for ${scopeId}${read.account.exists ? "" : " (nothing stored yet; every setting reads as off)"}:
 
@@ -100244,14 +103337,14 @@ Forecast settings for ${scopeId}${read.account.exists ? "" : " (nothing stored y
       if (opts.includeDsp !== void 0) patch.includeDspSpend = parseOnOff(opts.includeDsp, "--include-dsp");
       if (opts.missingAdSpendAsZero !== void 0) patch.treatMissingAdSpendAsZero = parseOnOff(opts.missingAdSpendAsZero, "--missing-ad-spend-as-zero");
     } catch (err) {
-      return badInput(err, !!root.json);
+      return badInput2(err, !!root.json);
     }
-    if (Object.keys(patch).length === 0) return badInput(new Error("Nothing to set: pass --include-dsp on|off and/or --missing-ad-spend-as-zero on|off."), !!root.json);
+    if (Object.keys(patch).length === 0) return badInput2(new Error("Nothing to set: pass --include-dsp on|off and/or --missing-ad-spend-as-zero on|off."), !!root.json);
     const r = await applySettings(scopeId, patch, { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
     if (!r.ok) return failSettings("set", scopeId, r, startedAt, root, Object.keys(patch));
     const line = (name) => `  ${r.before[name] === void 0 ? "unset" : r.before[name] ? "on" : "off"} -> ${r.after[name] ? "on" : "off"}  ${SETTING_LABEL[name]}`;
     if (opts.dryRun) {
-      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
+      if (root.json) return writeJson10({ ok: true, dry_run: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, before: r.before, after: r.after });
       process.stdout.write(`
 Would save for ${scopeId} (nothing saved):
 
@@ -100271,7 +103364,7 @@ Already holding that value: ${r.unchanged.join(", ")}
       },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
+    if (root.json) return writeJson10({ ok: true, scope_id: scopeId, changed: r.changed, unchanged: r.unchanged, settings: r.after, version: r.version, written: r.written });
     if (r.changed.length === 0) {
       process.stdout.write(`
 Nothing changed for ${scopeId}: ${r.unchanged.join(", ")} already held that value.
@@ -100284,7 +103377,7 @@ Nothing changed for ${scopeId}: ${r.unchanged.join(", ")} already held that valu
 `);
     for (const name of r.changed) process.stdout.write(line(name) + "\n");
     process.stdout.write(
-      patch.includeDspSpend === true ? "\nThe next computed forecast (FCT-BASELINE-01) adds the account's DSP spend by month to sponsored spend and reads spend_basis ads_plus_dsp; a budget entered with `mixshift forecast budget` stays sponsored only.\n" : "\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is one more metered request, not a cache hit.\n"
+      patch.includeDspSpend === true ? "\nThe next computed forecast (FCT-BASELINE-01) adds the account's DSP spend by month to sponsored spend and reads spend_basis ads_plus_dsp; a budget entered with `mixshift forecast budget` stays sponsored only.\n" : "\nThe next computed forecast (FCT-BASELINE-01) stands on these settings; it is a fresh run (tracked as usage), not a cached answer.\n"
     );
   });
 }
@@ -100306,7 +103399,7 @@ async function failSettings(op, scopeId, f, startedAt, root, names) {
     },
     root.dataDir
   );
-  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson10({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
@@ -100327,7 +103420,7 @@ function registerSubBrandCommands(forecast) {
       { event_name: EventName.ForecastSubBrandListed, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { seller, count: r.subBrands.length, skipped: r.skipped } },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
+    if (root.json) return writeJson10({ ok: true, merchant_id: r.merchantId, sub_brands: r.subBrands.map(subBrandJson), skipped: r.skipped });
     if (r.subBrands.length === 0) {
       process.stdout.write(`
 No sub-brands defined${seller === null ? "" : ` for seller ${seller}`}.
@@ -100346,28 +103439,28 @@ ${r.skipped} stored definition(s) could not be read and are not listed.
   });
   sub.command("add").description(
     "Define a sub-brand of an account by its labels. If one with exactly these labels exists, it is reused, not duplicated. Labels are compared as the warehouse compares them (case-insensitive)."
-  ).requiredOption("--seller <id>", "the seller id (legacy seller id) of the account the brand sits inside").requiredOption("--name <name>", "what to call it (shown in the forecasting app)").requiredOption("--item-label <label>", "a product label: the brand on Seller Central items, the custom brand on Vendor Central items (or the item group with --item-group); repeat per label", collect, []).option("--campaign-label <label>", "a campaign label (the brand or item group on campaigns); repeat per label. Without one the sub-brand has no ad spend and cannot be forecast", collect, []).option("--item-group", "an item group (ItemGroup labels) rather than a sub-brand (Brand labels)").option("--dry-run", "show what would be defined, without defining it").action(async (opts, cmd) => {
+  ).requiredOption("--seller <id>", "the seller id (legacy seller id) of the account the brand sits inside").requiredOption("--name <name>", "what to call it (shown in the forecasting app)").requiredOption("--item-label <label>", "a product label: the brand on Seller Central items, the custom brand on Vendor Central items (or the item group with --item-group); repeat per label", collect2, []).option("--campaign-label <label>", "a campaign label (the brand or item group on campaigns); repeat per label. Without one the sub-brand has no ad spend and cannot be forecast", collect2, []).option("--item-group", "an item group (ItemGroup labels) rather than a sub-brand (Brand labels)").option("--dry-run", "show what would be defined, without defining it").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const seller = sellerOrFail(opts.seller, !!root.json);
     if (seller === void 0 || seller === null) return;
     const problem = nameProblem(opts.name);
-    if (problem) return badInput(new Error(`--name: ${problem}.`), !!root.json);
+    if (problem) return badInput2(new Error(`--name: ${problem}.`), !!root.json);
     let itemValues;
     let campaignValues;
     try {
       itemValues = cleanLabels(opts.itemLabel, "--item-label");
       campaignValues = cleanLabels(opts.campaignLabel, "--campaign-label");
     } catch (err) {
-      return badInput(err, !!root.json);
+      return badInput2(err, !!root.json);
     }
-    if (itemValues.length === 0) return badInput(new Error("--item-label: at least one product label; a sub-brand with none holds no sales."), !!root.json);
+    if (itemValues.length === 0) return badInput2(new Error("--item-label: at least one product label; a sub-brand with none holds no sales."), !!root.json);
     const kind = opts.itemGroup ? "item_group" : "sub_brand";
     const r = await ensureSubBrand({ legacySellerId: seller, kind, name: opts.name, itemValues, campaignValues }, { dataDirOverride: root.dataDir, dryRun: opts.dryRun === true });
     if (!r.ok) return subBrandFail("add", null, seller, r, startedAt, root);
     const noAds = campaignValues.length === 0 ? "It names no campaign label, so it has no ad spend and a forecast cannot train on it." : null;
     if (opts.dryRun && r.subBrand === null) {
-      if (root.json) return writeJson9({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
+      if (root.json) return writeJson10({ ok: true, dry_run: true, would_define: { seller, kind, name: opts.name.trim(), item_values: itemValues, campaign_values: campaignValues }, warning: noAds });
       process.stdout.write(`
 Would define for seller ${seller} (nothing saved): ${opts.name.trim()}  ${describeLabels({ kind, itemValues, campaignValues })}
 `);
@@ -100388,7 +103481,7 @@ ${noAds}
         root.dataDir
       );
     }
-    if (root.json) return writeJson9({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
+    if (root.json) return writeJson10({ ok: true, created: r.created, sub_brand: subBrandJson(s), ...noAds ? { warning: noAds } : {} });
     process.stdout.write(
       r.created ? `
 \u2713 Defined ${s.name}: ${s.scopeId}
@@ -100410,13 +103503,13 @@ Forecast it with scopeKey "${s.scopeKey}" on FCT-READINESS-01 and FCT-BASELINE-0
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const scopeId = canonicalSubBrandId(opts.scope);
-    if (!scopeId) return badInput(new Error(`"${opts.scope}" is not a sub-brand scope (src:<database>:<seller id>:scope:<key>).`), !!root.json);
+    if (!scopeId) return badInput2(new Error(`"${opts.scope}" is not a sub-brand scope (src:<database>:<seller id>:scope:<key>).`), !!root.json);
     const planned = await planSubBrandRemoval(scopeId, { dataDirOverride: root.dataDir });
     if (!planned.ok) return subBrandFail("remove", scopeId, null, planned, startedAt, root);
     const p = planned.plan;
     const what = { definition: p.definition, months: p.months, settings: p.settings };
     if (!opts.apply) {
-      if (root.json) return writeJson9({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
+      if (root.json) return writeJson10({ ok: true, dry_run: true, scope_id: scopeId, would_remove: what });
       if (p.writes.length === 0) {
         process.stdout.write(`
 Nothing is stored under ${scopeId}.
@@ -100435,7 +103528,7 @@ Would remove ${scopeId} (nothing removed): ${p.definition ? "its definition" : "
       { event_name: EventName.ForecastSubBrandRemoved, outcome: "ok", duration_ms: Date.now() - startedAt, payload: { scope_id: scopeId, deleted: r.deleted, months: p.months } },
       root.dataDir
     );
-    if (root.json) return writeJson9({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
+    if (root.json) return writeJson10({ ok: true, scope_id: scopeId, removed: what, deleted: r.deleted, published_forecast: "kept; withdraw it in the forecasting app" });
     process.stdout.write(r.deleted === 0 ? `
 Nothing was stored under ${scopeId}.
 ` : `
@@ -100454,7 +103547,7 @@ function describeLabels(s) {
 function sellerOrFail(raw, json3) {
   const n = Number(raw);
   if (Number.isInteger(n) && n > 0 && /^\d+$/.test(raw.trim())) return n;
-  badInput(new Error(`--seller: "${raw}" is not a seller id (the account's legacy seller id, a whole number).`), json3);
+  badInput2(new Error(`--seller: "${raw}" is not a seller id (the account's legacy seller id, a whole number).`), json3);
   return void 0;
 }
 async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
@@ -100467,7 +103560,7 @@ async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
     },
     root.dataDir
   );
-  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
+  if (root.json) writeJson10({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus ?? null });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
@@ -100476,9 +103569,9 @@ async function subBrandFail(op, scopeId, seller, f, startedAt, root) {
 function formatAmount(n) {
   return n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
-function badInput(err, json3) {
+function badInput2(err, json3) {
   const message = err instanceof Error ? err.message : String(err);
-  if (json3) writeJson9({ ok: false, kind: "bad_input", message });
+  if (json3) writeJson10({ ok: false, kind: "bad_input", message });
   else process.stderr.write(`
 \u2717 ${message}
 `);
@@ -100507,7 +103600,7 @@ function exitCodeFor4(f) {
       return 1;
   }
 }
-async function fail2(op, scopeId, f, startedAt, root, months) {
+async function fail5(op, scopeId, f, startedAt, root, months) {
   await track(
     {
       event_name: EventName.ForecastBudgetFailed,
@@ -100525,19 +103618,19 @@ async function fail2(op, scopeId, f, startedAt, root, months) {
     },
     root.dataDir
   );
-  if (root.json) writeJson9({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
+  if (root.json) writeJson10({ ok: false, kind: f.kind, message: f.friendly, http_status: f.httpStatus, unrecognized_kind: f.unrecognizedKind });
   else process.stderr.write(`
 \u2717 (${f.kind}) ${f.friendly}
 `);
   process.exitCode = exitCodeFor4(f);
 }
-function writeJson9(obj2) {
+function writeJson10(obj2) {
   process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
 }
 
 // src/commands/report.ts
-import { readFile as readFile48, writeFile as writeFile32, mkdir as mkdir36, readdir as readdir7 } from "node:fs/promises";
-import { dirname as dirname41, join as join31, resolve as resolve3 } from "node:path";
+import { readFile as readFile52, writeFile as writeFile34, mkdir as mkdir38, readdir as readdir8 } from "node:fs/promises";
+import { dirname as dirname43, join as join33, resolve as resolve3 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -102346,7 +105439,7 @@ init_telemetry();
 
 // src/lib/report-contract/render-report.ts
 import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join28 } from "node:path";
+import { join as join30 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -102572,7 +105665,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join28(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync2(join30(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -102971,8 +106064,8 @@ function failureFromException3(err) {
 // src/lib/run-ledger/local.ts
 init_resolve();
 import { createHash as createHash6 } from "node:crypto";
-import { mkdir as mkdir34, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile31 } from "node:fs/promises";
-import { dirname as dirname39, join as join29, sep } from "node:path";
+import { mkdir as mkdir36, readdir as readdir7, readFile as readFile51, rename as rename26, rm as rm2, writeFile as writeFile33 } from "node:fs/promises";
+import { dirname as dirname41, join as join31, sep } from "node:path";
 var SKILL_LEDGERS = {
   // The folder keeps the pre-rename id: it holds every brand's existing ledger.
   "mx-max-report": { folder: "mx-monthly-report-max" }
@@ -102997,13 +106090,13 @@ function hashContent2(content) {
 function ledgerDir(brandSlug, skillId, dataDirOverride) {
   const entry = SKILL_LEDGERS[skillId];
   if (!entry) throw new Error(`internal error: no run ledger is defined for skill ${JSON.stringify(skillId)}`);
-  return join29(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
+  return join31(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
 }
 function statePath(brandSlug, dataDirOverride) {
-  return join29(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
+  return join31(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
 }
 function conflictsDir(brandSlug, skillId, stamp, dataDirOverride) {
-  return join29(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
+  return join31(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
 }
 async function readLocalLedger(dir) {
   const files = /* @__PURE__ */ new Map();
@@ -103012,7 +106105,7 @@ async function readLocalLedger(dir) {
   async function walk(abs, rel, depth) {
     let entries;
     try {
-      entries = await readdir6(abs, { withFileTypes: true });
+      entries = await readdir7(abs, { withFileTypes: true });
     } catch (err) {
       if (isNotFound(err) && depth === 0) {
         exists = false;
@@ -103027,7 +106120,7 @@ async function readLocalLedger(dir) {
           skipped.push({ path: `${relPath}/`, reason: "too_deep" });
           continue;
         }
-        await walk(join29(abs, e.name), [...rel, e.name], depth + 1);
+        await walk(join31(abs, e.name), [...rel, e.name], depth + 1);
         continue;
       }
       if (!e.isFile()) continue;
@@ -103036,7 +106129,7 @@ async function readLocalLedger(dir) {
         skipped.push({ path: relPath, reason: "unsafe_path" });
         continue;
       }
-      const buf = await readFile47(join29(abs, e.name));
+      const buf = await readFile51(join31(abs, e.name));
       if (buf.length > MAX_FILE_BYTES) {
         skipped.push({ path: relPath, reason: "too_large" });
         continue;
@@ -103076,7 +106169,7 @@ function localPathFor(dir, path2) {
   if (!isSafeLedgerPath(path2)) {
     throw new Error(`unsafe run ledger path ${JSON.stringify(path2)}: refusing to resolve a local path`);
   }
-  const abs = join29(dir, ...path2.split("/"));
+  const abs = join31(dir, ...path2.split("/"));
   if (!abs.startsWith(dir + sep)) {
     throw new Error(`run ledger path ${JSON.stringify(path2)} resolves outside the ledger folder`);
   }
@@ -103084,13 +106177,13 @@ function localPathFor(dir, path2) {
 }
 async function writeLedgerFile(dir, path2, content) {
   const abs = localPathFor(dir, path2);
-  await mkdir34(dirname39(abs), { recursive: true });
+  await mkdir36(dirname41(abs), { recursive: true });
   const tmp = `${abs}.tmp-${process.pid}`;
-  await writeFile31(tmp, content, "utf8");
-  await rename24(tmp, abs);
+  await writeFile33(tmp, content, "utf8");
+  await rename26(tmp, abs);
 }
 async function deleteLedgerFile(dir, path2) {
-  await rm(localPathFor(dir, path2), { force: true });
+  await rm2(localPathFor(dir, path2), { force: true });
 }
 async function readSyncState(brandSlug, skillId, dataDirOverride) {
   const all = await readStateFile(brandSlug, dataDirOverride);
@@ -103107,14 +106200,14 @@ async function writeSyncState(brandSlug, skillId, state, dataDirOverride) {
   const path2 = statePath(brandSlug, dataDirOverride);
   const all = await readStateFile(brandSlug, dataDirOverride);
   all[skillId] = state;
-  await mkdir34(dirname39(path2), { recursive: true });
+  await mkdir36(dirname41(path2), { recursive: true });
   const tmp = `${path2}.tmp-${process.pid}`;
-  await writeFile31(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
-  await rename24(tmp, path2);
+  await writeFile33(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
+  await rename26(tmp, path2);
 }
 async function readStateFile(brandSlug, dataDirOverride) {
   try {
-    const parsed = JSON.parse(await readFile47(statePath(brandSlug, dataDirOverride), "utf8"));
+    const parsed = JSON.parse(await readFile51(statePath(brandSlug, dataDirOverride), "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch (err) {
     if (isNotFound(err)) return {};
@@ -103126,8 +106219,8 @@ function isNotFound(err) {
 }
 
 // src/lib/run-ledger/sync.ts
-import { copyFile, mkdir as mkdir35 } from "node:fs/promises";
-import { dirname as dirname40, join as join30 } from "node:path";
+import { copyFile, mkdir as mkdir37 } from "node:fs/promises";
+import { dirname as dirname42, join as join32 } from "node:path";
 var UNAVAILABLE = /* @__PURE__ */ new Set(["unsupported", "unavailable", "host_unreachable"]);
 function base(opts, dir, state, message) {
   return {
@@ -103296,9 +106389,9 @@ async function uploadFirst(opts, dir, local, tenant) {
   };
 }
 function overCaps(local) {
-  let bytes = 0;
-  for (const f of local.files.values()) bytes += f.bytes;
-  if (bytes > MAX_LEDGER_BYTES || local.files.size > MAX_LEDGER_FILES) {
+  let bytes2 = 0;
+  for (const f of local.files.values()) bytes2 += f.bytes;
+  if (bytes2 > MAX_LEDGER_BYTES || local.files.size > MAX_LEDGER_FILES) {
     return `The local run ledger is larger than the MixShift service holds (${MAX_LEDGER_BYTES / 1048576} MB, ${MAX_LEDGER_FILES} files), so it was not uploaded.`;
   }
   return null;
@@ -103376,9 +106469,9 @@ async function applyServer(opts, dir, local, ledger, state, tenant) {
     const stamp = (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString().replace(/[:.]/g, "-");
     keptAside = conflictsDir(opts.brand, opts.skill, stamp, opts.dataDirOverride);
     for (const path2 of diverged) {
-      const aside = join30(keptAside, ...path2.split("/"));
+      const aside = join32(keptAside, ...path2.split("/"));
       if (local.files.has(path2) || unreadable.has(path2)) {
-        await mkdir35(dirname40(aside), { recursive: true });
+        await mkdir37(dirname42(aside), { recursive: true });
         await copyFile(localPathFor(dir, path2), aside);
       }
       const s = server.get(path2);
@@ -103778,7 +106871,7 @@ async function trackForecast(build, dataDir) {
 }
 async function readJson(file2) {
   try {
-    return JSON.parse(await readFile48(file2, "utf8"));
+    return JSON.parse(await readFile52(file2, "utf8"));
   } catch (err) {
     throw new UserFacingError(
       `Could not read ${file2} as JSON: ${err instanceof Error ? err.message : String(err)}`,
@@ -103794,7 +106887,7 @@ async function assertFiguresReadable(explicit) {
   for (const path2 of [...new Set(explicit.map((p) => resolve3(p)))]) {
     let raw;
     try {
-      raw = await readFile48(path2, "utf8");
+      raw = await readFile52(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `--figures ${path2} could not be read: ${err instanceof Error ? err.message : String(err)}`,
@@ -103825,10 +106918,10 @@ async function loadServedContract(docPath, explicit, noFigures) {
   if (explicit && explicit.length > 0) {
     candidates = [...new Set(explicit.map((p) => resolve3(p)))];
   } else {
-    const dir = dirname41(resolve3(docPath));
+    const dir = dirname43(resolve3(docPath));
     try {
-      const entries = await readdir7(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join31(dir, e));
+      const entries = await readdir8(dir);
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join33(dir, e));
     } catch {
       return none;
     }
@@ -103840,7 +106933,7 @@ async function loadServedContract(docPath, explicit, noFigures) {
   for (const path2 of candidates) {
     let raw;
     try {
-      raw = await readFile48(path2, "utf8");
+      raw = await readFile52(path2, "utf8");
     } catch (err) {
       throw new UserFacingError(
         `${path2} could not be read: ${err instanceof Error ? err.message : String(err)}. Fix its permissions, delete the file, or pass --no-figures.`,
@@ -103904,8 +106997,8 @@ function notesPayload(notes) {
 }
 async function writeReportOutput(out2, body) {
   try {
-    await mkdir36(dirname41(out2), { recursive: true });
-    await writeFile32(out2, body, "utf8");
+    await mkdir38(dirname43(out2), { recursive: true });
+    await writeFile34(out2, body, "utf8");
   } catch (err) {
     throw new UserFacingError(
       `Could not write ${out2}: ${err instanceof Error ? err.message : String(err)}`,
@@ -104688,7 +107781,7 @@ async function resolveApiBase3(override, dataDirOverride) {
     if (credentials?.service?.api_base) return credentials.service.api_base;
   } catch {
   }
-  return DEFAULT_API_BASE;
+  return resolveDefaultApiBase();
 }
 function readProxyInfo() {
   const https = process.env.https_proxy || process.env.HTTPS_PROXY || null;
@@ -105142,12 +108235,12 @@ init_credentials();
 init_telemetry();
 import { promises as fs3 } from "node:fs";
 import { fileURLToPath as fileURLToPath8 } from "node:url";
-import { dirname as dirname42, join as join33 } from "node:path";
+import { dirname as dirname44, join as join35 } from "node:path";
 
 // src/lib/demos.ts
 var import_yaml25 = __toESM(require_dist(), 1);
 import { promises as fs2 } from "node:fs";
-import { join as join32 } from "node:path";
+import { join as join34 } from "node:path";
 async function loadDemos(skillsDir) {
   if (!skillsDir) return [];
   let entries;
@@ -105160,7 +108253,7 @@ async function loadDemos(skillsDir) {
   for (const skillId of entries) {
     let raw;
     try {
-      raw = await fs2.readFile(join32(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+      raw = await fs2.readFile(join34(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
     } catch {
       continue;
     }
@@ -105279,7 +108372,7 @@ var CATALOG = [
       { id: "mx-amazon-amc", say: "run an AMC query", what: "Marketing Cloud SQL analytics" },
       { id: "mx-amazon-dsp", say: "pull a DSP report", what: "Demand-Side Platform reporting" },
       { id: "mx-amazon-inbound", say: "create an inbound shipment", what: "FBA inbound: look up status and tracking, or build a shipment with every fee confirmed first" },
-      { id: "mx-amazon-shelf", say: "what does the shelf look like for <asin>", what: "the shopper's view at a zip: Buy Box, offers, keyword rank, product page (beta)" }
+      { id: "mx-amazon-shelf", say: "what does the shelf look like for <asin>", what: "the shopper's view at a zip: Buy Box, offers, keyword rank and its history for tracked keywords, product page (beta)" }
     ]
   },
   {
@@ -105387,17 +108480,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join33(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join35(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname42(fileURLToPath8(import.meta.url));
+  let dir = dirname44(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join33(dir, "skills");
+      const candidate = join35(dir, "skills");
       const stat7 = await fs3.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname42(dir);
+    const parent = dirname44(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -105541,7 +108634,7 @@ function registerDemoCommand(program3) {
     const skillIds = await listSkillIds(skillsDir);
     const skillId = resolveDemoSkill(skill, demos, skillIds);
     if (!skillId) {
-      fail3(root, `No skill matches "${skill}".`, demos);
+      fail6(root, `No skill matches "${skill}".`, demos);
       return;
     }
     const demo = demos.find((d) => d.skillId === skillId);
@@ -105594,7 +108687,7 @@ async function listSkillIds(skillsDir) {
     return [];
   }
 }
-function fail3(root, message, demos) {
+function fail6(root, message, demos) {
   if (root.json) out({ status: "error", failure_kind: "not_found", message, demos: demos.map(brief) });
   else process.stdout.write(`${message}
 
@@ -105613,7 +108706,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs5 } from "node:fs";
-import { resolve as resolve4, join as join34, relative, basename as basename4 } from "node:path";
+import { resolve as resolve4, join as join36, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -105927,14 +109020,14 @@ async function collectBundle(path2) {
       skipped.push(`${relPath} (unreadable)`);
       return;
     }
-    const bytes = Buffer.byteLength(content, "utf8");
-    if (totalBytes + bytes > MAX_TOTAL_BYTES) {
+    const bytes2 = Buffer.byteLength(content, "utf8");
+    if (totalBytes + bytes2 > MAX_TOTAL_BYTES) {
       truncated = true;
       skipped.push(`${relPath} (over total cap)`);
       return;
     }
-    files.push({ path: relPath, content, bytes });
-    totalBytes += bytes;
+    files.push({ path: relPath, content, bytes: bytes2 });
+    totalBytes += bytes2;
   };
   if (stat7.isFile()) {
     await addFile(path2, basename4(path2));
@@ -105946,7 +109039,7 @@ async function collectBundle(path2) {
           truncated = true;
           return;
         }
-        const abs = join34(dir, e.name);
+        const abs = join36(dir, e.name);
         if (e.isDirectory()) {
           if (SKIP_DIRS.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
@@ -105986,7 +109079,7 @@ init_client2();
 init_engine();
 init_local();
 import { createHash as createHash7 } from "node:crypto";
-import { readFile as readFile49, writeFile as writeFile33 } from "node:fs/promises";
+import { readFile as readFile53, writeFile as writeFile35 } from "node:fs/promises";
 
 // src/lib/context-sync/dsp-advertiser.ts
 var import_yaml27 = __toESM(require_dist(), 1);
@@ -106538,7 +109631,7 @@ function emit2(root, obj2, human) {
     process.stdout.write(human.join("\n") + "\n");
   }
 }
-function fail4(root, kind, message, extra = {}) {
+function fail7(root, kind, message, extra = {}) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", kind, message, ...extra }) + "\n");
   } else {
@@ -106571,7 +109664,7 @@ function registerDspAdvertiserCommands(context, deps) {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     if (!isValidDspAdvertiserId(advertiserId)) {
-      fail4(root, "invalid_id", "The DSP advertiser id must be digits only (up to 64).");
+      fail7(root, "invalid_id", "The DSP advertiser id must be digits only (up to 64).");
       return;
     }
     try {
@@ -106587,7 +109680,7 @@ function registerDspAdvertiserCommands(context, deps) {
           },
           root.dataDir
         );
-        fail4(root, r.kind, lookupFailureMessage(r));
+        fail7(root, r.kind, lookupFailureMessage(r));
         return;
       }
       const state = r.brands.length === 0 ? "unassigned" : r.brands.length === 1 ? "assigned" : "conflict";
@@ -106616,7 +109709,7 @@ function registerDspAdvertiserCommands(context, deps) {
         human
       );
     } catch (err) {
-      fail4(root, "unknown", err instanceof Error ? err.message : String(err));
+      fail7(root, "unknown", err instanceof Error ? err.message : String(err));
     }
   });
   group.command("assign").description(
@@ -106780,7 +109873,7 @@ async function runWrite(op, advertiserId, opts, cmd, deps) {
     const path2 = localPathForKey(brand, "context", root.dataDir);
     let content;
     try {
-      content = await readFile49(path2, "utf8");
+      content = await readFile53(path2, "utf8");
     } catch {
       await refuse(
         "no_context_file",
@@ -106835,7 +109928,7 @@ async function runWrite(op, advertiserId, opts, cmd, deps) {
       );
       return;
     }
-    if (plan.changed) await writeFile33(path2, plan.content, "utf8");
+    if (plan.changed) await writeFile35(path2, plan.content, "utf8");
     const pushed = await push(brand, { ...engineOptions, onlyKeys: ["context"] });
     const ctxReport = pushed.ok ? pushed.reports.find((r) => r.key === "context") : void 0;
     const okActions = /* @__PURE__ */ new Set(["pushed", "created", "noop", "up-to-date"]);
@@ -106844,8 +109937,8 @@ async function runWrite(op, advertiserId, opts, cmd, deps) {
       let rolledBack = false;
       if (plan.changed) {
         try {
-          if (await readFile49(path2, "utf8") === plan.content) {
-            await writeFile33(path2, content, "utf8");
+          if (await readFile53(path2, "utf8") === plan.content) {
+            await writeFile35(path2, content, "utf8");
             rolledBack = true;
           }
         } catch {
@@ -106915,7 +110008,7 @@ async function runWrite(op, advertiserId, opts, cmd, deps) {
     );
     if (!ok) process.exitCode = 1;
   } catch (err) {
-    fail4(root, "unknown", err instanceof Error ? err.message : String(err));
+    fail7(root, "unknown", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -106924,7 +110017,7 @@ init_client2();
 init_engine();
 init_local();
 import { createHash as createHash8 } from "node:crypto";
-import { readFile as readFile50, writeFile as writeFile34 } from "node:fs/promises";
+import { readFile as readFile54, writeFile as writeFile36 } from "node:fs/promises";
 
 // src/lib/context-sync/amc-instance.ts
 var import_yaml28 = __toESM(require_dist(), 1);
@@ -107477,7 +110570,7 @@ function emit3(root, obj2, human) {
     process.stdout.write(human.join("\n") + "\n");
   }
 }
-function fail5(root, kind, message, extra = {}) {
+function fail8(root, kind, message, extra = {}) {
   if (root.json) {
     process.stdout.write(JSON.stringify({ status: "error", kind, message, ...extra }) + "\n");
   } else {
@@ -107510,7 +110603,7 @@ function registerAmcInstanceCommands(context, deps) {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     if (!isValidAmcInstanceId(instanceId)) {
-      fail5(root, "invalid_id", "The AMC instance id must be letters and digits only (up to 64).");
+      fail8(root, "invalid_id", "The AMC instance id must be letters and digits only (up to 64).");
       return;
     }
     instanceId = instanceId.toLowerCase();
@@ -107527,7 +110620,7 @@ function registerAmcInstanceCommands(context, deps) {
           },
           root.dataDir
         );
-        fail5(root, r.kind, lookupFailureMessage2(r));
+        fail8(root, r.kind, lookupFailureMessage2(r));
         return;
       }
       const state = r.brands.length === 0 ? "unassigned" : r.brands.length === 1 ? "assigned" : "conflict";
@@ -107556,7 +110649,7 @@ function registerAmcInstanceCommands(context, deps) {
         human
       );
     } catch (err) {
-      fail5(root, "unknown", err instanceof Error ? err.message : String(err));
+      fail8(root, "unknown", err instanceof Error ? err.message : String(err));
     }
   });
   group.command("assign").description(
@@ -107721,7 +110814,7 @@ async function runWrite2(op, instanceId, opts, cmd, deps) {
     const path2 = localPathForKey(brand, "context", root.dataDir);
     let content;
     try {
-      content = await readFile50(path2, "utf8");
+      content = await readFile54(path2, "utf8");
     } catch {
       await refuse(
         "no_context_file",
@@ -107776,7 +110869,7 @@ async function runWrite2(op, instanceId, opts, cmd, deps) {
       );
       return;
     }
-    if (plan.changed) await writeFile34(path2, plan.content, "utf8");
+    if (plan.changed) await writeFile36(path2, plan.content, "utf8");
     const pushed = await push(brand, { ...engineOptions, onlyKeys: ["context"] });
     const ctxReport = pushed.ok ? pushed.reports.find((r) => r.key === "context") : void 0;
     const okActions = /* @__PURE__ */ new Set(["pushed", "created", "noop", "up-to-date"]);
@@ -107785,8 +110878,8 @@ async function runWrite2(op, instanceId, opts, cmd, deps) {
       let rolledBack = false;
       if (plan.changed) {
         try {
-          if (await readFile50(path2, "utf8") === plan.content) {
-            await writeFile34(path2, content, "utf8");
+          if (await readFile54(path2, "utf8") === plan.content) {
+            await writeFile36(path2, content, "utf8");
             rolledBack = true;
           }
         } catch {
@@ -107856,7 +110949,7 @@ async function runWrite2(op, instanceId, opts, cmd, deps) {
     );
     if (!ok) process.exitCode = 1;
   } catch (err) {
-    fail5(root, "unknown", err instanceof Error ? err.message : String(err));
+    fail8(root, "unknown", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -108413,7 +111506,7 @@ var UNIT_MS = {
   d: 24 * 60 * 60 * 1e3,
   w: 7 * 24 * 60 * 60 * 1e3
 };
-function parseSince(input, now = /* @__PURE__ */ new Date(), flag = "--since") {
+function parseSince2(input, now = /* @__PURE__ */ new Date(), flag = "--since") {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
     return { ok: false, message: `${flag} must not be empty` };
@@ -108482,25 +111575,25 @@ function registerList(timeline) {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
-      const query = {};
-      if (opts.brand) query.brand = opts.brand;
-      if (opts.family) query.family = opts.family;
-      if (opts.kind) query.kind = opts.kind;
+      const query2 = {};
+      if (opts.brand) query2.brand = opts.brand;
+      if (opts.family) query2.family = opts.family;
+      if (opts.kind) query2.kind = opts.kind;
       if (opts.since) {
-        const since = parseSince(opts.since);
+        const since = parseSince2(opts.since);
         if (!since.ok) {
           emitError18(since.message, root);
           return;
         }
-        query.since = since.iso;
+        query2.since = since.iso;
       }
       if (opts.until) {
-        const until = parseSince(opts.until, /* @__PURE__ */ new Date(), "--until");
+        const until = parseSince2(opts.until, /* @__PURE__ */ new Date(), "--until");
         if (!until.ok) {
           emitError18(until.message, root);
           return;
         }
-        query.until = until.iso;
+        query2.until = until.iso;
       }
       if (opts.limit !== void 0) {
         const n = Number(opts.limit);
@@ -108508,18 +111601,18 @@ function registerList(timeline) {
           emitError18(`--limit must be a positive integer, got '${opts.limit}'`, root);
           return;
         }
-        query.limit = n;
+        query2.limit = n;
       }
-      if (opts.stakes) query.stakes = true;
-      if (opts.category) query.category = opts.category;
-      if (opts.source) query.source = opts.source;
-      if (opts.status) query.status = opts.status;
-      if (opts.affects) query.affects = opts.affects;
-      if (opts.tag) query.tag = opts.tag;
-      if (opts.overlap) query.overlap = true;
-      if (opts.includeFuture) query.include_future = true;
+      if (opts.stakes) query2.stakes = true;
+      if (opts.category) query2.category = opts.category;
+      if (opts.source) query2.source = opts.source;
+      if (opts.status) query2.status = opts.status;
+      if (opts.affects) query2.affects = opts.affects;
+      if (opts.tag) query2.tag = opts.tag;
+      if (opts.overlap) query2.overlap = true;
+      if (opts.includeFuture) query2.include_future = true;
       const client = createTimelineClient({ dataDirOverride: root.dataDir });
-      const result = opts.all ? await listAllEvents(client, query) : await client.listEvents(query);
+      const result = opts.all ? await listAllEvents(client, query2) : await client.listEvents(query2);
       if (!result.ok) {
         await track(
           {
@@ -108527,7 +111620,7 @@ function registerList(timeline) {
             outcome: "failed",
             duration_ms: Date.now() - t0,
             error_class: result.kind,
-            payload: filtersPayload(query, opts.all ?? false)
+            payload: filtersPayload(query2, opts.all ?? false)
           },
           root.dataDir
         );
@@ -108540,7 +111633,7 @@ function registerList(timeline) {
           outcome: "ok",
           duration_ms: Date.now() - t0,
           payload: {
-            ...filtersPayload(query, opts.all ?? false),
+            ...filtersPayload(query2, opts.all ?? false),
             count: result.events.length
           }
         },
@@ -108589,7 +111682,7 @@ function registerAdd(timeline) {
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect2, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect2, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect3, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect3, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -108950,7 +112043,7 @@ function registerSync(timeline) {
     }
   });
 }
-function collect2(value, prev) {
+function collect3(value, prev) {
   return [...prev, value];
 }
 function parseEvidence(raw) {
@@ -109043,22 +112136,22 @@ function isNonEmpty(v) {
 function truncate2(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
 }
-function filtersPayload(query, all) {
+function filtersPayload(query2, all) {
   return {
-    ...query.brand !== void 0 ? { brand: query.brand } : {},
-    ...query.family !== void 0 ? { family: query.family } : {},
-    ...query.kind !== void 0 ? { kind: query.kind } : {},
-    ...query.since !== void 0 ? { since: query.since } : {},
-    ...query.until !== void 0 ? { until: query.until } : {},
-    ...query.limit !== void 0 ? { limit: query.limit } : {},
-    ...query.stakes !== void 0 ? { stakes: query.stakes } : {},
-    ...query.category !== void 0 ? { category: query.category } : {},
-    ...query.source !== void 0 ? { source: query.source } : {},
-    ...query.status !== void 0 ? { status: query.status } : {},
-    ...query.affects !== void 0 ? { affects: query.affects } : {},
-    ...query.tag !== void 0 ? { tag: query.tag } : {},
-    ...query.overlap !== void 0 ? { overlap: query.overlap } : {},
-    ...query.include_future !== void 0 ? { include_future: query.include_future } : {},
+    ...query2.brand !== void 0 ? { brand: query2.brand } : {},
+    ...query2.family !== void 0 ? { family: query2.family } : {},
+    ...query2.kind !== void 0 ? { kind: query2.kind } : {},
+    ...query2.since !== void 0 ? { since: query2.since } : {},
+    ...query2.until !== void 0 ? { until: query2.until } : {},
+    ...query2.limit !== void 0 ? { limit: query2.limit } : {},
+    ...query2.stakes !== void 0 ? { stakes: query2.stakes } : {},
+    ...query2.category !== void 0 ? { category: query2.category } : {},
+    ...query2.source !== void 0 ? { source: query2.source } : {},
+    ...query2.status !== void 0 ? { status: query2.status } : {},
+    ...query2.affects !== void 0 ? { affects: query2.affects } : {},
+    ...query2.tag !== void 0 ? { tag: query2.tag } : {},
+    ...query2.overlap !== void 0 ? { overlap: query2.overlap } : {},
+    ...query2.include_future !== void 0 ? { include_future: query2.include_future } : {},
     all
   };
 }
@@ -109079,8 +112172,8 @@ init_engine();
 init_resolve();
 init_service_attribution_cache();
 init_telemetry();
-import { readdir as readdir8, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname43, join as join35 } from "node:path";
+import { readdir as readdir9, stat as stat6 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname45, join as join37 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -109125,7 +112218,7 @@ async function discoverCredentialFiles(roots, maxDepth) {
 async function walkForCredentials(dir, depth, maxDepth, found) {
   let entries;
   try {
-    entries = await readdir8(dir, { withFileTypes: true });
+    entries = await readdir9(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -109136,14 +112229,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join35(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join37(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename5(dir) !== "auth" || basename5(dirname43(dir)) !== ".mixshift") continue;
-    found.push(join35(dir, entry.name));
+    if (basename5(dir) !== "auth" || basename5(dirname45(dir)) !== ".mixshift") continue;
+    found.push(join37(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -109158,7 +112251,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname43(dirname43(hitPath));
+  return dirname45(dirname45(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -109175,7 +112268,7 @@ function classifyMintError(err) {
   }
   return "endpoint_unreachable";
 }
-function collect3(value, prev) {
+function collect4(value, prev) {
   return [...prev, value];
 }
 function registerTaskCommands(program3) {
@@ -109187,7 +112280,7 @@ function registerTaskCommands(program3) {
   ).option(
     "--brand <slug>",
     "brand slug to ensure local context.yaml for (repeatable); pulls from the org store when not already present locally",
-    collect3,
+    collect4,
     []
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -109226,7 +112319,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join35(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join37(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -109589,6 +112682,22 @@ function statusLine(status, message) {
 init_errors3();
 init_telemetry();
 
+// src/lib/labels/field-keys.ts
+var LABEL_FIELD_KEYS = [
+  "item_group",
+  "nickname",
+  "brand",
+  "parent_asin",
+  "label_1",
+  "label_2",
+  "tag_1",
+  "tag_2",
+  "tag_3",
+  "tag_4",
+  "manager",
+  "objective"
+];
+
 // src/lib/telemetry/redact.ts
 var REDACTED = "<redacted>";
 var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer)$/i;
@@ -109612,23 +112721,32 @@ function redactBudgetValue(name, value) {
 }
 var BUDGET_VALUE_FLAG = /^(set|note)$/;
 function isForecastSubBrand(argv) {
-  const i = argv.indexOf("forecast");
-  return i >= 0 && argv[i + 1] === "sub-brand";
+  return hasSubcommandLater(argv, "forecast", "sub-brand");
+}
+function hasSubcommandLater(argv, group, sub) {
+  const i = argv.indexOf(group);
+  return i >= 0 && argv.indexOf(sub, i + 1) >= 0;
 }
 var SUB_BRAND_VALUE_FLAG = /^(name|item-label|campaign-label)$/;
-function redactArgs(argv) {
+function isLabelsSearch(argv) {
+  return hasSubcommandLater(argv, "labels", "search");
+}
+var LABELS_VALUE_FLAG = /^value$/;
+function redactGeneric(argv) {
   const out2 = [];
   let redactNextValue = false;
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : null;
+  const labels = isLabelsSearch(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
   const redactValue = (name, value) => budget ? redactBudgetValue(name, value) : REDACTED;
+  const strictValue = subBrand || labels;
   let budgetFlag = null;
   for (const arg of argv) {
     if (budgetFlag !== null) {
       const name = budgetFlag;
       budgetFlag = null;
-      if (!(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
+      if (strictValue || !(arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg))) {
         out2.push(redactValue(name, arg));
         continue;
       }
@@ -109669,6 +112787,158 @@ function redactArgs(argv) {
 }
 function isNumericLike(arg) {
   return /^-\d/.test(arg);
+}
+var LABELS_SUBCOMMANDS = /* @__PURE__ */ new Set(["state", "fields", "get", "search", "drift", "changes", "preview", "commit", "undo", "sets", "set", "cancel", "field-name"]);
+var OTHER_TOP_LEVEL_COMMANDS = /* @__PURE__ */ new Set([
+  "profile",
+  "auth",
+  "brand",
+  "validate",
+  "prefetch",
+  "render",
+  "sidecar",
+  "ui",
+  "data",
+  "feedback",
+  "welcome",
+  "version",
+  "whatsnew",
+  "update-actions",
+  "telemetry",
+  "skill",
+  "amazon",
+  "ads",
+  "dsp",
+  "walmart",
+  "shelf",
+  "intelligence",
+  "forecast",
+  "report",
+  "doctor",
+  "guide",
+  "demo",
+  "share-skill",
+  "context",
+  "timeline",
+  "task",
+  "help"
+]);
+var ROOT_BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["json", "verbose", "help", "version"]);
+var LABELS_BOOLEAN_FLAGS = /* @__PURE__ */ new Set([...ROOT_BOOLEAN_FLAGS, "all", "commit", "remove"]);
+var FIELD_KEY_SET = new Set(LABEL_FIELD_KEYS);
+var fieldKey = { test: (v) => FIELD_KEY_SET.has(v) };
+var TIME_SHAPE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z)?$/;
+var UUID_SHAPE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+var SURFACE_SHAPE = /^(claude_code|cowork|cli|cli_headless)$/;
+var LABELS_VALUE_SHAPES = {
+  account: /^[1-9][0-9]{0,9}$/,
+  entity: /^(item|campaign)$/,
+  scope: /^(marketplace|region|all)$/,
+  field: fieldKey,
+  clear: fieldKey,
+  rename: fieldKey,
+  limit: /^[0-9]{1,4}$/,
+  before: TIME_SHAPE,
+  since: TIME_SHAPE,
+  surface: SURFACE_SHAPE
+};
+var LABELS_KNOWN_FLAGS = /* @__PURE__ */ new Set([
+  ...LABELS_BOOLEAN_FLAGS,
+  ...Object.keys(LABELS_VALUE_SHAPES),
+  "data-dir",
+  "ids",
+  "ids-file",
+  "where",
+  "file",
+  "set",
+  "from",
+  "to",
+  "name",
+  "value",
+  "cursor",
+  "approval-hash"
+]);
+var isFlagLike = (arg) => arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg);
+function allowlist(tokens, cfg) {
+  const out2 = [];
+  let pending;
+  let positionals = 0;
+  for (const arg of tokens) {
+    const flag = isFlagLike(arg);
+    const name = flag && arg.startsWith("--") && !arg.startsWith("---") ? arg.slice(2).split("=")[0] : null;
+    const knownLong = name !== null && cfg.known.has(name);
+    if (pending !== void 0 && !knownLong) {
+      const shape = pending === null ? void 0 : cfg.shapes[pending];
+      out2.push(shape && shape.test(arg) ? arg : REDACTED);
+      pending = void 0;
+      continue;
+    }
+    pending = void 0;
+    if (flag) {
+      if (!knownLong) {
+        out2.push(REDACTED);
+        if (!arg.includes("=")) pending = null;
+        continue;
+      }
+      const eq = arg.indexOf("=");
+      if (eq >= 0) {
+        const shape = cfg.shapes[name];
+        const value = arg.slice(eq + 1);
+        out2.push(`--${name}=${shape && shape.test(value) ? value : REDACTED}`);
+        continue;
+      }
+      out2.push(arg);
+      if (!cfg.booleans.has(name)) pending = cfg.shapes[name] ? name : null;
+      continue;
+    }
+    positionals += 1;
+    out2.push(cfg.keepPositional(positionals, arg) ? arg : REDACTED);
+  }
+  return out2;
+}
+var ROOT_CONFIG = {
+  known: /* @__PURE__ */ new Set([...ROOT_BOOLEAN_FLAGS, "data-dir", "surface"]),
+  booleans: ROOT_BOOLEAN_FLAGS,
+  shapes: { surface: SURFACE_SHAPE },
+  keepPositional: () => false
+};
+var LABELS_CONFIG = {
+  known: LABELS_KNOWN_FLAGS,
+  booleans: LABELS_BOOLEAN_FLAGS,
+  shapes: LABELS_VALUE_SHAPES,
+  keepPositional: (n, arg) => n === 1 && LABELS_SUBCOMMANDS.has(arg) || UUID_SHAPE.test(arg)
+};
+function firstPositional(argv) {
+  for (let j = 0; j < argv.length; j += 1) {
+    const a = argv[j];
+    if (a === "--data-dir" || a === "--surface") {
+      j += 1;
+      continue;
+    }
+    if (isFlagLike(a)) continue;
+    return a;
+  }
+  return null;
+}
+var isLabelsToken = (a) => {
+  const l = a.toLowerCase();
+  return l === "labels" || l.endsWith("=labels");
+};
+function redactArgs(argv) {
+  const base2 = redactGeneric(argv);
+  const i = argv.findIndex(isLabelsToken);
+  if (i < 0) return base2;
+  const first = firstPositional(argv);
+  if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base2;
+  const trigger = /^labels$/i.test(argv[i]) ? argv[i] : REDACTED;
+  const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
+  return argv.map((orig, k) => {
+    const b = base2[k];
+    const a = allow[k];
+    if (b === orig) return a;
+    if (a === orig) return b;
+    return a === REDACTED || b === REDACTED ? REDACTED : a;
+  });
 }
 
 // src/lib/cli/usage-hints.ts
@@ -109928,6 +113198,8 @@ registerAdsCommands(program2);
 registerDspCommands(program2);
 registerWalmartCommands(program2);
 registerShelfCommands(program2);
+registerLabelsCommands(program2);
+registerLabelsWriteCommands(program2);
 registerIntelligenceCommands(program2);
 registerForecastCommands(program2);
 registerReportCommands(program2);

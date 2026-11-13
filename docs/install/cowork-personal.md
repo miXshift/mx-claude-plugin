@@ -118,7 +118,7 @@ This is expected on Cowork: Cowork does not run plugin session hooks, so the `mi
 The PKCE flow tries to open your default browser via the OS-native handler. If that fails (rare), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat — open that URL in any browser. If the chat skill never showed a URL at all, the harness may not be on PATH inside Cowork's Bash tool — say "run welcome" again, and if the issue persists open a feedback ticket.
 
 **"Sign-in page won't accept my credentials."**
-Use your team login, or Sign in with Google or Sign in with Microsoft if your organization uses member sign-in. If those don't work, your MixShift account itself may be locked or expired — contact your MixShift account team.
+Use your team login, or Sign in with Google or Sign in with Microsoft if your organization uses member sign-in. If those don't work, your MixShift account itself may be locked or expired: contact your MixShift account team.
 
 **"Your session expired."**
 Your refresh token expired (>30d since last sign-in) or was revoked. Just say "sign in to mixshift" again and the chat skill drives a fresh sign-in.

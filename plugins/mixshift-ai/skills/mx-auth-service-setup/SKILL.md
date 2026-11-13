@@ -5,8 +5,8 @@ description: >
   scheduled Cowork tasks, daily crons hitting the warehouse or the SP-API
   report/pricing endpoints, CI jobs, cloud automations. The default flow needs no
   secret handling at all: the admin mints a one-time SETUP CODE at People &
-  access (https://build.mixshift.ai/people; legacy single sign-in tenants that
-  have not moved to OAuth yet can use mcp.mixshift.io/admin), the
+  access (https://build.mixshift.ai/people; organizations still on one shared
+  team login can use mcp.mixshift.io/admin), the
   user pastes the code in chat (safe by design: single-use, 10-minute TTL), and
   Claude exchanges it so the credential lands directly in this machine's
   credentials file, then verifies it with a real token mint. Invoke whenever a
@@ -15,7 +15,7 @@ description: >
   (anchor folder, generated task instructions, verified first run) belongs to
   mx-scheduled-task; this skill is the credential step inside it.
 metadata:
-  version: "0.3.1"
+  version: "0.3.2"
   author: "MixShift"
 trigger_phrases:
   - set up a service credential
@@ -61,9 +61,9 @@ This answers "which folder?" so the user never has to guess.
 
 ## Step 1 — The user gets a SETUP CODE (the one admin step)
 
-> *"Open People & access at https://build.mixshift.ai/people and sign in with your MixShift account (Google sign-in works). Click **Create service credential** and name it after this task — I'd suggest `<derived-from-task-name>`. You'll get a one-time **setup code** that looks like `SVC-XXXX-XXXX`. Paste that code here — it's safe in chat: single-use, expires in 10 minutes, and nobody ever sees the actual secret."*
+> *"Open People & access at https://build.mixshift.ai/people and sign in with your MixShift account (Sign in with Google or Sign in with Microsoft). Under Machine credentials, click **Create credential**, name it after this task (I'd suggest `<derived-from-task-name>`) and choose a one-time **setup code**. It looks like `SVC-XXXX-XXXX`. Paste that code here: it's safe in chat (single-use, expires in 10 minutes), and nobody ever sees the actual secret."*
 
-Legacy fallback: if the user is on a legacy single sign-in tenant that has not moved to OAuth yet, add: *"On a legacy single sign-in tenant that hasn't moved to OAuth yet? Use mcp.mixshift.io/admin for now."* Google sign-in users cannot reach /admin, so always lead with People & access.
+Team-login fallback: if the user's organization still signs in with one shared team login, add: *"Does your organization still sign in with one shared team login? Use mcp.mixshift.io/admin for now."* People who sign in with Google or Microsoft cannot reach /admin, so always lead with People & access.
 
 If the user is not the tenant admin in practice, the same instructions go to whoever holds the tenant login; the flow pauses (`deferred`) until the code exists.
 
@@ -85,7 +85,7 @@ The exchange creates the credential server-side at that moment and writes it str
 
 Only when the user has a raw `client_id` + secret instead of a setup code (the admin used "Create with raw secret", or a CI pipeline holds the secret in a secret manager):
 
-1. The secret must never appear in a shell command (argv leaks into history). Have the user save it into `<project folder>/mixshift-secret.txt` via their file manager, or if they paste it in chat, write it to that file with your FILE-WRITING tool (never `echo`/`printf`) and recommend a zero-downtime rotation at People & access afterwards since transcripts persist.
+1. The secret must never appear in a shell command (argv leaks into history). Have the user save it into `<project folder>/mixshift-secret.txt` via their file manager, or if they paste it in chat, write it to that file with your FILE-WRITING tool (never `echo`/`printf`) and recommend replacing the credential afterwards since transcripts persist (at People & access: create a new one, switch to it, revoke the old one; on /admin: rotate).
 2. Run:
 
 ```bash
@@ -141,13 +141,13 @@ This runtime discovery is the proven pattern for Cowork scheduled tasks. If you 
 
 3. Bottom line:
 
-> *"Done. Unattended runs in this workspace authenticate as `<svc: label>` — read-only, visible to your admin, revocable or rotatable any time at People & access (https://build.mixshift.ai/people; legacy single sign-in tenants that haven't moved to OAuth yet: mcp.mixshift.io/admin). The schedule just needs `MIXSHIFT_DATA_DIR=<data dir>` set, which it now has."*
+> *"Done. Unattended runs in this workspace authenticate as `<svc: label>`: read-only, visible to your admin, revocable any time at People & access (https://build.mixshift.ai/people; team-login organizations: mcp.mixshift.io/admin). The schedule just needs `MIXSHIFT_DATA_DIR=<data dir>` set, which it now has."*
 
 ## Failure modes
 
-- **"Unknown, expired, or already-used setup code":** codes are single-use and last 10 minutes, and they are kept only in gateway memory, so a gateway deploy mid-window drops any pending code. Mint a fresh code at People & access (https://build.mixshift.ai/people), have the user paste it, and retry right away. On a legacy single sign-in tenant that hasn't moved to OAuth yet, mint it at mcp.mixshift.io/admin for now. Nothing else to undo.
-- **`verified: false` / HTTP 401 `invalid_client` at setup (raw path):** the credential was revoked, or the secret was mistyped/rotated past its overlap. Have the user re-check People & access (legacy single sign-in tenants: mcp.mixshift.io/admin) (the secret is shown only once; if it's gone, rotate to get a fresh one) and re-run from Step 2-alt.
-- **Query fails with an org-admin / "cannot use this gateway" message:** the credential was created under the wrong tenant login (some tenant logins map to blocked super-admin MySQL users). Have the user sign into People & access (legacy single sign-in tenants: mcp.mixshift.io/admin) with the login they normally use with this plugin and create the credential there; revoke the wrong-tenant one.
+- **"Unknown, expired, or already-used setup code":** codes are single-use and last 10 minutes, and they are kept only in gateway memory, so a gateway deploy mid-window drops any pending code. Mint a fresh code at People & access (https://build.mixshift.ai/people), have the user paste it, and retry right away. On an organization still on one shared team login, mint it at mcp.mixshift.io/admin for now. Nothing else to undo.
+- **`verified: false` / HTTP 401 `invalid_client` at setup (raw path):** the credential was revoked, or the secret was mistyped/rotated past its overlap. Have the user re-check People & access (team-login organizations: mcp.mixshift.io/admin) (the secret is shown only once; if it's gone, create a new credential and revoke the old one, or rotate on /admin) and re-run from Step 2-alt.
+- **Query fails with an org-admin / "cannot use this gateway" message:** the credential was created under the wrong tenant login (some tenant logins map to blocked super-admin MySQL users). Have the user sign into People & access (team-login organizations: mcp.mixshift.io/admin) with the login they normally use with this plugin and create the credential there; revoke the wrong-tenant one.
 - **Query fails `insufficient_scope`:** the credential was scoped down at creation. Raw SQL needs all read scopes; have the admin issue a full-read credential for SQL automations.
 - **Scheduled run later aborts "No credentials found":** the schedule hardcoded a per-session `MIXSHIFT_DATA_DIR` whose UUID has since changed, or the credential was not anchored in a persistent folder. Fix the schedule to DISCOVER the path at runtime (the Step 5 `find /sessions …` block, or better, the `task preflight` preamble from `mx-scheduled-task`) and ensure the credential lives in a folder that survives across runs — don't re-create the credential.
 - **Setup "succeeds" but every scheduled fire starts unauthenticated anyway:** the credential was anchored into a session home because no folder was attached to the task (the Step 0 STOP case was skipped). Re-minting will not help; each new credential lands in the next throwaway sandbox. Attach a persistent folder to the task first (invoke `mx-scheduled-task`; on Cowork this is a directory request approved once during a manual Run-now), then mint ONE credential into it and revoke the stranded ones at People & access.

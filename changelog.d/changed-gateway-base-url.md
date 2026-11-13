@@ -1,1 +1,0 @@
-- **You can point the plugin at another MixShift gateway.** Sign-in (`mixshift auth login` and `mixshift auth setup`) and `mixshift doctor` now use the gateway address you set in `MIXSHIFT_GATEWAY_BASE_URL` when you do not pass `--api-base`. Nothing changes if you leave it unset: the plugin keeps using the standard MixShift gateway.

@@ -3,6 +3,91 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.22
+
+
+### Added
+
+- **Try Report Center 2.0, a beta preview.** Report Center 2.0 is open at
+  https://reports.mixshift.ai, alongside the Report Center you use today, which
+  does not change. Sign in with your MixShift account, pick a brand, platform and
+  marketplace, and open Retail & Sponsored Ads Performance, Retail Performance or
+  Sponsored Ads Performance for Seller Central, or Vendor Retail & Sponsored Ads
+  Performance or Sponsored Ads Performance for Vendor Central. Filter by a field
+  or paste a list, group tables with View by, compare with the prior period or
+  the prior year, save views, share view-only links with an optional password,
+  and download CSV or save as PDF. It only reads data. Some figures and features
+  you are used to are not here yet, such as editable links, the Master Link and
+  Sourcing figures for vendors: press Feedback in the top bar to tell us what you
+  miss.
+
+- **You can list, pause and re-bid Sponsored Brands theme targets.** The
+  "keywords related to your brand" and "keywords related to your landing pages"
+  targets on your Sponsored Brands ad groups can now be listed and paused,
+  re-enabled or re-bid from the plugin, with the same preview-then-confirm step as
+  other ad changes, instead of through a bulk file in the Amazon console. Amazon
+  changes theme targets only on multi-ad-group campaigns, and refuses a theme bid
+  change while the campaign has an enabled optimization rule.
+
+- **Keyword rank over time, for the keywords MixShift tracks for you (pilot).** In a pilot, MixShift can now track keywords for your organization: once a day it takes the Amazon search results for each tracked keyword at each tracked shopper location, on desktop, mobile or both, and keeps every position on the pages it tracks. `mixshift shelf rank-history "<keyword>" --zip <zip>` reads that history back, free: per day and ASIN the absolute rank, the organic rank and the sponsored rank, with the latest position and the movement per ASIN at the top. Only keywords, locations and views MixShift tracks for you answer; for anything else the Amazon Shelf skill offers to send the tracking request ("track these keywords"). Tracking is a pilot that MixShift sets up on request. The daily observations count against the monthly shelf allowance like any other answer, and tracking pauses when the allowance runs out, until it resets or is raised.
+
+- **The DSP readiness check now catches another order's responsive ad on a line
+  item.** The creative chooser in the DSP console lists every order's
+  automatically created responsive ad, so it is easy to attach the wrong one when
+  you build orders first and creatives later. Each line item is now checked
+  against the responsive ad recorded for its own order, a record the plugin keeps
+  on this computer: a responsive ad MixShift builds is recorded for the order you
+  name, and one built in the console is recorded once you confirm which order it
+  belongs to (`mixshift dsp creative-map confirm`). Each computer keeps its own
+  record, so on a teammate's computer the same creative shows for them to
+  confirm. A creative recorded for another order fails the check with the order,
+  line item and creative ids and how to fix it in the console; one nobody
+  recorded is shown for you to confirm, never guessed from its name or products.
+  The check only reads; it never removes or swaps a creative.
+
+### Changed
+
+- **Setup codes are now created at People & access.** The service setup skill,
+  the `mixshift auth service-setup` help and error text, and the auth docs now
+  send you, or whoever manages credentials in your organization, to People &
+  access (https://build.mixshift.ai/people) to create a service credential and
+  get a setup code. People & access works when your organization uses member
+  sign-in (Sign in with Google or Sign in with Microsoft). If your organization
+  still signs in with one shared team login, use mcp.mixshift.io/admin for now.
+  If a setup code comes back unknown, expired, or already used, create a fresh
+  one and retry right away.
+
+- **Sign-in steps now name Sign in with Microsoft next to Sign in with Google.**
+  The welcome steps, the sign-in guidance and the install docs now say to choose
+  Sign in with Google or Sign in with Microsoft, whichever your organization uses
+  for member sign-in, so people at an organization on Microsoft 365 know which
+  button to choose. Microsoft sign-in is switched on organization by
+  organization; if you do not see the button, ask MixShift.
+
+### Fixed
+
+- **Sponsored Brands batches now follow the real per-call limits.** Creating or
+  changing Sponsored Brands campaigns, ad groups and ads takes at most 10 items
+  per call, and product targets take at most 100. The guidance used to say 200
+  for all of them, so a larger batch could be turned down in full with nothing
+  created. A batch over the limit is now stopped before anything is sent, with
+  the limit named, so you can split it and send it again.
+
+- **The AMC skill no longer calls a paid table unavailable just because the instance lists no subscription label.** An instance with no `PURCHASE_RETAIL_PROGRAM` label queried the retail purchases table fine, so the label check gave a false no. The skill now settles a paid table with the table itself (its schema call, or a dry run) and reads the label for the subscription date only.
+
+- **ASIN target negation review counts each location's lifetime results once.**
+  The same product-target search-term results can reach MixShift in two tables,
+  and the review used to add both, so a campaign and ad group's lifetime spend,
+  sales, orders and clicks could include the same results twice. That could keep
+  a losing ASIN target above the lifetime-orders floor and off the
+  persistent-loser list. The review now reads lifetime figures from one table, so
+  each result Amazon reported is counted once.
+
+- **The forecast skill now says plainly that forecasts are tracked for usage, not billed per run.**
+  Before your first forecast, the skill tells you the run is recorded as usage on your account
+  and is not a charge per run, instead of calling it a metered cost. The forecast settings
+  message and the skill notes use the same wording, so nobody reads a forecast run as a bill.
+
 ## 0.8.21
 
 
