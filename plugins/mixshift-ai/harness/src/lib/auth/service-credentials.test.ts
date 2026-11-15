@@ -159,9 +159,9 @@ describe('getValidAccessToken (service path)', () => {
     const first = (await getValidAccessToken(testDir).catch((e: unknown) => e)) as Error;
     expect(first.message).toMatch(/revoked|rotated/i);
     // Points at the page a Google or Microsoft member can open, then /admin for team logins only.
-    expect(first.message).toContain('People & access (https://build.mixshift.ai/people)');
+    expect(first.message).toContain('Machine credentials (https://build.mixshift.ai/credentials)');
     expect(first.message).toContain('https://svc.test/admin if your organization signs in with one shared team login');
-    expect(first.message.indexOf('build.mixshift.ai/people')).toBeLessThan(first.message.indexOf('svc.test/admin'));
+    expect(first.message.indexOf('build.mixshift.ai/credentials')).toBeLessThan(first.message.indexOf('svc.test/admin'));
     expect(first.message).not.toMatch(/tenant admin/i);
     // Static credential: NOT cleared locally; fixing it is the admin's move.
     const again = getValidAccessToken(testDir);

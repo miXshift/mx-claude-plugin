@@ -706,7 +706,7 @@ async function doMintServiceToken(
     throw new Error(
       'Service credential rejected (revoked, or rotated without updating ' +
         'this machine). Ask whoever manages credentials in your organization ' +
-        'to check it at People & access (https://build.mixshift.ai/people), or ' +
+        'to check it at Machine credentials (https://build.mixshift.ai/credentials), or ' +
         `at ${service.api_base}/admin if your organization signs in with one ` +
         'shared team login, then re-run `mixshift auth service-setup` with a ' +
         'fresh setup code or the current secret.',
