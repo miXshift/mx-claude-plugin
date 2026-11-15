@@ -80,7 +80,7 @@ export const datahubCredsSchema = z.object({
 // this file. Unlike the datahub block there is NO refresh token and nothing
 // rotates on use, so the block works from read-only credential stores and
 // fresh sandboxes. Issued and revoked at Machine credentials
-// (https://build.mixshift.ai/credentials) or {api_base}/admin; rotated at /admin.
+// (https://build.mixshift.ai/credentials) or {api_base}/admin; rotated by its maker at Machine credentials, or at /admin.
 
 export const serviceCredsSchema = z.object({
   api_base: z.url(),
