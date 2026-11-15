@@ -43,7 +43,7 @@ describe('exchangeSetupCode', () => {
     );
   });
 
-  it('points to People & access first and keeps /admin as a labeled team-login fallback', async () => {
+  it('points to Machine credentials first and keeps /admin as a labeled team-login fallback', async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(
       jsonResponse(400, { error: 'invalid_setup_code' }),
     );
@@ -53,11 +53,11 @@ describe('exchangeSetupCode', () => {
     } catch (err) {
       message = (err as Error).message;
     }
-    expect(message).toContain('People & access (https://build.mixshift.ai/people)');
+    expect(message).toContain('Machine credentials (https://build.mixshift.ai/credentials)');
     expect(message).toMatch(/one shared team login/i);
     expect(message).not.toMatch(/single sign-in/i);
     expect(message).toContain('mcp.mixshift.io/admin');
-    expect(message.indexOf('build.mixshift.ai/people')).toBeLessThan(
+    expect(message.indexOf('build.mixshift.ai/credentials')).toBeLessThan(
       message.indexOf('mcp.mixshift.io/admin'),
     );
   });

@@ -1,8 +1,8 @@
 /**
  * Exchange a one-time admin-minted setup code for a service credential.
  *
- * The no-secret-handling path: the admin creates a SETUP CODE at People &
- * access (https://build.mixshift.ai/people; organizations on one shared
+ * The no-secret-handling path: the admin creates a SETUP CODE at Machine
+ * credentials (https://build.mixshift.ai/credentials; organizations on one shared
  * team login use {api_base}/admin) (single-use, 10-minute
  * TTL); the user pastes the code in
  * chat; this helper exchanges it at POST /oauth/service-setup/exchange. The
@@ -54,8 +54,8 @@ export async function exchangeSetupCode(
       throw new Error(
         'That setup code is unknown, expired, or already used. Codes are ' +
           'single-use and last 10 minutes, and a gateway deploy drops any ' +
-          'pending code. Mint a fresh one at People & access ' +
-          '(https://build.mixshift.ai/people) and retry right away. ' +
+          'pending code. Mint a fresh one at Machine credentials ' +
+          '(https://build.mixshift.ai/credentials) and retry right away. ' +
           'If your organization still signs in with one shared team login, ' +
           'use mcp.mixshift.io/admin for now.',
       );

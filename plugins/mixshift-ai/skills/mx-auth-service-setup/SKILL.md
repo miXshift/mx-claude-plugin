@@ -4,8 +4,7 @@ description: >
   Set up an admin-issued service credential so MixShift skills can run UNATTENDED:
   scheduled Cowork tasks, daily crons hitting the warehouse or the SP-API
   report/pricing endpoints, CI jobs, cloud automations. The default flow needs no
-  secret handling at all: the admin mints a one-time SETUP CODE at People &
-  access (https://build.mixshift.ai/people; organizations still on one shared
+  secret handling at all: the admin mints a one-time SETUP CODE at Machine credentials (https://build.mixshift.ai/credentials; organizations still on one shared
   team login can use mcp.mixshift.io/admin), the
   user pastes the code in chat (safe by design: single-use, 10-minute TTL), and
   Claude exchanges it so the credential lands directly in this machine's
@@ -15,7 +14,7 @@ description: >
   (anchor folder, generated task instructions, verified first run) belongs to
   mx-scheduled-task; this skill is the credential step inside it.
 metadata:
-  version: "0.3.3"
+  version: "0.3.4"
   author: "MixShift"
 trigger_phrases:
   - set up a service credential
@@ -35,7 +34,7 @@ trigger_phrases:
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
 
-Get a machine credential configured so this workspace's MixShift access works with nobody at the keyboard. The user only does the two things Claude cannot: create the credential in MixShift People & access (it needs their account sign-in), and hand over the secret. Claude does everything else.
+Get a machine credential configured so this workspace's MixShift access works with nobody at the keyboard. The user only does the two things Claude cannot: create the credential on the MixShift Machine credentials page (it needs their account sign-in), and hand over the secret. Claude does everything else.
 
 ## When this skill applies (and when it doesn't)
 
@@ -61,9 +60,9 @@ This answers "which folder?" so the user never has to guess.
 
 ## Step 1 — The user gets a SETUP CODE (the one admin step)
 
-> *"Open People & access at https://build.mixshift.ai/people and sign in with your MixShift account (Sign in with Google or Sign in with Microsoft). Under Machine credentials, click **Create credential**, name it after this task (I'd suggest `<derived-from-task-name>`) and choose a one-time **setup code**. It looks like `SVC-XXXX-XXXX`. Paste that code here: it's safe in chat (single-use, expires in 10 minutes), and nobody ever sees the actual secret."*
+> *"Open Machine credentials at https://build.mixshift.ai/credentials and sign in with your MixShift account (Sign in with Google or Sign in with Microsoft). Click **Create credential**, name it after this task (I'd suggest `<derived-from-task-name>`) and choose a one-time **setup code**. It looks like `SVC-XXXX-XXXX`. Paste that code here: it's safe in chat (single-use, expires in 10 minutes), and nobody ever sees the actual secret."*
 
-Team-login fallback: if the user's organization still signs in with one shared team login, add: *"Does your organization still sign in with one shared team login? Use mcp.mixshift.io/admin for now."* People who sign in with Google or Microsoft cannot reach /admin, so always lead with People & access.
+Team-login fallback: if the user's organization still signs in with one shared team login, add: *"Does your organization still sign in with one shared team login? Use mcp.mixshift.io/admin for now."* People who sign in with Google or Microsoft cannot reach /admin, so always lead with Machine credentials.
 
 If the user is not the tenant admin in practice, the same instructions go to whoever holds the tenant login; the flow pauses (`deferred`) until the code exists.
 
@@ -85,7 +84,7 @@ The exchange creates the credential server-side at that moment and writes it str
 
 Only when the user has a raw `client_id` + secret instead of a setup code (the admin used "Create with raw secret", or a CI pipeline holds the secret in a secret manager):
 
-1. The secret must never appear in a shell command (argv leaks into history). Have the user save it into `<project folder>/mixshift-secret.txt` via their file manager, or if they paste it in chat, write it to that file with your FILE-WRITING tool (never `echo`/`printf`) and recommend replacing the credential afterwards since transcripts persist (at People & access: create a new one, switch to it, revoke the old one; on /admin: rotate).
+1. The secret must never appear in a shell command (argv leaks into history). Have the user save it into `<project folder>/mixshift-secret.txt` via their file manager, or if they paste it in chat, write it to that file with your FILE-WRITING tool (never `echo`/`printf`) and recommend rotating it afterwards since transcripts persist (the person who made it presses Rotate on Machine credentials, puts the new secret in place, then Confirm rotation; on /admin: rotate).
 2. Run:
 
 ```bash
@@ -141,16 +140,16 @@ This runtime discovery is the proven pattern for Cowork scheduled tasks. If you 
 
 3. Bottom line:
 
-> *"Done. Unattended runs in this workspace authenticate as `<svc: label>`: read-only, visible to your admin, revocable any time at People & access (https://build.mixshift.ai/people; team-login organizations: mcp.mixshift.io/admin). The schedule just needs `MIXSHIFT_DATA_DIR=<data dir>` set, which it now has."*
+> *"Done. Unattended runs in this workspace authenticate as `<svc: label>`: read-only, visible to your admin, rotatable by whoever made it and revocable by your admin any time at Machine credentials (https://build.mixshift.ai/credentials; team-login organizations: mcp.mixshift.io/admin). The schedule just needs `MIXSHIFT_DATA_DIR=<data dir>` set, which it now has."*
 
 ## Failure modes
 
-- **"Unknown, expired, or already-used setup code":** codes are single-use and last 10 minutes, and they are kept only in gateway memory, so a gateway deploy mid-window drops any pending code. Mint a fresh code at People & access (https://build.mixshift.ai/people), have the user paste it, and retry right away. On an organization still on one shared team login, mint it at mcp.mixshift.io/admin for now. Nothing else to undo.
-- **`verified: false` / HTTP 401 `invalid_client` at setup (raw path):** the credential was revoked, or the secret was mistyped/rotated past its overlap. Have the user re-check People & access (team-login organizations: mcp.mixshift.io/admin) (the secret is shown only once; if it's gone, create a new credential and revoke the old one, or rotate on /admin) and re-run from Step 2-alt.
-- **Query fails with an org-admin / "cannot use this gateway" message:** the credential was created under the wrong tenant login (some tenant logins map to blocked super-admin MySQL users). Have the user sign into People & access (team-login organizations: mcp.mixshift.io/admin) with the login they normally use with this plugin and create the credential there; revoke the wrong-tenant one.
+- **"Unknown, expired, or already-used setup code":** codes are single-use and last 10 minutes, and they are kept only in gateway memory, so a gateway deploy mid-window drops any pending code. Mint a fresh code at Machine credentials (https://build.mixshift.ai/credentials), have the user paste it, and retry right away. On an organization still on one shared team login, mint it at mcp.mixshift.io/admin for now. Nothing else to undo.
+- **`verified: false` / HTTP 401 `invalid_client` at setup (raw path):** the credential was revoked, or the secret was mistyped/rotated past its overlap. Have the user re-check Machine credentials (team-login organizations: mcp.mixshift.io/admin) (the secret is shown only once; if it's gone, the person who made the credential rotates it on Machine credentials, or an admin rotates it on /admin) and re-run from Step 2-alt.
+- **Query fails with an org-admin / "cannot use this gateway" message:** the credential was created under the wrong tenant login (some tenant logins map to blocked super-admin MySQL users). Have the user sign into Machine credentials (team-login organizations: mcp.mixshift.io/admin) with the login they normally use with this plugin and create the credential there; revoke the wrong-tenant one.
 - **Query fails `insufficient_scope`:** the credential was scoped down at creation. Raw SQL needs all read scopes; have the admin issue a full-read credential for SQL automations.
 - **Scheduled run later aborts "No credentials found":** the schedule hardcoded a per-session `MIXSHIFT_DATA_DIR` whose UUID has since changed, or the credential was not anchored in a persistent folder. Fix the schedule to DISCOVER the path at runtime (the Step 5 `find /sessions …` block, or better, the `task preflight` preamble from `mx-scheduled-task`) and ensure the credential lives in a folder that survives across runs — don't re-create the credential.
-- **Setup "succeeds" but every scheduled fire starts unauthenticated anyway:** the credential was anchored into a session home because no folder was attached to the task (the Step 0 STOP case was skipped). Re-minting will not help; each new credential lands in the next throwaway sandbox. Attach a persistent folder to the task first (invoke `mx-scheduled-task`; on Cowork this is a directory request approved once during a manual Run-now), then mint ONE credential into it and revoke the stranded ones at People & access.
+- **Setup "succeeds" but every scheduled fire starts unauthenticated anyway:** the credential was anchored into a session home because no folder was attached to the task (the Step 0 STOP case was skipped). Re-minting will not help; each new credential lands in the next throwaway sandbox. Attach a persistent folder to the task first (invoke `mx-scheduled-task`; on Cowork this is a directory request approved once during a manual Run-now), then mint ONE credential into it and revoke the stranded ones at Machine credentials.
 - **User can't find the project folder for the file drop:** fall back to Option B (paste in chat + rotation note). Never have them guess paths; you printed the exact one in Step 2.
 
 ## Hard rules
@@ -158,7 +157,7 @@ This runtime discovery is the proven pattern for Cowork scheduled tasks. If you 
 - **The setup CODE in argv is fine** (single-use, 10-minute TTL, burned on exchange). The raw SECRET never is: no `echo`, no `printf`, no argv — file-writing tool or user file drop only, on the fallback path.
 - **Never echo the secret back** in any message, log, or confirmation. Refer to the credential by its label or client_id.
 - **On the raw path, delete the secret file only after `verified: true`.**
-- **One credential can serve many tasks.** A service credential is a tenant machine credential, not bound to a task, so multiple scheduled tasks sharing one anchor folder can all use the same credential (as long as its scopes cover them). Mint a distinct per-task credential only when you want finer People & access attribution or revocation, not because each task needs its own. (Note: the Cowork folder GRANT is still per-task even when the credential is shared, see mx-scheduled-task.)
+- **One credential can serve many tasks.** A service credential is a tenant machine credential, not bound to a task, so multiple scheduled tasks sharing one anchor folder can all use the same credential (as long as its scopes cover them). Mint a distinct per-task credential only when you want finer Machine credentials attribution or revocation, not because each task needs its own. (Note: the Cowork folder GRANT is still per-task even when the credential is shared, see mx-scheduled-task.)
 - **Anchor in a persistent folder; the schedule discovers the path at runtime.** The Cowork sandbox path carries a session UUID that changes between runs, so NEVER hardcode an absolute `MIXSHIFT_DATA_DIR` into a schedule. Anchor the credential in a folder attached to the task and have the schedule locate it each run (`task preflight`, or the Step 5 `find /sessions …` block). A credential addressed by a stale per-session path silently dies "No credentials found."
 - **No durable folder means STOP, not improvise.** Writing the credential into a session home and reporting success is the one failure that costs the user a setup code per scheduled fire. Fix the anchor first (`mx-scheduled-task`), then mint.
 - **Default to read-only scopes.** Ask for write scopes only when the scheduled work itself writes, and name them to the user.

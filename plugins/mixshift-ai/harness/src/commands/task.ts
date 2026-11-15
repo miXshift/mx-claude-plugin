@@ -745,8 +745,8 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
           const w =
             `a discovered credential was rejected (revoked or rotated) before this one ` +
             `verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ''}. ` +
-            'Delete stale credentials files and revoke unused credentials at People & access ' +
-            '(https://build.mixshift.ai/people; organizations on one shared team login: ' +
+            'Delete stale credentials files and revoke unused credentials at Machine credentials ' +
+            '(https://build.mixshift.ai/credentials; organizations on one shared team login: ' +
             'mcp.mixshift.io/admin) ' +
             'so discovery stays unambiguous.';
           warnings.push(w);
