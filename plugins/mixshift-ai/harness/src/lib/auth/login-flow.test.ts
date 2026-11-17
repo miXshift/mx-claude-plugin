@@ -13,6 +13,7 @@ import { request as httpRequest } from 'node:http';
 
 import { runAuthLogin } from './login-flow.js';
 import { loadCredentials } from './credentials.js';
+import { readQueue } from '../telemetry/queue.js';
 
 /**
  * Simulate the browser hitting the localhost callback. Uses Node's
@@ -292,6 +293,129 @@ describe('runAuthLogin :: device-code happy path', () => {
     const { credentials } = await loadCredentials(testDir);
     expect(credentials?.datahub?.access_token).toBe('eyJtest.token');
     expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
+  }, 15_000);
+
+  it('member sign-in: stores and reports the verified address from the token, not the typed hint', async () => {
+    const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const memberToken = `${seg({ alg: 'HS256' })}.${seg({
+      sub: 'user-777',
+      email: 'amazon+clients@example.com',
+      actor: 'jordan.lee@acmeco.com',
+      idv: 'member',
+      org: 'org_42',
+    })}.sig`;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/auth/device/init')) {
+        return jsonResponse(200, {
+          ok: true,
+          deviceCode: 'dev-code-1',
+          loginUrl: 'https://mcp.test/login?device_code=dev-code-1',
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+      }
+      if (url.endsWith('/auth/device/poll')) {
+        return jsonResponse(200, { ...validExchangeBody(), access_token: memberToken, state: 'approved' });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runAuthLogin({
+      personLabel: 'typed.hint@acmeco.com',
+      mode: 'device',
+      apiBase: 'https://mcp.test',
+      dataDirOverride: testDir,
+      postLoginDiscovery: false,
+    });
+
+    expect(result.personLabel).toBe('jordan.lee@acmeco.com');
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub?.person_label).toBe('jordan.lee@acmeco.com');
+
+    const identityEvents = (await readQueue(testDir)).filter((e) =>
+      ['auth.login_completed', 'user.identified'].includes(e.event_name),
+    );
+    expect(identityEvents.map((e) => e.event_name).sort()).toEqual(['auth.login_completed', 'user.identified']);
+    for (const ev of identityEvents) {
+      expect(ev.person_label).toBe('jordan.lee@acmeco.com');
+      expect(ev.email).toBe('amazon+clients@example.com');
+      expect(ev.payload?.actor).toMatchObject({ kind: 'human', identity: 'member_sign_in', verified: true, org_id: 'org_42' });
+      expect(ev.payload?.actor).not.toHaveProperty('overridden');
+    }
+  }, 15_000);
+
+  it('keeps the typed label when the token actor is not an email', async () => {
+    const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const oddToken = `${seg({ alg: 'HS256' })}.${seg({ sub: 'user-777', actor: 'not-an-email' })}.sig`;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/auth/device/init')) {
+        return jsonResponse(200, {
+          ok: true,
+          deviceCode: 'dev-code-1',
+          loginUrl: 'https://mcp.test/login?device_code=dev-code-1',
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+      }
+      if (url.endsWith('/auth/device/poll')) {
+        return jsonResponse(200, { ...validExchangeBody(), access_token: oddToken, state: 'approved' });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await runAuthLogin({
+      personLabel: 'alice@acmeco.com',
+      mode: 'device',
+      apiBase: 'https://mcp.test',
+      dataDirOverride: testDir,
+      postLoginDiscovery: false,
+    });
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
+  }, 15_000);
+
+  it('keeps the typed label when the actor looks like an email but fails the stored schema, so sign-in still succeeds', async () => {
+    // Microsoft guest-style address: passes a loose @-check, fails z.email().
+    const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const guestToken = `${seg({ alg: 'HS256' })}.${seg({
+      sub: 'user-777',
+      email: 'amazon+clients@example.com',
+      actor: 'x#EXT#@tenant.onmicrosoft.com',
+      idv: 'member',
+      org: 'org_42',
+    })}.sig`;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/auth/device/init')) {
+        return jsonResponse(200, {
+          ok: true,
+          deviceCode: 'dev-code-1',
+          loginUrl: 'https://mcp.test/login?device_code=dev-code-1',
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+      }
+      if (url.endsWith('/auth/device/poll')) {
+        return jsonResponse(200, { ...validExchangeBody(), access_token: guestToken, state: 'approved' });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runAuthLogin({
+      personLabel: 'alice@acmeco.com',
+      mode: 'device',
+      apiBase: 'https://mcp.test',
+      dataDirOverride: testDir,
+      postLoginDiscovery: false,
+    });
+    expect(result.ok).toBe(true);
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
+
+    // The login events carry the typed label, which differs from the token
+    // actor, so they are flagged and never counted as verified.
+    const loginEvents = (await readQueue(testDir)).filter((e) => e.event_name === 'auth.login_completed');
+    expect(loginEvents).toHaveLength(1);
+    expect(loginEvents[0]!.payload?.actor).toMatchObject({ verified: false, overridden: ['person_label'] });
   }, 15_000);
 });
 

@@ -21,6 +21,38 @@ describe('decodeAccessTokenClaims', () => {
     });
   });
 
+  it('decodes the member sign-in pair idv + org', () => {
+    const token = makeJwt({
+      sub: 'user-777',
+      email: 'ops@acmeco.com',
+      actor: 'jordan.lee@acmeco.com',
+      idv: 'member',
+      org: 'org_42',
+    });
+    expect(decodeAccessTokenClaims(token)).toEqual({
+      user_id: 'user-777',
+      email: 'ops@acmeco.com',
+      actor: 'jordan.lee@acmeco.com',
+      idv: 'member',
+      org: 'org_42',
+    });
+  });
+
+  it('ignores an idv value other than member, and an org without idv', () => {
+    expect(decodeAccessTokenClaims(makeJwt({ actor: 'a@b.com', idv: 'admin', org: 'org_1' }))).toEqual({
+      user_id: undefined,
+      email: undefined,
+      actor: 'a@b.com',
+    });
+    expect(decodeAccessTokenClaims(makeJwt({ actor: 'a@b.com', org: 'org_1' })).org).toBeUndefined();
+  });
+
+  it('keeps idv but drops an empty or non-string org', () => {
+    const claims = decodeAccessTokenClaims(makeJwt({ actor: 'a@b.com', idv: 'member', org: 7 }));
+    expect(claims.idv).toBe('member');
+    expect(claims.org).toBeUndefined();
+  });
+
   it('falls back to a legacy user_id claim when sub is absent', () => {
     const token = makeJwt({ user_id: 'user-42', email: 'a@b.com', actor: 'c@b.com' });
     expect(decodeAccessTokenClaims(token).user_id).toBe('user-42');

@@ -15,9 +15,9 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Plugin version
 - Which install path you used (Cowork personal / Cowork org / Claude Code / CLI direct)
 - Operating system family + Node version
-- The work email (`person_label`) you provided during sign-in, which links anonymous installs to MixShift accounts so we can see which people and orgs use the plugin
+- Your organization's MixShift login (`email`, recorded on every signed-in event; for an organization still on one shared login, that is the team address) and your own work email (`person_label`), kept as two separate values. If your organization uses member sign-in with Google or Microsoft, your work email is the address you signed in with, and the plugin reports that it was verified that way (our servers do not re-check that report yet). On a shared team login it is the work email you typed when you signed in, and we record it as typed by you, not verified. These link installs to MixShift accounts so we can see which people and orgs use the plugin
 - A CLI user-agent string (`mixshift-cli/<version> ...`) and the surface you ran on (Cowork, Claude Code, or direct CLI)
-- An actor tag on every event: whether it came from a person, an automated service credential, or an anonymous pre-sign-in install. For a service credential (unattended automation) we also record the owning account, who minted the credential, its label / purpose and granted scopes, and the network IP the auth service saw when it issued the token, so we can tell which automation is doing what
+- An actor tag on every event: whether it came from a person, an automated service credential, or an anonymous pre-sign-in install. For a person we also record your organization's account id, how you were identified (member sign-in with Google or Microsoft, or a work email typed on a shared login), the organization you signed in to (member sign-in only), and whether a command supplied the email itself instead of reading it from your sign-in. For a service credential (unattended automation) we also record the owning account, who minted the credential, its label / purpose and granted scopes, and the network IP the auth service saw when it issued the token, so we can tell which automation is doing what
 
 **Onboarding funnel:**
 - Welcome viewed
@@ -107,13 +107,14 @@ Three concrete uses:
 2. **Query optimization.** MixShift's warehouse has decades of accumulated SQL. The library queries we ship are tuned, but ad-hoc customer queries can be slow. We can see which queries are slowest (by template) and either ship covering indexes, materialized views, or upgrade those queries into the library.
 3. **Feature prioritization.** Which skills get used, which trigger phrases match, which never do. Tells us where to spend engineering time.
 
-This is not a marketing data play. We don't sell it, don't share it with third parties, don't use it for advertising. It's strictly product analytics for an internal team iterating on the plugin.
+This is not a marketing data play. We don't sell it and don't use it for advertising. It's product analytics for the team building the plugin. The one other use is our release newsletter (see "Where it goes"), which is how we tell plugin users what shipped.
 
 ## Where it goes
 
 - **MixShift's Supabase backend.** A dedicated Postgres database operated by MixShift, accessed only by MixShift engineering. The plugin sends events to the `mcp.mixshift.io` gateway (the same domain it already uses to sign in), which records them here; the plugin holds no database credential of its own.
-- **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Data stays inside MixShift infrastructure.
-- **MixShift ops Discord channel (a subset only):** plugin crashes, feedback submissions, table-access requests, and (on the retired legacy raw-MySQL auth path) IP whitelist requests. These are forwarded server-side from the same Supabase events table: a database trigger calls an internal Edge Function that posts a summary to the ops channel. The plugin itself never holds a Discord URL; it only sends events to the `mcp.mixshift.io` gateway. The full event firehose stays in Supabase.
+- **No third-party analytics services.** No PostHog cloud, no Mixpanel, no Google Analytics. Usage data stays inside MixShift infrastructure; the only thing that leaves it is your work email, for the release newsletter below.
+- **The MixShift release newsletter (sent with Mailchimp).** The newsletter is how we tell plugin users what shipped each week. Once a week we add the work email of each person using the plugin to it; shared team logins are not added. Mailchimp only sends the email for us. Every issue has an unsubscribe link, and once you unsubscribe we never add you back.
+- **MixShift's internal Discord channels (a subset only):** feedback you send goes to a feedback channel. Plugin crashes, install and sign-in milestones, skills you share, table-access requests, and (on the retired legacy raw-MySQL auth path) IP whitelist requests go to a separate internal alerts channel. Each post names who it came from: the person's work email and the organization login, or for automation, the credential and the person who made it. These are forwarded server-side from the same Supabase events table: a database trigger calls an internal Edge Function that posts a summary to the right channel. The plugin itself never holds a Discord URL; it only sends events to the `mcp.mixshift.io` gateway. The full event firehose stays in Supabase.
 
 ## Retention
 

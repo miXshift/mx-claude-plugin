@@ -44,7 +44,8 @@ import { spawn } from 'node:child_process';
 
 import { saveDatahub, revokeReplacedSession } from './credentials.js';
 import { resolveClientId } from './client-id.js';
-import type { DatahubCreds } from './schema.js';
+import { decodeAccessTokenClaims } from './token-claims.js';
+import { datahubCredsSchema, type DatahubCreds } from './schema.js';
 import { loadProfile } from '../profile/load.js';
 import { saveProfile } from '../profile/save.js';
 import { track, EventName } from '../telemetry/index.js';
@@ -253,7 +254,7 @@ export async function pollDeviceFlow(
         ok: true,
         mode: 'device',
         apiBase,
-        personLabel: opts.personLabel,
+        personLabel: datahub.person_label,
         email: poll.email,
         userId: poll.user_id,
         clientId: poll.client_id ?? clientId,
@@ -537,7 +538,7 @@ async function runPkceLogin(opts: ResolvedOptions): Promise<AuthLoginResult> {
       ok: true,
       mode: 'pkce',
       apiBase: opts.apiBase,
-      personLabel: opts.personLabel,
+      personLabel: datahub.person_label,
       email: exchanged.email,
       userId: exchanged.user_id,
       clientId: exchanged.client_id ?? opts.clientId,
@@ -808,7 +809,7 @@ async function runDeviceLogin(
         ok: true,
         mode: 'device',
         apiBase: opts.apiBase,
-        personLabel: opts.personLabel,
+        personLabel: datahub.person_label,
         email: poll.email,
         userId: poll.user_id,
         clientId: poll.client_id ?? opts.clientId,
@@ -894,7 +895,7 @@ function toDatahubCreds(
     refresh_expires_at: resp.refresh_expires_at,
     user_id: resp.user_id,
     email: resp.email,
-    person_label: opts.personLabel,
+    person_label: signedInPersonLabel(resp.access_token, opts.personLabel),
     device_label: opts.deviceLabel,
     client_id: opts.clientId,
   };
@@ -978,6 +979,23 @@ async function postLoginDiscoverBestEffort(
     );
     // Discovery failure must not break the login.
   }
+}
+
+/**
+ * The person the new session belongs to, for the stored `person_label` and the
+ * login telemetry. The typed `--person-label` is only a hint: under member
+ * sign-in (Google or Microsoft) the person proves who they are on the sign-in
+ * page and the gateway stamps that verified address as the token's `actor`
+ * claim, which can differ from the hint. Under the shared login the actor is
+ * the typed address. Falls back to the hint when the token is opaque or its
+ * actor would not pass the stored field's own schema: a value that fails it
+ * would make saveCredentials throw after the old session is already revoked,
+ * and every retry would get the same actor (for example an unusual Microsoft
+ * address), locking the person out.
+ */
+function signedInPersonLabel(accessToken: string, typed: string): string {
+  const actor = decodeAccessTokenClaims(accessToken).actor;
+  return actor && datahubCredsSchema.shape.person_label.safeParse(actor).success ? actor : typed;
 }
 
 function isLikelyEmail(s: string): boolean {
