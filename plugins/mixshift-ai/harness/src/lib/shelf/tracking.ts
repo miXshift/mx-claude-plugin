@@ -29,6 +29,7 @@ import {
   shelfRequest,
   unrecognizedShape,
   type ShelfClientOptions,
+  type ShelfCountry,
   type ShelfFailure,
   type ShelfSurface,
 } from './client.js';
@@ -110,6 +111,8 @@ export interface ShelfTrackingWritten {
 export interface ShelfTrackingPutInput {
   keywords: string[];
   zips: string[];
+  /** The marketplace country; the service keeps the set's own (us for a new set) when absent. */
+  country?: ShelfCountry;
   surfaces?: ShelfSurface[];
   asins?: string[];
   pages?: number;
@@ -138,7 +141,7 @@ export function normalizeKeyword(k: string): string {
 
 export async function shelfTrackingList(opts: ShelfClientOptions = {}): Promise<ShelfTrackingList | ShelfFailure> {
   const r = await shelfRequest({ method: 'GET', path: '/api/shelf/tracking' }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
-  if (!r.ok) return trackingFailure(r);
+  if (!r.ok) return trackingFailure(r, { write: false });
   const j = r.json as Record<string, unknown>;
   if (j.ok !== true || !Array.isArray(j.sets)) return unrecognizedShape(r.httpStatus, 'tracking list');
   const sets: ShelfTrackingSet[] = [];
@@ -165,7 +168,7 @@ export async function shelfTrackingList(opts: ShelfClientOptions = {}): Promise<
 
 export async function shelfTrackingGet(id: string, opts: ShelfClientOptions = {}): Promise<ShelfTrackingOne | ShelfFailure> {
   const r = await shelfRequest({ method: 'GET', path: setPath(id) }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
-  if (!r.ok) return trackingFailure(r, id);
+  if (!r.ok) return trackingFailure(r, { setId: id, write: false });
   const j = r.json as Record<string, unknown>;
   const set = j.ok === true ? parseSet(j.set) : null;
   if (!set) return unrecognizedShape(r.httpStatus, 'tracking set');
@@ -174,7 +177,8 @@ export async function shelfTrackingGet(id: string, opts: ShelfClientOptions = {}
 
 /** Create the set, or replace it whole when the id is taken. */
 export async function shelfTrackingPut(id: string, input: ShelfTrackingPutInput, opts: ShelfClientOptions = {}): Promise<ShelfTrackingWritten | ShelfFailure> {
-  return write({ method: 'PUT', path: setPath(id), body: clean({ ...input }) }, id, opts);
+  // No set id for the failure reading: a PUT creates, so a 404 there is never "no such set".
+  return write({ method: 'PUT', path: setPath(id), body: clean({ ...input }) }, undefined, opts);
 }
 
 export async function shelfTrackingPatch(id: string, input: ShelfTrackingPatchInput, opts: ShelfClientOptions = {}): Promise<ShelfTrackingWritten | ShelfFailure> {
@@ -183,7 +187,7 @@ export async function shelfTrackingPatch(id: string, input: ShelfTrackingPatchIn
 
 export async function shelfTrackingDelete(id: string, opts: ShelfClientOptions = {}): Promise<{ ok: true } | ShelfFailure> {
   const r = await shelfRequest({ method: 'DELETE', path: setPath(id) }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
-  if (!r.ok) return trackingFailure(r, id);
+  if (!r.ok) return trackingFailure(r, { setId: id, write: true });
   if ((r.json as { ok?: unknown }).ok !== true) return unrecognizedShape(r.httpStatus, 'tracking delete');
   return { ok: true };
 }
@@ -194,11 +198,11 @@ export async function shelfTrackingDelete(id: string, opts: ShelfClientOptions =
 
 async function write(
   spec: { method: 'PUT' | 'PATCH'; path: string; body: Record<string, unknown> },
-  id: string,
+  setId: string | undefined,
   opts: ShelfClientOptions,
 ): Promise<ShelfTrackingWritten | ShelfFailure> {
   const r = await shelfRequest(spec, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
-  if (!r.ok) return trackingFailure(r, id);
+  if (!r.ok) return trackingFailure(r, { setId, write: true });
   const j = r.json as Record<string, unknown>;
   const set = j.ok === true ? parseSet(j.set) : null;
   if (!set) return unrecognizedShape(r.httpStatus, 'tracking write');
@@ -220,28 +224,38 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** What a failure came from: the set the route names (a 404 there can mean "no such set"; a PUT names none, it creates), and whether it was a write. */
+export interface TrackingCall {
+  setId?: string;
+  write: boolean;
+}
+
+/** The service's line for a route it does not have: the tracking routes are not deployed there yet. */
+const ENDPOINT_MISSING = /no such shelf endpoint/i;
+
 /**
- * Tracking-specific reading of a failure. The role refusal and the allowance
- * refusal are told apart by their shape when the service names them with a
- * kind this build does not know: a 403 on a tracking route is the role
- * refusal, and an envelope carrying `projected_calls_per_month` is the
- * allowance refusal (also when it comes as shelf_allowance_exhausted, which
- * otherwise means this month's requests are used up). The service's kind
- * stays in `unrecognizedKind`, and its friendly line is kept. A 404 on a set
- * is "no such set", not a missing endpoint, unless the service said otherwise.
+ * Tracking-specific reading of a failure:
+ *   - a not_found on a set route with no line of its own is "no such set";
+ *   - a not_found saying "no such shelf endpoint" (or a bare 404) is the tracking routes missing on the service:
+ *     tracking_unavailable, never "no such set";
+ *   - an envelope carrying `projected_calls_per_month` is the allowance refusal, also when it comes as an
+ *     unrecognized kind or as shelf_allowance_exhausted (which otherwise means this month's requests are used up);
+ *   - on a write only, a 403 with a kind this build does not know is the role refusal (forbidden).
+ * The service's kind stays in `unrecognizedKind`, and its friendly line is kept unless it was a default.
  */
-export function trackingFailure(f: ShelfFailure, id?: string): ShelfFailure {
+export function trackingFailure(f: ShelfFailure, call: TrackingCall): ShelfFailure {
   const defaulted = f.friendly === defaultFriendly(f.kind);
+  if (f.kind === 'not_found' && call.setId !== undefined && defaulted) {
+    return { ...f, friendly: `There is no tracking set "${call.setId}" in your organization. Run \`mixshift shelf tracking list\` for the sets there are.` };
+  }
+  if ((f.kind === 'not_found' && ENDPOINT_MISSING.test(f.friendly)) || (f.kind === 'unknown' && f.httpStatus === 404)) {
+    return { ...f, kind: 'tracking_unavailable', friendly: defaultFriendly('tracking_unavailable') };
+  }
   let kind = f.kind;
   if (f.projectedCallsPerMonth !== undefined && (f.unrecognizedKind !== undefined || f.kind === 'shelf_allowance_exhausted')) kind = 'tracking_over_allowance';
-  else if (f.unrecognizedKind !== undefined && f.httpStatus === 403) kind = 'forbidden';
-  if (kind === f.kind && !(defaulted && kind === 'not_found' && id !== undefined)) return f;
-  const friendly = !defaulted
-    ? f.friendly
-    : kind === 'not_found' && id !== undefined
-      ? `There is no tracking set "${id}" in your organization. Run \`mixshift shelf tracking list\` for the sets there are.`
-      : defaultFriendly(kind);
-  return { ...f, kind, friendly };
+  else if (call.write && f.unrecognizedKind !== undefined && f.httpStatus === 403) kind = 'forbidden';
+  if (kind === f.kind) return f;
+  return { ...f, kind, friendly: defaulted ? defaultFriendly(kind) : f.friendly };
 }
 
 function numOrNull(v: unknown): number | null {

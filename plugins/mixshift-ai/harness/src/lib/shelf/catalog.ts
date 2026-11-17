@@ -103,7 +103,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history ' +
       'readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. ' +
       'Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the ' +
-      'monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,800 a month. A change that ' +
+      'monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,860 a month (the projection counts 31 days). A change that ' +
       'would take the projected monthly use past the allowance is refused; removing and pausing always go through.',
     inputs:
       'list | show <set> | create <set> --keyword K --zip Z [--view desktop|mobile] [--asin A] [--pages N] [--note T] | ' +

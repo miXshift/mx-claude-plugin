@@ -101,16 +101,17 @@ const LIMITS = { max_keywords: 50, max_zips: 10, max_pages: 5, max_asins: 100, m
 const PAUSED: ShelfTrackingSet = { ...SET, id: 'granola-test', keywords: ['granola'], zips: ['10001'], surfaces: ['desktop'], asins: [], note: null, calls_per_day: 1, enabled: false, last_run_at: null, last_run_date: null, last_run_summary: null };
 const LIST = { ok: true as const, sets: [SET, PAUSED], projected_calls_per_month: 248, allowance: 2000, can_edit: true, limits: LIMITS };
 const written = (set: ShelfTrackingSet, projected = 248) => ({ ok: true as const, set, projected_calls_per_month: projected, allowance: 2000 });
+// Envelopes as the service's route tests pin them (forbidden: GW-143; tracking_over_allowance: GW-144; the per-set cap: GW-142).
 const notFound: ShelfFailure = { ok: false, kind: 'not_found', friendly: 'Your organization has no rank tracking set with that id.', httpStatus: 404, source: 'request', retryable: false };
 const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', httpStatus: 403, source: 'account', retryable: false };
 /** The per-set cap, as the service answers it: invalid_request with both numbers. */
 const CAP: ShelfFailure = {
   ok: false,
   kind: 'invalid_request',
-  friendly: 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.',
-  message: 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.',
+  friendly: 'keywords x zips x surfaces x pages is 400 calls a day; the limit is 200. Split it into more sets or trim it.',
+  message: 'keywords x zips x surfaces x pages is 400 calls a day; the limit is 200. Split it into more sets or trim it.',
   httpStatus: 400,
-  callsPerDay: 240,
+  callsPerDay: 400,
   maxCallsPerDayPerSet: 200,
   source: 'request',
   retryable: false,
@@ -118,11 +119,13 @@ const CAP: ShelfFailure = {
 const OVER: ShelfFailure = {
   ok: false,
   kind: 'tracking_over_allowance',
-  friendly: 'This change would bring your rank tracking past your monthly allowance.',
+  friendly:
+    "This change would bring your rank tracking to 124 shelf requests a month (calls a day x 31), over your organization's monthly allowance of 100. " +
+    'Track fewer keywords, zips, views or pages, pause a set, or get more.',
   httpStatus: 402,
-  projectedCallsPerMonth: 2232,
-  allowance: 2000,
-  requestMore: 'Ask MixShift to raise it.',
+  projectedCallsPerMonth: 124,
+  allowance: 100,
+  requestMore: 'To track more, ask MixShift to raise your organization\'s shelf allowance: from the MixShift plugin say "request more shelf requests".',
   source: 'account',
   retryable: false,
 };
@@ -242,7 +245,7 @@ describe('shelf tracking create', () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
     await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'granola', '--zip', '10001');
     expect(shelfTrackingPut).not.toHaveBeenCalled();
-    expect(stderr).toContain('A tracking set "trail-snacks" already exists (2 keywords, 8 calls a day). Nothing was changed.');
+    expect(stderr).toContain('A tracking set "trail-snacks" already exists, with other keywords, zips or settings (2 keywords, 8 calls a day). Nothing was changed.');
     expect(stderr).toContain('run create again with --replace');
     expect(process.exitCode).toBe(12);
     expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'tracking_set_exists', payload: { action: 'create', stage: 'lookup' } });
@@ -261,35 +264,65 @@ describe('shelf tracking create', () => {
     expect(lastTrack().payload).toMatchObject({ action: 'replace', keywords_added: 1, keywords_removed: 2 });
   });
 
-  it('refuses bad input before any call', async () => {
-    const cases: string[][] = [
-      ['create', 'trail-snacks', '--zip', '10001'], // no keyword
-      ['create', 'trail-snacks', '--keyword', 'trail mix'], // no zip
-      ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--view', 'tablet'],
-      ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '6'],
-      ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--asin', 'B0'],
-      ['create', 'trail-snacks', '--keyword', '   ', '--zip', '10001'],
-      ['create', '-x', '--keyword', 'trail mix', '--zip', '10001'],
-    ];
-    for (const c of cases) {
-      process.exitCode = undefined;
-      try {
-        await run('--json', 'shelf', 'tracking', ...c);
-      } catch {
-        // commander refuses `-x` as an unknown option before the action runs: also "before any call"
-      }
-    }
+  it.each([
+    ['no keyword', ['create', 'trail-snacks', '--zip', '10001'], '--keyword is required'],
+    ['no zip', ['create', 'trail-snacks', '--keyword', 'trail mix'], '--zip is required'],
+    ['a bad view', ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--view', 'tablet'], '--view must be desktop or mobile'],
+    ['too many pages', ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '6'], '--pages must be a whole number from 1 to 5'],
+    ['a bad ASIN', ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--asin', 'B0'], 'is not an ASIN'],
+    ['an empty keyword', ['create', 'trail-snacks', '--keyword', '   ', '--zip', '10001'], '--keyword cannot be empty'],
+    ['a bad country', ['create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--country', 'xx'], '--country must be one of'],
+    ['a bad id', ['create', 'Trail_Snacks', '--keyword', 'trail mix', '--zip', '10001'], 'lower-case letters, digits or hyphens'],
+  ])('refuses %s before any call (exit 1, a JSON error)', async (_what, args, message) => {
+    await run('--json', 'shelf', 'tracking', ...(args as string[]));
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(stdout)).toEqual({ status: 'error', message: expect.stringContaining(message as string) });
     expect(shelfTrackingGet).not.toHaveBeenCalled();
     expect(shelfTrackingPut).not.toHaveBeenCalled();
-    expect(process.exitCode === 1 || process.exitCode === undefined).toBe(true);
+  });
+
+  it('an unknown option is refused by the parser before the action runs', async () => {
+    await expect(run('--json', 'shelf', 'tracking', 'create', '-x', '--keyword', 'trail mix', '--zip', '10001')).rejects.toThrow(/unknown option/);
+    expect(shelfTrackingGet).not.toHaveBeenCalled();
+    expect(shelfTrackingPut).not.toHaveBeenCalled();
+  });
+
+  it('--country goes on the PUT; a create run again on a set already as asked writes nothing and says so', async () => {
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
+    vi.mocked(shelfTrackingPut).mockResolvedValueOnce(written({ ...SET, country: 'ca' }));
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', 'M5V 3L9', '--country', 'CA');
+    expect(shelfTrackingPut).toHaveBeenCalledWith('trail-snacks', { keywords: ['trail mix'], zips: ['M5V 3L9'], country: 'ca' }, { dataDirOverride: undefined });
+
+    vi.mocked(shelfTrackingPut).mockClear();
+    stdout = '';
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
+    vi.mocked(shelfTrackingList).mockResolvedValueOnce(LIST);
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'Nut Mix', '--keyword', 'trail mix', '--zip', '60601', '--zip', '10001', '--view', 'mobile', '--view', 'desktop');
+    expect(shelfTrackingPut).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+    expect(stdout).toContain('**Tracking set `trail-snacks` already exists as asked**');
+    expect(stdout).toContain('Projected monthly use: 248 of 2000');
+    expect(lastTrack()).toMatchObject({ outcome: 'ok', payload: { action: 'create', unchanged: true, keywords: 2 } });
+
+    stdout = '';
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
+    vi.mocked(shelfTrackingList).mockResolvedValueOnce(LIST);
+    await run('--json', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--keyword', 'nut mix', '--zip', '10001', '--zip', '60601');
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', action: 'create', unchanged: true, set: { id: 'trail-snacks' }, projected_calls_per_month: 248 });
+
+    // The same keywords on another view is a different set: refused as taken.
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--keyword', 'nut mix', '--zip', '10001', '--zip', '60601', '--view', 'mobile');
+    expect(process.exitCode).toBe(12);
+    expect(shelfTrackingPut).not.toHaveBeenCalled();
   });
 
   it('the allowance refusal shows the friendly line, both numbers and how to make room (exit 10)', async () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
     vi.mocked(shelfTrackingPut).mockResolvedValueOnce(OVER);
     await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001');
-    expect(stderr).toContain('✗ This change would bring your rank tracking past your monthly allowance.');
-    expect(stderr).toContain('projected monthly use: 2232 shelf requests; allowance: 2000 a month');
+    expect(stderr).toContain('✗ This change would bring your rank tracking to 124 shelf requests a month');
+    expect(stderr).toContain('projected monthly use: 124 shelf requests; allowance: 100 a month');
     expect(stderr).toContain('mixshift shelf tracking pause <set>');
     expect(stderr).toContain('request more shelf requests');
     expect(process.exitCode).toBe(10);
@@ -301,8 +334,8 @@ describe('shelf tracking create', () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
     vi.mocked(shelfTrackingPut).mockResolvedValueOnce(CAP);
     await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '5');
-    expect(stderr).toContain('✗ keywords x zips x surfaces x pages is 240 calls a day; the limit is 200.');
-    expect(stderr).toContain('calls a day for this set: 240; the most one set may make: 200');
+    expect(stderr).toContain('✗ keywords x zips x surfaces x pages is 400 calls a day; the limit is 200.');
+    expect(stderr).toContain('calls a day for this set: 400; the most one set may make: 200');
     expect(process.exitCode).toBe(15);
     expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'invalid_request', payload: { action: 'create', stage: 'write', http_status: 400 } });
 
@@ -310,7 +343,7 @@ describe('shelf tracking create', () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
     vi.mocked(shelfTrackingPut).mockResolvedValueOnce(CAP);
     await run('--json', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '5');
-    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'invalid_request', calls_per_day: 240, max_calls_per_day_per_set: 200 });
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'invalid_request', calls_per_day: 400, max_calls_per_day_per_set: 200 });
     noValuesInTelemetry();
   });
 
@@ -321,10 +354,10 @@ describe('shelf tracking create', () => {
     expect(JSON.parse(stdout)).toMatchObject({
       status: 'error',
       failure_kind: 'tracking_over_allowance',
-      message: 'This change would bring your rank tracking past your monthly allowance.',
-      projected_calls_per_month: 2232,
-      allowance: 2000,
-      request_more: 'Ask MixShift to raise it.',
+      message: OVER.friendly,
+      projected_calls_per_month: 124,
+      allowance: 100,
+      request_more: expect.stringContaining('request more shelf requests'),
     });
     expect(process.exitCode).toBe(10);
   });
@@ -393,11 +426,42 @@ describe('shelf tracking add / remove', () => {
     noValuesInTelemetry();
   });
 
+  it('forbidden with reason role: who can make the change, and the reason reaches --json and telemetry', async () => {
+    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce({ ...FORBIDDEN, reason: 'role' });
+    await run('shelf', 'tracking', 'pause', 'trail-snacks');
+    expect(stderr).toContain('Ask an owner, admin or manager in your organization');
+    expect(stderr).not.toContain('Sign in to MixShift as yourself');
+    expect(process.exitCode).toBe(11);
+    expect(lastTrack().payload).toMatchObject({ kind_failed: 'forbidden', reason: 'role' });
+
+    stdout = '';
+    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce({ ...FORBIDDEN, reason: 'role' });
+    await run('--json', 'shelf', 'tracking', 'pause', 'trail-snacks');
+    expect(JSON.parse(stdout)).toMatchObject({ failure_kind: 'forbidden', reason: 'role' });
+  });
+
+  it('forbidden with reason identity_not_verified: the service line and "sign in as yourself", never "ask an owner"', async () => {
+    const shared: ShelfFailure = {
+      ...FORBIDDEN,
+      reason: 'identity_not_verified',
+      friendly: 'Changing rank tracking needs a verified work sign-in. Sign in as yourself with your work account, not the team login.',
+    };
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
+    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(shared);
+    await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
+    expect(stderr).toContain('✗ Changing rank tracking needs a verified work sign-in.');
+    expect(stderr).toContain('Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`)');
+    expect(stderr).not.toContain('Ask an owner');
+    expect(process.exitCode).toBe(11);
+    expect(lastTrack().payload).toMatchObject({ kind_failed: 'forbidden', reason: 'identity_not_verified' });
+    noValuesInTelemetry();
+  });
+
   it('add over the per-set cap shows both numbers (exit 15)', async () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(CAP);
     await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
-    expect(stderr).toContain('calls a day for this set: 240; the most one set may make: 200');
+    expect(stderr).toContain('calls a day for this set: 400; the most one set may make: 200');
     expect(stderr).toContain('Trim it, or split it into more sets.');
     expect(process.exitCode).toBe(15);
   });
@@ -429,17 +493,17 @@ describe('shelf tracking pause / resume', () => {
     noValuesInTelemetry();
   });
 
-  it('resume PATCHes enabled true; --json is the write envelope', async () => {
+  it('resume PATCHes enabled true and cadence daily, so a cadence-off set really restarts; --json is the write envelope', async () => {
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(written(SET));
     await run('--json', 'shelf', 'tracking', 'resume', 'trail-snacks');
-    expect(shelfTrackingPatch).toHaveBeenCalledWith('trail-snacks', { enabled: true }, { dataDirOverride: undefined });
+    expect(shelfTrackingPatch).toHaveBeenCalledWith('trail-snacks', { enabled: true, cadence: 'daily' }, { dataDirOverride: undefined });
     expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', action: 'resume', id: 'trail-snacks', set: { enabled: true }, projected_calls_per_month: 248, allowance: 2000 });
   });
 
   it('a resume refused for the allowance shows both numbers (exit 10)', async () => {
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(OVER);
     await run('shelf', 'tracking', 'resume', 'trail-snacks');
-    expect(stderr).toContain('projected monthly use: 2232 shelf requests; allowance: 2000 a month');
+    expect(stderr).toContain('projected monthly use: 124 shelf requests; allowance: 100 a month');
     expect(process.exitCode).toBe(10);
   });
 });
@@ -484,6 +548,14 @@ describe('shelf tracking delete', () => {
     expect(process.exitCode).toBeUndefined();
   });
 
+  it('a delete run again after a lost answer meets not_found and says it may already be deleted', async () => {
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
+    await run('shelf', 'tracking', 'delete', 'trail-snacks', '--yes');
+    expect(shelfTrackingDelete).not.toHaveBeenCalled();
+    expect(stderr).toContain('it may already be deleted');
+    expect(process.exitCode).toBe(7);
+  });
+
   it('the role refusal on delete is shown and nothing else is called', async () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
     vi.mocked(shelfTrackingDelete).mockResolvedValueOnce(FORBIDDEN);
@@ -491,5 +563,79 @@ describe('shelf tracking delete', () => {
     expect(stderr).toContain(FORBIDDEN.friendly);
     expect(shelfTrackingList).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(11);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The real client under the commands, driven through the service's own envelopes (injected fetch, no disk).
+// ---------------------------------------------------------------------------
+
+describe('through the real client: tracking not deployed on the service yet', () => {
+  type Actual = typeof import('../lib/shelf/tracking.js');
+  // The service's answer for a route it does not have (routes/shelf.ts).
+  const NO_ENDPOINT = { ok: false, kind: 'not_found', friendly: 'No such shelf endpoint.', source: 'request', retryable: false };
+  const NO_SET = { ok: false, kind: 'not_found', friendly: 'Your organization has no rank tracking set with that id.', source: 'request', retryable: false };
+  const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  let fetchImpl: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<Actual>('../lib/shelf/tracking.js');
+    fetchImpl = vi.fn();
+    const via = { apiBaseOverride: 'https://svc.test', tokenProvider: async () => 'tok', fetchImpl: fetchImpl as unknown as typeof fetch };
+    vi.mocked(shelfTrackingList).mockImplementation((o) => actual.shelfTrackingList({ ...o, ...via }));
+    vi.mocked(shelfTrackingGet).mockImplementation((id, o) => actual.shelfTrackingGet(id, { ...o, ...via }));
+    vi.mocked(shelfTrackingPut).mockImplementation((id, b, o) => actual.shelfTrackingPut(id, b, { ...o, ...via }));
+  });
+
+  const unavailable = () => {
+    expect(stderr).toContain('Rank tracking is not available on the MixShift service yet, so nothing was read or changed.');
+    expect(stderr).toContain('track these keywords');
+    expect(stderr).not.toContain('shows the sets your organization has');
+    expect(process.exitCode).toBe(6);
+  };
+
+  it('list', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_ENDPOINT));
+    await run('shelf', 'tracking', 'list');
+    unavailable();
+    expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'tracking_unavailable', payload: { action: 'list', http_status: 404 } });
+  });
+
+  it('list --json', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_ENDPOINT));
+    await run('--json', 'shelf', 'tracking', 'list');
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'tracking_unavailable', http_status: 404 });
+    expect(process.exitCode).toBe(6);
+  });
+
+  it('show', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_ENDPOINT));
+    await run('shelf', 'tracking', 'show', 'trail-snacks');
+    unavailable();
+  });
+
+  it('create: the lookup meets the missing route, and nothing is written', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_ENDPOINT));
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001');
+    unavailable();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('create: a free id, then a PUT that meets the missing route, never says "no such set"', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_SET)).mockResolvedValueOnce(respond(404, NO_ENDPOINT));
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect((fetchImpl.mock.calls[1][1] as RequestInit).method).toBe('PUT');
+    unavailable();
+    expect(lastTrack().payload).toMatchObject({ action: 'create', stage: 'write', kind_failed: 'tracking_unavailable' });
+  });
+
+  it('show of a set that is not there is "no such set" with the list hint (the deployed case)', async () => {
+    fetchImpl.mockResolvedValueOnce(respond(404, NO_SET));
+    await run('shelf', 'tracking', 'show', 'trail-snacks');
+    expect(stderr).toContain('no rank tracking set with that id');
+    expect(stderr).toContain('`mixshift shelf tracking list` shows the sets your organization has.');
+    expect(process.exitCode).toBe(7);
   });
 });

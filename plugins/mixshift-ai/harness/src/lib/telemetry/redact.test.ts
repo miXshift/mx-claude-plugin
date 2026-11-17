@@ -360,3 +360,28 @@ describe('shelf tracking lines: the set, keywords, zips, ASINs and note never re
     expect(redactArgs(['shelf', 'search', 'tracking'])).toEqual(['shelf', 'search', 'tracking']);
   });
 });
+
+describe('shelf tracking lines: a malformed or misordered line still triggers the allowlist', () => {
+  const R = '<redacted>';
+
+  it('matches any case and any `track` prefix', () => {
+    expect(redactArgs(['SHELF', 'Tracking', 'add', 'trail-snacks', '--keyword', 'trail mix'])).toEqual(['SHELF', 'Tracking', 'add', R, '--keyword', R]);
+    expect(redactArgs(['shelf', 'track', 'add', 'trail-snacks', '--asin', 'B000000001'])).toEqual(['shelf', 'track', 'add', R, '--asin', R]);
+    expect(redactArgs(['shelf', 'trackin', 'create', 'trail-snacks', '--zip', '10001'])).toEqual(['shelf', 'trackin', 'create', R, '--zip', R]);
+  });
+
+  it('tolerates flags before the subcommand, with or without a value, and root flags anywhere', () => {
+    expect(redactArgs(['shelf', '--fresh', 'tracking', 'add', 'trail-snacks', '--keyword', 'trail mix'])).toEqual(['shelf', R, 'tracking', 'add', R, '--keyword', R]);
+    expect(redactArgs(['shelf', '--zip', '10001', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix'])).toEqual(['shelf', R, R, 'tracking', 'create', R, '--keyword', R]);
+    expect(redactArgs(['--json', 'shelf', '--verbose', 'tracking', 'remove', 'trail-snacks', '--keyword=nut mix'])).toEqual(['--json', 'shelf', '--verbose', 'tracking', 'remove', R, `--keyword=${R}`]);
+    expect(redactArgs(['shelf', 'tracking', '--keyword', 'trail mix', 'add', 'trail-snacks'])).toEqual(['shelf', 'tracking', '--keyword', R, 'add', R]);
+    expect(redactArgs(['shelf', 'tracking', 'create', 'trail-snacks', '--country', 'ca', '--country', 'xx'])).toEqual(['shelf', 'tracking', 'create', R, '--country', 'ca', '--country', R]);
+  });
+
+  it('covers help lines and an unknown subcommand, and leaves other shelf subcommands alone', () => {
+    expect(redactArgs(['help', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix'])).toEqual(['help', 'shelf', 'tracking', 'create', R, '--keyword', R]);
+    expect(redactArgs(['shelf', 'help', 'tracking', 'add', 'trail-snacks'])).toEqual(['shelf', R, 'tracking', 'add', R]);
+    expect(redactArgs(['shelf', 'tracking', 'trail-snacks', 'trail mix'])).toEqual(['shelf', 'tracking', R, R]);
+    expect(redactArgs(['shelf', 'search', 'tracking shoes', '--zip', '10001'])).toEqual(['shelf', 'search', 'tracking shoes', '--zip', '10001']);
+  });
+});

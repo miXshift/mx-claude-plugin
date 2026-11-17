@@ -44,7 +44,7 @@ harness_commands:
   - mixshift shelf rank-history <query> [--zip <zip>] [--view desktop|mobile] [--from <date>] [--to <date>] [--asin <asin>] [--country <code>]
   - mixshift shelf tracking list
   - mixshift shelf tracking show <id>
-  - mixshift shelf tracking create <id> --keyword <keyword> --zip <zip> [--view desktop|mobile] [--asin <asin>] [--pages <n>] [--note <text>] [--replace]
+  - mixshift shelf tracking create <id> --keyword <keyword> --zip <zip> [--view desktop|mobile] [--asin <asin>] [--pages <n>] [--note <text>] [--country <code>] [--replace]
   - mixshift shelf tracking add <id> [--keyword <keyword>] [--asin <asin>]
   - mixshift shelf tracking remove <id> [--keyword <keyword>] [--asin <asin>]
   - mixshift shelf tracking pause <id>
@@ -143,7 +143,9 @@ notes: >
   can change them (can_edit); an owner, admin or manager signed in as a
   person changes them with `shelf tracking create|add|remove|pause|resume|delete`
   (forbidden, exit 11, for anyone else and for every machine credential, so
-  never from a scheduled task; tracking_over_allowance, exit 10, when a change
+  never from a scheduled task; forbidden with reason identity_not_verified
+  for a shared team login, fixed by signing in as oneself;
+  tracking_unavailable, exit 6, while the service does not offer tracking; tracking_over_allowance, exit 10, when a change
   would take the projection past the allowance; invalid_request with
   calls_per_day and max_calls_per_day_per_set for a set over the per-set
   limit). Every running set uses keywords x zips x views x pages of the
@@ -165,8 +167,9 @@ notes: >
   shelf_not_enabled / shelf_not_enrolled / shelf_not_configured=6,
   throttled=8, shelf_allowance_exhausted=10, insufficient_scope=11,
   bad_request / zip_unavailable / not_tracked=12, invalid_request=15; for
-  shelf tracking also not_found=7, tracking_over_allowance=10, forbidden=11,
-  tracking_set_exists=12), never on HTTP status.
+  shelf tracking also tracking_unavailable=6, not_found=7,
+  tracking_over_allowance=10, forbidden=11, tracking_set_exists=12), never on
+  HTTP status.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)

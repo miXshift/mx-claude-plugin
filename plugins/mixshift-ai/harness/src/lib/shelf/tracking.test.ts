@@ -108,14 +108,35 @@ describe('shelf tracking client: refusals', () => {
 
   it('the allowance refusal (402) carries the projection, the allowance and how to ask for more; exit 10', async () => {
     const f = vi.fn().mockResolvedValueOnce(
-      jsonResponse(402, { ok: false, kind: 'tracking_over_allowance', friendly: 'This change would bring your rank tracking to 2232 shelf requests a month.', projected_calls_per_month: 2232, allowance: 2000, request_more: 'Ask MixShift.', source: 'account', retryable: false }),
+      // GW-144's envelope: 2 keywords x 2 zips a day x 31 = 124, over an allowance of 100.
+      jsonResponse(402, { ok: false, kind: 'tracking_over_allowance', friendly: 'This change would bring your rank tracking to 124 shelf requests a month (calls a day x 31), over your organization\'s monthly allowance of 100.', projected_calls_per_month: 124, allowance: 100, request_more: 'To track more, say "request more shelf requests".', source: 'account', retryable: false }),
     );
     const r = await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['10001'] }, injected(f));
-    expect(r).toMatchObject({ ok: false, kind: 'tracking_over_allowance', projectedCallsPerMonth: 2232, allowance: 2000, requestMore: 'Ask MixShift.', httpStatus: 402 });
+    expect(r).toMatchObject({ ok: false, kind: 'tracking_over_allowance', projectedCallsPerMonth: 124, allowance: 100, requestMore: 'To track more, say "request more shelf requests".', httpStatus: 402 });
     expect(exitCodeForShelfKind('tracking_over_allowance')).toBe(10);
   });
 
-  it('read by shape when the service names them otherwise: a 403 is the role refusal, a projection is the allowance refusal', async () => {
+  it('forbidden carries its reason: role, or identity_not_verified (a shared team login)', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', source: 'account', retryable: false }))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'Changing rank tracking needs a verified work sign-in.', source: 'account', retryable: false }));
+    expect(await shelfTrackingPatch('trail-snacks', { enabled: false }, injected(f))).toMatchObject({ kind: 'forbidden', reason: 'role' });
+    expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject({ kind: 'forbidden', reason: 'identity_not_verified', friendly: 'Changing rank tracking needs a verified work sign-in.' });
+  });
+
+  it('an unrecognized 403 is the role refusal on a write only; on a read it stays what it was', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'role_required', friendly: 'Ask an admin.' }))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'role_required', friendly: 'Ask an admin.' }))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'role_required', friendly: 'Ask an admin.' }));
+    expect(await shelfTrackingList(injected(f))).toMatchObject({ kind: 'unknown', unrecognizedKind: 'role_required' });
+    expect(await shelfTrackingGet('trail-snacks', injected(f))).toMatchObject({ kind: 'unknown', unrecognizedKind: 'role_required' });
+    expect(await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['10001'] }, injected(f))).toMatchObject({ kind: 'forbidden', unrecognizedKind: 'role_required' });
+  });
+
+  it('read by shape when the service names them otherwise: a 403 on a write is the role refusal, a projection is the allowance refusal', async () => {
     const f = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'role_required', friendly: 'Ask an admin.' }))
@@ -126,6 +147,27 @@ describe('shelf tracking client: refusals', () => {
     const defaulted = await shelfTrackingPatch('trail-snacks', { enabled: true }, injected(f));
     expect(defaulted).toMatchObject({ kind: 'tracking_over_allowance', unrecognizedKind: 'over_budget', projectedCallsPerMonth: 2500 });
     expect((defaulted as { friendly: string }).friendly).toContain('past its monthly shelf allowance');
+  });
+
+  it('the routes missing on the service ("No such shelf endpoint.", or a bare 404) are tracking_unavailable, exit 6, on every call', async () => {
+    const NO_ENDPOINT = { ok: false, kind: 'not_found', friendly: 'No such shelf endpoint.', source: 'request', retryable: false };
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(404, NO_ENDPOINT))
+      .mockResolvedValueOnce(jsonResponse(404, NO_ENDPOINT))
+      .mockResolvedValueOnce(jsonResponse(404, NO_ENDPOINT))
+      .mockResolvedValueOnce(jsonResponse(404, NO_ENDPOINT))
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse(404, { ok: false, kind: 'not_found' }));
+    const unavailable = { ok: false, kind: 'tracking_unavailable', httpStatus: 404, friendly: 'Rank tracking is not available on the MixShift service yet, so nothing was read or changed.' };
+    expect(await shelfTrackingList(injected(f))).toMatchObject(unavailable);
+    expect(await shelfTrackingGet('trail-snacks', injected(f))).toMatchObject(unavailable);
+    expect(await shelfTrackingPatch('trail-snacks', { enabled: true }, injected(f))).toMatchObject(unavailable);
+    expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject(unavailable);
+    expect(await shelfTrackingList(injected(f))).toMatchObject(unavailable); // no envelope at all
+    // A PUT creates, so even a bare not_found there is the route missing, never "no such set".
+    expect(await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['10001'] }, injected(f))).toMatchObject(unavailable);
+    expect(exitCodeForShelfKind('tracking_unavailable')).toBe(6);
   });
 
   it('no such set: the service line is kept; a bare 404 names the set, not a missing endpoint', async () => {
@@ -140,12 +182,13 @@ describe('shelf tracking client: refusals', () => {
   });
 
   it('the per-set cap is invalid_request carrying calls_per_day and max_calls_per_day_per_set; exit 15', async () => {
-    const reason = 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.';
+    // GW-142's envelope: 50 keywords x 2 zips x 2 views x 2 pages = 400; friendly and message are the same line.
+    const reason = 'keywords x zips x surfaces x pages is 400 calls a day; the limit is 200. Split it into more sets or trim it.';
     const f = vi.fn().mockResolvedValueOnce(
-      jsonResponse(400, { ok: false, kind: 'invalid_request', friendly: reason, message: reason, source: 'request', retryable: false, calls_per_day: 240, max_calls_per_day_per_set: 200 }),
+      jsonResponse(400, { ok: false, kind: 'invalid_request', friendly: reason, message: reason, source: 'request', retryable: false, calls_per_day: 400, max_calls_per_day_per_set: 200 }),
     );
     const r = await shelfTrackingPatch('trail-snacks', { add_keywords: ['granola'] }, injected(f));
-    expect(r).toMatchObject({ ok: false, kind: 'invalid_request', friendly: reason, callsPerDay: 240, maxCallsPerDayPerSet: 200, httpStatus: 400 });
+    expect(r).toMatchObject({ ok: false, kind: 'invalid_request', friendly: reason, callsPerDay: 400, maxCallsPerDayPerSet: 200, httpStatus: 400 });
     expect(exitCodeForShelfKind('invalid_request')).toBe(15);
   });
 

@@ -18,6 +18,7 @@ export function failurePayload(failure: ShelfFailure, base: Record<string, unkno
     // The service's error contract: enums and a flag; never the friendly text.
     ...(failure.source !== undefined && CONTRACT_WORD.test(failure.source) ? { source: failure.source } : {}),
     ...(failure.retryable !== undefined ? { retryable: failure.retryable } : {}),
+    ...(failure.reason !== undefined && CONTRACT_WORD.test(failure.reason) ? { reason: failure.reason } : {}),
   };
 }
 
@@ -57,6 +58,7 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
       used: failure.used,
       resets_at: failure.resetsAt,
       request_more: failure.requestMore,
+      reason: failure.reason,
       projected_calls_per_month: failure.projectedCallsPerMonth,
       calls_per_day: failure.callsPerDay,
       max_calls_per_day_per_set: failure.maxCallsPerDayPerSet,
@@ -94,16 +96,28 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
           'for a larger allowance, say "request more shelf requests".\n',
       );
     }
-    if (failure.kind === 'forbidden') {
+    if (failure.kind === 'forbidden' && failure.reason === 'identity_not_verified') {
+      process.stderr.write(
+        '  Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`), not a shared ' +
+          'team login, then run it again.\n',
+      );
+    } else if (failure.kind === 'forbidden') {
       process.stderr.write(
         '  Ask an owner, admin or manager in your organization to make this change, or say "track these keywords" to ask MixShift. ' +
           "Only a person's sign-in can change tracking: a machine credential, such as one a scheduled task uses, never can.\n",
       );
     }
+    if (failure.kind === 'tracking_unavailable') {
+      process.stderr.write(
+        '  Meanwhile, to have MixShift track keywords for you, say "track these keywords" (the skill sends the request as feedback); ' +
+          '`mixshift shelf rank-history` keeps answering for what is already tracked.\n',
+      );
+    }
     if (failure.kind === 'not_tracked') {
       process.stderr.write(
-        '  To track it: an owner, admin or manager can run `mixshift shelf tracking add <set> --keyword "<keyword>"` (`mixshift shelf tracking list` shows the sets); ' +
-          'anyone can say "track these keywords" to ask MixShift.\n',
+        '  To track it: an owner, admin or manager can add the keyword to a set that already lists that zip and view ' +
+          '(`mixshift shelf tracking list` shows them) with `mixshift shelf tracking add <set> --keyword "<keyword>"`, or create a set ' +
+          'for it; anyone can say "track these keywords" to ask MixShift.\n',
       );
     }
     if (failure.retryable === false && failure.source === 'request') {

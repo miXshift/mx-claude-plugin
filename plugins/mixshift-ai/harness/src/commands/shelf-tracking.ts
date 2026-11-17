@@ -32,7 +32,15 @@
  */
 
 import type { Command } from 'commander';
-import { SHELF_SURFACES, isShelfFailure, type ShelfClientOptions, type ShelfFailure, type ShelfSurface } from '../lib/shelf/client.js';
+import {
+  SHELF_COUNTRIES,
+  SHELF_SURFACES,
+  isShelfFailure,
+  type ShelfClientOptions,
+  type ShelfCountry,
+  type ShelfFailure,
+  type ShelfSurface,
+} from '../lib/shelf/client.js';
 import {
   TRACKING_ID_RE,
   TRACKING_MAX_KEYWORDS,
@@ -63,6 +71,7 @@ interface TrackingOptions {
   asin?: string[];
   pages?: string;
   note?: string;
+  country?: string;
   replace?: boolean;
   yes?: boolean;
 }
@@ -156,7 +165,8 @@ export function registerShelfTracking(shelf: Command): void {
       'Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. ' +
         'The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x ' +
         'views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected ' +
-        'monthly use past the allowance, is refused. Refuses an id that is taken unless --replace.',
+        'monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when the set is ' +
+        'already exactly as asked (a create run again after a lost answer), which answers that nothing changed.',
     )
     .option('--keyword <keyword>', `a keyword to track (repeatable; 1 to ${TRACKING_MAX_KEYWORDS})`, collect)
     .option('--zip <zip>', `a shopper location from \`shelf zips\` (repeatable; 1 to ${TRACKING_MAX_ZIPS})`, collect)
@@ -164,6 +174,7 @@ export function registerShelfTracking(shelf: Command): void {
     .option('--asin <asin>', 'an ASIN whose rank to read back (repeatable)', collect)
     .option('--pages <n>', `results pages per search, 1 (default) to ${TRACKING_MAX_PAGES}`)
     .option('--note <text>', 'what the set is for, shown by `tracking list`')
+    .option('--country <code>', 'marketplace country: us (default for a new set), ca, uk, de, fr, it, es, in')
     .option('--replace', 'overwrite the set if the id is taken: its keywords and zips become these; views, ASINs, pages and note you leave out keep their values')
     .action(async (rawId: string, opts: TrackingOptions, cmd: Command) => {
       const ctx = context(cmd);
@@ -179,11 +190,22 @@ export function registerShelfTracking(shelf: Command): void {
         const asins = parseAsins(opts.asin);
         const pages = parsePages(opts.pages);
         const note = opts.note?.trim() || undefined;
-        const asked = { keywords_asked: keywords.length, zips_asked: zips.length, views_asked: views.length, asins_asked: asins.length, has_note: !!note };
+        const country = parseCountry(opts.country);
+        const asked = { keywords_asked: keywords.length, zips_asked: zips.length, views_asked: views.length, asins_asked: asins.length, has_note: !!note, ...(country ? { country } : {}) };
 
         const prior = await shelfTrackingGet(id, ctx.client);
         if (isShelfFailure(prior) && !isNotFound(prior)) return failed(ctx, EventName.ShelfTrackingChanged, prior, { action: 'create', stage: 'lookup', ...asked });
         const before = isShelfFailure(prior) ? null : prior.set;
+        if (before && !opts.replace && sameAsAsked(before, { keywords, zips, views, asins, pages, note, country })) {
+          // A create run again after a lost answer: the set is already as asked. Nothing to write; say so, with the projection.
+          const all = await shelfTrackingList(ctx.client);
+          const projection = isShelfFailure(all) ? { projected_calls_per_month: null, allowance: null } : { projected_calls_per_month: all.projected_calls_per_month, allowance: all.allowance };
+          await trackShelf(EventName.ShelfTrackingChanged, 'ok', ctx.startedAt, ctx.dataDir, { action: 'create', unchanged: true, ...asked, ...setCounts(before), ...projection });
+          if (ctx.json) return writeJson({ status: 'ok', action: 'create', id, unchanged: true, set: before, ...projection });
+          process.stderr.write(`\n✓ tracking set ${id} already exists as asked\n\n`);
+          process.stdout.write(renderUnchanged(before, projection.projected_calls_per_month, projection.allowance) + '\n');
+          return;
+        }
         if (before && !opts.replace) {
           return failed(
             ctx,
@@ -191,7 +213,7 @@ export function registerShelfTracking(shelf: Command): void {
             {
               ok: false,
               kind: 'tracking_set_exists',
-              friendly: `A tracking set "${id}" already exists (${plural(before.keywords.length, 'keyword')}, ${before.calls_per_day} calls a day). Nothing was changed.`,
+              friendly: `A tracking set "${id}" already exists, with other keywords, zips or settings (${plural(before.keywords.length, 'keyword')}, ${before.calls_per_day} calls a day). Nothing was changed.`,
               message: `To change it: \`mixshift shelf tracking add ${id}\` or \`remove ${id}\`. To overwrite it, run create again with --replace.`,
             },
             { action: 'create', stage: 'lookup', ...asked },
@@ -200,7 +222,15 @@ export function registerShelfTracking(shelf: Command): void {
         const action: TrackingAction = before ? 'replace' : 'create';
         const r = await shelfTrackingPut(
           id,
-          { keywords, zips, ...(views.length ? { surfaces: views } : {}), ...(asins.length ? { asins } : {}), ...(pages !== undefined ? { pages } : {}), ...(note ? { note } : {}) },
+          {
+            keywords,
+            zips,
+            ...(views.length ? { surfaces: views } : {}),
+            ...(asins.length ? { asins } : {}),
+            ...(pages !== undefined ? { pages } : {}),
+            ...(note ? { note } : {}),
+            ...(country ? { country } : {}),
+          },
           ctx.client,
         );
         if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action, stage: 'write', ...asked });
@@ -271,7 +301,8 @@ export function registerShelfTracking(shelf: Command): void {
         const ctx = context(cmd);
         try {
           const id = parseId(rawId);
-          const r = await shelfTrackingPatch(id, { enabled: mode === 'resume' }, ctx.client);
+          // Resume also sets the cadence back to daily, so a set whose cadence was off really runs again.
+          const r = await shelfTrackingPatch(id, mode === 'resume' ? { enabled: true, cadence: 'daily' } : { enabled: false }, ctx.client);
           if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action: mode, stage: 'write' });
           await written(ctx, mode, id, r, null, {});
         } catch (err) {
@@ -336,9 +367,17 @@ function context(cmd: Command): Ctx {
 async function failed(ctx: Ctx, eventName: string, f: ShelfFailure, base: Record<string, unknown>): Promise<void> {
   await trackShelf(eventName, 'failed', ctx.startedAt, ctx.dataDir, failurePayload(f, base));
   emitFailure(f, ctx.json);
-  if (!ctx.json && isNotFound(f)) process.stderr.write('  `mixshift shelf tracking list` shows the sets your organization has.\n');
+  // "No such set" makes sense only where a set is named and may be missing: never for `list`, never for a create's PUT.
+  const namesASet = base.action !== 'list' && !((base.action === 'create' || base.action === 'replace') && base.stage === 'write');
+  if (!ctx.json && isNotFound(f) && namesASet) {
+    process.stderr.write('  `mixshift shelf tracking list` shows the sets your organization has.\n');
+    if (base.action === 'delete') process.stderr.write('  If you deleted it a moment ago and the answer was lost, it may already be deleted.\n');
+  }
   if (!ctx.json && f.kind === 'host_unreachable' && base.stage === 'write') {
-    process.stderr.write('  The change may or may not have been made: `mixshift shelf tracking show <set>` says, and running it again is safe.\n');
+    process.stderr.write(
+      '  The change may or may not have been made: `mixshift shelf tracking show <set>` says. Running it again is safe: a create that ' +
+        'went through answers that the set is already as asked, and a delete that went through answers not_found.\n',
+    );
   }
 }
 
@@ -364,8 +403,25 @@ async function written(ctx: Ctx, action: TrackingAction, id: string, r: ShelfTra
   process.stdout.write(renderWritten(action, r, changes) + '\n');
 }
 
+/** No such set (the routes missing on the service read as tracking_unavailable, never as this). */
 function isNotFound(f: ShelfFailure): boolean {
-  return f.kind === 'not_found' || f.httpStatus === 404;
+  return f.kind === 'not_found';
+}
+
+/** Whether a set already is what a create asks for: keywords and zips as sets, and each optional field only when given (the service keeps the rest). */
+function sameAsAsked(
+  s: ShelfTrackingSet,
+  a: { keywords: string[]; zips: string[]; views: ShelfSurface[]; asins: string[]; pages?: number; note?: string; country?: ShelfCountry },
+): boolean {
+  const same = (x: readonly string[], y: readonly string[]) => x.length === y.length && x.every((v) => y.includes(v));
+  if (!same([...new Set(s.keywords.map(normalizeKeyword))], a.keywords)) return false;
+  if (!same([...new Set(s.zips.map((z) => z.trim().replace(/\s+/g, ' ').toUpperCase()))], a.zips)) return false;
+  if (a.views.length > 0 && !same(s.surfaces, a.views)) return false;
+  if (a.asins.length > 0 && !same([...new Set(s.asins.map((x) => x.toUpperCase()))], a.asins)) return false;
+  if (a.pages !== undefined && s.pages !== a.pages) return false;
+  if (a.note !== undefined && s.note !== a.note) return false;
+  if (a.country !== undefined && s.country !== a.country) return false;
+  return true;
 }
 
 function isRunning(s: ShelfTrackingSet): boolean {
@@ -464,6 +520,13 @@ function parseAsins(raw: string[] | undefined): string[] {
     if (!out.includes(n)) out.push(n);
   }
   return out;
+}
+
+function parseCountry(raw: string | undefined): ShelfCountry | undefined {
+  if (raw === undefined) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (!(SHELF_COUNTRIES as readonly string[]).includes(v)) throw new Error(`--country must be one of ${SHELF_COUNTRIES.join(', ')}.`);
+  return v as ShelfCountry;
 }
 
 function parsePages(raw: string | undefined): number | undefined {
@@ -601,6 +664,17 @@ export function renderWritten(action: TrackingAction, r: ShelfTrackingWritten, c
   L.push('', `Calls a day for this set: ${callsBreakdown(s)}${isRunning(s) ? '' : ', none while paused'}.`);
   L.push(projectionText(r.projected_calls_per_month, r.allowance));
   return L.join('\n');
+}
+
+export function renderUnchanged(s: ShelfTrackingSet, projected: number | null, allowance: number | null): string {
+  return [
+    `**Tracking set \`${s.id}\` already exists as asked**`,
+    '',
+    '- nothing changed (running create again after a lost answer is safe)',
+    '',
+    `Calls a day for this set: ${callsBreakdown(s)}${isRunning(s) ? '' : ', none while paused'}.`,
+    projectionText(projected, allowance),
+  ].join('\n');
 }
 
 export function renderDeleted(s: ShelfTrackingSet, projected: number | null, allowance: number | null): string {

@@ -245,7 +245,8 @@ export type ShelfFailureKind =
   | 'forbidden' // 403: only an owner, admin or manager, signed in as a person, may change the organization's rank tracking
   | 'tracking_over_allowance' // the change would push projected monthly tracking use past the allowance
   // --- local-only ---
-  | 'tracking_set_exists' // `shelf tracking create` without --replace on an id that is taken
+  | 'tracking_set_exists' // `shelf tracking create` without --replace on an id that is taken (and not as asked)
+  | 'tracking_unavailable' // the service answers the tracking routes with "no such shelf endpoint": not deployed there yet
   | 'not_authenticated'
   | 'session_expired'
   | 'host_unreachable'
@@ -265,6 +266,8 @@ export interface ShelfFailure {
   used?: number;
   resetsAt?: string;
   requestMore?: string;
+  /** forbidden: why (`role`: not an owner, admin or manager; `identity_not_verified`: a shared or unverified sign-in). */
+  reason?: string;
   /** A refused tracking change: the monthly use it would have led to (compare with `allowance`). */
   projectedCallsPerMonth?: number;
   /** A tracking set refused for its size (invalid_request): its calls a day, and the most one set may make. */
@@ -324,6 +327,7 @@ export function exitCodeForShelfKind(kind: ShelfFailureKind): number {
     case 'shelf_not_configured':
     case 'shelf_not_enabled':
     case 'shelf_not_enrolled':
+    case 'tracking_unavailable':
       return 6; // shelf data is not enabled (service-wide, or for this organization)
     case 'not_found':
       return 7;
@@ -666,6 +670,7 @@ function toShelfFailure(json: Record<string, unknown>, httpStatus: number): Shel
     ...(num(json.used) !== undefined ? { used: num(json.used) } : {}),
     ...(str(json.resets_at) !== undefined ? { resetsAt: str(json.resets_at) } : {}),
     ...(str(json.request_more) !== undefined ? { requestMore: str(json.request_more) } : {}),
+    ...(str(json.reason) !== undefined ? { reason: str(json.reason) } : {}),
     ...(num(json.projected_calls_per_month) !== undefined ? { projectedCallsPerMonth: num(json.projected_calls_per_month) } : {}),
     ...(num(json.calls_per_day) !== undefined ? { callsPerDay: num(json.calls_per_day) } : {}),
     ...(num(json.max_calls_per_day_per_set) !== undefined ? { maxCallsPerDayPerSet: num(json.max_calls_per_day_per_set) } : {}),
@@ -713,13 +718,15 @@ export function defaultFriendly(kind: ShelfFailureKind): string {
     case 'zip_unavailable':
       return 'That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.';
     case 'not_tracked':
-      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add it with `mixshift shelf tracking add`; otherwise say "track these keywords" to ask MixShift.';
+      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
     case 'forbidden':
       return 'Only an owner, admin or manager of your organization can change rank tracking.';
     case 'tracking_over_allowance':
       return "That change would take your organization's rank tracking past its monthly shelf allowance, so nothing was changed.";
     case 'tracking_set_exists':
       return 'A tracking set with that id already exists.';
+    case 'tracking_unavailable':
+      return 'Rank tracking is not available on the MixShift service yet, so nothing was read or changed.';
     case 'bad_request':
       return 'The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.';
     case 'invalid_request':

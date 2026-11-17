@@ -359,14 +359,18 @@ function firstPositional(argv: readonly string[]): string | null {
  * A rank tracking line carries the organization's own set id, keywords, zips, ASINs and note, all of which stay off
  * telemetry (its events carry counts only). Same two passes as `labels`, most redacted wins: before `shelf` and between
  * `shelf` and `tracking` only the root flags survive; from `tracking` on, the subcommand as the first positional, the
- * flag names, a `--view` and a `--pages` of the expected shape, and nothing else (the set id is a positional and is
- * redacted). Triggered only when the line's first positional is `shelf` and its next one is `tracking`.
+ * flag names, a `--view`, `--pages` and `--country` of the expected shape, and nothing else (the set id is a positional
+ * and is redacted). The trigger is deliberately loose, since a mistyped or oddly ordered line is captured too and
+ * over-redaction is safe: the line's first positional is `shelf` in any case (or its second, after a leading `help`), and
+ * one of the next two non-flag tokens starts with `track` in any case (two, so a flag before the subcommand is
+ * tolerated whether or not it took a value: `shelf --fresh tracking ...`, `shelf --zip 10001 tracking ...`).
  */
 const TRACKING_SUBCOMMANDS = new Set(['list', 'show', 'create', 'add', 'remove', 'pause', 'resume', 'delete', 'help']);
 const TRACKING_BOOLEAN_FLAGS = new Set([...ROOT_BOOLEAN_FLAGS, 'replace', 'yes']);
 const TRACKING_VALUE_SHAPES: Record<string, Shape> = {
   view: /^(desktop|mobile)$/,
   pages: /^[1-5]$/,
+  country: /^(us|ca|uk|de|fr|it|es|in)$/,
   surface: SURFACE_SHAPE,
 };
 const TRACKING_CONFIG: AllowConfig = {
@@ -390,15 +394,28 @@ function positionalIndexes(argv: readonly string[]): number[] {
   return out;
 }
 
+/** The other `shelf` subcommands (shelf.ts): a line whose first token after `shelf` is one of these is not a tracking line. */
+const OTHER_SHELF_SUBCOMMANDS = new Set(['catalog', 'zips', 'usage', 'rank-history', 'buybox', 'offers', 'search', 'product', 'seller', 'featured-offer-check']);
+
+/** Before `shelf` on a `help shelf tracking ...` line: the root flags, and the leading `help`. */
+const HELP_ROOT_CONFIG: AllowConfig = { ...ROOT_CONFIG, keepPositional: (n, arg) => n === 1 && /^help$/i.test(arg) };
+
 /** The allowlist pass of a `shelf tracking` line, or null when the line is not one. */
 function shelfTrackingAllow(argv: readonly string[]): string[] | null {
-  const [shelf, tracking] = positionalIndexes(argv);
-  if (shelf === undefined || tracking === undefined || argv[shelf] !== 'shelf' || argv[tracking] !== 'tracking') return null;
+  const positionals = positionalIndexes(argv);
+  const helped = positionals[0] !== undefined && /^help$/i.test(argv[positionals[0]]!);
+  const shelf = positionals[helped ? 1 : 0];
+  if (shelf === undefined || !/^shelf$/i.test(argv[shelf]!)) return null;
+  const [first, second] = positionals.filter((j) => j > shelf);
+  // A first token that is another shelf subcommand makes the line that subcommand's (`shelf search tracking` is a search).
+  const tracking =
+    first !== undefined && /^track/i.test(argv[first]!) ? first : first !== undefined && !OTHER_SHELF_SUBCOMMANDS.has(argv[first]!) && second !== undefined && /^track/i.test(argv[second]!) ? second : undefined;
+  if (tracking === undefined) return null;
   return [
-    ...allowlist(argv.slice(0, shelf), ROOT_CONFIG),
-    'shelf',
+    ...allowlist(argv.slice(0, shelf), helped ? HELP_ROOT_CONFIG : ROOT_CONFIG),
+    argv[shelf]!,
     ...allowlist(argv.slice(shelf + 1, tracking), ROOT_CONFIG),
-    'tracking',
+    /^track[a-z-]*$/i.test(argv[tracking]!) ? argv[tracking]! : REDACTED,
     ...allowlist(argv.slice(tracking + 1), TRACKING_CONFIG),
   ];
 }
