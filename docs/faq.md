@@ -341,7 +341,7 @@ Three equally-good ways, depending on where you are:
 | **Mid-skill** | If you're using `mx-data-explore` (or any skill) and hit a pain, just say "this is frustrating because..." or "I wish this did..." — Claude will offer to file feedback without making you leave the session. |
 | **Terminal** | `mixshift feedback "your message" --category bug` (or `feature_request`, `comment`). |
 
-Feedback routes to two places: a real-time post to MixShift's Discord ops channel (so a human sees it quickly) and the telemetry events table (so engineering can analyze patterns across customers). Both happen automatically — you don't pick.
+Feedback routes to two places: a real-time post to MixShift's Discord feedback channel, a channel used only for feedback, so a person on the team sees it quickly; and the telemetry events table, so engineering can analyze patterns across customers. Both happen automatically, so you don't pick. Crash reports and other automatic alerts go to a separate internal channel, never the feedback one.
 
 We read every piece during beta. Bugs typically get a response within a couple business days; feature requests get triaged into the roadmap.
 
