@@ -11,13 +11,17 @@
  *   shelf search <query> [--view desktop|mobile] [--page N] [--zip Z]
  *   shelf rank-history <query> [--zip Z] [--view desktop|mobile] [--from D] [--to D] [--asin A]
  *                                             where tracked ASINs ranked, day by day (free)
+ *   shelf tracking list|show|create|add|remove|pause|resume|delete
+ *                                             the organization's rank tracking sets (shelf-tracking.ts)
  *   shelf product <asin> [--zip Z]            the product page (beta)
  *   shelf seller <seller-id>                  who a seller is
  *   (data calls also take --country, --fresh, --origin, --json)
  *
- * Reads only; nothing here can change anything. Every data answer counts one
- * against the organization's monthly shelf allowance (`shelf usage` shows it);
- * zips, usage and rank-history are free.
+ * Reads, except `shelf tracking`, which changes only the organization's own
+ * rank tracking sets (owners, admins and managers). Every data answer counts
+ * one against the organization's monthly shelf allowance (`shelf usage` shows
+ * it); zips, usage, rank-history and tracking are free, though every tracked
+ * search counts one each day it runs.
  *
  * Exit / telemetry contract matches the amazon, ads and walmart commands:
  * handlers set process.exitCode and return; telemetry captures the call kind,
@@ -30,7 +34,6 @@ import type { Command } from 'commander';
 import {
   SHELF_COUNTRIES,
   SHELF_SURFACES,
-  exitCodeForShelfKind,
   isShelfFailure,
   shelfBuybox,
   shelfOffers,
@@ -43,7 +46,6 @@ import {
   type ShelfAnswer,
   type ShelfBuybox,
   type ShelfCountry,
-  type ShelfFailure,
   type ShelfOffers,
   type ShelfOrigin,
   type ShelfProduct,
@@ -56,7 +58,8 @@ import {
 } from '../lib/shelf/client.js';
 import { SHELF_CATALOG, renderShelfCatalogChat } from '../lib/shelf/catalog.js';
 import { registerFeaturedOfferCheck } from './shelf-featured-offer-check.js';
-import { CONTRACT_WORD } from '../lib/amazon/reports.js';
+import { registerShelfTracking } from './shelf-tracking.js';
+import { emitError, emitFailure, failurePayload, trackShelf, writeJson } from './_shelf-output.js';
 import { track, EventName } from '../lib/telemetry/index.js';
 
 interface RootOptions {
@@ -92,9 +95,10 @@ export function registerShelfCommands(program: Command): void {
     .command('shelf')
     .description(
       'Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, ' +
-        'search rank, product page, seller), plus the rank history for keywords MixShift tracks for you, ' +
-        'through the MixShift service. Reads only; each data answer counts one against your organization\'s ' +
-        'monthly shelf allowance (rank-history, zips and usage are free).',
+        'search rank, product page, seller), plus the rank history for the keywords your organization tracks ' +
+        'and the tracking itself, through the MixShift service. Each data answer counts one against your ' +
+        "organization's monthly shelf allowance (rank-history, tracking, zips and usage are free; every tracked " +
+        'search counts one each day it runs).',
     );
 
   shelf
@@ -152,9 +156,9 @@ export function registerShelfCommands(program: Command): void {
   shelf
     .command('rank-history <query>')
     .description(
-      'Where your ASINs ranked for a keyword MixShift tracks for your organization, day by day at one zip, on desktop or ' +
+      'Where your ASINs ranked for a keyword your organization tracks, day by day at one zip, on desktop or ' +
         'mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer ' +
-        '(anything else is not_tracked; say "track these keywords" to ask MixShift).',
+        '(anything else is not_tracked; `shelf tracking list` shows what is tracked).',
     )
     // Required, unlike the other shelf calls: the service matches the zip against the tracking set as given, and no
     // set lists a "default location", so a missing zip would always answer not_tracked.
@@ -223,6 +227,7 @@ export function registerShelfCommands(program: Command): void {
   registerData(shelf, 'search', '<query>', 'The search results page for a keyword as a shopper at a zip sees it: organic and sponsored rank, badges, prices.', true);
   registerData(shelf, 'product', '<asin>', 'The product page for an ASIN as a shopper at a zip sees it: title, bullets, details, images, best-seller ranks (beta).', true);
   registerData(shelf, 'seller', '<seller-id>', 'Who a third-party seller is: storefront name, rating, business details. No zip.', false);
+  registerShelfTracking(shelf);
   registerFeaturedOfferCheck(shelf);
 }
 
@@ -323,80 +328,6 @@ function parseCountry(raw: string | undefined): ShelfCountry | null {
 function ageSeconds(observedAt: string, now: number): number | null {
   const t = Date.parse(observedAt);
   return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1000)) : null;
-}
-
-function failurePayload(failure: ShelfFailure, base: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...base,
-    kind_failed: failure.kind,
-    ...(failure.httpStatus ? { http_status: failure.httpStatus } : {}),
-    ...(failure.unrecognizedKind ? { unrecognized_kind: failure.unrecognizedKind } : {}),
-    // Gateway contract (mx-ops#144): enums and a flag; never the friendly text.
-    ...(failure.source !== undefined && CONTRACT_WORD.test(failure.source) ? { source: failure.source } : {}),
-    ...(failure.retryable !== undefined ? { retryable: failure.retryable } : {}),
-  };
-}
-
-async function trackShelf(eventName: string, outcome: 'ok' | 'failed', startedAt: number, dataDir: string | undefined, payload: Record<string, unknown>): Promise<void> {
-  await track(
-    {
-      event_name: eventName,
-      outcome,
-      duration_ms: Date.now() - startedAt,
-      ...(outcome === 'failed' && typeof payload.kind_failed === 'string' ? { error_class: payload.kind_failed } : {}),
-      payload,
-    },
-    dataDir,
-  );
-}
-
-function writeJson(obj: unknown): void {
-  process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
-}
-
-function emitFailure(failure: ShelfFailure, json: boolean): void {
-  if (json) {
-    writeJson({
-      status: 'error',
-      failure_kind: failure.kind,
-      message: failure.friendly,
-      detail: failure.message,
-      http_status: failure.httpStatus,
-      period: failure.period,
-      allowance: failure.allowance,
-      used: failure.used,
-      resets_at: failure.resetsAt,
-      request_more: failure.requestMore,
-      available_count: failure.availableCount,
-      retry_after_ms: failure.retryAfterMs,
-      required_scope: failure.requiredScope,
-      unrecognized_kind: failure.unrecognizedKind,
-      source: failure.source,
-      retryable: failure.retryable,
-      invalid_params: failure.invalidParams,
-    });
-  } else {
-    process.stderr.write(`\n✗ ${failure.friendly}\n`);
-    if (failure.message && failure.message !== failure.friendly) process.stderr.write(`  ${failure.message}\n`);
-    if (failure.kind === 'shelf_allowance_exhausted') {
-      if (failure.resetsAt) process.stderr.write(`  used ${failure.used ?? '?'} of ${failure.allowance ?? '?'} for ${failure.period ?? 'this month'}; resets ${failure.resetsAt}\n`);
-      process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
-    }
-    if (failure.kind === 'not_tracked') {
-      process.stderr.write('  To ask MixShift to track it: say "track these keywords" (the skill sends the request with the keywords, locations and views).\n');
-    }
-    if (failure.retryable === false && failure.source === 'request') {
-      process.stderr.write('  Not retryable as sent: change the request before calling again.\n');
-    }
-  }
-  process.exitCode = exitCodeForShelfKind(failure.kind);
-}
-
-function emitError(err: unknown, json: boolean): void {
-  const message = err instanceof Error ? err.message : String(err);
-  if (json) writeJson({ status: 'error', message });
-  else process.stderr.write(`error: ${message}\n`);
-  process.exitCode = 1;
 }
 
 // ---------------------------------------------------------------------------

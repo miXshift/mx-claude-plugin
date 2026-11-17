@@ -351,6 +351,104 @@ function firstPositional(argv: readonly string[]): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// `shelf tracking` command lines: the same allowlist, from the `tracking` token on
+// ---------------------------------------------------------------------------
+
+/**
+ * A rank tracking line carries the organization's own set id, keywords, zips, ASINs and note, all of which stay off
+ * telemetry (its events carry counts only). Same two passes as `labels`, most redacted wins: before `shelf` and between
+ * `shelf` and the tracking token only the root flags survive (and a leading `help`); the tracking token itself only when
+ * it is `tracking` or a known typo of it; after it, the subcommand as the first positional, the flag names, a `--view`,
+ * `--pages` and `--country` of the expected shape, and nothing else (the set id is a positional and is redacted).
+ *
+ * The trigger is loose on purpose, like the `labels` one: the line is captured BEFORE it is parsed, so a mistyped or
+ * oddly ordered line reaches telemetry too, and over-redaction is safe where exposure is not. A line is a tracking line
+ * when it has a token that starts with `track` (any case), unless:
+ *   - its first positional is another registered top-level command (`feedback`, `auth`, ...; and `labels`, which has its
+ *     own allowlist): that line keeps what it had;
+ *   - or it has a `shelf` token (any case, or ending in `=shelf`) and the token after it, past any root flags and their
+ *     values, is exactly another shelf subcommand (`shelf --json search "tracking shoes"` is a search).
+ * With a `shelf` token before the `track` token, the allowlist runs from `shelf`; otherwise from the `track` token
+ * (`tracking create ...`, `shelve tracking create ...`, `tracking shelf create ...`).
+ */
+const TRACKING_SUBCOMMANDS = new Set(['list', 'show', 'create', 'add', 'remove', 'pause', 'resume', 'delete', 'help']);
+const TRACKING_BOOLEAN_FLAGS = new Set([...ROOT_BOOLEAN_FLAGS, 'replace', 'yes']);
+const TRACKING_VALUE_SHAPES: Record<string, Shape> = {
+  view: /^(desktop|mobile)$/,
+  pages: /^[1-5]$/,
+  country: /^(us|ca|uk|de|fr|it|es|in)$/,
+  surface: SURFACE_SHAPE,
+};
+const TRACKING_CONFIG: AllowConfig = {
+  known: new Set([...TRACKING_BOOLEAN_FLAGS, ...Object.keys(TRACKING_VALUE_SHAPES), 'data-dir', 'keyword', 'zip', 'asin', 'note']),
+  booleans: TRACKING_BOOLEAN_FLAGS,
+  shapes: TRACKING_VALUE_SHAPES,
+  keepPositional: (n, arg) => n === 1 && TRACKING_SUBCOMMANDS.has(arg),
+};
+
+/** The tracking token as typed is kept only when it is one of these (any case); anything else that starts with `track` is redacted. */
+const TRACKING_TOKENS = new Set(['tracking', 'track', 'trackin', 'trackng', 'trackign', 'trackings']);
+
+/** The other `shelf` subcommands (shelf.ts): a line whose token right after `shelf` is exactly one of these is not a tracking line. */
+const OTHER_SHELF_SUBCOMMANDS = new Set(['catalog', 'zips', 'usage', 'rank-history', 'buybox', 'offers', 'search', 'product', 'seller', 'featured-offer-check']);
+
+/** Top-level commands whose lines are never tracking lines: every registered one but `shelf` itself and `help`, plus `labels`. */
+const NOT_TRACKING_COMMANDS = new Set([...[...OTHER_TOP_LEVEL_COMMANDS].filter((c) => c !== 'shelf' && c !== 'help'), 'labels']);
+
+const isShelfToken = (a: string): boolean => /^shelf$/i.test(a) || /=shelf$/i.test(a);
+const isTrackToken = (a: string): boolean => /^track/i.test(a);
+
+/** The index of the first token after `i` that is not a root flag (or the value of `--data-dir` / `--surface`). */
+function pastRootFlags(argv: readonly string[], i: number): number {
+  let j = i + 1;
+  while (j < argv.length) {
+    const a = argv[j]!;
+    if (a === '--data-dir' || a === '--surface') j += 2;
+    else if (/^--(data-dir|surface)=/.test(a) || (a.startsWith('--') && ROOT_BOOLEAN_FLAGS.has(a.slice(2))) || a === '-h' || a === '-V') j += 1;
+    else break;
+  }
+  return j;
+}
+
+/** Before `shelf`: the root flags, and a leading `help`. */
+const HELP_ROOT_CONFIG: AllowConfig = { ...ROOT_CONFIG, keepPositional: (n, arg) => n === 1 && /^help$/i.test(arg) };
+
+/** The allowlist pass of a `shelf tracking` line, or null when the line is not one. */
+function shelfTrackingAllow(argv: readonly string[]): string[] | null {
+  const first = firstPositional(argv);
+  if (first !== null && NOT_TRACKING_COMMANDS.has(first.toLowerCase())) return null;
+  const shelf = argv.findIndex(isShelfToken);
+  if (shelf >= 0) {
+    const next = pastRootFlags(argv, shelf);
+    if (next < argv.length && OTHER_SHELF_SUBCOMMANDS.has(argv[next]!)) return null;
+  }
+  const afterShelf = shelf >= 0 ? argv.findIndex((a, j) => j > shelf && isTrackToken(a)) : -1;
+  const tracking = afterShelf >= 0 ? afterShelf : argv.findIndex(isTrackToken);
+  if (tracking < 0) return null;
+  const trackingToken = TRACKING_TOKENS.has(argv[tracking]!.toLowerCase()) ? argv[tracking]! : REDACTED;
+  const after = allowlist(argv.slice(tracking + 1), TRACKING_CONFIG);
+  if (afterShelf < 0) return [...allowlist(argv.slice(0, tracking), HELP_ROOT_CONFIG), trackingToken, ...after];
+  return [
+    ...allowlist(argv.slice(0, shelf), HELP_ROOT_CONFIG),
+    argv[shelf]!,
+    ...allowlist(argv.slice(shelf + 1, tracking), ROOT_CONFIG),
+    trackingToken,
+    ...after,
+  ];
+}
+
+/** Most redacted wins: a token is kept only if both passes keep it. */
+function mostRedacted(argv: readonly string[], base: readonly string[], allow: readonly string[]): string[] {
+  return argv.map((orig, k) => {
+    const b = base[k]!;
+    const a = allow[k]!;
+    if (b === orig) return a;
+    if (a === orig) return b;
+    return a === REDACTED || b === REDACTED ? REDACTED : a;
+  });
+}
+
 const isLabelsToken = (a: string): boolean => {
   const l = a.toLowerCase();
   return l === 'labels' || l.endsWith('=labels');
@@ -359,22 +457,18 @@ const isLabelsToken = (a: string): boolean => {
 /**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
- * invocation and cannot throw. See the two-pass rule above for `labels` lines.
+ * invocation and cannot throw. See the two-pass rule above for `labels` and
+ * `shelf tracking` lines.
  */
 export function redactArgs(argv: readonly string[]): string[] {
   const base = redactGeneric(argv);
+  const tracking = shelfTrackingAllow(argv);
+  if (tracking) return mostRedacted(argv, base, tracking);
   const i = argv.findIndex(isLabelsToken);
   if (i < 0) return base;
   const first = firstPositional(argv);
   if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base;
   const trigger = /^labels$/i.test(argv[i]!) ? argv[i]! : REDACTED;
   const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
-  // Most redacted wins: a token is kept only if both passes keep it.
-  return argv.map((orig, k) => {
-    const b = base[k]!;
-    const a = allow[k]!;
-    if (b === orig) return a;
-    if (a === orig) return b;
-    return a === REDACTED || b === REDACTED ? REDACTED : a;
-  });
+  return mostRedacted(argv, base, allow);
 }

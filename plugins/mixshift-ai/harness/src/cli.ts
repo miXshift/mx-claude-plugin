@@ -108,6 +108,7 @@ import {
 import { loadProfile } from './lib/profile/load.js';
 import { saveProfile } from './lib/profile/save.js';
 import { redactArgs } from './lib/telemetry/redact.js';
+import { commandToken, subcommandToken } from './lib/telemetry/command-names.js';
 
 const program = new Command();
 
@@ -256,29 +257,18 @@ async function trackLifecycleEvents(): Promise<void> {
     await track({
       event_name: EventName.CliCommandRun,
       payload: {
-        cmd: process.argv[2] ?? '(none)',
-        // Canonical subcommand name: an alias (`data tables`) counts under
-        // the command it runs (`list-tables`), so usage sweeps see one bucket.
-        subcmd: canonicalSubcommand(process.argv[2], process.argv[3]),
+        // Names only (lib/telemetry/command-names.ts): these two skip the
+        // redactor, so a token that is not a registered command, subcommand,
+        // alias or bare flag (a path, a set id, a keyword) is '(other)'. An
+        // alias (`data tables`) counts under the command it runs
+        // (`list-tables`), so usage sweeps see one bucket.
+        cmd: commandToken(program, process.argv[2]),
+        subcmd: subcommandToken(program, process.argv[2], process.argv[3]),
         args: redactArgs(process.argv.slice(2)),
       },
     });
   } catch {
     // Telemetry can never break the CLI.
-  }
-}
-
-/** The registered name behind a typed subcommand token, or the token itself
- *  when it is not a known subcommand (an operand, a flag, a guess). Pure:
- *  reads the command tree already built above, never throws. */
-function canonicalSubcommand(group: string | undefined, token: string | undefined): string {
-  if (!token) return '(none)';
-  try {
-    const g = group ? program.commands.find((c) => c.name() === group || c.aliases().includes(group)) : undefined;
-    const sub = g?.commands.find((c) => c.name() === token || c.aliases().includes(token));
-    return sub ? sub.name() : token;
-  } catch {
-    return token;
   }
 }
 

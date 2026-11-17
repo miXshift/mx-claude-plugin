@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-shelf
 display_name: "Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)"
-version: "0.2.0"
+version: "0.3.0"
 description: >
   See the Amazon shelf the way a shopper at a given zip sees it, on demand,
   through the bundled harness CLI: who holds the Buy Box for an ASIN and with
@@ -9,24 +9,28 @@ description: >
   where ASINs rank for a keyword (organic and sponsored, desktop and mobile)
   with badges, coupons and stock warnings, the product page as it renders
   today, and who a third-party seller is. Reads back, free, the rank history
-  MixShift tracks for the organization (where its ASINs ranked for a tracked
-  keyword day by day). Public shelf observations from a licensed third-party
+  of the keywords the organization tracks (where its ASINs ranked day by
+  day), and lets its owners, admins and managers manage that tracking (list,
+  create, add and remove keywords and ASINs, pause, resume, delete). Public
+  shelf observations from a licensed third-party
   provider on MixShift's own key, never your Amazon credentials. Each
   on-demand answer counts one against the organization's monthly shelf
   allowance. Also runs a guided demo on the user's own ASIN and keyword (demo
   Amazon shelf) and a catalog with a plain what-is-this per call.
 
-# Tier 1 = informational, read-only against the service. Modeled per_account
-# because every call targets one marketplace country (and one organization's
-# allowance), though no brand context is consumed.
+# Tier 2: the shelf reads are informational, but `shelf tracking` changes the
+# organization's own rank tracking sets on the service (which spend allowance
+# every day). Modeled per_account because every call targets one marketplace
+# country (and one organization's allowance), though no brand context is
+# consumed.
 run_kind: per_account
 cadence: on_demand
-risk_tier: 1
+risk_tier: 2
 # bash harness invocations are implicit; file_write covers saving --json
 # answers to disk for a report.
 allowed_tools: [file_read, file_write]
-side_effect_policy: artifact_write   # saves shelf answers to disk when the user asks
-review_required: never
+side_effect_policy: write_gated   # `shelf tracking create|add|remove|pause|resume|delete` change the org's tracking sets, each only after the user said yes to exactly what changes; saves shelf answers to disk when asked
+review_required: always           # each tracking change needs the user's yes (the set, the keywords or ASINs, and the calls a day it adds); delete also needs --yes
 sql_ids: []   # shelf data is not in the MixShift warehouse
 
 # Harness commands the skill calls
@@ -38,6 +42,14 @@ harness_commands:
   - mixshift shelf offers <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf search <query> [--view desktop|mobile] [--page <n>] [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf rank-history <query> [--zip <zip>] [--view desktop|mobile] [--from <date>] [--to <date>] [--asin <asin>] [--country <code>]
+  - mixshift shelf tracking list
+  - mixshift shelf tracking show <id>
+  - mixshift shelf tracking create <id> --keyword <keyword> --zip <zip> [--view desktop|mobile] [--asin <asin>] [--pages <n>] [--note <text>] [--country <code>] [--replace]
+  - mixshift shelf tracking add <id> [--keyword <keyword>] [--asin <asin>]
+  - mixshift shelf tracking remove <id> [--keyword <keyword>] [--asin <asin>]
+  - mixshift shelf tracking pause <id>
+  - mixshift shelf tracking resume <id>
+  - mixshift shelf tracking delete <id> --yes
   - mixshift shelf product <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf seller <seller-id> [--country <code>] [--fresh]
   - mixshift demo mx-amazon-shelf
@@ -83,6 +95,12 @@ trigger_phrases:
   - how has our rank changed
   - rank over time
   - rank trend
+  - show my tracked keywords
+  - tracked keywords
+  - add to my rank tracking
+  - stop tracking
+  - pause tracking
+  - manage rank tracking
 # Guided demo (shared/skill-runtime-contract.md "Demos"). Steps mirror the
 # SKILL.md "## Demo" subsections, in order. Reads only: nothing changes.
 demo:
@@ -113,17 +131,32 @@ notes: >
   locations are a fixed list per country (`shelf zips`); a zip off the list is
   refused before anything is spent.
 
-  Keyword rank is the half no account report gives: emphasize it. MixShift
-  tracks keywords for an organization on request (a set of keywords,
-  locations, views and ASINs, observed once a day on both views); `mixshift
-  shelf rank-history <query> --zip <zip> [--view] [--from] [--to] [--asin]`
-  reads the history back free, one keyword x zip x view per call, as the
-  absolute, organic and sponsored rank per day and ASIN; anything not tracked
-  answers not_tracked (exit 12). A request to track keywords is sent with
-  `mixshift feedback "Track keyword rank ..." --category feature_request
-  --skill mx-amazon-shelf` (keywords, locations, devices, ASINs); MixShift
-  sets it up. One `shelf.insight` telemetry event per conclusion, label only
-  (closed list in SKILL.md), never the subject.
+  Keyword rank is the half no account report gives: emphasize it. An
+  organization tracks keywords in tracking sets (keywords, zips, views, pages
+  and ASINs, observed once a day); `mixshift shelf rank-history <query> --zip
+  <zip> [--view] [--from] [--to] [--asin]` reads the history back free, one
+  keyword x zip x view per call, as the absolute, organic and sponsored rank
+  per day and ASIN, for any set that lists the keyword, running or paused;
+  anything not tracked answers not_tracked (exit 12).
+  `mixshift shelf tracking list|show` shows the sets, each set's calls a day
+  and the projected monthly use against the allowance, and whether the person
+  can change them (can_edit); an owner, admin or manager signed in as a
+  person changes them with `shelf tracking create|add|remove|pause|resume|delete`
+  (forbidden, exit 11: reason role for a verified person without the role;
+  reason identity_not_verified for the shared team login, an unverified
+  session or a machine credential, so never from a scheduled task, fixed by
+  signing in as oneself;
+  tracking_unavailable, exit 6, while the service does not offer tracking; tracking_over_allowance, exit 10, when a change
+  would take the projection past the allowance; invalid_request with
+  calls_per_day and max_calls_per_day_per_set for a set over the per-set
+  limit). Every running set uses keywords x zips x views x pages of the
+  allowance each day; reading and changing the sets is free. Pausing a set
+  stops its cost and keeps its history readable; deleting a set or removing a
+  keyword stops rank-history answering for it unless another set lists it. Someone who cannot change tracking sends the request with `mixshift
+  feedback "Track keyword rank ..." --category feature_request --skill
+  mx-amazon-shelf` (keywords, locations, devices, ASINs); MixShift sets it
+  up. One `shelf.insight` telemetry event per conclusion, label only (closed
+  list in SKILL.md), never the subject.
 
   Every data answer counts one against the organization's monthly
   allowance; on shelf_allowance_exhausted (or on request) offer
@@ -134,8 +167,10 @@ notes: >
   Failures are typed: branch on failure_kind (not_authenticated=2,
   shelf_not_enabled / shelf_not_enrolled / shelf_not_configured=6,
   throttled=8, shelf_allowance_exhausted=10, insufficient_scope=11,
-  bad_request / zip_unavailable / not_tracked=12, invalid_request=15), never
-  on HTTP status.
+  bad_request / zip_unavailable / not_tracked=12, invalid_request=15; for
+  shelf tracking also tracking_unavailable=6, not_found=7,
+  tracking_over_allowance=10, forbidden=11, tracking_set_exists=12), never on
+  HTTP status.
 
   Required state (not modeled in schema fields):
     - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
