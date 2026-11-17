@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-amc
 display_name: Amazon Marketing Cloud Ad-hoc Analytics
-version: "0.5.1"
+version: "0.6.0"
 description: >
   Run ad-hoc Amazon Marketing Cloud (AMC) SQL analytics for a merchant, on
   demand, straight from Amazon through MixShift's service. Drives the full AMC
@@ -15,7 +15,9 @@ description: >
   rate by ASIN, acquisition cohorts, and repeat-purchase analysis. Also builds
   AMC audiences: rule-based audiences written as SQL over the instance's
   audience tables and activated on a DSP advertiser or a sponsored-ads
-  account, with list, status, fix-and-resubmit and delete for failed ones.
+  account, and lookalike audiences modeled from a seed and activated on a
+  DSP advertiser, with list, status, fix-and-resubmit and delete for failed
+  ones.
   Reporting is read-only; audience creation is a write, dry-run first and
   `--commit` only after the user confirms. Routes through the bundled harness
   CLI. Does not require brand setup, only that the user has signed in
