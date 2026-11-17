@@ -7,8 +7,11 @@
  *   { kind: 'human' | 'service' | 'anonymous', ...identity }
  *
  * Human actors are already identifiable via the lifted `email` (tenant
- * login) + `person_label` (self-attested work email) columns; we still stamp
- * `kind:'human'` (+ user_id) for uniform filtering. Service-credential events
+ * login) + `person_label` (the person's work email) columns; we still stamp
+ * `kind:'human'` (+ user_id, the TENANT id) for uniform filtering, plus
+ * `identity` / `verified`, which say how the person was identified: verified
+ * by Google or Microsoft member sign-in, or self-attested under the shared
+ * login (see ActorIdentity). Service-credential events
  * previously carried only `svc:<label>`. We stamp the svc label + client_id
  * always (P1, from the on-disk creds); the owning tenant + minted-by + purpose
  * are enriched at emit time from the service-token attribution cache once the
@@ -25,6 +28,20 @@ import { readServiceAttributionCache } from './service-attribution-cache.js';
 export type ActorKind = 'human' | 'service' | 'anonymous';
 
 /**
+ * How the actor was identified.
+ *  - 'member_sign_in': the access token carries `idv: 'member'`. The gateway
+ *    issued it after the person signed in with Google or Microsoft as a listed
+ *    member of their organization, and person_label is that verified address.
+ *  - 'shared_login': a decodable token without `idv`. person_label is the
+ *    work email the person typed at sign-in on the shared team login
+ *    (self-attested).
+ *  - 'stored_label': the token could not be decoded or carries no actor, so
+ *    person_label is the copy stored on this machine (self-attested).
+ *  - 'service_credential': a machine credential; person_label is its label.
+ */
+export type ActorIdentity = 'member_sign_in' | 'shared_login' | 'stored_label' | 'service_credential';
+
+/**
  * The identity block stamped onto `payload.actor`. Fields are populated as
  * available; a service credential on a fresh install (pre-P2, or before its
  * first token mint of this version) carries only kind + svc_label +
@@ -32,8 +49,26 @@ export type ActorKind = 'human' | 'service' | 'anonymous';
  */
 export interface Actor {
   kind: ActorKind;
-  /** datahub user_id (human path). email + person_label are lifted columns. */
+  /**
+   * The TENANT id (token `sub`, the org's login account), human path. Not a
+   * person id: everyone on one shared login has the same user_id. email +
+   * person_label are lifted columns.
+   */
   user_id?: string;
+  /** How the actor was identified (human and service paths). */
+  identity?: ActorIdentity;
+  /**
+   * Human path: true only for 'member_sign_in'. This is what the plugin read
+   * from its own token; the ingest does not re-check it yet.
+   */
+  verified?: boolean;
+  /** The organization a member signed in to (token `org` claim); member sign-in only. */
+  org_id?: string;
+  /**
+   * Columns the caller of track() set explicitly to a value different from
+   * the token-derived one. A person_label override makes `verified` false.
+   */
+  overridden?: Array<'email' | 'person_label'>;
   /** service credential label, e.g. 'ppc_placement_mod_key'. */
   svc_label?: string;
   /** service credential client id, svc_... */
@@ -87,13 +122,21 @@ export async function resolveAttribution(
       // (person_label), `email` the tenant login, `sub`/`user_id` the tenant
       // id. Fall back to the stored fields when the token is absent/opaque.
       const claims = decodeAccessTokenClaims(datahub.access_token);
+      const identity: ActorIdentity =
+        claims.actor === undefined ? 'stored_label' : claims.idv === 'member' ? 'member_sign_in' : 'shared_login';
       return {
         personLabel: claims.actor ?? datahub.person_label,
         tenantEmail: claims.email ?? datahub.email,
         // A human session present => not automation, even if a service block
         // also exists on this data dir (preserves prior semantics).
         automation: false,
-        actor: { kind: 'human', user_id: claims.user_id ?? datahub.user_id },
+        actor: {
+          kind: 'human',
+          user_id: claims.user_id ?? datahub.user_id,
+          identity,
+          verified: identity === 'member_sign_in',
+          ...(identity === 'member_sign_in' && claims.org ? { org_id: claims.org } : {}),
+        },
       };
     }
 
@@ -110,6 +153,7 @@ export async function resolveAttribution(
         automation: true,
         actor: {
           kind: 'service',
+          identity: 'service_credential',
           svc_label: service.label,
           svc_client_id: service.client_id,
           ...enriched,

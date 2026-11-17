@@ -31,8 +31,20 @@ export interface AccessTokenClaims {
   user_id?: string;
   /** JWT `email` claim — the tenant's shared login email. */
   email?: string;
-  /** JWT `actor` claim — the self-attested per-employee actor (person_label). */
+  /**
+   * JWT `actor` claim — the per-employee actor (person_label). Self-attested
+   * (typed at sign-in) under the shared login; the address the person proved
+   * with Google or Microsoft under member sign-in (see `idv`).
+   */
   actor?: string;
+  /**
+   * JWT `idv` claim. The gateway sets it to 'member' ONLY when the person
+   * signed in as a listed member of their organization with a verified Google
+   * or Microsoft account; absent on shared-login, service and view-as tokens.
+   */
+  idv?: 'member';
+  /** JWT `org` claim: the organization the member signed in to. Present only with `idv`. */
+  org?: string;
 }
 
 function nonEmptyString(v: unknown): string | undefined {
@@ -42,7 +54,7 @@ function nonEmptyString(v: unknown): string | undefined {
 /**
  * Decode the identity claims from a JWT access token's payload segment.
  * Base64url-decodes the middle segment and reads `sub`/`user_id`, `email`,
- * and `actor`. Returns `{}` for any missing/malformed input — never throws.
+ * `actor`, and the member sign-in pair `idv`/`org`. Returns `{}` for any missing/malformed input — never throws.
  */
 export function decodeAccessTokenClaims(
   token: string | undefined | null,
@@ -61,6 +73,8 @@ export function decodeAccessTokenClaims(
       user_id: nonEmptyString(obj.sub) ?? nonEmptyString(obj.user_id),
       email: nonEmptyString(obj.email),
       actor: nonEmptyString(obj.actor),
+      ...(obj.idv === 'member' ? { idv: 'member' as const } : {}),
+      ...(obj.idv === 'member' && nonEmptyString(obj.org) ? { org: obj.org as string } : {}),
     };
   } catch {
     return {};

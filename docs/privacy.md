@@ -15,9 +15,9 @@ This page explains exactly what we collect, what we don't, and how to opt out.
 - Plugin version
 - Which install path you used (Cowork personal / Cowork org / Claude Code / CLI direct)
 - Operating system family + Node version
-- The work email (`person_label`) you provided during sign-in, which links anonymous installs to MixShift accounts so we can see which people and orgs use the plugin
+- Your organization's sign-in (`email`: the shared team login, for an organization that still signs in with one) and your own work email (`person_label`), kept as two separate values. If your organization uses member sign-in with Google or Microsoft, your work email is the address you signed in with, and we record that it was verified that way. On a shared team login it is the work email you typed when you signed in, and we record that it was self-reported. These link installs to MixShift accounts so we can see which people and orgs use the plugin
 - A CLI user-agent string (`mixshift-cli/<version> ...`) and the surface you ran on (Cowork, Claude Code, or direct CLI)
-- An actor tag on every event: whether it came from a person, an automated service credential, or an anonymous pre-sign-in install. For a service credential (unattended automation) we also record the owning account, who minted the credential, its label / purpose and granted scopes, and the network IP the auth service saw when it issued the token, so we can tell which automation is doing what
+- An actor tag on every event: whether it came from a person, an automated service credential, or an anonymous pre-sign-in install. For a person we also record your organization's account id, how you were identified (member sign-in with Google or Microsoft, or a work email typed on a shared login), the organization you signed in to (member sign-in only), and whether a command supplied the email itself instead of reading it from your sign-in. For a service credential (unattended automation) we also record the owning account, who minted the credential, its label / purpose and granted scopes, and the network IP the auth service saw when it issued the token, so we can tell which automation is doing what
 
 **Onboarding funnel:**
 - Welcome viewed

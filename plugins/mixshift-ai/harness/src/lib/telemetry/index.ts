@@ -76,6 +76,18 @@ export async function track(
     const tenantEmail = attribution.tenantEmail ?? profileEmail;
     const automationPayload = attribution.automation ? { automation: true } : {};
     const actorPayload = { actor: attribution.actor };
+    // A caller that sets email / person_label itself (login telemetry, the
+    // legacy setup path, `telemetry emit --email`) is recorded on this event's
+    // actor, so reports can tell a token-derived identity from a supplied one.
+    // A supplied person_label is never counted as verified.
+    const overridden = overriddenColumns(input, datahubPersonLabel, tenantEmail);
+    const recordActor = overridden.length
+      ? {
+          ...attribution.actor,
+          overridden,
+          ...(overridden.includes('person_label') && attribution.actor.kind === 'human' ? { verified: false } : {}),
+        }
+      : attribution.actor;
     const userAgent = buildUserAgent(pluginVersion, surface, os);
 
     // If this is the first time install_id has been created on this
@@ -121,7 +133,7 @@ export async function track(
       node_version: process.version,
       user_agent: userAgent,
       ts: nowIso,
-      payload: { ...(input.payload ?? {}), ...automationPayload, ...actorPayload },
+      payload: { ...(input.payload ?? {}), ...automationPayload, actor: recordActor },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -191,6 +203,22 @@ export async function maybeFlush(
 export function detectInstallPath(): string {
   if (process.env.CLAUDE_PLUGIN_ROOT) return 'plugin-host';
   return 'cli';
+}
+
+function sameAddress(a: string | undefined, b: string | undefined): boolean {
+  return (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+}
+
+/** Identity columns the caller set to something other than the token-derived value. */
+function overriddenColumns(
+  input: TrackInput,
+  personLabel: string | undefined,
+  tenantEmail: string | undefined,
+): Array<'email' | 'person_label'> {
+  const out: Array<'email' | 'person_label'> = [];
+  if (input.email !== undefined && !sameAddress(input.email, tenantEmail)) out.push('email');
+  if (input.person_label !== undefined && !sameAddress(input.person_label, personLabel)) out.push('person_label');
+  return out;
 }
 
 function detectOs(): string {

@@ -81,7 +81,7 @@ describe('resolveAttribution', () => {
     const a = await resolveAttribution(dataDir);
     expect(a.automation).toBe(false);
     expect(a.personLabel).toBe('taylor.rivera@example.com');
-    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123' });
+    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123', identity: 'stored_label', verified: false });
   });
 
   it('sources actor + tenantEmail + user_id from the token claims, overriding stale/collapsed local copies', async () => {
@@ -104,7 +104,7 @@ describe('resolveAttribution', () => {
     expect(a.personLabel).toBe('jordan.lee@example.com'); // actor claim wins
     expect(a.tenantEmail).toBe('ops@acmeco.com'); // tenant email claim
     expect(a.personLabel).not.toBe(a.tenantEmail); // no longer collapsed
-    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-777' }); // sub claim
+    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-777', identity: 'shared_login', verified: false }); // sub claim
   });
 
   it('falls back to stored datahub fields when the access token is opaque (not a JWT)', async () => {
@@ -112,7 +112,51 @@ describe('resolveAttribution', () => {
     const a = await resolveAttribution(dataDir);
     expect(a.personLabel).toBe('taylor.rivera@example.com');
     expect(a.tenantEmail).toBe('ops@acmeco.com');
-    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123' });
+    expect(a.actor).toEqual({ kind: 'human', user_id: 'user-123', identity: 'stored_label', verified: false });
+  });
+
+  it('member sign-in: verified identity, the org, and the verified address as person_label', async () => {
+    // The person typed a hint at sign-in, then proved a different (their own)
+    // address with Google or Microsoft; the token carries the verified one.
+    const token = makeJwt({
+      sub: 'user-777',
+      email: 'ops@acmeco.com',
+      actor: 'jordan.lee@acmeco.com',
+      idv: 'member',
+      org: 'org_42',
+    });
+    await writeCreds(dataDir, {
+      datahub: datahub({ access_token: token, person_label: 'typed.hint@acmeco.com' }),
+    });
+    const a = await resolveAttribution(dataDir);
+    expect(a.personLabel).toBe('jordan.lee@acmeco.com');
+    expect(a.tenantEmail).toBe('ops@acmeco.com');
+    expect(a.actor).toEqual({
+      kind: 'human',
+      user_id: 'user-777',
+      identity: 'member_sign_in',
+      verified: true,
+      org_id: 'org_42',
+    });
+  });
+
+  it('shared login: a token without idv is self-attested, even if it carries an org claim', async () => {
+    const token = makeJwt({ sub: 'user-777', email: 'ops@acmeco.com', actor: 'jordan.lee@acmeco.com', org: 'org_42' });
+    await writeCreds(dataDir, { datahub: datahub({ access_token: token }) });
+    const a = await resolveAttribution(dataDir);
+    expect(a.actor.identity).toBe('shared_login');
+    expect(a.actor.verified).toBe(false);
+    expect(a.actor.org_id).toBeUndefined();
+  });
+
+  it('a token with idv but no actor falls back to the stored label and is not verified', async () => {
+    const token = makeJwt({ sub: 'user-777', email: 'ops@acmeco.com', idv: 'member', org: 'org_42' });
+    await writeCreds(dataDir, { datahub: datahub({ access_token: token }) });
+    const a = await resolveAttribution(dataDir);
+    expect(a.personLabel).toBe('taylor.rivera@example.com');
+    expect(a.actor.identity).toBe('stored_label');
+    expect(a.actor.verified).toBe(false);
+    expect(a.actor.org_id).toBeUndefined();
   });
 
   it('leaves tenantEmail undefined for a service credential', async () => {
@@ -128,6 +172,8 @@ describe('resolveAttribution', () => {
     expect(a.automation).toBe(true);
     expect(a.personLabel).toBe('ppc_placement_mod_key');
     expect(a.actor.kind).toBe('service');
+    expect(a.actor.identity).toBe('service_credential');
+    expect(a.actor.verified).toBeUndefined();
     expect(a.actor.svc_label).toBe('ppc_placement_mod_key');
     expect(a.actor.svc_client_id).toBe('svc_abcdefgh1234');
     // No mint attribution cached yet (P1): owner/minted_by/purpose absent.
