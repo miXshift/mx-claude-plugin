@@ -779,7 +779,7 @@ every audience write, same headers and path params as `amc.create_audience`.
 |---|---|---|
 | "most similar", "a bit broader", "as broad as possible" | `lookalikeAudienceExpectedReach` | One of `MOST_SIMILAR` (smallest, closest match to the seed), `SIMILAR`, `BALANCED`, `BROAD`, `MOST_BROAD` (largest reach, loosest match). These are the five choices the AMC console shows. The service converts "Most similar" and similar spellings. Ask which one; for a first prospecting test `MOST_SIMILAR` or `SIMILAR` keeps it close to the seed. |
 | "from my high-value buyers" | `query` (the seed) | Same SQL and table rules as a rule-based audience (above): `SELECT user_id`, the `_for_audiences` tables, no date arithmetic, paid tables checked first. Amazon's guide asks for a seed of 500 to 500,000 shoppers, known only once it runs. |
-| "last 90 days", "auto-adjust" | `timeWindowStart` / `timeWindowEnd`, `timeWindowRelative: 'TRUE'` | **At most 90 days**, the AMC console's limit for lookalikes. The window is still the lookback, so **a seed written for 365 days only counts its last 90 days** as a lookalike: "high-value buyers over the year" becomes "high-value buyers over the last 90 days". Say so before the preview. `timeWindowRelative: 'TRUE'` is the console's "Auto adjust date". |
+| "last 90 days", "keep it current" | `timeWindowStart` / `timeWindowEnd`, `timeWindowRelative: 'TRUE'` | **At most 90 days** (the limit in the AMC console); a longer window is refused before Amazon, not shortened. The window is still the lookback, so a seed written for 365 days has to be cut to the last 90, and "high-value buyers over the year" becomes "high-value buyers over the last 90 days": tell the user that before you shorten it. `timeWindowRelative: 'TRUE'` moves the window forward on each refresh, like the console's date auto-adjust (sent as the same string form as for rule-based audiences; not yet confirmed on a lookalike). |
 | "push it to DSP" | `advertiserId` | **A DSP advertiser only**, as a string (`"123456789012345678"`, never a JSON number: 18 digits lose their last digits as a number). Amazon activates lookalikes in DSP only, so a sponsored-ads `ENTITY...` id is refused. |
 | a global DSP advertiser | `countryCode` | As for rule-based audiences. |
 
@@ -808,39 +808,50 @@ mixshift ads call amc.create_lookalike_audience --legacy-seller-id <id> \
   --body-file lookalike.json --json
 ```
 
-Show the preview in the user's terms (seed, reach level, window and what the
-90-day cap did to it, destination), get a yes, then `--commit`. The response
+Show the preview in the user's terms (seed, reach level, window and how it
+was shortened if it was, destination), get a yes, then `--commit`. The response
 carries `audienceExecutionId`; poll `amc.get_audience` once per turn as for any
 audience. It lists in `amc.list_audiences` with `audienceType: "LOOKALIKE"` and
 its `lookalikeAudienceExpectedReach`; a FAILED one deletes with
 `amc.delete_audience`. Lookalikes made here also show in the MixShift AMC app,
 which can build them too.
 
-To start from an existing audience, read its `query` from
-`amc.list_audiences` and use it as the seed (shorten the window to 90 days).
-A row copied from the list can be sent as is: the service drops the read-only
-fields (`status`, `createTime`, `dspCanonicalId`, ...) and an `audienceType` of
-`LOOKALIKE`.
+To start from an existing rule-based audience, read its row from
+`amc.list_audiences` and take only `query`, `advertiserId`, `countryCode` and the
+window (cut to 90 days), plus a new `audienceName` and the reach. Do not send
+its `audienceType` (`RULE_BASED` is refused here) or its `refreshRateDays`
+(refused outside 7 to 21, and ignored anyway). Only a LOOKALIKE row can be sent
+back as is: the service drops the read-only fields (`status`, `createTime`,
+`dspCanonicalId`, ...) and an `audienceType` of `LOOKALIKE`.
 
 #### Moving a line item from a seed to its lookalike
 
-Once the lookalike is SUCCEEDED and has its `dspCanonicalId` (it takes a few
-hours to reach DSP), each step below is a preview and a yes:
+**Stop unless** `amc.get_audience` shows the lookalike `SUCCEEDED` with an
+18-digit `dspCanonicalId`, and the user can see it in DSP (it can take up to a
+day to arrive there). Each step below is a preview and a yes:
 
-1. **Read the line item's targeting**: `dsp.query_targets` for the ad group.
-   Note the seed audience target, any other include groups, and the exclusion
-   group (`negative: true`, for example past purchasers).
+1. **Read and write down the line item as it is**: `dsp.query_targets` for the
+   ad group, and `dsp.list_ad_groups` for its `targetingSettings`. Show the user,
+   in their terms, the seed audience target (its target id and `groupId`), any
+   other include groups, the exclusion group (`negative: true`, for example
+   past purchasers) and the current audience match type. This is the record
+   to put it back from.
 2. **Add the lookalike**: `dsp.create_targets` with an AUDIENCE target whose
    `audienceId.defaultValue` is the lookalike's 18-digit `dspCanonicalId`, in
    the seed's include group (same `groupId`) or a new one.
 3. **Remove the seed**: `dsp.delete_targets` with the seed target's id. Leave
-   the exclusion group alone.
-4. **Turn off DSP's own widening**: `dsp.update_ad_groups` with
-   `targetingSettings.defaultAudienceTargetingMatchType: "EXACT"`. The setting
-   is per line item, not per audience, and Amazon's default is `SIMILAR`; left
-   on, DSP widens the modeled audience again, which is the problem being fixed.
-   Confirm with the user, since it also applies to the line item's other
-   include groups.
+   the exclusion group alone. To undo, add the seed back with
+   `dsp.create_targets` from the record in step 1.
+4. **Turn off DSP's own widening**: `dsp.update_ad_groups` with the line item's
+   CURRENT `targetingSettings` from step 1, changing only
+   `defaultAudienceTargetingMatchType` to `"EXACT"`, so no other setting in that
+   object (viewability, time zone, location signal) is lost; show the before
+   and after in the preview. The setting is per line item, not per audience,
+   and Amazon's default is `SIMILAR`; left on, DSP widens the modeled audience
+   again, which is the problem being fixed. Confirm with the user, since it also
+   applies to the line item's other include groups. (Amazon does not offer
+   `SIMILAR` for some advertised product categories; there the line item is
+   already exact.)
 5. **Check it worked**: after a week or two of delivery, compare the new-to-brand
    share of purchases and impressions to existing buyers with the AMC query the
    user ran before (or a DSP report). That comparison is the reason for the
