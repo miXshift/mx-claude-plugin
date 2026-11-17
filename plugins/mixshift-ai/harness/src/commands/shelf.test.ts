@@ -263,6 +263,7 @@ describe('shelf rank-history', () => {
     await run('shelf', 'rank-history', 'trail mix', '--zip', '10001');
     expect(stderr).toContain('not tracked here');
     expect(stderr).toContain('track these keywords');
+    expect(stderr).toContain('mixshift shelf tracking add <set> --keyword');
     expect(process.exitCode).toBe(12);
     const t = lastTrack();
     expect(t.outcome).toBe('failed');
@@ -312,7 +313,7 @@ describe('shelf offers, seller, zips, usage, catalog', () => {
     await run('--json', 'shelf', 'catalog');
     const out = JSON.parse(stdout);
     expect(out.count).toBe(SHELF_CATALOG.length);
-    expect(out.catalog.map((e: { id: string }) => e.id)).toEqual(['buybox', 'offers', 'search', 'rank-history', 'product', 'seller', 'zips', 'usage']);
+    expect(out.catalog.map((e: { id: string }) => e.id)).toEqual(['buybox', 'offers', 'search', 'rank-history', 'tracking', 'product', 'seller', 'zips', 'usage']);
     for (const e of SHELF_CATALOG) {
       expect(e.explain.length).toBeGreaterThan(80);
       expect(e.cost === 'free' || e.cost === 'counts 1').toBe(true);

@@ -351,6 +351,69 @@ function firstPositional(argv: readonly string[]): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// `shelf tracking` command lines: the same allowlist, from the `tracking` token on
+// ---------------------------------------------------------------------------
+
+/**
+ * A rank tracking line carries the organization's own set id, keywords, zips, ASINs and note, all of which stay off
+ * telemetry (its events carry counts only). Same two passes as `labels`, most redacted wins: before `shelf` and between
+ * `shelf` and `tracking` only the root flags survive; from `tracking` on, the subcommand as the first positional, the
+ * flag names, a `--view` and a `--pages` of the expected shape, and nothing else (the set id is a positional and is
+ * redacted). Triggered only when the line's first positional is `shelf` and its next one is `tracking`.
+ */
+const TRACKING_SUBCOMMANDS = new Set(['list', 'show', 'create', 'add', 'remove', 'pause', 'resume', 'delete', 'help']);
+const TRACKING_BOOLEAN_FLAGS = new Set([...ROOT_BOOLEAN_FLAGS, 'replace', 'yes']);
+const TRACKING_VALUE_SHAPES: Record<string, Shape> = {
+  view: /^(desktop|mobile)$/,
+  pages: /^[1-5]$/,
+  surface: SURFACE_SHAPE,
+};
+const TRACKING_CONFIG: AllowConfig = {
+  known: new Set([...TRACKING_BOOLEAN_FLAGS, ...Object.keys(TRACKING_VALUE_SHAPES), 'data-dir', 'keyword', 'zip', 'asin', 'note']),
+  booleans: TRACKING_BOOLEAN_FLAGS,
+  shapes: TRACKING_VALUE_SHAPES,
+  keepPositional: (n, arg) => n === 1 && TRACKING_SUBCOMMANDS.has(arg),
+};
+
+/** Indexes of the line's positionals, skipping flags and the values of the two root flags that take one. */
+function positionalIndexes(argv: readonly string[]): number[] {
+  const out: number[] = [];
+  for (let j = 0; j < argv.length; j += 1) {
+    const a = argv[j]!;
+    if (a === '--data-dir' || a === '--surface') {
+      j += 1;
+      continue;
+    }
+    if (!isFlagLike(a)) out.push(j);
+  }
+  return out;
+}
+
+/** The allowlist pass of a `shelf tracking` line, or null when the line is not one. */
+function shelfTrackingAllow(argv: readonly string[]): string[] | null {
+  const [shelf, tracking] = positionalIndexes(argv);
+  if (shelf === undefined || tracking === undefined || argv[shelf] !== 'shelf' || argv[tracking] !== 'tracking') return null;
+  return [
+    ...allowlist(argv.slice(0, shelf), ROOT_CONFIG),
+    'shelf',
+    ...allowlist(argv.slice(shelf + 1, tracking), ROOT_CONFIG),
+    'tracking',
+    ...allowlist(argv.slice(tracking + 1), TRACKING_CONFIG),
+  ];
+}
+
+/** Most redacted wins: a token is kept only if both passes keep it. */
+function mostRedacted(argv: readonly string[], base: readonly string[], allow: readonly string[]): string[] {
+  return argv.map((orig, k) => {
+    const b = base[k]!;
+    const a = allow[k]!;
+    if (b === orig) return a;
+    if (a === orig) return b;
+    return a === REDACTED || b === REDACTED ? REDACTED : a;
+  });
+}
+
 const isLabelsToken = (a: string): boolean => {
   const l = a.toLowerCase();
   return l === 'labels' || l.endsWith('=labels');
@@ -359,22 +422,18 @@ const isLabelsToken = (a: string): boolean => {
 /**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
- * invocation and cannot throw. See the two-pass rule above for `labels` lines.
+ * invocation and cannot throw. See the two-pass rule above for `labels` and
+ * `shelf tracking` lines.
  */
 export function redactArgs(argv: readonly string[]): string[] {
   const base = redactGeneric(argv);
+  const tracking = shelfTrackingAllow(argv);
+  if (tracking) return mostRedacted(argv, base, tracking);
   const i = argv.findIndex(isLabelsToken);
   if (i < 0) return base;
   const first = firstPositional(argv);
   if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base;
   const trigger = /^labels$/i.test(argv[i]!) ? argv[i]! : REDACTED;
   const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
-  // Most redacted wins: a token is kept only if both passes keep it.
-  return argv.map((orig, k) => {
-    const b = base[k]!;
-    const a = allow[k]!;
-    if (b === orig) return a;
-    if (a === orig) return b;
-    return a === REDACTED || b === REDACTED ? REDACTED : a;
-  });
+  return mostRedacted(argv, base, allow);
 }

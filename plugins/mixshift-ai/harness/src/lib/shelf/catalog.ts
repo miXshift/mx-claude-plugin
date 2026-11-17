@@ -11,7 +11,7 @@
 
 export interface ShelfCatalogEntry {
   /** `mixshift shelf <id>` */
-  id: 'buybox' | 'offers' | 'search' | 'rank-history' | 'product' | 'seller' | 'zips' | 'usage';
+  id: 'buybox' | 'offers' | 'search' | 'rank-history' | 'tracking' | 'product' | 'seller' | 'zips' | 'usage';
   /** The service tool this is the CLI form of. */
   tool: string;
   /** One line: what the call answers. */
@@ -83,13 +83,33 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'keyword at each tracked shopper location, on desktop and mobile, and keeps every position. This reads that history ' +
       'back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored ' +
       'rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views ' +
-      'MixShift tracks for you answer (anything else is not_tracked); say "track these keywords" to ask for more. The daily ' +
-      'observations count against the allowance; reading them back is free.',
+      'your organization tracks answer (anything else is not_tracked); `shelf tracking` shows and changes what is tracked. ' +
+      'The daily observations count against the allowance; reading them back is free.',
     inputs: 'a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country',
     returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated',
     cost: 'free',
     say: 'how has our rank for "backpacking meals" in New York moved this month?',
     example: 'mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --json',
+  },
+  {
+    id: 'tracking',
+    tool: 'shelf_list_tracking',
+    what: "Your organization's rank tracking: the keywords, zips, views and ASINs MixShift searches once a day for rank-history.",
+    explain:
+      'A tracking set is a list of keywords, shopper locations (zips), views (desktop, mobile), how many results pages to ' +
+      'read, and the ASINs whose rank you want back. Once a day MixShift takes the results page for every keyword at every ' +
+      'zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list ' +
+      'and show the sets; an owner, admin or manager can create one, add or remove keywords and ASINs, pause, resume or ' +
+      'delete it. Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the ' +
+      'monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,800 a month. A change that ' +
+      'would take the projected monthly use past the allowance is refused; removing and pausing always go through.',
+    inputs:
+      'list | show <set> | create <set> --keyword K --zip Z [--view desktop|mobile] [--asin A] [--pages N] [--note T] | ' +
+      'add <set> / remove <set> [--keyword K] [--asin A] | pause <set> | resume <set> | delete <set> --yes (flags repeat)',
+    returns: 'sets[] (id, note, keywords, zips, surfaces, asins, pages, enabled, calls_per_day, last_run_at, last_run_summary), projected_calls_per_month, allowance, can_edit, limits',
+    cost: 'free',
+    say: 'show my tracked keywords',
+    example: 'mixshift shelf tracking list --json',
   },
   {
     id: 'product',

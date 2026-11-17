@@ -330,3 +330,33 @@ describe('labels lines: two passes, most redacted wins (fourth review of #270)',
     }
   });
 });
+
+// shelf tracking command lines carry the organization's own set id, keywords, zips, ASINs and note.
+describe('shelf tracking lines: the set, keywords, zips, ASINs and note never reach telemetry', () => {
+  const R = '<redacted>';
+
+  it('keeps the subcommand, the flag names and shaped --view / --pages values; redacts the rest', () => {
+    expect(
+      redactArgs(['shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--view', 'mobile', '--asin', 'B000000001', '--pages', '2', '--note', 'Example snack terms', '--replace']),
+    ).toEqual(['shelf', 'tracking', 'create', R, '--keyword', R, '--zip', R, '--view', 'mobile', '--asin', R, '--pages', '2', '--note', R, '--replace']);
+    expect(redactArgs(['--json', 'shelf', 'tracking', 'add', 'trail-snacks', '--keyword=granola', '--asin=B000000002'])).toEqual([
+      '--json', 'shelf', 'tracking', 'add', R, `--keyword=${R}`, `--asin=${R}`,
+    ]);
+    expect(redactArgs(['shelf', 'tracking', 'delete', 'trail-snacks', '--yes'])).toEqual(['shelf', 'tracking', 'delete', R, '--yes']);
+    expect(redactArgs(['shelf', 'tracking', 'list', '--json'])).toEqual(['shelf', 'tracking', 'list', '--json']);
+  });
+
+  it('redacts an odd shape, an unknown flag and its value, and a root flag value before the group', () => {
+    expect(redactArgs(['shelf', 'tracking', 'create', 'x1', '--view', 'tablet', '--pages', '9', '--brand', 'Example Brand'])).toEqual([
+      'shelf', 'tracking', 'create', R, '--view', R, '--pages', R, R, R,
+    ]);
+    expect(redactArgs(['--data-dir', 'C:/Users/someone', 'shelf', '--surface', 'cli', 'tracking', 'show', 'trail-snacks'])).toEqual([
+      '--data-dir', R, 'shelf', '--surface', 'cli', 'tracking', 'show', R,
+    ]);
+  });
+
+  it('leaves other shelf lines on the baseline', () => {
+    expect(redactArgs(['shelf', 'rank-history', 'trail mix', '--zip', '10001'])).toEqual(['shelf', 'rank-history', 'trail mix', '--zip', '10001']);
+    expect(redactArgs(['shelf', 'search', 'tracking'])).toEqual(['shelf', 'search', 'tracking']);
+  });
+});

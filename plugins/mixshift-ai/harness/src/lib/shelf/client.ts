@@ -14,6 +14,9 @@
  *   shelfRankHistory -> GET /api/shelf/rank-history?query=&zip=&surface=&from=&to=&asin=&country=
  *                    (free; only a keyword, zip and view the organization's tracking lists, else not_tracked)
  *
+ * The organization's rank tracking sets (list, show, create, change, delete)
+ * live in lib/shelf/tracking.ts on this file's transport.
+ *
  * What the service promises (and this client relies on):
  *   - A public shelf observation is joined to nothing of the account's and
  *     never uses the account's Amazon credentials.
@@ -26,7 +29,8 @@
  *   - Nothing in an answer names the provider; neither does anything here.
  *
  * Reads only: nothing here can change anything, so a lost answer is simply a
- * failed read and safe to retry.
+ * failed read and safe to retry. (The tracking writes in lib/shelf/tracking.ts
+ * are idempotent, so the same holds for them.)
  *
  * Same transport SHAPE as lib/walmart/ads-call.ts (Bearer, one forced-refresh
  * retry on 401, typed envelope discrimination), as its own implementation: the
@@ -237,8 +241,11 @@ export type ShelfFailureKind =
   | 'throttled' // 429: busy; retry shortly
   | 'upstream_unavailable' // 502: shelf data is temporarily unavailable
   | 'insufficient_scope' // 403: the credential lacks shelf:read
-  | 'not_found' // 404: no such shelf endpoint (contract drift)
+  | 'not_found' // 404: no such shelf endpoint (contract drift), or no tracking set with that id
+  | 'forbidden' // 403: only an owner, admin or manager may change the organization's rank tracking
+  | 'tracking_over_allowance' // the change would push projected monthly tracking use past the allowance
   // --- local-only ---
+  | 'tracking_set_exists' // `shelf tracking create` without --replace on an id that is taken
   | 'not_authenticated'
   | 'session_expired'
   | 'host_unreachable'
@@ -258,8 +265,12 @@ export interface ShelfFailure {
   used?: number;
   resetsAt?: string;
   requestMore?: string;
+  /** A refused tracking change: the monthly use it would have led to (compare with `allowance`). */
+  projectedCallsPerMonth?: number;
   /** zip_unavailable: how many zips the country has (shelf zips lists them). */
   availableCount?: number;
+  /** zip_unavailable on a tracking write: the zips in the set that are not on the list (the caller's own input). */
+  unavailableZips?: string[];
   /** insufficient_scope. */
   requiredScope?: string;
   /** throttled. */
@@ -316,13 +327,16 @@ export function exitCodeForShelfKind(kind: ShelfFailureKind): number {
     case 'throttled':
       return 8;
     case 'shelf_allowance_exhausted':
-      return 10; // the month's included requests are used; resets next month
+    case 'tracking_over_allowance':
+      return 10; // the allowance: used up this month, or a tracking change would not fit in it
     case 'insufficient_scope':
-      return 11;
+    case 'forbidden':
+      return 11; // this sign-in may not do that (a scope, or the person's role)
     case 'bad_request':
     case 'zip_unavailable':
     case 'not_tracked':
-      return 12; // terminal as sent: fix the request (or ask MixShift to track it)
+    case 'tracking_set_exists':
+      return 12; // terminal as sent: fix the request (or track it first)
     case 'invalid_request':
       return 15; // MixShift refused it before sending: change the request
     case 'upstream_unavailable':
@@ -483,7 +497,7 @@ async function dataCall<T>(path: string, body: Record<string, unknown>, opts: Sh
   return j as ShelfAnswer<T>;
 }
 
-function unrecognizedShape(httpStatus: number, what: string): ShelfFailure {
+export function unrecognizedShape(httpStatus: number, what: string): ShelfFailure {
   return {
     ok: false,
     kind: 'unknown',
@@ -493,15 +507,16 @@ function unrecognizedShape(httpStatus: number, what: string): ShelfFailure {
   };
 }
 
-interface RequestSpec {
-  method: 'GET' | 'POST';
+export interface ShelfRequestSpec {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   body?: Record<string, unknown>;
 }
 
-type RequestSuccess = { ok: true; json: unknown; httpStatus: number };
+export type ShelfRequestSuccess = { ok: true; json: unknown; httpStatus: number };
 
-async function shelfRequest(spec: RequestSpec, opts: ShelfClientOptions): Promise<RequestSuccess | ShelfFailure> {
+/** One call to the service: Bearer, one forced-refresh retry on 401, the failure envelope mapped to a ShelfFailure. */
+export async function shelfRequest(spec: ShelfRequestSpec, opts: ShelfClientOptions): Promise<ShelfRequestSuccess | ShelfFailure> {
   const resolved = await resolveBaseAndToken(opts);
   if ('ok' in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
@@ -617,6 +632,8 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<ShelfFailureKind>([
   'upstream_unavailable',
   'insufficient_scope',
   'not_found',
+  'forbidden',
+  'tracking_over_allowance',
   'unknown',
 ]);
 
@@ -646,7 +663,9 @@ function toShelfFailure(json: Record<string, unknown>, httpStatus: number): Shel
     ...(num(json.used) !== undefined ? { used: num(json.used) } : {}),
     ...(str(json.resets_at) !== undefined ? { resetsAt: str(json.resets_at) } : {}),
     ...(str(json.request_more) !== undefined ? { requestMore: str(json.request_more) } : {}),
+    ...(num(json.projected_calls_per_month) !== undefined ? { projectedCallsPerMonth: num(json.projected_calls_per_month) } : {}),
     ...(num(json.available_count) !== undefined ? { availableCount: num(json.available_count) } : {}),
+    ...(Array.isArray(json.unavailable) && json.unavailable.length > 0 ? { unavailableZips: json.unavailable.map(String) } : {}),
     ...(num(json.retryAfterMs) !== undefined ? { retryAfterMs: num(json.retryAfterMs) } : {}),
     ...(typeof json.required === 'string' ? { requiredScope: json.required } : {}),
     ...(recognized ? {} : { unrecognizedKind: rawKind || '(absent)' }),
@@ -689,7 +708,13 @@ export function defaultFriendly(kind: ShelfFailureKind): string {
     case 'zip_unavailable':
       return 'That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.';
     case 'not_tracked':
-      return 'That keyword, zip and view are not tracked for your organization. Say "track these keywords" to ask MixShift to add them to your rank tracking.';
+      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add it with `mixshift shelf tracking add`; otherwise say "track these keywords" to ask MixShift.';
+    case 'forbidden':
+      return 'Only an owner, admin or manager of your organization can change rank tracking.';
+    case 'tracking_over_allowance':
+      return "That change would take your organization's rank tracking past its monthly shelf allowance, so nothing was changed.";
+    case 'tracking_set_exists':
+      return 'A tracking set with that id already exists.';
     case 'bad_request':
       return 'The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.';
     case 'invalid_request':

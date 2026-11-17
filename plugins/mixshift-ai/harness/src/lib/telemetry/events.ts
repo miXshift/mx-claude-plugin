@@ -281,6 +281,18 @@ export const EventName = {
   // series was cut, outcome and duration; never the keyword, the zip, the
   // ASINs or the ranks.
   ShelfRankHistoryRead: 'shelf.rank_history_read',
+  // `mixshift shelf tracking list|show` (the organization's rank tracking
+  // sets): which read, how many sets (and how many run), whether the person may
+  // change them, a set's keyword, ASIN, zip, view and page counts and its calls
+  // a day, the projected monthly use and the allowance, outcome and duration;
+  // never a set id, a note, a keyword, a zip or an ASIN.
+  ShelfTrackingRead: 'shelf.tracking_read',
+  // `mixshift shelf tracking create|add|remove|pause|resume|delete`: which
+  // change, how many keywords and ASINs were asked for and how many were added
+  // or removed, the set's counts and calls a day after it, the projected
+  // monthly use and the allowance, outcome (with the failure kind) and
+  // duration; never a set id, a note, a keyword, a zip or an ASIN.
+  ShelfTrackingChanged: 'shelf.tracking_changed',
   // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
   // it reaches for the user: payload.label from the closed list in its
   // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never
