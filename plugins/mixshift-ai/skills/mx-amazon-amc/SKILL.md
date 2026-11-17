@@ -844,14 +844,18 @@ day to arrive there). Each step below is a preview and a yes:
    `dsp.create_targets` from the record in step 1.
 4. **Turn off DSP's own widening**: `dsp.update_ad_groups` with the line item's
    CURRENT `targetingSettings` from step 1, changing only
-   `defaultAudienceTargetingMatchType` to `"EXACT"`, so no other setting in that
-   object (viewability, time zone, location signal) is lost; show the before
-   and after in the preview. The setting is per line item, not per audience,
+   `defaultAudienceTargetingMatchType` to `"EXACT"`, so no other setting is lost.
+   Copy only the settings an update takes (`amazonViewability`,
+   `defaultAudienceTargetingMatchType`, `enableLanguageTargeting`,
+   `tacticsConvertersExclusionType`, `targetedPGDealId`, `timeZoneType`,
+   `userLocationSignal`, `videoCompletionTier`); the read also returns
+   `siteLanguage` and `automatedTargetingTactic`, which an update does not take,
+   so leave them out and tell the user. Show the before and after in the
+   preview. The setting is per line item, not per audience,
    and Amazon's default is `SIMILAR`; left on, DSP widens the modeled audience
    again, which is the problem being fixed. Confirm with the user, since it also
-   applies to the line item's other include groups. (Amazon does not offer
-   `SIMILAR` for some advertised product categories; there the line item is
-   already exact.)
+   applies to the line item's other include groups. (Amazon says `SIMILAR`
+   is not applicable to some advertised product categories.)
 5. **Check it worked**: after a week or two of delivery, compare the new-to-brand
    share of purchases and impressions to existing buyers with the AMC query the
    user ran before (or a DSP report). That comparison is the reason for the
