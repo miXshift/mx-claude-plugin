@@ -45,7 +45,7 @@ import { spawn } from 'node:child_process';
 import { saveDatahub, revokeReplacedSession } from './credentials.js';
 import { resolveClientId } from './client-id.js';
 import { decodeAccessTokenClaims } from './token-claims.js';
-import type { DatahubCreds } from './schema.js';
+import { datahubCredsSchema, type DatahubCreds } from './schema.js';
 import { loadProfile } from '../profile/load.js';
 import { saveProfile } from '../profile/save.js';
 import { track, EventName } from '../telemetry/index.js';
@@ -988,11 +988,14 @@ async function postLoginDiscoverBestEffort(
  * page and the gateway stamps that verified address as the token's `actor`
  * claim, which can differ from the hint. Under the shared login the actor is
  * the typed address. Falls back to the hint when the token is opaque or its
- * actor is not an email (the stored field must stay an email).
+ * actor would not pass the stored field's own schema: a value that fails it
+ * would make saveCredentials throw after the old session is already revoked,
+ * and every retry would get the same actor (for example an unusual Microsoft
+ * address), locking the person out.
  */
 function signedInPersonLabel(accessToken: string, typed: string): string {
   const actor = decodeAccessTokenClaims(accessToken).actor;
-  return actor && isLikelyEmail(actor) ? actor : typed;
+  return actor && datahubCredsSchema.shape.person_label.safeParse(actor).success ? actor : typed;
 }
 
 function isLikelyEmail(s: string): boolean {

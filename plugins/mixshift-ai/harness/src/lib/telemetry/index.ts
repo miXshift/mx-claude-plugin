@@ -124,7 +124,8 @@ export async function track(
     const record: TelemetryEventRecord = {
       event_name: input.event_name,
       install_id: installId,
-      email: input.email ?? tenantEmail,
+      // An empty string is "not supplied", like undefined, never a stored ''.
+      email: input.email || tenantEmail,
       person_label: input.person_label ?? datahubPersonLabel,
       plugin_version: pluginVersion,
       install_path: installPath,
@@ -216,7 +217,7 @@ function overriddenColumns(
   tenantEmail: string | undefined,
 ): Array<'email' | 'person_label'> {
   const out: Array<'email' | 'person_label'> = [];
-  if (input.email !== undefined && !sameAddress(input.email, tenantEmail)) out.push('email');
+  if (input.email && !sameAddress(input.email, tenantEmail)) out.push('email');
   if (input.person_label !== undefined && !sameAddress(input.person_label, personLabel)) out.push('person_label');
   return out;
 }

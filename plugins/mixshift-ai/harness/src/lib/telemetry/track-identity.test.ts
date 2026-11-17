@@ -128,6 +128,12 @@ describe('track() identity stamping', () => {
     });
   });
 
+  it('an empty caller email is treated as not supplied', async () => {
+    const ev = await onlyEvent({ event_name: 'feedback.submitted', email: '' });
+    expect(ev.email).toBeUndefined();
+    expect(ev.payload?.actor).toEqual({ kind: 'anonymous' });
+  });
+
   it('anonymous with a caller email (legacy setup path) records the override', async () => {
     const ev = await onlyEvent({ event_name: 'auth.completed', email: 'someone@acmeco.com' });
     expect(ev.payload?.actor).toEqual({ kind: 'anonymous', overridden: ['email'] });

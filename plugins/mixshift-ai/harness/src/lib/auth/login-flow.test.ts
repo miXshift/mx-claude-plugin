@@ -373,6 +373,50 @@ describe('runAuthLogin :: device-code happy path', () => {
     const { credentials } = await loadCredentials(testDir);
     expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
   }, 15_000);
+
+  it('keeps the typed label when the actor looks like an email but fails the stored schema, so sign-in still succeeds', async () => {
+    // Microsoft guest-style address: passes a loose @-check, fails z.email().
+    const seg = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const guestToken = `${seg({ alg: 'HS256' })}.${seg({
+      sub: 'user-777',
+      email: 'amazon+clients@example.com',
+      actor: 'x#EXT#@tenant.onmicrosoft.com',
+      idv: 'member',
+      org: 'org_42',
+    })}.sig`;
+    const mockFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith('/auth/device/init')) {
+        return jsonResponse(200, {
+          ok: true,
+          deviceCode: 'dev-code-1',
+          loginUrl: 'https://mcp.test/login?device_code=dev-code-1',
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+      }
+      if (url.endsWith('/auth/device/poll')) {
+        return jsonResponse(200, { ...validExchangeBody(), access_token: guestToken, state: 'approved' });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await runAuthLogin({
+      personLabel: 'alice@acmeco.com',
+      mode: 'device',
+      apiBase: 'https://mcp.test',
+      dataDirOverride: testDir,
+      postLoginDiscovery: false,
+    });
+    expect(result.ok).toBe(true);
+    const { credentials } = await loadCredentials(testDir);
+    expect(credentials?.datahub?.person_label).toBe('alice@acmeco.com');
+
+    // The login events carry the typed label, which differs from the token
+    // actor, so they are flagged and never counted as verified.
+    const loginEvents = (await readQueue(testDir)).filter((e) => e.event_name === 'auth.login_completed');
+    expect(loginEvents).toHaveLength(1);
+    expect(loginEvents[0]!.payload?.actor).toMatchObject({ verified: false, overridden: ['person_label'] });
+  }, 15_000);
 });
 
 describe('runAuthLogin :: gateway base from environment', () => {
