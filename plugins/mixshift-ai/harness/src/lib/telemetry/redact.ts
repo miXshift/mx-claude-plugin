@@ -364,9 +364,13 @@ function firstPositional(argv: readonly string[]): string | null {
  *
  * The trigger is loose on purpose, like the `labels` one: the line is captured BEFORE it is parsed, so a mistyped or
  * oddly ordered line reaches telemetry too, and over-redaction is safe where exposure is not. A line is a tracking line
- * when it has a `shelf` token (any case, anywhere, even as a flag's value) and ANY later token starts with `track` (any
- * case), unless its first positional is another top-level command (`feedback`, `auth`, ...; that line keeps the baseline),
- * or the token right after `shelf` is exactly another shelf subcommand (`shelf search "tracking shoes"` is a search).
+ * when it has a token that starts with `track` (any case), unless:
+ *   - its first positional is another registered top-level command (`feedback`, `auth`, ...; and `labels`, which has its
+ *     own allowlist): that line keeps what it had;
+ *   - or it has a `shelf` token (any case, or ending in `=shelf`) and the token after it, past any root flags and their
+ *     values, is exactly another shelf subcommand (`shelf --json search "tracking shoes"` is a search).
+ * With a `shelf` token before the `track` token, the allowlist runs from `shelf`; otherwise from the `track` token
+ * (`tracking create ...`, `shelve tracking create ...`, `tracking shelf create ...`).
  */
 const TRACKING_SUBCOMMANDS = new Set(['list', 'show', 'create', 'add', 'remove', 'pause', 'resume', 'delete', 'help']);
 const TRACKING_BOOLEAN_FLAGS = new Set([...ROOT_BOOLEAN_FLAGS, 'replace', 'yes']);
@@ -389,8 +393,23 @@ const TRACKING_TOKENS = new Set(['tracking', 'track', 'trackin', 'trackng', 'tra
 /** The other `shelf` subcommands (shelf.ts): a line whose token right after `shelf` is exactly one of these is not a tracking line. */
 const OTHER_SHELF_SUBCOMMANDS = new Set(['catalog', 'zips', 'usage', 'rank-history', 'buybox', 'offers', 'search', 'product', 'seller', 'featured-offer-check']);
 
-/** Top-level commands whose lines are never tracking lines: every registered one but `shelf` itself and `help`. */
-const NOT_TRACKING_COMMANDS = new Set([...OTHER_TOP_LEVEL_COMMANDS].filter((c) => c !== 'shelf' && c !== 'help'));
+/** Top-level commands whose lines are never tracking lines: every registered one but `shelf` itself and `help`, plus `labels`. */
+const NOT_TRACKING_COMMANDS = new Set([...[...OTHER_TOP_LEVEL_COMMANDS].filter((c) => c !== 'shelf' && c !== 'help'), 'labels']);
+
+const isShelfToken = (a: string): boolean => /^shelf$/i.test(a) || /=shelf$/i.test(a);
+const isTrackToken = (a: string): boolean => /^track/i.test(a);
+
+/** The index of the first token after `i` that is not a root flag (or the value of `--data-dir` / `--surface`). */
+function pastRootFlags(argv: readonly string[], i: number): number {
+  let j = i + 1;
+  while (j < argv.length) {
+    const a = argv[j]!;
+    if (a === '--data-dir' || a === '--surface') j += 2;
+    else if (/^--(data-dir|surface)=/.test(a) || (a.startsWith('--') && ROOT_BOOLEAN_FLAGS.has(a.slice(2))) || a === '-h' || a === '-V') j += 1;
+    else break;
+  }
+  return j;
+}
 
 /** Before `shelf`: the root flags, and a leading `help`. */
 const HELP_ROOT_CONFIG: AllowConfig = { ...ROOT_CONFIG, keepPositional: (n, arg) => n === 1 && /^help$/i.test(arg) };
@@ -398,18 +417,24 @@ const HELP_ROOT_CONFIG: AllowConfig = { ...ROOT_CONFIG, keepPositional: (n, arg)
 /** The allowlist pass of a `shelf tracking` line, or null when the line is not one. */
 function shelfTrackingAllow(argv: readonly string[]): string[] | null {
   const first = firstPositional(argv);
-  if (first !== null && NOT_TRACKING_COMMANDS.has(first)) return null;
-  const shelf = argv.findIndex((a) => /^shelf$/i.test(a));
-  if (shelf < 0) return null;
-  if (shelf + 1 < argv.length && OTHER_SHELF_SUBCOMMANDS.has(argv[shelf + 1]!)) return null;
-  const tracking = argv.findIndex((a, j) => j > shelf && /^track/i.test(a));
+  if (first !== null && NOT_TRACKING_COMMANDS.has(first.toLowerCase())) return null;
+  const shelf = argv.findIndex(isShelfToken);
+  if (shelf >= 0) {
+    const next = pastRootFlags(argv, shelf);
+    if (next < argv.length && OTHER_SHELF_SUBCOMMANDS.has(argv[next]!)) return null;
+  }
+  const afterShelf = shelf >= 0 ? argv.findIndex((a, j) => j > shelf && isTrackToken(a)) : -1;
+  const tracking = afterShelf >= 0 ? afterShelf : argv.findIndex(isTrackToken);
   if (tracking < 0) return null;
+  const trackingToken = TRACKING_TOKENS.has(argv[tracking]!.toLowerCase()) ? argv[tracking]! : REDACTED;
+  const after = allowlist(argv.slice(tracking + 1), TRACKING_CONFIG);
+  if (afterShelf < 0) return [...allowlist(argv.slice(0, tracking), HELP_ROOT_CONFIG), trackingToken, ...after];
   return [
     ...allowlist(argv.slice(0, shelf), HELP_ROOT_CONFIG),
     argv[shelf]!,
     ...allowlist(argv.slice(shelf + 1, tracking), ROOT_CONFIG),
-    TRACKING_TOKENS.has(argv[tracking]!.toLowerCase()) ? argv[tracking]! : REDACTED,
-    ...allowlist(argv.slice(tracking + 1), TRACKING_CONFIG),
+    trackingToken,
+    ...after,
   ];
 }
 

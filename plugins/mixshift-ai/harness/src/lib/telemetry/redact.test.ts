@@ -427,3 +427,43 @@ describe('shelf tracking lines: flags before the subcommand, a shelf token anywh
     expect(redactArgs(['shelf', 'rank-history', 'tracking shoes', '--zip', '10001'])).toEqual(['shelf', 'rank-history', 'tracking shoes', '--zip', '10001']);
   });
 });
+
+describe('shelf tracking lines vs labels lines and other shelf subcommands (second review of #277)', () => {
+  const R = '<redacted>';
+
+  it('a labels line keeps the labels allowlist even with `shelf` and `track...` tokens in it (as main captures it)', () => {
+    expect(redactArgs(['labels', 'preview', '--account', '123', '--rename', 'item_group', '--from', 'shelf', '--to', 'tracking'])).toEqual([
+      'labels', 'preview', '--account', '123', '--rename', 'item_group', '--from', R, '--to', R,
+    ]);
+    expect(redactArgs(['labels', 'set', '--account', '123', '--to', 'shelf', 'tracking', 'add', '--view', 'desktop'])).toEqual([
+      'labels', 'set', '--account', '123', '--to', R, R, R, R, R,
+    ]);
+  });
+
+  it('a `track...` token with no registered command first is a tracking line, with or without a shelf token', () => {
+    expect(redactArgs(['tracking', 'create', 'trailset', '--keyword', 'trail mix', '--zip', '10001'])).toEqual([
+      'tracking', 'create', R, '--keyword', R, '--zip', R,
+    ]);
+    expect(redactArgs(['tracking', 'shelf', 'create', 'trailset', '--keyword', 'trail mix'])).toEqual(['tracking', R, R, R, '--keyword', R]);
+    expect(redactArgs(['shelve', 'tracking', 'create', 'trailset', '--zip', '10001'])).toEqual([R, 'tracking', 'create', R, '--zip', R]);
+  });
+
+  it('a token ending in `=shelf` counts as the shelf token', () => {
+    expect(redactArgs(['--surface=shelf', 'tracking', 'create', 'trailset', '--keyword', 'trail mix'])).toEqual([
+      '--surface=shelf', 'tracking', 'create', R, '--keyword', R,
+    ]);
+    expect(redactArgs(['shelf=shelf', 'tracking', 'add', 'trailset', '--zip', '10001'])).toEqual(['shelf=shelf', 'tracking', 'add', R, '--zip', R]);
+  });
+
+  it('root flags between `shelf` and another shelf subcommand do not make it a tracking line (as main captures it)', () => {
+    for (const argv of [
+      ['shelf', '--json', 'search', 'tracking shoes', '--zip', '10001'],
+      ['shelf', '--verbose', 'search', 'tracking shoes', '--zip', '10001'],
+      ['shelf', '--json', 'rank-history', 'tracking shoes', '--zip', '10001'],
+      ['shelf', '--data-dir', 'C:/x', 'search', 'tracking shoes'],
+      ['shelf', '--surface=cli', '--json', 'search', 'tracking shoes'],
+    ]) {
+      expect(redactArgs(argv), argv.join(' ')).toEqual(argv);
+    }
+  });
+});

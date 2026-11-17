@@ -43,4 +43,15 @@ describe('cli.command_run cmd and subcmd: names only', () => {
     expect(subcommandToken(p, 'shelf', '--keyword=trail mix')).toBe('(other)');
     expect(subcommandToken(p, 'help', 'trail mix')).toBe('(other)');
   });
+
+  it('a command name in the second slot counts only after `help` or a boolean root flag; `help` itself counts anywhere', () => {
+    expect(subcommandToken(p, '--verbose', 'data')).toBe('data');
+    expect(subcommandToken(p, 'feedback', 'data')).toBe('(other)'); // `feedback report`: the message happens to be a command's name
+    expect(subcommandToken(p, 'feedback', 'shelf')).toBe('(other)');
+    expect(subcommandToken(p, '--data-dir', 'data')).toBe('(other)'); // a path that happens to be a command's name
+    expect(subcommandToken(p, '--surface', 'shelf')).toBe('(other)');
+    expect(subcommandToken(p, 'shelf', 'help')).toBe('help');
+    expect(subcommandToken(p, 'data', 'help')).toBe('help');
+    expect(subcommandToken(p, 'feedback', 'help')).toBe('help');
+  });
 });
