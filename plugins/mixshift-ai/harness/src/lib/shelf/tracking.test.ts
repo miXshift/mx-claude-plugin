@@ -139,6 +139,16 @@ describe('shelf tracking client: refusals', () => {
     expect((bare as { friendly: string }).friendly).toContain('There is no tracking set "trail-snacks"');
   });
 
+  it('the per-set cap is invalid_request carrying calls_per_day and max_calls_per_day_per_set; exit 15', async () => {
+    const reason = 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.';
+    const f = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, { ok: false, kind: 'invalid_request', friendly: reason, message: reason, source: 'request', retryable: false, calls_per_day: 240, max_calls_per_day_per_set: 200 }),
+    );
+    const r = await shelfTrackingPatch('trail-snacks', { add_keywords: ['granola'] }, injected(f));
+    expect(r).toMatchObject({ ok: false, kind: 'invalid_request', friendly: reason, callsPerDay: 240, maxCallsPerDayPerSet: 200, httpStatus: 400 });
+    expect(exitCodeForShelfKind('invalid_request')).toBe(15);
+  });
+
   it('zip_unavailable on a write carries the zips that are off the list', async () => {
     const f = vi.fn().mockResolvedValueOnce(jsonResponse(400, { ok: false, kind: 'zip_unavailable', friendly: 'A zip in the set is not available.', country: 'us', available_count: 300, unavailable: ['99999'] }));
     expect(await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['99999'] }, injected(f))).toMatchObject({ kind: 'zip_unavailable', availableCount: 300, unavailableZips: ['99999'] });

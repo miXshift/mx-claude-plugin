@@ -103,6 +103,18 @@ const LIST = { ok: true as const, sets: [SET, PAUSED], projected_calls_per_month
 const written = (set: ShelfTrackingSet, projected = 248) => ({ ok: true as const, set, projected_calls_per_month: projected, allowance: 2000 });
 const notFound: ShelfFailure = { ok: false, kind: 'not_found', friendly: 'Your organization has no rank tracking set with that id.', httpStatus: 404, source: 'request', retryable: false };
 const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', httpStatus: 403, source: 'account', retryable: false };
+/** The per-set cap, as the service answers it: invalid_request with both numbers. */
+const CAP: ShelfFailure = {
+  ok: false,
+  kind: 'invalid_request',
+  friendly: 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.',
+  message: 'keywords x zips x surfaces x pages is 240 calls a day; the limit is 200. Split it into more sets or trim it.',
+  httpStatus: 400,
+  callsPerDay: 240,
+  maxCallsPerDayPerSet: 200,
+  source: 'request',
+  retryable: false,
+};
 const OVER: ShelfFailure = {
   ok: false,
   kind: 'tracking_over_allowance',
@@ -244,6 +256,7 @@ describe('shelf tracking create', () => {
     expect(stdout).toContain('**Replaced tracking set `trail-snacks`**');
     expect(stdout).toContain('- added 1 keyword: "granola"');
     expect(stdout).toContain('- removed 2 keywords: "trail mix", "nut mix"');
+    expect(stdout).toContain('stops answering for a removed keyword unless another set lists it');
     expect(stdout).toContain('- zips: 10001 (was 10001, 60601)');
     expect(lastTrack().payload).toMatchObject({ action: 'replace', keywords_added: 1, keywords_removed: 2 });
   });
@@ -281,6 +294,23 @@ describe('shelf tracking create', () => {
     expect(stderr).toContain('request more shelf requests');
     expect(process.exitCode).toBe(10);
     expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'tracking_over_allowance', payload: { action: 'create', stage: 'write', kind_failed: 'tracking_over_allowance', http_status: 402 } });
+    noValuesInTelemetry();
+  });
+
+  it('a set over the per-set cap (invalid_request) shows its calls a day and the limit (exit 15), in text and --json', async () => {
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
+    vi.mocked(shelfTrackingPut).mockResolvedValueOnce(CAP);
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '5');
+    expect(stderr).toContain('✗ keywords x zips x surfaces x pages is 240 calls a day; the limit is 200.');
+    expect(stderr).toContain('calls a day for this set: 240; the most one set may make: 200');
+    expect(process.exitCode).toBe(15);
+    expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'invalid_request', payload: { action: 'create', stage: 'write', http_status: 400 } });
+
+    stdout = '';
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce(notFound);
+    vi.mocked(shelfTrackingPut).mockResolvedValueOnce(CAP);
+    await run('--json', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001', '--pages', '5');
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'invalid_request', calls_per_day: 240, max_calls_per_day_per_set: 200 });
     noValuesInTelemetry();
   });
 
@@ -351,6 +381,7 @@ describe('shelf tracking add / remove', () => {
     expect(stderr).toContain('✗ Only an owner, admin or manager of your organization can change rank tracking.');
     expect(stderr).toContain('Ask an owner, admin or manager in your organization');
     expect(stderr).toContain('track these keywords');
+    expect(stderr).toContain('a machine credential, such as one a scheduled task uses, never can');
     expect(process.exitCode).toBe(11);
     expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'forbidden', payload: { action: 'add', stage: 'write', kind_failed: 'forbidden', http_status: 403, keywords_asked: 1 } });
 
@@ -360,6 +391,15 @@ describe('shelf tracking add / remove', () => {
     await run('--json', 'shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
     expect(JSON.parse(stdout)).toMatchObject({ status: 'error', failure_kind: 'forbidden', message: FORBIDDEN.friendly, http_status: 403 });
     noValuesInTelemetry();
+  });
+
+  it('add over the per-set cap shows both numbers (exit 15)', async () => {
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
+    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(CAP);
+    await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
+    expect(stderr).toContain('calls a day for this set: 240; the most one set may make: 200');
+    expect(stderr).toContain('Trim it, or split it into more sets.');
+    expect(process.exitCode).toBe(15);
   });
 
   it('a set that does not exist stops before the write, with the list hint', async () => {
@@ -381,6 +421,8 @@ describe('shelf tracking pause / resume', () => {
     expect(shelfTrackingPatch).toHaveBeenCalledWith('trail-snacks', { enabled: false }, { dataDirOverride: undefined });
     expect(stdout).toContain('**Paused tracking set `trail-snacks`**');
     expect(stdout).toContain('uses none of the allowance');
+    expect(stdout).toContain('its rank history stays readable');
+    expect(stdout).not.toContain('does not answer');
     expect(stdout).toContain('Calls a day for this set: 8 (2 keywords x 2 zips x 2 views x 1 page), none while paused.');
     expect(stdout).toContain('Projected monthly use: 0 of 2000');
     expect(lastTrack().payload).toMatchObject({ action: 'pause', enabled: false, calls_per_day: 8, projected_calls_per_month: 0 });
@@ -406,6 +448,7 @@ describe('shelf tracking delete', () => {
   it('without --yes deletes nothing and makes no call (exit 1), in text and in --json', async () => {
     await run('shelf', 'tracking', 'delete', 'trail-snacks');
     expect(stderr).toContain('Nothing was deleted.');
+    expect(stderr).toContain('keep its history readable, pause it instead');
     expect(stderr).toContain('mixshift shelf tracking delete trail-snacks --yes');
     expect(process.exitCode).toBe(1);
 

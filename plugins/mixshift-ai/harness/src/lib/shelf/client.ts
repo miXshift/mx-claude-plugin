@@ -242,7 +242,7 @@ export type ShelfFailureKind =
   | 'upstream_unavailable' // 502: shelf data is temporarily unavailable
   | 'insufficient_scope' // 403: the credential lacks shelf:read
   | 'not_found' // 404: no such shelf endpoint (contract drift), or no tracking set with that id
-  | 'forbidden' // 403: only an owner, admin or manager may change the organization's rank tracking
+  | 'forbidden' // 403: only an owner, admin or manager, signed in as a person, may change the organization's rank tracking
   | 'tracking_over_allowance' // the change would push projected monthly tracking use past the allowance
   // --- local-only ---
   | 'tracking_set_exists' // `shelf tracking create` without --replace on an id that is taken
@@ -267,6 +267,9 @@ export interface ShelfFailure {
   requestMore?: string;
   /** A refused tracking change: the monthly use it would have led to (compare with `allowance`). */
   projectedCallsPerMonth?: number;
+  /** A tracking set refused for its size (invalid_request): its calls a day, and the most one set may make. */
+  callsPerDay?: number;
+  maxCallsPerDayPerSet?: number;
   /** zip_unavailable: how many zips the country has (shelf zips lists them). */
   availableCount?: number;
   /** zip_unavailable on a tracking write: the zips in the set that are not on the list (the caller's own input). */
@@ -664,6 +667,8 @@ function toShelfFailure(json: Record<string, unknown>, httpStatus: number): Shel
     ...(str(json.resets_at) !== undefined ? { resetsAt: str(json.resets_at) } : {}),
     ...(str(json.request_more) !== undefined ? { requestMore: str(json.request_more) } : {}),
     ...(num(json.projected_calls_per_month) !== undefined ? { projectedCallsPerMonth: num(json.projected_calls_per_month) } : {}),
+    ...(num(json.calls_per_day) !== undefined ? { callsPerDay: num(json.calls_per_day) } : {}),
+    ...(num(json.max_calls_per_day_per_set) !== undefined ? { maxCallsPerDayPerSet: num(json.max_calls_per_day_per_set) } : {}),
     ...(num(json.available_count) !== undefined ? { availableCount: num(json.available_count) } : {}),
     ...(Array.isArray(json.unavailable) && json.unavailable.length > 0 ? { unavailableZips: json.unavailable.map(String) } : {}),
     ...(num(json.retryAfterMs) !== undefined ? { retryAfterMs: num(json.retryAfterMs) } : {}),

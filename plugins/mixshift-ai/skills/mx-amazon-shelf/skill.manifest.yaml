@@ -136,15 +136,20 @@ notes: >
   and ASINs, observed once a day); `mixshift shelf rank-history <query> --zip
   <zip> [--view] [--from] [--to] [--asin]` reads the history back free, one
   keyword x zip x view per call, as the absolute, organic and sponsored rank
-  per day and ASIN; anything not tracked answers not_tracked (exit 12).
+  per day and ASIN, for any set that lists the keyword, running or paused;
+  anything not tracked answers not_tracked (exit 12).
   `mixshift shelf tracking list|show` shows the sets, each set's calls a day
   and the projected monthly use against the allowance, and whether the person
-  can change them (can_edit); an owner, admin or manager changes them with
-  `shelf tracking create|add|remove|pause|resume|delete` (forbidden, exit 11,
-  for anyone else; tracking_over_allowance, exit 10, when a change would take
-  the projection past the allowance). Every running set uses keywords x zips
-  x views x pages of the allowance each day; reading and changing the sets is
-  free. Someone who cannot change tracking sends the request with `mixshift
+  can change them (can_edit); an owner, admin or manager signed in as a
+  person changes them with `shelf tracking create|add|remove|pause|resume|delete`
+  (forbidden, exit 11, for anyone else and for every machine credential, so
+  never from a scheduled task; tracking_over_allowance, exit 10, when a change
+  would take the projection past the allowance; invalid_request with
+  calls_per_day and max_calls_per_day_per_set for a set over the per-set
+  limit). Every running set uses keywords x zips x views x pages of the
+  allowance each day; reading and changing the sets is free. Pausing a set
+  stops its cost and keeps its history readable; deleting a set or removing a
+  keyword stops rank-history answering for it unless another set lists it. Someone who cannot change tracking sends the request with `mixshift
   feedback "Track keyword rank ..." --category feature_request --skill
   mx-amazon-shelf` (keywords, locations, devices, ASINs); MixShift sets it
   up. One `shelf.insight` telemetry event per conclusion, label only (closed

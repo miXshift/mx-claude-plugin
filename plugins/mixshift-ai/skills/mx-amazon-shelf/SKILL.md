@@ -98,11 +98,13 @@ When characterizing this capability to the user, use these facts:
   each view of every running set, and keeps every position;
   `mixshift shelf rank-history` reads that history back, free, as the
   absolute, organic and sponsored rank per day and ASIN. Only keywords, zips
-  and views a running set lists answer (anything else is `not_tracked`).
-  An owner, admin or manager changes the sets from the plugin ("Manage
-  what's tracked" below); anyone else asks one of them, or MixShift. Every
-  running set uses keywords x zips x views x pages of the allowance each
-  day; reading the history back is free.
+  and views a set lists answer, whether the set is running or paused
+  (anything else is `not_tracked`). An owner, admin or manager, signed in as
+  a person, changes the sets from the plugin ("Manage what's tracked"
+  below); anyone else asks one of them, or MixShift. A machine credential,
+  such as one a scheduled task uses, can never change them. Every running set
+  uses keywords x zips x views x pages of the allowance each day; reading the
+  history back is free.
 - **Reads, plus your rank tracking:** the only thing this skill changes is
   the organization's own tracking sets (`shelf tracking`). Nothing on Amazon
   or in the account's data changes.
@@ -259,7 +261,10 @@ pages of the monthly shelf allowance, every day: ten keywords at three zips
 on both views, one page, is 60 a day, about 1,800 a month. `shelf tracking
 list` shows each set's calls a day and the projected monthly use against the
 allowance. Reading the history back stays free, and so does listing and
-changing the sets. A paused set uses nothing.
+changing the sets. A paused set uses nothing, and its history stays
+readable: pausing is the way to stop paying for a set and keep its history.
+One set may make at most a fixed number of calls a day (`limits` in the
+`list` answer); a bigger set is refused, so split it.
 
 When a call answers `not_tracked` (exit 12), or the user asks to track
 keywords that are not tracked yet:
@@ -299,6 +304,11 @@ What the user says, and what to run:
 
 How to run them:
 
+- **A person changes tracking.** Changes need an owner, admin or manager
+  signed in as a person. A machine credential, such as the one a scheduled
+  task uses, can never change tracking (`forbidden`), so never put a
+  `shelf tracking` change in a scheduled task; run it in the conversation
+  with the user.
 - **Find the set first.** `list` names the sets (the `set` column); a
   keyword can sit in more than one. When the user did not name a set and
   there is more than one that fits, ask which. For a new set, pick a short id
@@ -313,15 +323,21 @@ How to run them:
   day and the projected monthly use against the allowance. Relay those three
   in one or two sentences. A new keyword's first point lands with the next
   daily run.
-- **Pause or delete.** Pausing stops the daily searches and keeps the set to
-  resume later; deleting removes it. Either way, `rank-history` stops
-  answering for its keywords unless another running set tracks them. When the
-  user says "stop tracking" a whole set, offer pause first. `delete` refuses
-  without `--yes`; pass it only once the user has confirmed the set by name.
+- **Pause, remove or delete.** Pausing stops the daily searches and their
+  cost, keeps the set to resume later, and keeps its rank history readable:
+  recommend it whenever the user wants to stop paying for a set. Deleting a
+  set, or removing a keyword from one, stops `rank-history` answering for
+  those keywords unless another set (running or paused) lists them; say so
+  before running it. When the user says "stop tracking" a whole set, offer
+  pause first. `delete` refuses without `--yes`; pass it only once the user
+  has confirmed the set by name.
 - **A set keeps at least one keyword.** Removing the last one is refused;
   pause or delete the set instead.
-- **Refusals.** `forbidden` (exit 11): only an owner, admin or manager can
-  change tracking; say so, and offer the MixShift request above.
+- **Refusals.** `forbidden` (exit 11): only an owner, admin or manager,
+  signed in as a person, can change tracking; say so, and offer the MixShift
+  request above. `invalid_request` (exit 15) with `calls_per_day` and
+  `max_calls_per_day_per_set`: the set would make more calls a day than one
+  set may; give both numbers and offer to trim it or split it into two sets.
   `tracking_over_allowance` (exit 10): the change would take the projected
   monthly use past the allowance, so nothing changed; give both numbers
   (`projected_calls_per_month`, `allowance`) and the options: fewer keywords,
@@ -553,12 +569,12 @@ kind has its own exit code. Reads are always safe to retry, and so are the
 | `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `tracking_over_allowance` | 10 | `shelf tracking` only: the change would take the projected monthly use past the allowance, so nothing changed; carries `projected_calls_per_month`, `allowance` and `request_more`. Give both numbers and the options ("Manage what's tracked"). |
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
-| `forbidden` | 11 | `shelf tracking` only: the signed-in person is not an owner, admin or manager, so cannot change tracking. Say so; offer the MixShift request ("Tracking keywords over time"). |
+| `forbidden` | 11 | `shelf tracking` only: the sign-in is not an owner, admin or manager, or is a machine credential (which never can), so cannot change tracking. Say so; offer the MixShift request ("Tracking keywords over time"). |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are; on a tracking change `unavailable` names the zips). Run `shelf zips` and pick one. |
 | `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking. Do not resend; offer to track it ("Tracking keywords over time"). |
 | `tracking_set_exists` | 12 | `shelf tracking create` only: the id is taken, and nothing changed. Use `add` or `remove`, or `create ... --replace`. |
 | `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace; for `rank-history` also a range over a year, `--from` after `--to`, or a tracking set with no ASINs (name one `--asin`). Check the inputs; do not resend as-is. |
-| `invalid_request` | 15 | MixShift refused it before sending anything (a schema miss; `invalid_params` names the fields). Change the request. |
+| `invalid_request` | 15 | MixShift refused it before sending anything (a schema miss; `invalid_params` names the fields; on a tracking change `detail` says why, and a set over the per-set limit carries `calls_per_day` and `max_calls_per_day_per_set`). Change the request. |
 | `upstream_unavailable` | 1 | Shelf data is temporarily unavailable. Try again in a minute. |
 | `host_unreachable`, `unknown` | 1 | Could not reach MixShift, or an unrecognized reply. Retry once; then report. |
 

@@ -12,7 +12,10 @@
  *   tracking delete <id> --yes
  *
  * Anyone in the organization can list and show; an owner, admin or manager
- * can change the sets (the service refuses anyone else: forbidden, exit 11).
+ * signed in as a person can change the sets (the service refuses anyone else,
+ * and every machine credential: forbidden, exit 11). A paused set keeps its
+ * rank history readable; only a deleted set, or a keyword removed from a set,
+ * stops answering (unless another set lists it).
  * Reading and changing are free, but every running set takes keywords x zips x
  * views x pages shelf answers a day from the monthly allowance, and a change
  * that would push the projected monthly use past the allowance is refused
@@ -93,9 +96,10 @@ export function registerShelfTracking(shelf: Command): void {
     .command('tracking')
     .description(
       "Your organization's rank tracking: the keywords MixShift searches once a day at each tracked zip and view, which " +
-        '`shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin or manager can create, add, ' +
-        'remove, pause, resume and delete. Free to read and change, but every running set takes keywords x zips x views x ' +
-        'pages shelf requests a day from the monthly allowance.',
+        '`shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin or manager, signed in as a ' +
+        'person, can create, add, remove, pause, resume and delete (a machine credential never can). Free to read and change, ' +
+        'but every running set takes keywords x zips x views x pages shelf requests a day from the monthly allowance. To stop ' +
+        'paying for a set and keep its history readable, pause it.',
     );
 
   tracking
@@ -151,8 +155,8 @@ export function registerShelfTracking(shelf: Command): void {
     .description(
       'Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. ' +
         'The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x ' +
-        'views x pages shelf requests a day; a set that would push the projected monthly use past the allowance is refused. ' +
-        'Refuses an id that is taken unless --replace.',
+        'views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected ' +
+        'monthly use past the allowance, is refused. Refuses an id that is taken unless --replace.',
     )
     .option('--keyword <keyword>', `a keyword to track (repeatable; 1 to ${TRACKING_MAX_KEYWORDS})`, collect)
     .option('--zip <zip>', `a shopper location from \`shelf zips\` (repeatable; 1 to ${TRACKING_MAX_ZIPS})`, collect)
@@ -212,9 +216,11 @@ export function registerShelfTracking(shelf: Command): void {
       .description(
         mode === 'add'
           ? 'Add keywords or ASINs to a tracking set (owners, admins and managers). Each keyword adds zips x views x pages ' +
-              'calls a day; a change that would push the projected monthly use past the allowance is refused. ASINs cost nothing.'
+              'calls a day; a change that would take the set over the per-set limit of calls a day, or the projected monthly use ' +
+              'past the allowance, is refused. ASINs cost nothing.'
           : 'Remove keywords or ASINs from a tracking set (owners, admins and managers). The allowance never blocks a removal, ' +
-              'and each keyword removed saves zips x views x pages calls a day. A set keeps at least one keyword: delete or pause it instead.',
+              'and each keyword removed saves zips x views x pages calls a day. `shelf rank-history` stops answering for a removed ' +
+              'keyword unless another set lists it. A set keeps at least one keyword: pause or delete the set instead.',
       )
       .option('--keyword <keyword>', `a keyword to ${mode} (repeatable)`, collect)
       .option('--asin <asin>', `an ASIN to ${mode} (repeatable)`, collect)
@@ -233,8 +239,8 @@ export function registerShelfTracking(shelf: Command): void {
             const drop = new Set(keywords.map(normalizeKeyword));
             if (prior.set.keywords.length > 0 && prior.set.keywords.every((k) => drop.has(normalizeKeyword(k)))) {
               throw new Error(
-                `That would leave "${id}" with no keywords, and a set keeps at least one. Delete it (\`mixshift shelf tracking delete ${id} --yes\`) ` +
-                  `or pause it (\`mixshift shelf tracking pause ${id}\`) instead.`,
+                `That would leave "${id}" with no keywords, and a set keeps at least one. To stop paying for it and keep its history ` +
+                  `readable, pause it (\`mixshift shelf tracking pause ${id}\`); to remove it, delete it (\`mixshift shelf tracking delete ${id} --yes\`).`,
               );
             }
           }
@@ -256,8 +262,8 @@ export function registerShelfTracking(shelf: Command): void {
       .command(`${mode} <id>`)
       .description(
         mode === 'pause'
-          ? 'Pause a tracking set (owners, admins and managers): its daily searches stop and it uses none of the allowance. ' +
-              'While paused, `shelf rank-history` does not answer for its keywords unless another running set tracks them.'
+          ? 'Pause a tracking set (owners, admins and managers): its daily searches stop and it uses none of the allowance, and ' +
+              'its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history.'
           : 'Resume a paused tracking set (owners, admins and managers): the next daily run searches it again, and it uses its ' +
               'calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance.',
       )
@@ -278,7 +284,8 @@ export function registerShelfTracking(shelf: Command): void {
     .command('delete <id>')
     .description(
       'Delete a tracking set (owners, admins and managers): its daily searches stop, and `shelf rank-history` no longer answers ' +
-        'for its keywords unless another running set tracks them. Needs --yes. To stop it for a while, pause it instead.',
+        'for its keywords unless another set (running or paused) lists them. Needs --yes. To stop paying and keep the history ' +
+        'readable, pause it instead.',
     )
     .option('--yes', 'confirm the delete (without it nothing is deleted)')
     .action(async (rawId: string, opts: TrackingOptions, cmd: Command) => {
@@ -289,8 +296,8 @@ export function registerShelfTracking(shelf: Command): void {
           await trackShelf(EventName.ShelfTrackingChanged, 'failed', ctx.startedAt, ctx.dataDir, { action: 'delete', stage: 'confirm', kind_failed: 'confirmation_required' });
           throw new Error(
             `Nothing was deleted. Deleting "${id}" stops its daily searches, and rank-history no longer answers for its keywords ` +
-              `unless another running set tracks them. To delete it, run \`mixshift shelf tracking delete ${id} --yes\`; ` +
-              `to stop it for a while, \`mixshift shelf tracking pause ${id}\`.`,
+              `unless another set lists them. To stop paying and keep its history readable, pause it instead: ` +
+              `\`mixshift shelf tracking pause ${id}\`. To delete it, run \`mixshift shelf tracking delete ${id} --yes\`.`,
           );
         }
         const prior = await shelfTrackingGet(id, ctx.client);
@@ -530,7 +537,7 @@ export function renderTrackingList(r: ShelfTrackingList): string {
         `| ${s.id} | ${cell(s.note)} | ${s.keywords.length} | ${cell(s.zips.join(', '))} | ${cell(s.surfaces.join(', '))} | ${s.pages} | ${s.calls_per_day} | ${enabledText(s)} | ${cell(lastRunText(s))} |`,
       );
     }
-    L.push('', 'A paused set uses none of the allowance. `mixshift shelf tracking show <set>` lists its keywords and ASINs.');
+    L.push('', 'A paused set uses none of the allowance and its rank history stays readable. `mixshift shelf tracking show <set>` lists its keywords and ASINs.');
   }
   L.push('', projectionText(r.projected_calls_per_month, r.allowance));
   L.push('', editHint(r.can_edit));
@@ -572,12 +579,15 @@ export function renderWritten(action: TrackingAction, r: ShelfTrackingWritten, c
     L.push('- the first snapshot lands with the next daily run; `shelf rank-history` has points for these keywords from then on');
   } else if (action === 'pause') {
     L.push('- paused: no daily searches until you resume it, so it uses none of the allowance');
-    L.push('- while paused, `shelf rank-history` does not answer for its keywords unless another running set tracks them');
+    L.push('- its rank history stays readable with `shelf rank-history`; days while paused have no new points');
   } else if (action === 'resume') {
-    L.push('- resumed: the next daily run searches it again');
+    L.push('- resumed: the next daily run searches it again and adds new points to its rank history');
   } else if (changes) {
     if (changes.keywords_added.length) L.push(`- added ${plural(changes.keywords_added.length, 'keyword')}: ${quoted(changes.keywords_added)}`);
-    if (changes.keywords_removed.length) L.push(`- removed ${plural(changes.keywords_removed.length, 'keyword')}: ${quoted(changes.keywords_removed)}`);
+    if (changes.keywords_removed.length) {
+      L.push(`- removed ${plural(changes.keywords_removed.length, 'keyword')}: ${quoted(changes.keywords_removed)}`);
+      L.push('- `shelf rank-history` stops answering for a removed keyword unless another set lists it');
+    }
     if (changes.asins_added.length) L.push(`- added ${plural(changes.asins_added.length, 'ASIN')}: ${changes.asins_added.join(', ')}`);
     if (changes.asins_removed.length) L.push(`- removed ${plural(changes.asins_removed.length, 'ASIN')}: ${changes.asins_removed.join(', ')}`);
     const unchanged = [...changes.keywords_unchanged.map((k) => `"${k}"`), ...changes.asins_unchanged];
@@ -598,7 +608,7 @@ export function renderDeleted(s: ShelfTrackingSet, projected: number | null, all
     `**Deleted tracking set \`${s.id}\`**`,
     '',
     `- it tracked ${plural(s.keywords.length, 'keyword')} at ${plural(s.zips.length, 'zip')} on ${viewsText(s.surfaces)}, ${s.calls_per_day} calls a day${isRunning(s) ? '' : ' when running'}; those searches stop`,
-    '- `shelf rank-history` no longer answers for its keywords unless another running set tracks them',
+    '- `shelf rank-history` no longer answers for its keywords unless another set (running or paused) lists them',
     '',
     projectionText(projected, allowance),
   ].join('\n');

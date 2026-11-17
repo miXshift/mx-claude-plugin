@@ -58,6 +58,8 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
       resets_at: failure.resetsAt,
       request_more: failure.requestMore,
       projected_calls_per_month: failure.projectedCallsPerMonth,
+      calls_per_day: failure.callsPerDay,
+      max_calls_per_day_per_set: failure.maxCallsPerDayPerSet,
       available_count: failure.availableCount,
       unavailable: failure.unavailableZips,
       retry_after_ms: failure.retryAfterMs,
@@ -73,6 +75,12 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
     if (failure.projectedCallsPerMonth !== undefined) {
       process.stderr.write(`  projected monthly use: ${failure.projectedCallsPerMonth} shelf requests; allowance: ${failure.allowance ?? '?'} a month\n`);
     }
+    if (failure.callsPerDay !== undefined || failure.maxCallsPerDayPerSet !== undefined) {
+      process.stderr.write(
+        `  calls a day for this set: ${failure.callsPerDay ?? '?'}; the most one set may make: ${failure.maxCallsPerDayPerSet ?? '?'} ` +
+          '(keywords x zips x views x pages). Trim it, or split it into more sets.\n',
+      );
+    }
     if (failure.unavailableZips) {
       process.stderr.write(`  not available: ${failure.unavailableZips.join(', ')} (\`mixshift shelf zips\` lists the ones that are)\n`);
     }
@@ -87,7 +95,10 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
       );
     }
     if (failure.kind === 'forbidden') {
-      process.stderr.write('  Ask an owner, admin or manager in your organization to make this change, or say "track these keywords" to ask MixShift.\n');
+      process.stderr.write(
+        '  Ask an owner, admin or manager in your organization to make this change, or say "track these keywords" to ask MixShift. ' +
+          "Only a person's sign-in can change tracking: a machine credential, such as one a scheduled task uses, never can.\n",
+      );
     }
     if (failure.kind === 'not_tracked') {
       process.stderr.write(
