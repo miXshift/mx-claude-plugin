@@ -385,3 +385,45 @@ describe('shelf tracking lines: a malformed or misordered line still triggers th
     expect(redactArgs(['shelf', 'search', 'tracking shoes', '--zip', '10001'])).toEqual(['shelf', 'search', 'tracking shoes', '--zip', '10001']);
   });
 });
+
+describe('shelf tracking lines: flags before the subcommand, a shelf token anywhere (review of #277)', () => {
+  const R = '<redacted>';
+  const VALUES = /trail|10001/i;
+
+  it.each([
+    [['shelf', '--zip', '10001', '--view', 'desktop', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix']],
+    [['shelf', '--keyword', 'trail mix', '--zip', '10001', 'tracking', 'create', 'trail-snacks']],
+    [['help', 'shelf', '--zip', '10001', '--view', 'mobile', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix']],
+    [['shelf', '--keyword', 'search', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix']],
+    [['--surface', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--zip', '10001']],
+    [['--data-dir', 'shelf', 'tracking', 'show', 'trail-snacks']],
+    [['--json', 'SHELF', '--fresh', '--keyword=trail mix', 'Tracking', 'add', 'trail-snacks']],
+  ])('%j carries no set id, keyword or zip', (argv) => {
+    const out = redactArgs(argv);
+    expect(out).toHaveLength(argv.length);
+    expect(out.join(' ')).not.toMatch(VALUES);
+  });
+
+  it('keeps the structure it can on those lines', () => {
+    expect(redactArgs(['shelf', '--zip', '10001', '--view', 'desktop', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix'])).toEqual([
+      'shelf', R, R, R, R, 'tracking', 'create', R, '--keyword', R,
+    ]);
+    expect(redactArgs(['help', 'shelf', '--zip', '10001', 'tracking', 'create', 'trail-snacks'])).toEqual(['help', 'shelf', R, R, 'tracking', 'create', R]);
+    expect(redactArgs(['--surface', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix'])).toEqual([
+      '--surface', 'shelf', 'tracking', 'create', R, '--keyword', R,
+    ]);
+    expect(redactArgs(['--data-dir', 'shelf', 'tracking', 'show', 'trail-snacks'])).toEqual(['--data-dir', 'shelf', 'tracking', 'show', R]);
+  });
+
+  it('keeps the tracking token only as `tracking` or a known typo; any other `track...` token is redacted', () => {
+    expect(redactArgs(['shelf', 'tracking-shoes', 'create', 'x1'])).toEqual(['shelf', R, 'create', R]);
+    expect(redactArgs(['shelf', 'track-trail-mix', '--keyword', 'trail mix'])).toEqual(['shelf', R, '--keyword', R]);
+    expect(redactArgs(['shelf', 'TRACKIN', 'list'])).toEqual(['shelf', 'TRACKIN', 'list']);
+  });
+
+  it('another top-level command, or another shelf subcommand right after `shelf`, keeps the baseline', () => {
+    expect(redactArgs(['feedback', 'shelf tracking is great'])).toEqual(['feedback', 'shelf tracking is great']);
+    expect(redactArgs(['feedback', 'shelf', 'tracking', 'works'])).toEqual(['feedback', 'shelf', 'tracking', 'works']);
+    expect(redactArgs(['shelf', 'rank-history', 'tracking shoes', '--zip', '10001'])).toEqual(['shelf', 'rank-history', 'tracking shoes', '--zip', '10001']);
+  });
+});

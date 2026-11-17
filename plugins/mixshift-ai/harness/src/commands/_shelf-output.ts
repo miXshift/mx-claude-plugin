@@ -97,15 +97,15 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
       );
     }
     if (failure.kind === 'forbidden' && failure.reason === 'identity_not_verified') {
+      // The shared team login, an unverified session, or a machine credential (the service checks who is asking first).
       process.stderr.write(
         '  Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`), not a shared ' +
-          'team login, then run it again.\n',
+          'team login, then run it again. A machine credential, such as one a scheduled task uses, can never change tracking: ' +
+          'make the change in a conversation, signed in as yourself.\n',
       );
     } else if (failure.kind === 'forbidden') {
-      process.stderr.write(
-        '  Ask an owner, admin or manager in your organization to make this change, or say "track these keywords" to ask MixShift. ' +
-          "Only a person's sign-in can change tracking: a machine credential, such as one a scheduled task uses, never can.\n",
-      );
+      // reason role: a verified person without the role.
+      process.stderr.write('  To have it changed: ask an owner, admin or manager in your organization, or say "track these keywords" to ask MixShift.\n');
     }
     if (failure.kind === 'tracking_unavailable') {
       process.stderr.write(

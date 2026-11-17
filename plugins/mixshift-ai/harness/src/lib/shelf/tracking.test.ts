@@ -119,10 +119,11 @@ describe('shelf tracking client: refusals', () => {
   it('forbidden carries its reason: role, or identity_not_verified (a shared team login)', async () => {
     const f = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', source: 'account', retryable: false }))
-      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'Changing rank tracking needs a verified work sign-in.', source: 'account', retryable: false }));
-    expect(await shelfTrackingPatch('trail-snacks', { enabled: false }, injected(f))).toMatchObject({ kind: 'forbidden', reason: 'role' });
-    expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject({ kind: 'forbidden', reason: 'identity_not_verified', friendly: 'Changing rank tracking needs a verified work sign-in.' });
+      // The service's exact lines (its TRACKING_FORBIDDEN and TRACKING_IDENTITY_NOT_VERIFIED).
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.', source: 'account', retryable: false }))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.', source: 'account', retryable: false }));
+    expect(await shelfTrackingPatch('trail-snacks', { enabled: false }, injected(f))).toMatchObject({ kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.' });
+    expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject({ kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.' });
   });
 
   it('an unrecognized 403 is the role refusal on a write only; on a read it stays what it was', async () => {
@@ -149,7 +150,7 @@ describe('shelf tracking client: refusals', () => {
     expect((defaulted as { friendly: string }).friendly).toContain('past its monthly shelf allowance');
   });
 
-  it('the routes missing on the service ("No such shelf endpoint.", or a bare 404) are tracking_unavailable, exit 6, on every call', async () => {
+  it('the routes missing on the service (the exact "No such shelf endpoint." line) are tracking_unavailable, exit 6, on every call; other 404s keep their kind', async () => {
     const NO_ENDPOINT = { ok: false, kind: 'not_found', friendly: 'No such shelf endpoint.', source: 'request', retryable: false };
     const f = vi
       .fn()
@@ -164,9 +165,10 @@ describe('shelf tracking client: refusals', () => {
     expect(await shelfTrackingGet('trail-snacks', injected(f))).toMatchObject(unavailable);
     expect(await shelfTrackingPatch('trail-snacks', { enabled: true }, injected(f))).toMatchObject(unavailable);
     expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject(unavailable);
-    expect(await shelfTrackingList(injected(f))).toMatchObject(unavailable); // no envelope at all
-    // A PUT creates, so even a bare not_found there is the route missing, never "no such set".
-    expect(await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['10001'] }, injected(f))).toMatchObject(unavailable);
+    // No envelope at all, or a bare not_found on a PUT: not the service's line, so not read as the routes missing.
+    expect(await shelfTrackingList(injected(f))).toMatchObject({ kind: 'unknown', httpStatus: 404 });
+    // A PUT creates, so a bare not_found there is never "no such set" either: it keeps its kind and the default line.
+    expect(await shelfTrackingPut('trail-snacks', { keywords: ['trail mix'], zips: ['10001'] }, injected(f))).toMatchObject({ kind: 'not_found', httpStatus: 404 });
     expect(exitCodeForShelfKind('tracking_unavailable')).toBe(6);
   });
 

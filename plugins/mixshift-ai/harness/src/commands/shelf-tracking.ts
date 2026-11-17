@@ -165,8 +165,9 @@ export function registerShelfTracking(shelf: Command): void {
       'Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. ' +
         'The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x ' +
         'views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected ' +
-        'monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when the set is ' +
-        'already exactly as asked (a create run again after a lost answer), which answers that nothing changed.',
+        'monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when that set ' +
+        'already has these keywords and zips (and any other values given): a create run again after a lost answer, which ' +
+        'answers that nothing changed, or that the set is paused and how to resume it.',
     )
     .option('--keyword <keyword>', `a keyword to track (repeatable; 1 to ${TRACKING_MAX_KEYWORDS})`, collect)
     .option('--zip <zip>', `a shopper location from \`shelf zips\` (repeatable; 1 to ${TRACKING_MAX_ZIPS})`, collect)
@@ -197,12 +198,15 @@ export function registerShelfTracking(shelf: Command): void {
         if (isShelfFailure(prior) && !isNotFound(prior)) return failed(ctx, EventName.ShelfTrackingChanged, prior, { action: 'create', stage: 'lookup', ...asked });
         const before = isShelfFailure(prior) ? null : prior.set;
         if (before && !opts.replace && sameAsAsked(before, { keywords, zips, views, asins, pages, note, country })) {
-          // A create run again after a lost answer: the set is already as asked. Nothing to write; say so, with the projection.
+          // A create run again after a lost answer: the set already has what was asked. Nothing to write; say so, with
+          // the projection. A paused (or cadence-off) set is not "as asked": it answers paused, with the way to resume it.
+          const running = isRunning(before);
           const all = await shelfTrackingList(ctx.client);
           const projection = isShelfFailure(all) ? { projected_calls_per_month: null, allowance: null } : { projected_calls_per_month: all.projected_calls_per_month, allowance: all.allowance };
-          await trackShelf(EventName.ShelfTrackingChanged, 'ok', ctx.startedAt, ctx.dataDir, { action: 'create', unchanged: true, ...asked, ...setCounts(before), ...projection });
-          if (ctx.json) return writeJson({ status: 'ok', action: 'create', id, unchanged: true, set: before, ...projection });
-          process.stderr.write(`\n✓ tracking set ${id} already exists as asked\n\n`);
+          const state = running ? { unchanged: true } : { paused: true };
+          await trackShelf(EventName.ShelfTrackingChanged, 'ok', ctx.startedAt, ctx.dataDir, { action: 'create', ...state, ...asked, ...setCounts(before), ...projection });
+          if (ctx.json) return writeJson({ status: 'ok', action: 'create', id, ...state, set: before, ...projection });
+          process.stderr.write(`\n✓ tracking set ${id} already exists with these keywords and zips${running ? '' : ', paused'}\n\n`);
           process.stdout.write(renderUnchanged(before, projection.projected_calls_per_month, projection.allowance) + '\n');
           return;
         }
@@ -667,10 +671,12 @@ export function renderWritten(action: TrackingAction, r: ShelfTrackingWritten, c
 }
 
 export function renderUnchanged(s: ShelfTrackingSet, projected: number | null, allowance: number | null): string {
+  const running = isRunning(s);
   return [
-    `**Tracking set \`${s.id}\` already exists as asked**`,
+    `**Tracking set \`${s.id}\` already exists with these keywords and zips${running ? '' : ', but it is paused'}**`,
     '',
     '- nothing changed (running create again after a lost answer is safe)',
+    ...(running ? [] : [`- it takes no daily searches while paused; to restart it: \`mixshift shelf tracking resume ${s.id}\``]),
     '',
     `Calls a day for this set: ${callsBreakdown(s)}${isRunning(s) ? '' : ', none while paused'}.`,
     projectionText(projected, allowance),

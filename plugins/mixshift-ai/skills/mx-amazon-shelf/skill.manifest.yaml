@@ -142,9 +142,10 @@ notes: >
   and the projected monthly use against the allowance, and whether the person
   can change them (can_edit); an owner, admin or manager signed in as a
   person changes them with `shelf tracking create|add|remove|pause|resume|delete`
-  (forbidden, exit 11, for anyone else and for every machine credential, so
-  never from a scheduled task; forbidden with reason identity_not_verified
-  for a shared team login, fixed by signing in as oneself;
+  (forbidden, exit 11: reason role for a verified person without the role;
+  reason identity_not_verified for the shared team login, an unverified
+  session or a machine credential, so never from a scheduled task, fixed by
+  signing in as oneself;
   tracking_unavailable, exit 6, while the service does not offer tracking; tracking_over_allowance, exit 10, when a change
   would take the projection past the allowance; invalid_request with
   calls_per_day and max_calls_per_day_per_set for a set over the per-set

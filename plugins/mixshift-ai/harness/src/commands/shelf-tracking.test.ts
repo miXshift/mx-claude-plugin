@@ -103,7 +103,8 @@ const LIST = { ok: true as const, sets: [SET, PAUSED], projected_calls_per_month
 const written = (set: ShelfTrackingSet, projected = 248) => ({ ok: true as const, set, projected_calls_per_month: projected, allowance: 2000 });
 // Envelopes as the service's route tests pin them (forbidden: GW-143; tracking_over_allowance: GW-144; the per-set cap: GW-142).
 const notFound: ShelfFailure = { ok: false, kind: 'not_found', friendly: 'Your organization has no rank tracking set with that id.', httpStatus: 404, source: 'request', retryable: false };
-const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', httpStatus: 403, source: 'account', retryable: false };
+const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.', httpStatus: 403, source: 'account', retryable: false };
+const IDENTITY: ShelfFailure = { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.', httpStatus: 403, source: 'account', retryable: false };
 /** The per-set cap, as the service answers it: invalid_request with both numbers. */
 const CAP: ShelfFailure = {
   ok: false,
@@ -300,7 +301,8 @@ describe('shelf tracking create', () => {
     await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'Nut Mix', '--keyword', 'trail mix', '--zip', '60601', '--zip', '10001', '--view', 'mobile', '--view', 'desktop');
     expect(shelfTrackingPut).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
-    expect(stdout).toContain('**Tracking set `trail-snacks` already exists as asked**');
+    expect(stdout).toContain('**Tracking set `trail-snacks` already exists with these keywords and zips**');
+    expect(stdout).not.toContain('paused');
     expect(stdout).toContain('Projected monthly use: 248 of 2000');
     expect(lastTrack()).toMatchObject({ outcome: 'ok', payload: { action: 'create', unchanged: true, keywords: 2 } });
 
@@ -309,6 +311,23 @@ describe('shelf tracking create', () => {
     vi.mocked(shelfTrackingList).mockResolvedValueOnce(LIST);
     await run('--json', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--keyword', 'nut mix', '--zip', '10001', '--zip', '60601');
     expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', action: 'create', unchanged: true, set: { id: 'trail-snacks' }, projected_calls_per_month: 248 });
+
+    // The same keywords and zips on a paused set: nothing written, and the answer says paused (never unchanged), with resume.
+    stdout = '';
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: { ...SET, enabled: false } });
+    vi.mocked(shelfTrackingList).mockResolvedValueOnce(LIST);
+    await run('shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--keyword', 'nut mix', '--zip', '10001', '--zip', '60601');
+    expect(shelfTrackingPut).not.toHaveBeenCalled();
+    expect(stdout).toContain('already exists with these keywords and zips, but it is paused');
+    expect(stdout).toContain('`mixshift shelf tracking resume trail-snacks`');
+    stdout = '';
+    vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: { ...SET, cadence: 'off' } });
+    vi.mocked(shelfTrackingList).mockResolvedValueOnce(LIST);
+    await run('--json', 'shelf', 'tracking', 'create', 'trail-snacks', '--keyword', 'trail mix', '--keyword', 'nut mix', '--zip', '10001', '--zip', '60601');
+    const pausedOut = JSON.parse(stdout);
+    expect(pausedOut).toMatchObject({ status: 'ok', action: 'create', paused: true });
+    expect(pausedOut.unchanged).toBeUndefined();
+    expect(lastTrack().payload).toMatchObject({ action: 'create', paused: true });
 
     // The same keywords on another view is a different set: refused as taken.
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
@@ -411,10 +430,10 @@ describe('shelf tracking add / remove', () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(FORBIDDEN);
     await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
-    expect(stderr).toContain('✗ Only an owner, admin or manager of your organization can change rank tracking.');
-    expect(stderr).toContain('Ask an owner, admin or manager in your organization');
+    expect(stderr).toContain('✗ Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.');
+    expect(stderr).toContain('ask an owner, admin or manager in your organization');
     expect(stderr).toContain('track these keywords');
-    expect(stderr).toContain('a machine credential, such as one a scheduled task uses, never can');
+    expect(stderr).not.toContain('Sign in to MixShift as yourself');
     expect(process.exitCode).toBe(11);
     expect(lastTrack()).toMatchObject({ outcome: 'failed', error_class: 'forbidden', payload: { action: 'add', stage: 'write', kind_failed: 'forbidden', http_status: 403, keywords_asked: 1 } });
 
@@ -429,7 +448,7 @@ describe('shelf tracking add / remove', () => {
   it('forbidden with reason role: who can make the change, and the reason reaches --json and telemetry', async () => {
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce({ ...FORBIDDEN, reason: 'role' });
     await run('shelf', 'tracking', 'pause', 'trail-snacks');
-    expect(stderr).toContain('Ask an owner, admin or manager in your organization');
+    expect(stderr).toContain('ask an owner, admin or manager in your organization');
     expect(stderr).not.toContain('Sign in to MixShift as yourself');
     expect(process.exitCode).toBe(11);
     expect(lastTrack().payload).toMatchObject({ kind_failed: 'forbidden', reason: 'role' });
@@ -440,18 +459,14 @@ describe('shelf tracking add / remove', () => {
     expect(JSON.parse(stdout)).toMatchObject({ failure_kind: 'forbidden', reason: 'role' });
   });
 
-  it('forbidden with reason identity_not_verified: the service line and "sign in as yourself", never "ask an owner"', async () => {
-    const shared: ShelfFailure = {
-      ...FORBIDDEN,
-      reason: 'identity_not_verified',
-      friendly: 'Changing rank tracking needs a verified work sign-in. Sign in as yourself with your work account, not the team login.',
-    };
+  it('forbidden with reason identity_not_verified (shared login, unverified session, machine credential): "sign in as yourself", never "ask an owner"', async () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
-    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(shared);
+    vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(IDENTITY);
     await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
-    expect(stderr).toContain('✗ Changing rank tracking needs a verified work sign-in.');
+    expect(stderr).toContain('✗ To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.');
     expect(stderr).toContain('Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`)');
-    expect(stderr).not.toContain('Ask an owner');
+    expect(stderr).toContain('A machine credential, such as one a scheduled task uses, can never change tracking');
+    expect(stderr).not.toContain('ask an owner');
     expect(process.exitCode).toBe(11);
     expect(lastTrack().payload).toMatchObject({ kind_failed: 'forbidden', reason: 'identity_not_verified' });
     noValuesInTelemetry();

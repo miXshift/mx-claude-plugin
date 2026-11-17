@@ -230,14 +230,14 @@ export interface TrackingCall {
   write: boolean;
 }
 
-/** The service's line for a route it does not have: the tracking routes are not deployed there yet. */
-const ENDPOINT_MISSING = /no such shelf endpoint/i;
+/** The service's exact line for a route it does not have: the tracking routes are not deployed there yet. */
+const ENDPOINT_MISSING = 'No such shelf endpoint.';
 
 /**
  * Tracking-specific reading of a failure:
  *   - a not_found on a set route with no line of its own is "no such set";
- *   - a not_found saying "no such shelf endpoint" (or a bare 404) is the tracking routes missing on the service:
- *     tracking_unavailable, never "no such set";
+ *   - a not_found whose line is exactly the service's "No such shelf endpoint." is the tracking routes missing on
+ *     the service: tracking_unavailable, never "no such set" (any other 404 keeps its own kind);
  *   - an envelope carrying `projected_calls_per_month` is the allowance refusal, also when it comes as an
  *     unrecognized kind or as shelf_allowance_exhausted (which otherwise means this month's requests are used up);
  *   - on a write only, a 403 with a kind this build does not know is the role refusal (forbidden).
@@ -248,7 +248,7 @@ export function trackingFailure(f: ShelfFailure, call: TrackingCall): ShelfFailu
   if (f.kind === 'not_found' && call.setId !== undefined && defaulted) {
     return { ...f, friendly: `There is no tracking set "${call.setId}" in your organization. Run \`mixshift shelf tracking list\` for the sets there are.` };
   }
-  if ((f.kind === 'not_found' && ENDPOINT_MISSING.test(f.friendly)) || (f.kind === 'unknown' && f.httpStatus === 404)) {
+  if (f.kind === 'not_found' && f.friendly === ENDPOINT_MISSING) {
     return { ...f, kind: 'tracking_unavailable', friendly: defaultFriendly('tracking_unavailable') };
   }
   let kind = f.kind;
