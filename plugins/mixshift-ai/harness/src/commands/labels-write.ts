@@ -120,7 +120,7 @@ export function registerLabelsWriteCommands(program: Command): void {
     .option('--rename <field>', 'rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)')
     .option('--from <value>', 'with --rename: the exact value to replace')
     .option('--to <value>', 'with --rename: the new value')
-    .option('--scope <scope>', 'marketplace (this account only), region (every marketplace of the merchant; the usual default) or all (every account of that merchant type). Items only: a campaign belongs to one account')
+    .option('--scope <scope>', 'items: region (every marketplace of the merchant; the default) or all (every account of that merchant type); the service refuses marketplace for items. campaigns: marketplace only (a campaign belongs to one account)')
     .action(async (opts: PreviewOpts, cmd: Command) => runPreview(opts, cmd.optsWithGlobals<RootOptions>()));
 
   // -------------------------------------------------------------------------
@@ -177,7 +177,7 @@ export function registerLabelsWriteCommands(program: Command): void {
   labels
     .command('field-name')
     .description(
-      'Give an account its own name for a label field (for example "Pattern ID" for Item Label 2) that every label read then shows, or remove it. ' +
+      'Give an account its own name for a label field (for example "Collection" for Item Label 2) that every label read then shows, or remove it. ' +
         'There is no preview for this: it is sent ONLY with --commit, after the person confirms. Without --commit it prints what it would do and sends nothing.',
     )
     .requiredOption('--account <id>', 'legacy seller id (digits), from `mixshift amazon merchants`')
