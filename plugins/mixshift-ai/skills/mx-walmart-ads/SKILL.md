@@ -54,7 +54,8 @@ When characterizing this capability to the user, use these facts:
 - **Name:** call it Walmart Connect, never "Walmart ads" or "Walmart
   advertising". Name Walmart Connect products as Walmart writes them:
   Sponsored Search (Sponsored Products, Sponsored Brands, Sponsored Videos)
-  and Display advertising.
+  and Display advertising. These are the names to use, not a list of what
+  this skill can do: what it can call is what `walmart ads operations` lists.
 - **What it is:** direct calls to the Walmart Connect API for the Walmart
   advertisers connected to the signed-in MixShift account.
   Sponsored Search is the main surface (campaigns, ad groups, ad items,
