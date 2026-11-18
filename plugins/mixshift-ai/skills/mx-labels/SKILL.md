@@ -58,7 +58,7 @@ Labels are the values a team puts on its **items** (ASINs) and **Amazon campaign
 
 **This is not sub-brands.** Finding the brands hiding inside one seller account, building a promotion plan, promoting a brand label into a brand, or retiring a brand is `mx-brand-context`. FBA shipment, box, prep and barcode labels are `mx-amazon-inbound`. This skill edits the label values themselves, not which brands exist. It is also not Amazon Ads campaign settings (budgets, bids, status): that is `mx-amazon-ads`.
 
-Labels are turned on account by account. Until they are on for the account, each command says so in one sentence (exit 6): relay it and stop.
+Labels are turned on account by account. Until they are on for the account, each command says so in one sentence (exit 6): relay it, then follow "When labels are not on for the account" below.
 
 ## Step 1: pick the account
 
@@ -121,19 +121,25 @@ After a commit, every label read from MixShift shows the new value at once, mark
 
 ## When labels are not on for the account
 
-A labels command can answer `not_enabled` for three different reasons. Read the answer's `reason` or `state` and its message to tell them apart:
+There are three cases. Their messages differ, so tell them apart by the message (on a write command, `--json` also carries `reason` and `state`):
 
-1. **Labels are off for the account** (`reason: labels_off`, `state: off`, or a read command answering `not_enabled`): MixShift has not turned labels on for this account yet. Say so in one sentence and offer: "Want me to ask MixShift to turn them on?"
-2. **Label changes are not on yet** (`reason: tenant_not_on`, `state: observing`): MixShift is still checking its copy of this account's labels. Previews work; commits do not. Say so. Offer the request below only if the user has not already asked for it.
-3. **Label changes are turned off on MixShift as a whole** (`reason: writes_off`): there is nothing to request. Reads still work. Say so.
+1. **Labels are off for the account** ("Labels are not turned on for your account yet", exit 6 on any command; `labels state` shows labels not turned on yet; on a write command `reason: labels_off`, `state: off`): MixShift has not turned labels on for this account yet. Say so in one sentence and offer: "Want me to ask MixShift to turn them on?"
+2. **Label changes are not on yet** (`state: observing`): MixShift is still checking its copy of this account's labels. A preview works but says it cannot be committed yet (`blocked_by: tenant_not_on`); a commit answers `not_enabled` with `reason: tenant_not_on`. Say so. Offer the request below only if none was sent earlier in this conversation.
+3. **Label changes are turned off on MixShift as a whole** (`reason: writes_off`, "Label changes are turned off on MixShift right now"): there is nothing to request. Say so.
 
-**Sending the request.** If the user asked for it in their own words (for example "ask to turn on labels for our account"), that is their yes. If you offered it, wait for the user's yes in a later turn. Never send it in an unattended run (scheduled task, CI, headless): there, say that labels are off and stop. Send exactly this, run the same way as every other `mixshift` command above:
+**Sending the request.**
+
+- This is the one exception to `mx-feedback`'s confirm-first rule: if the user asked for it in their own words (for example "ask to turn on labels for our account"), that request is their yes. If you offered it, wait for the user's yes in a later turn. Never send it in an unattended run (scheduled task, CI, headless): there, say that labels are off and stop.
+- First run `mixshift labels state`. If labels are already on, there is nothing to request: say so and carry on with what the user wanted. If it fails because the user is not signed in, help them sign in first (`mx-auth-login`): a request sent without a sign-in cannot be matched to their account.
+- Then send exactly this, run the same way as every other `mixshift` command above, with the message in single quotes:
 
 ```bash
-mixshift feedback "Labels request: please turn on labels for our account." --category feature_request --skill mx-labels
+mixshift feedback 'Labels request: please turn on labels for our account.' --category feature_request --skill mx-labels
 ```
 
-Keep the opening words `Labels request:` unchanged, because MixShift routes requests on them. The user may add their own note after that sentence (for example which accounts matter most). Never add account names, seller ids, ASINs or merchant names yourself. Show the user what was sent, then tell them MixShift turns labels on account by account and will let them know when theirs is on.
+- Keep the opening words `Labels request:` unchanged, because MixShift routes requests on them. The user may add their own note after that sentence (for example when they need it by); if the note has an apostrophe, rephrase it without one. Never add account names, seller ids, ASINs or merchant names yourself.
+- Count it as sent only when the command says the feedback was sent ("Feedback sent to MixShift ops"). Then show the user what was sent and tell them MixShift turns labels on account by account and will let them know when theirs is on. If it says the feedback was queued ("Feedback queued locally"), or sent without an account identity ("Sent without an account identity"), tell the user it may not have reached MixShift and ask them to email support@mixshift.io instead.
+- Where there is no shell to run `mixshift` (for example claude.ai on the web), tell the user to email support@mixshift.io to ask for labels.
 
 ## When it does not fit
 

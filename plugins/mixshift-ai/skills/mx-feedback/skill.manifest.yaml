@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: feedback
 display_name: Send Feedback to MixShift
-version: "0.2.0"
+version: "0.2.1"
 description: >
   Entry point for sending feedback to MixShift, and for catching complaints or
   frustration about the plugin even when the user does not say "feedback" (e.g.

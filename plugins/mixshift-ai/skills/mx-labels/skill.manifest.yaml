@@ -68,6 +68,8 @@ trigger_phrases:
   - what changed in our labels
   - who changed this label
   - undo a label change
+  - ask to turn on labels for our account
+  - turn on labels for our account
 notes: >
   Labels are turned on account by account; until they are on for an account
   each labels command says so in one sentence (exit 6) and changes nothing.
