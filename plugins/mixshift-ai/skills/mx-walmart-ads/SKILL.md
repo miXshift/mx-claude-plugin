@@ -1,9 +1,9 @@
 ---
 name: mx-walmart-ads
 description: >
-  Read and manage Walmart ads (Walmart Connect Sponsored Search, plus Display
-  where the account has it) for the Walmart advertisers connected to the
-  signed-in MixShift account, straight from Walmart, through the bundled
+  Read and manage Walmart Connect campaigns (Sponsored Search, plus Display
+  advertising where the account has it) for the Walmart advertisers connected
+  to the signed-in MixShift account, straight from Walmart, through the bundled
   harness CLI. The Walmart analogue of mx-amazon-ads: the advertisers you can
   use, campaigns and ad groups with status and budgets, ad items, keywords and
   bids, placement bid multipliers, keyword suggestions, and performance
@@ -12,10 +12,11 @@ description: >
   campaigns, ad groups, items, keywords, bids and multipliers preview first
   and never reach Walmart without the user confirming the exact change set.
   Read-first; write only on request. Also runs a guided demo of all this on
-  the user's own account (demo Walmart ads). Uses the MixShift plugin sign-in,
-  so no separate connector is needed. Does not require brand setup.
+  the user's own account (demo Walmart Connect). Also the skill for a user who
+  says "Walmart ads". Uses the MixShift plugin sign-in, so no separate
+  connector is needed. Does not require brand setup.
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   author: "MixShift"
 trigger_phrases:
   - walmart campaigns
@@ -33,19 +34,29 @@ trigger_phrases:
   - show me a demo of walmart ads
   - walk me through walmart ads
   - tour walmart ads
+  - demo walmart connect
+  - walmart connect demo
+  - show me a demo of walmart connect
+  - walk me through walmart connect
+  - tour walmart connect
+  - my walmart connect campaigns
   - what can you do with walmart
 ---
 
-# Walmart Ads (Walmart Connect: live account state + previewed changes)
+# Walmart Connect (live account state + previewed changes)
 
 > Invocation note: run `mixshift` commands via the Bash tool. The command is normally on PATH, registered by the plugin session hook. If `mixshift` is not found, run the same arguments through `node "$MIXSHIFT_CLI"`. If that variable is also unset (normal in Cowork, which does not run the session hook), scan for the bundled CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then run every command as `node "$MIXSHIFT_CLI" <args>`. If both `mixshift` and `$MIXSHIFT_CLI` come back empty that does NOT mean the plugin is missing. Its CLI ships inside the plugin directory (an ID-named folder that a PATH or npm check will not reveal), which the scan locates; never report it as not installed. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.
 
-## About the Walmart ads surface (authoritative, do not guess)
+## About the Walmart Connect surface (authoritative, do not guess)
 
 When characterizing this capability to the user, use these facts:
 
-- **What it is:** direct calls to Walmart Connect, Walmart's advertising API,
-  for the Walmart advertisers connected to the signed-in MixShift account.
+- **Name:** call it Walmart Connect, never "Walmart ads" or "Walmart
+  advertising". Name Walmart Connect products as Walmart writes them:
+  Sponsored Search (Sponsored Products, Sponsored Brands, Sponsored Videos)
+  and Display advertising.
+- **What it is:** direct calls to the Walmart Connect API for the Walmart
+  advertisers connected to the signed-in MixShift account.
   Sponsored Search is the main surface (campaigns, ad groups, ad items,
   keywords, bids, placement multipliers, performance reports). Display is in
   the catalog for advertisers that run Display; treat it as available only
@@ -67,7 +78,7 @@ When characterizing this capability to the user, use these facts:
   commit contract (see "The write contract").
 
 If the user asks "where does this come from," lead with "directly from
-Walmart Connect, Walmart's advertising API, through MixShift's service."
+the Walmart Connect API, through MixShift's service."
 
 If this conversation also has MixShift connector tools named
 `walmart_ads_advertisers`, `walmart_ads_operations` and `walmart_ads_call`,
@@ -77,17 +88,23 @@ matching `mixshift walmart ads` subcommand.
 
 ## When to use this skill
 
-Trigger when the user asks about **Walmart** advertising, for example:
+Trigger when the user asks about **Walmart Connect** campaigns (advertising on
+Walmart), for example:
 
 - "List my Walmart advertisers."
 - "Show my Walmart campaigns and their status."
 - "How did my Walmart campaigns perform over the last 30 days?"
 - "What are my keyword bids in this Walmart campaign?"
 - "Pause this Walmart campaign." / "Raise the bid on these keywords."
-- "Demo Walmart ads." / "Walk me through Walmart ads." Run the Demo section.
+- "Demo Walmart Connect." / "Walk me through Walmart Connect." Run the Demo
+  section.
 - "What can you do with Walmart?" Answer in two lines (read campaigns and
   reports, preview and apply changes) and offer the demo: *say "demo Walmart
-  ads" and I'll walk you through it on your own account.*
+  Connect" and I'll walk you through it on your own account.*
+
+Users may still say "Walmart ads" (for example "demo Walmart ads" or "show my
+Walmart ads"). That means this skill: help them as usual, and use the name
+Walmart Connect in your answer.
 
 Route elsewhere:
 
@@ -280,13 +297,14 @@ to five column names (e.g. `groupBy=campaignId` or `groupBy=campaignId,date`)
 and `limit` caps the rows returned (default 500, max 5000). Without `groupBy`
 you get the raw report rows.
 
-## Demo ("demo Walmart ads")
+## Demo ("demo Walmart Connect")
 
 A guided walkthrough of this skill on the user's own account, following the
 demo contract in `shared/skill-runtime-contract.md` ("Demos"): real data, read
 first, one screen per step, each step ending with the sentence that runs it
 again, and a change only ever shown as a preview. Run it when the user asks for
-a demo, tour or walkthrough of Walmart ads, or says yes to the demo you offered.
+a demo, tour or walkthrough of Walmart Connect (or of "Walmart ads"), or says
+yes to the demo you offered.
 
 **Open.** Run the opener and show its output verbatim, then go straight to
 step 1:

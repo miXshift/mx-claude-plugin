@@ -1,7 +1,7 @@
 /**
  * `mixshift demo [skill]` — guided skill demos.
  *
- * The user never types this. They say "demo Walmart ads" (or "give me a
+ * The user never types this. They say "demo Walmart Connect" (or "give me a
  * demo", "show me around", ...) and the skill, or mx-help for a demo with no
  * skill named, runs it:
  *
@@ -47,7 +47,7 @@ interface DemoOptions {
 export function registerDemoCommand(program: Command): void {
   program
     .command('demo')
-    .argument('[skill]', 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart ads")')
+    .argument('[skill]', 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart connect")')
     .description(
       'Guided skill demos. With no skill: list every skill that has a demo. With a skill: ' +
         'print the opener the agent shows before walking the steps in that skill\'s ' +

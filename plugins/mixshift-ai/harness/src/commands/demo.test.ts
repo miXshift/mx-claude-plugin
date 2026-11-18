@@ -49,12 +49,44 @@ describe('skill demos: the standard, checked for every skill that declares one',
     if (savedRoot !== undefined) process.env.CLAUDE_PLUGIN_ROOT = savedRoot;
   });
 
-  it('finds the Walmart ads demo (the first one)', () => {
+  it('finds the Walmart Connect demo (the first one)', () => {
     const w = demos.find((d) => d.skillId === 'mx-walmart-ads');
     expect(w).toBeDefined();
-    expect(w!.say).toBe('demo Walmart ads');
-    expect(w!.title).toBe('Walmart ads');
+    expect(w!.say).toBe('demo Walmart Connect');
+    expect(w!.title).toBe('Walmart Connect');
     expect(w!.changes).toBe('preview');
+  });
+
+  it('the Walmart Connect demo still answers to every old "Walmart ads" phrase', async () => {
+    const ids = (await fs.readdir(skillsDir, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && e.name.startsWith('mx-'))
+      .map((e) => e.name);
+    for (const q of [
+      'Walmart ads',
+      'demo walmart ads',
+      'walmart-ads',
+      'mx-walmart-ads',
+      'Walmart Connect',
+      'demo Walmart Connect',
+    ]) {
+      expect(resolveDemoSkill(q, demos, ids), q).toBe('mx-walmart-ads');
+    }
+    const manifest = parseYaml(
+      await fs.readFile(join(skillsDir, 'mx-walmart-ads', 'skill.manifest.yaml'), 'utf-8'),
+    ) as { trigger_phrases?: string[] };
+    const fm = frontmatter(await fs.readFile(join(skillsDir, 'mx-walmart-ads', 'SKILL.md'), 'utf-8'));
+    const oldPhrases = [
+      'my walmart ads',
+      'demo walmart ads',
+      'walmart ads demo',
+      'show me a demo of walmart ads',
+      'walk me through walmart ads',
+      'tour walmart ads',
+    ];
+    const newPhrases = ['demo walmart connect', 'walmart connect demo', 'show me a demo of walmart connect'];
+    for (const list of [manifest.trigger_phrases ?? [], (fm.trigger_phrases as string[] | undefined) ?? []]) {
+      expect(list).toEqual(expect.arrayContaining([...oldPhrases, ...newPhrases]));
+    }
   });
 
   it('every demo has a SKILL.md "## Demo" section whose steps match the manifest, in order', async () => {
@@ -119,8 +151,8 @@ describe('demo manifest block', () => {
 describe('demo resolution and rendering', () => {
   const walmart: DemoEntry = {
     skillId: 'mx-walmart-ads',
-    title: 'Walmart ads',
-    say: 'demo Walmart ads',
+    title: 'Walmart Connect',
+    say: 'demo Walmart Connect',
     summary: 'Advertisers, campaigns, last 30 days, one change previewed.',
     minutes: 5,
     steps: ['Your Walmart advertisers', 'Campaigns and their status', 'One change, shown as a preview'],
@@ -130,7 +162,20 @@ describe('demo resolution and rendering', () => {
   const ids = ['mx-walmart-ads', 'mx-amazon-ads', 'mx-help'];
 
   it('resolves the skill id, the id without mx-, the demo name and the spoken phrase', () => {
-    for (const q of ['mx-walmart-ads', 'walmart-ads', 'Walmart ads', 'demo walmart ads', 'WALMART_ADS']) {
+    for (const q of [
+      'mx-walmart-ads',
+      'walmart-ads',
+      'Walmart Connect',
+      'demo Walmart Connect',
+      'demo walmart connect',
+      'WALMART_CONNECT',
+    ]) {
+      expect(resolveDemoSkill(q, [walmart], ids), q).toBe('mx-walmart-ads');
+    }
+  });
+
+  it('still resolves the old "Walmart ads" phrases, through the skill id', () => {
+    for (const q of ['Walmart ads', 'demo walmart ads', 'demo Walmart ads', 'WALMART_ADS']) {
       expect(resolveDemoSkill(q, [walmart], ids), q).toBe('mx-walmart-ads');
     }
   });
@@ -143,7 +188,7 @@ describe('demo resolution and rendering', () => {
 
   it('the opener numbers the steps and says what changes and what it needs', () => {
     const text = renderDemoOpenerChat(walmart);
-    expect(text).toContain('**Demo: Walmart ads** (about 5 minutes, on your own account)');
+    expect(text).toContain('**Demo: Walmart Connect** (about 5 minutes, on your own account)');
     expect(text).toContain('1. Your Walmart advertisers\n2. Campaigns and their status\n3. One change, shown as a preview');
     expect(text).toContain('shown as a preview and is not sent');
     expect(text).toContain('Needs: a Walmart advertiser connected to your MixShift account.');
@@ -157,7 +202,7 @@ describe('demo resolution and rendering', () => {
   });
 
   it('lists demos by their phrase, and says so when there are none', () => {
-    expect(renderDemoListChat([walmart])).toContain('- **"demo Walmart ads"** (about 5 min):');
+    expect(renderDemoListChat([walmart])).toContain('- **"demo Walmart Connect"** (about 5 min):');
     expect(renderDemoListChat([])).toContain('No skill has a demo yet.');
     expect(renderNoDemoChat('mx-amazon-ads', [walmart])).toContain('**mx-amazon-ads** does not have a demo yet.');
   });
