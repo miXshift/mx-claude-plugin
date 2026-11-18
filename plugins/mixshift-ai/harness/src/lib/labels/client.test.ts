@@ -258,6 +258,18 @@ describe('failures', () => {
     expect(exitCodeForLabelsKind('not_enabled')).toBe(6);
   });
 
+  it('not_enabled with no friendly text falls back to the ask sentence', async () => {
+    const r = await get(403, { ok: false, kind: 'not_enabled' });
+    expect(r).toMatchObject({ ok: false, kind: 'not_enabled', friendly: 'Labels are not turned on for your account yet. To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".' });
+  });
+
+  it('not_enabled with reason writes_off or tenant_not_on and no friendly text gets a reason-specific sentence', async () => {
+    const off = await get(403, { ok: false, kind: 'not_enabled', reason: 'writes_off' });
+    expect(off).toMatchObject({ friendly: 'Label changes are turned off on MixShift right now. Reading labels still works. Nothing was changed.' });
+    const notOn = await get(403, { ok: false, kind: 'not_enabled', reason: 'tenant_not_on' });
+    expect(notOn).toMatchObject({ friendly: 'Label changes are not turned on for this account yet. You can preview a change, but it cannot be committed yet. Nothing was changed.' });
+  });
+
   it('not_found (an account this login cannot see) is 404 and exit 7', async () => {
     const r = await labelsFields({ account: '999', entity: 'item' }, injected(vi.fn().mockResolvedValueOnce(jsonResponse(404, { ok: false, kind: 'not_found', friendly: 'No such account for this login.' }))));
     expect(r).toMatchObject({ ok: false, kind: 'not_found', httpStatus: 404, friendly: 'No such account for this login.' });

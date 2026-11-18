@@ -557,7 +557,9 @@ export function renderState(s: LabelsStateAnswer): string {
     }
     L.push(`- refreshing now: ${s.running ? 'yes' : 'no'}`);
   } else {
-    L.push('- To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".');
+    if (!/ask to turn on labels/i.test(s.freshness.note ?? '')) {
+      L.push('- To ask MixShift to turn labels on, say "Using MixShift, ask to turn on labels for our account".');
+    }
   }
   return L.join('\n');
 }
