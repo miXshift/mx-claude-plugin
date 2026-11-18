@@ -2,7 +2,7 @@
 name: mx-labels
 description: >
   Item and campaign labels in MixShift: the label fields your team puts on
-  ASINs, SKUs and Amazon campaigns to organize and report on them (Item Group,
+  ASINs and Amazon campaigns to organize and report on them (Item Group,
   Brand, Nickname, Parent ASIN, Item Label 1 and 2, Tags 1 to 4, and for
   campaigns Manager and Objective). Use it for "which item label fields do we
   have and what is each one named", "which values are in use", "what labels
@@ -10,8 +10,10 @@ description: >
   renaming a value, naming a field for the account, what changed and who
   changed it, and undoing a label change. Changes preview first and apply
   only after the user confirms the exact change set. NOT sub-brands (finding
-  the brands inside a seller account, promoting or retiring a brand label):
-  that is mx-brand-context. Not Amazon Ads campaign settings: mx-amazon-ads.
+  the brands inside a seller account, promoting a brand label, retiring a
+  brand): that is mx-brand-context. Not Amazon Ads campaign settings:
+  mx-amazon-ads. Not FBA shipment, box, prep or barcode labels:
+  mx-amazon-inbound.
   Uses the MixShift plugin sign-in; no brand setup needed.
 metadata:
   version: "0.1.0"
@@ -51,13 +53,13 @@ Labels are the values a team puts on its **items** (ASINs) and **Amazon campaign
 - **Campaign fields:** `item_group`, `brand`, `label_1`, `label_2`, `tag_1` to `tag_4`, `manager`, `objective`.
 - An account can give a field its own name (for example Item Label 2 shown as "Collection"). `labels fields` shows what each field is called on that account. Use the account's name when talking to the user and the key in commands.
 
-**This is not sub-brands.** Finding the brands hiding inside one seller account, building a promotion plan, promoting a brand label into a brand, or retiring a brand is `mx-brand-context`. This skill edits the label values themselves, not which brands exist. It is also not Amazon Ads campaign settings (budgets, bids, status): that is `mx-amazon-ads`.
+**This is not sub-brands.** Finding the brands hiding inside one seller account, building a promotion plan, promoting a brand label into a brand, or retiring a brand is `mx-brand-context`. FBA shipment, box, prep and barcode labels are `mx-amazon-inbound`. This skill edits the label values themselves, not which brands exist. It is also not Amazon Ads campaign settings (budgets, bids, status): that is `mx-amazon-ads`.
 
 Labels are turned on account by account. Until they are on for the account, each command says so in one sentence (exit 6): relay it and stop.
 
 ## Step 1: pick the account
 
-Every command takes `--account <id>`, the legacy seller id (digits) from:
+The reads and writes that work on an account take `--account <id>`, the legacy seller id (digits) from the command below: `fields`, `get`, `search`, `drift`, `changes`, `sets`, `preview` and `field-name`. `state`, `commit`, `undo`, `set` and `cancel` do not take it (the first needs nothing; the others take a change set id).
 
 ```bash
 mixshift amazon merchants --json
@@ -74,7 +76,7 @@ One merchant in one marketplace is one account. If there are several, ask which 
 | What labels are on these ASINs or campaigns | `mixshift labels get --account <id> --ids a,b,c` (or `--ids-file <path>`) `[--entity campaign]` |
 | Which items or campaigns have a value | `mixshift labels search --account <id> [--entity ...] --field <key> --value "<text>" [--limit n] [--all]` |
 | Where do the Data Manager rows disagree | `mixshift labels drift --account <id> [--entity ...] [--all]` |
-| What changed lately | `mixshift labels changes --account <id> [--since <UTC time>] [--all]` |
+| What changed lately | `mixshift labels changes --account <id> --since <UTC time> [--all]` (always give `--since`; without it the feed starts at the oldest change) |
 | Past and pending change sets, who made them | `mixshift labels sets --account <id>`, then `mixshift labels set <change-set-id>` |
 
 Add `--json` to any of them when you need to read the answer. Take field keys from `labels fields`; never guess one. An id shown as never seen has not been read by MixShift yet, which is different from an item with no label.
@@ -88,14 +90,21 @@ Add `--json` to any of them when you need to read the answer. Take field keys fr
    ```
 
 2. **Show the user the preview in plain words:** how many items or campaigns change, which accounts it reaches, what was left out and why, any warnings, the before and after sample. Ask for a yes to exactly that change set. A different selection or value is a new preview.
-3. **Commit** only after the yes: `mixshift labels commit <change-set-id> --commit`. Without `--commit` it shows the change set and sends nothing. If the user drops it: `mixshift labels cancel <change-set-id> --commit`. A preview expires after 24 hours.
+3. **Commit** only after the yes, which must come in a later turn than the preview (see the rule below): `mixshift labels commit <change-set-id> --commit`. Without `--commit` it shows the change set and sends nothing. If the user drops it: `mixshift labels cancel <change-set-id> --commit`. A preview expires after 24 hours.
 4. **Read the result.** An item changed by someone else after the preview is left as it is and reported stale; the rest still apply and the command exits 17. Say exactly which were not applied. Never call a partial result a success.
 
 **Undo** works the same way: `mixshift labels undo <change-set-id>` previews the reversal. Show it, then `mixshift labels commit <new-id> --commit` after the user confirms. Anything changed again since is left alone.
 
 **Naming a field for the account** has no preview: tell the user the field and the exact new name, wait for the yes, then `mixshift labels field-name --account <id> [--entity ...] --field <key> --name "<text>" --commit` (or `--remove` to go back to the standard name).
 
-Limits: a change set holds up to 1,000 items or campaigns. A `--file` CSV (header `asin` or `campaign_id`, then one column per field; an empty cell leaves a field alone and `<clear>` removes it) makes one change set per different combination of values, at most 10. A cell cannot start with = + - or @; use `--set` for such a value. A value is one line of plain text and cannot be blank (to remove a label, clear it).
+Limits: a change set holds up to 1,000 items or campaigns, counted once for every account the change reaches. With `region` or `all`, 400 ASINs that exist in 3 marketplaces count as 1,200 and are refused: split them into parts.  A `--file` CSV (header `asin` or `campaign_id`, then one column per field; an empty cell leaves a field alone and `<clear>` removes it) makes one change set per different combination of values, at most 10. A cell cannot start with = + - or @; use `--set` for such a value. A value is one line of plain text and cannot be blank (to remove a label, clear it).
+
+**Confirmation rule (applies to `commit`, committing an undo, `cancel` and `field-name`).** The user's request ("set Item Label 1 to Spring", "undo that", "name the field Collection") authorizes the preview (for `field-name`, the run without `--commit`), not the change. Show the preview and get a fresh yes to exactly what it shows, in a LATER turn. Never preview and commit in the same turn. Never commit in a scheduled or unattended run: there, preview, say what is waiting, and stop.
+
+Write-flow edge cases:
+
+- A preview that says it cannot be committed (label changes switched off, or not turned on for the account yet): relay that sentence as it is. Do not ask for a yes, and do not try to commit.
+- `commit` exits 16 with "no approval on this machine" (or the preview expired or was cancelled): nothing was sent. Run the preview again, show it, and ask again.
 
 ## Scope rules (say these before a write that could reach more than the user expects)
 
@@ -105,7 +114,7 @@ Limits: a change set holds up to 1,000 items or campaigns. A `--file` CSV (heade
 
 ## After a commit
 
-Changes show up on the Legacy platform's screens within a few minutes, so a read straight after a change can lag a little. Do not claim a change is live from the preview alone; go by the commit result.
+After a commit, every label read from MixShift shows the new value at once, marked `[pending]` until the Legacy platform has it. The Legacy platform's own screens show the change within a few minutes. Do not claim a change is applied from the preview alone; go by the commit result.
 
 ## When it does not fit
 
@@ -130,4 +139,4 @@ mixshift telemetry emit skill.completed --skill mx-labels --outcome <ok|failed|d
 
 Outcomes: `ok` (the user got the answer, or the confirmed change was applied), `failed` (could not satisfy, e.g. labels not turned on, exit 6), `deferred` (a preview is waiting on the user's yes), `skipped` (they wanted a different skill, e.g. sub-brands).
 
-You do **not** need to emit per-call events. The harness fires `labels.called` on each `labels` command with counts and the outcome. It never records a label value, an id or the answer.
+You do **not** need to emit per-call events. The harness fires `labels.called` on each `labels` command with counts and the outcome. It never records a label value, an ASIN or a campaign id, or the answer. It does carry the account id and the change set id.

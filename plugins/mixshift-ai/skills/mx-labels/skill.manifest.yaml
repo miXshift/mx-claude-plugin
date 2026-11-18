@@ -3,14 +3,15 @@ skill_id: mx-labels
 display_name: "Labels (item and campaign label fields: read, preview, commit, undo)"
 version: "0.1.0"
 description: >
-  Read and change the labels your team puts on ASINs, SKUs and Amazon
+  Read and change the labels your team puts on ASINs and Amazon
   campaigns (Item Group, Brand, Nickname, Parent ASIN, Item Label 1 and 2,
   Tags 1 to 4, and for campaigns Manager and Objective) through the bundled
   harness CLI: which label fields the account has and what each is named,
   which values are in use, the labels on specific ASINs or campaigns, what
   changed and who changed it. Changes preview first and apply only after the
   user confirms the exact change set; a committed change can be undone. Not
-  sub-brands (that is mx-brand-context).
+  sub-brands (that is mx-brand-context) and not FBA shipment labels
+  (mx-amazon-inbound).
 
 # Tier 2: reads are free; changes write to the account's labels on the service,
 # each only after the user confirmed the previewed change set. Modeled per_account
@@ -76,8 +77,8 @@ notes: >
   --commit it shows the change set and sends nothing). A commit that did not
   fully apply (stale, refused or failed items) exits 17. Items take scope
   region (default) or all; a per-marketplace scope for items is refused by the
-  service; campaigns are per marketplace. Changes show up on the Legacy
-  platform's screens within a few minutes. Sub-brand work (finding brands in
+  service; campaigns are per marketplace. Every read shows a committed change at
+  once (marked pending); the Legacy platform's screens within a few minutes. Sub-brand work (finding brands in
   an account, promoting or retiring a brand label) is mx-brand-context.
 
   Required state (not modeled in schema fields):
