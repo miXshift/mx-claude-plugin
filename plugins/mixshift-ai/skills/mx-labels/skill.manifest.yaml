@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: mx-labels
+display_name: "Labels (item and campaign label fields: read, preview, commit, undo)"
+version: "0.1.0"
+description: >
+  Read and change the labels your team puts on ASINs, SKUs and Amazon
+  campaigns (Item Group, Brand, Nickname, Parent ASIN, Item Label 1 and 2,
+  Tags 1 to 4, and for campaigns Manager and Objective) through the bundled
+  harness CLI: which label fields the account has and what each is named,
+  which values are in use, the labels on specific ASINs or campaigns, what
+  changed and who changed it. Changes preview first and apply only after the
+  user confirms the exact change set; a committed change can be undone. Not
+  sub-brands (that is mx-brand-context).
+
+# Tier 2: reads are free; changes write to the account's labels on the service,
+# each only after the user confirmed the previewed change set. Modeled per_account
+# because every call targets one legacy seller id. No brand context, no library SQL.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 2
+allowed_tools: [file_read]
+side_effect_policy: write_gated   # `labels commit`, `labels cancel` and `labels field-name` change labels, each only after the user said yes to exactly what changes
+review_required: always           # the previewed change set (what changes, how many, the scope) is confirmed before every commit
+sql_ids: []   # labels are read through the service, not the warehouse
+
+harness_commands:
+  - mixshift amazon merchants
+  - mixshift labels state
+  - mixshift labels fields --account <id> [--entity item|campaign]
+  - mixshift labels get --account <id> (--ids <list> | --ids-file <path>) [--entity item|campaign]
+  - mixshift labels search --account <id> [--entity item|campaign] [--field <key> --value <text>] [--limit <n>] [--cursor <c>] [--all]
+  - mixshift labels drift --account <id> [--entity item|campaign] [--limit <n>] [--cursor <c>] [--all]
+  - mixshift labels changes --account <id> [--since <UTC time>] [--limit <n>] [--cursor <c>] [--all]
+  - mixshift labels preview --account <id> [--entity item|campaign] [--scope marketplace|region|all] (--ids <list> | --ids-file <path> | --where <field=value>) (--set <field=value> | --clear <field>) | --file <changes.csv> | --rename <field> --from <value> --to <value>
+  - mixshift labels commit <change-set-id> [--commit] [--approval-hash <hash>]
+  - mixshift labels undo <change-set-id>
+  - mixshift labels sets --account <id> [--limit <n>] [--before <time>] [--all]
+  - mixshift labels set <change-set-id>
+  - mixshift labels cancel <change-set-id> [--commit]
+  - mixshift labels field-name --account <id> [--entity item|campaign] --field <key> (--name <text> | --remove) [--commit]
+  - mixshift feedback
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range: [OBSERVATIONAL]   # surface skill: no verdict produced
+pricing_tier: free
+trigger_phrases:
+  - item labels
+  - item label fields
+  - which label fields do we have
+  - what is each label field named
+  - what is item label 1 called
+  - label values in use
+  - labels on these asins
+  - set item label 1
+  - set the item group
+  - set tag 1 for these asins
+  - clear the label on these asins
+  - rename an item group
+  - rename a label value
+  - campaign labels
+  - set the manager on these campaigns
+  - set the objective on these campaigns
+  - name a label field
+  - what changed in our labels
+  - who changed this label
+  - undo a label change
+notes: >
+  Labels are turned on account by account; until they are on for an account
+  each labels command says so in one sentence (exit 6) and changes nothing.
+  `--account` is the legacy seller id from `mixshift amazon merchants`.
+  Changes are always preview first: `labels preview` changes nothing, and
+  `labels commit <id> --commit` applies exactly that preview (without
+  --commit it shows the change set and sends nothing). A commit that did not
+  fully apply (stale, refused or failed items) exits 17. Items take scope
+  region (default) or all; a per-marketplace scope for items is refused by the
+  service; campaigns are per marketplace. Changes show up on the Legacy
+  platform's screens within a few minutes. Sub-brand work (finding brands in
+  an account, promoting or retiring a brand label) is mx-brand-context.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - labels turned on for the account

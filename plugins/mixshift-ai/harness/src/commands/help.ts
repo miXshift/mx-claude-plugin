@@ -101,6 +101,7 @@ const CATALOG: HubGroup[] = [
     title: 'Live Amazon surfaces',
     skills: [
       { id: 'mx-amazon-ads', say: 'show my campaigns', what: 'read live Ads state, or make audited changes' },
+      { id: 'mx-labels', say: 'which item label fields do we have, and what is each one named', what: 'item and campaign labels: see, set, clear and undo them (not sub-brands)' },
       { id: 'mx-amazon-amc', say: 'run an AMC query', what: 'Marketing Cloud SQL analytics' },
       { id: 'mx-amazon-dsp', say: 'pull a DSP report', what: 'Demand-Side Platform reporting' },
       { id: 'mx-amazon-inbound', say: 'create an inbound shipment', what: 'FBA inbound: look up status and tracking, or build a shipment with every fee confirmed first' },
