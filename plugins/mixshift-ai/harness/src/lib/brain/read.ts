@@ -17,6 +17,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { brandBrainSchema, type BrandBrain } from './schema.js';
 import { brainPath } from '../paths/resolve.js';
 import { validateBrandContext } from '../context/load.js';
+import {
+  extractProductAcosTargets,
+  type ProductAcosTargets,
+} from '../context/product-targets.js';
 import { formatZodError } from '../profile/format-error.js';
 import { maybeAutoSync } from '../context-sync/autosync.js';
 import type { BindingBlock } from '../context/schema.js';
@@ -462,6 +466,23 @@ export async function resolveBrandFields(
     out[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
   }
   return out;
+}
+
+/**
+ * The brand's product-level ACoS targets (per ASIN and per SKU) from
+ * context.yaml `thresholds` (mx-ops#291). Tier 3 only: the brain derives no
+ * product targets. Null when the brand sets none, so callers that add this
+ * beside the brand fields change nothing for such a brand. Reads the local
+ * file only; call it after resolveBrandFields, which runs the auto-sync
+ * preflight.
+ */
+export async function resolveProductAcosTargets(
+  brandSlug: string,
+  dataDirOverride?: string,
+): Promise<ProductAcosTargets | null> {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  if (!ctx.ok) return null;
+  return extractProductAcosTargets(ctx.context);
 }
 
 // Reverse map: context dotted-path (a `seed_from` target, minus the `context.`

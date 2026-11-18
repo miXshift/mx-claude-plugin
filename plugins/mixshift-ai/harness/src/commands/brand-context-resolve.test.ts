@@ -80,6 +80,50 @@ async function resolve(...extra: string[]): Promise<{ stdout: string; stderr: st
   return { stdout: stdoutChunks.join(''), stderr: stderrChunks.join('') };
 }
 
+const PRODUCT_TARGET_LINES = [
+  'thresholds:',
+  '  acos_target_by_asin:',
+  '    B0TESTAAA1: 25',
+  '    B0TESTAAA2: 40',
+  '  acos_target_by_sku:',
+  '    SKU-RED-01: 30',
+];
+
+/** A minimal valid context.yaml (brand target 20, user-set) plus `extra` lines. */
+async function writeContext(extra: string[]): Promise<void> {
+  const dir = join(tmpDataDir, 'clients', 'acme-snacks');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, 'context.yaml'),
+    [
+      'schema_version: 1',
+      'brand_slug: acme-snacks',
+      'brand_name: Acme Snacks',
+      'last_updated: 2026-05-01',
+      'accounts:',
+      '  - seller_id: 123',
+      '    seller_name: Test',
+      '    account_type: SC',
+      '    status: active',
+      '    role: primary',
+      'sources:',
+      '  ad_metrics: ads',
+      '  ops_revenue: rev',
+      '  ops_revenue_field: r',
+      '  ops_units_field: u',
+      '  ops_date_field: d',
+      'management:',
+      '  primary_metric: ACOS',
+      '  acos_target_pct: 20',
+      '  acos_target_source: user',
+      '  attribution_window_days: 7',
+      ...extra,
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
 beforeEach(async () => {
   vi.clearAllMocks();
   __resetRetiredNotices();
@@ -181,6 +225,49 @@ describe('brand context resolve on a retired brand', () => {
     expect(r.stdout).toContain('⊙ acos_target_pct: 20 (placeholder default, not from your data: confirm it)');
     expect(r.stdout).not.toContain('acos_target_pct: 20 (you confirmed)');
     expect(r.stdout).toContain('✓ primary_metric: ACOS (you confirmed)');
+  });
+
+  it('returns the per-ASIN and per-SKU target map beside acos_target_pct (mx-ops#291)', async () => {
+    await writeContext(PRODUCT_TARGET_LINES);
+    const json = JSON.parse((await resolve('--json')).stdout) as {
+      fields: { acos_target_pct: { value: number; source: string } };
+      product_acos_targets?: {
+        by_asin: Record<string, number>;
+        by_sku: Record<string, number>;
+        source_paths: string[];
+        skipped: unknown[];
+        rule: string;
+      };
+    };
+    expect(json.fields.acos_target_pct).toMatchObject({ value: 20, source: 'context' });
+    expect(json.product_acos_targets).toBeDefined();
+    expect(json.product_acos_targets!.by_asin).toEqual({ B0TESTAAA1: 25, B0TESTAAA2: 40 });
+    expect(json.product_acos_targets!.by_sku).toEqual({ 'SKU-RED-01': 30 });
+    expect(json.product_acos_targets!.skipped).toEqual([]);
+
+    const text = (await resolve()).stdout;
+    expect(text).toContain('✓ product_acos_targets: 2 per-ASIN, 1 per-SKU');
+    expect(text).toContain('acos_target_pct everywhere else');
+  });
+
+  it('a brand without product targets resolves exactly as before: no new key, no new line', async () => {
+    await writeContext([]);
+    const json = JSON.parse((await resolve('--json')).stdout) as Record<string, unknown>;
+    expect(Object.keys(json)).toEqual(['slug', 'fields']);
+    const text = (await resolve()).stdout;
+    expect(text).not.toContain('product_acos_targets');
+
+    // Other thresholds (not product targets) change nothing either.
+    await writeContext(['thresholds:', '  forecast_actual_tolerance_pct: 5']);
+    const json2 = JSON.parse((await resolve('--json')).stdout) as Record<string, unknown>;
+    expect(Object.keys(json2)).toEqual(['slug', 'fields']);
+  });
+
+  it('an unreadable product target is listed in the text output, not dropped silently', async () => {
+    await writeContext(['thresholds:', '  acos_target_by_asin:', '    B0TESTAAA1: high', '    B0TESTAAA2: 30']);
+    const text = (await resolve()).stdout;
+    expect(text).toContain('1 per-ASIN, 0 per-SKU');
+    expect(text).toContain('1 entry could not be read and use the brand target: B0TESTAAA1 (not a number)');
   });
 
   it('an older service (no lifecycle field) prints nothing extra', async () => {
