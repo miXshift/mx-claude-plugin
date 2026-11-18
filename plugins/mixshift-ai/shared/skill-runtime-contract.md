@@ -197,7 +197,7 @@ same for all of them so users learn it once.
 ### What a skill declares
 
 1. **A `demo:` block in `skill.manifest.yaml`** (schema: `skill-manifest.schema.yaml`):
-   `say` (the phrase, always `demo <name>`, e.g. `demo Walmart ads`), `summary`
+   `say` (the phrase, always `demo <name>`, e.g. `demo Walmart Connect`), `summary`
    (one line), `minutes`, `steps` (3 to 8 short user-facing titles), `changes`
    (`none` or `preview`), optional `needs` (what the account must have).
    `mixshift demo` and the guide read this block; nothing else registers a demo.

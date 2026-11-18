@@ -55,7 +55,7 @@ export function registerWalmartCommands(program: Command): void {
   const ads = walmart
     .command('ads')
     .description(
-      'Walmart Connect (Walmart ads): Sponsored Search and Display campaigns, ad groups, ' +
+      'Walmart Connect: Sponsored Search and Display campaigns, ad groups, ' +
         'keywords, reports, and audited writes (preview by default, --commit to apply).',
     );
   registerAdvertisers(ads);

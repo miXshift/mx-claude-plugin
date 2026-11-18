@@ -71,7 +71,7 @@ const preExecutionSchema = z.object({
 });
 
 /**
- * A skill's guided demo: the user says `say` ("demo Walmart ads") and the
+ * A skill's guided demo: the user says `say` ("demo Walmart Connect") and the
  * skill walks them through its main jobs on their own account, read first,
  * any change shown as a preview. `mixshift demo` reads this block to list
  * demos and print the opener; the step-by-step script lives in the skill's

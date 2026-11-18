@@ -67,7 +67,7 @@ When characterizing this capability to the user, use these facts:
   list cannot be called, whatever its id.
 - **Not in the warehouse.** MixShift's warehouse (`mx-data-explore`) holds
   Amazon data. Walmart seller data comes live from Walmart through this skill.
-- **Ads are a different skill.** Walmart advertising (campaigns, bids,
+- **Ads are a different skill.** Walmart Connect (campaigns, bids,
   reports) is `mx-walmart-ads`.
 
 If the user asks "where does this come from," lead with "directly from your
@@ -86,7 +86,8 @@ for example:
 
 Route elsewhere:
 
-- **Walmart ads** go to `mx-walmart-ads`.
+- **Walmart Connect** (Walmart's ads business, which users may call "Walmart
+  ads") goes to `mx-walmart-ads`.
 - **Amazon** inventory, orders and shipments go to `mx-amazon-retail`
   (or `mx-amazon-inbound` flows).
 - **Changing** a price, inventory count or order: the MixShift app.
@@ -325,7 +326,7 @@ mixshift telemetry emit skill.completed --skill mx-walmart-retail --outcome <ok|
 
 Outcomes: `ok` (the user got the Walmart data they wanted), `failed` (could
 not satisfy, e.g. `tenant_not_allowed`), `deferred` (waiting on the seller to
-connect), `skipped` (they wanted a different skill, e.g. Walmart ads).
+connect), `skipped` (they wanted a different skill, e.g. Walmart Connect).
 
 You do **not** need to emit per-call events. The harness fires
 `walmart.marketplace.called` (plus `walmart.marketplace.sellers_listed` and

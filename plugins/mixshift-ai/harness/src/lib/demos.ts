@@ -18,7 +18,7 @@ import { skillManifestSchema, type SkillDemo } from './prefetch/manifest.js';
 export interface DemoEntry extends SkillDemo {
   /** Skill directory id, e.g. `mx-walmart-ads`. */
   skillId: string;
-  /** `say` without the leading "demo ", e.g. "Walmart ads". */
+  /** `say` without the leading "demo ", e.g. "Walmart Connect". */
   title: string;
 }
 
@@ -58,9 +58,11 @@ const norm = (s: string) => s.trim().toLowerCase().replace(/[\s_]+/g, '-');
 
 /**
  * Resolve what the agent passed (`mx-walmart-ads`, `walmart-ads`,
- * "Walmart ads", "demo walmart ads") to a skill id. Returns the id even when
- * that skill has no demo, so the caller can say "no demo yet" for a real
- * skill; null when nothing matches.
+ * "Walmart Connect", "demo Walmart Connect") to a skill id. Returns the id even
+ * when that skill has no demo, so the caller can say "no demo yet" for a real
+ * skill; null when nothing matches. A name that differs from the demo title
+ * still resolves through the skill id: "demo Walmart ads" becomes `walmart-ads`,
+ * then `mx-walmart-ads`.
  */
 export function resolveDemoSkill(
   input: string,
