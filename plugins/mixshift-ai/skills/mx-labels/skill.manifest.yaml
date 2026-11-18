@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-labels
 display_name: "Labels (item and campaign label fields: read, preview, commit, undo)"
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Read and change the labels your team puts on ASINs and Amazon
   campaigns (Item Group, Brand, Nickname, Parent ASIN, Item Label 1 and 2,
@@ -68,6 +68,8 @@ trigger_phrases:
   - what changed in our labels
   - who changed this label
   - undo a label change
+  - ask to turn on labels for our account
+  - turn on labels for our account
 notes: >
   Labels are turned on account by account; until they are on for an account
   each labels command says so in one sentence (exit 6) and changes nothing.

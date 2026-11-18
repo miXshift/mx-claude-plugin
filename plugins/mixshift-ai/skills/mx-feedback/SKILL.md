@@ -14,7 +14,7 @@ description: >
   wants to solve a setup problem, that is mx-help; this skill is for reporting and
   venting, not troubleshooting.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   author: "MixShift"
 trigger_phrases:
   - send feedback
@@ -252,6 +252,7 @@ Feedback submission doesn't replace whatever the user was doing. After confirmin
 - **Don't editorialize the message.** Pass through the user's wording. You can suggest a clearer phrasing, but ultimately the user's words are the user's words. The single exception is `capability_gap`, where there are no user words to preserve because you are the reporter; that category has its own consent rules above, including showing the user the exact text first.
 - **Don't bundle multiple feedback items into one submission.** If the user has three different bugs, send three separate `mixshift feedback` invocations. Each routes / gets triaged / closed independently.
 - **Don't use this for table-access requests.** That has a dedicated flow: the mx-data-explore skill's error-handling path uses `mixshift feedback ... --category feature_request` with specific framing.
+- **Don't use this for a request to turn labels on for an account.** That has a dedicated flow: the mx-labels skill checks the account's labels state first, then sends `mixshift feedback 'Labels request: ...' --skill mx-labels` so MixShift can route it.
 - **IP whitelist isn't a thing anymore** (0.5.3+). If a user mentions an IP issue, point them at `mixshift auth login`; the auth service holds the single static egress IP server-side, so per-user whitelisting doesn't apply. The legacy `mixshift auth setup` raw-MySQL path that used per-user whitelisting is retired.
 
 ## Output template
