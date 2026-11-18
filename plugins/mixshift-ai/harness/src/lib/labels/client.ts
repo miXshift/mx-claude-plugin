@@ -726,7 +726,7 @@ function statusOnlyFailure(httpStatus: number, detail?: string): LabelsFailure {
 export function defaultFriendly(kind: LabelsFailureKind | 'route_missing'): string {
   switch (kind) {
     case 'not_enabled':
-      return 'Labels are not turned on for your account yet. Your MixShift contact can turn them on.';
+      return 'Labels are not turned on for your account yet. To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".';
     case 'not_available':
       return 'Labels are not available for this login right now. Try again in a minute, or ask your MixShift contact to check how it is connected.';
     case 'not_found':

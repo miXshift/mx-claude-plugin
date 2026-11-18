@@ -557,7 +557,7 @@ export function renderState(s: LabelsStateAnswer): string {
     }
     L.push(`- refreshing now: ${s.running ? 'yes' : 'no'}`);
   } else {
-    L.push('- Your MixShift contact can turn labels on for your account.');
+    L.push('- To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".');
   }
   return L.join('\n');
 }

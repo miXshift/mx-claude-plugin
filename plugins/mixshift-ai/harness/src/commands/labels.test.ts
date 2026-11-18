@@ -165,7 +165,8 @@ describe('labels state', () => {
     gateway = () => ({ status: 200, body: { ok: true, state: 'off', backfilled_at: null, last_run: null, last_completed_at: null, running: false, freshness: { note: 'Labels are not turned on for this account; nothing is stored yet.' } } });
     await run('labels', 'state');
     expect(stdout).toContain('**Labels: not turned on yet**');
-    expect(stdout).toContain('Your MixShift contact can turn labels on');
+    expect(stdout).toContain('- To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".');
+    expect(stdout).not.toContain('MixShift contact');
     expect(process.exitCode).toBeUndefined();
   });
 
