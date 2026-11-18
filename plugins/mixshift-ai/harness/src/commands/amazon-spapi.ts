@@ -9,6 +9,14 @@
  *   amazon operations [--family <name>]     browse what is callable
  *   amazon call <operation> [selectors] [--query k=v ...] [--path k=v ...]
  *                            [--body-file <f> | --body <json>]
+ *   amazon call listings.patch_listings_item --path sku=<sku> --change-set-file <f>
+ *                            preview a listing change set (nothing reaches Amazon)
+ *   amazon call listings.patch_listings_item --path sku=<sku> --commit
+ *                            --change-set-id <id> --approved-change-set-hash <h>
+ *                            commit the previewed change set
+ *
+ * A listing write's change set, mode, change set id and hash are top-level
+ * fields on the service call, never under `body` (mx-ops#295).
  *
  * Discovery-first: run `amazon operations` and read the `notes` column before
  * calling — it carries required params, PascalCase gotchas on v0 operations,
@@ -24,6 +32,7 @@
 import type { Command } from 'commander';
 import { readFile } from 'node:fs/promises';
 import {
+  isListingsWriteOperation,
   listOperations,
   spapiCall,
   type SpApiCallInput,
@@ -108,6 +117,96 @@ interface CallCliOptions {
   previewId?: string;
   approvedQuoteHash?: string;
   idempotencyKey?: string;
+  changeSetFile?: string;
+  changeSet?: string;
+  changeSetId?: string;
+  approvedChangeSetHash?: string;
+}
+
+/** The fields of a guarded listing write, as the service reads them: top-level
+ *  on the call, never under `body` (mx-ops#295). */
+type ListingsWriteFields = Pick<
+  SpApiCallInput,
+  'changeSet' | 'mode' | 'changeSetId' | 'approvedChangeSetHash'
+>;
+
+const LISTINGS_ENVELOPE_KEYS = ['changeSet', 'mode', 'changeSetId', 'approvedChangeSetHash'] as const;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Build the listing-write fields for listings.patch_listings_item.
+ *
+ *  The change set may come from --change-set / --change-set-file, or from
+ *  --body / --body-file, which is where callers put it before this fix (and
+ *  where the service silently dropped it). A body holding any of the envelope
+ *  keys (changeSet, mode, changeSetId, approvedChangeSetHash) is read as that
+ *  envelope; any other body is the change set itself. Either way the result is
+ *  sent top-level and nothing goes out under `body`.
+ *
+ *  Throws (before anything is sent) when the flags cannot make a valid call. */
+function listingsWriteFields(
+  operation: string,
+  opts: CallCliOptions,
+  body: unknown,
+  changeSetFromFlag: unknown,
+): ListingsWriteFields {
+  if (opts.previewId || opts.approvedQuoteHash) {
+    throw new Error(
+      `${operation} commits by --change-set-id and --approved-change-set-hash; --preview-id and --approved-quote-hash belong to FBA inbound writes. Nothing was sent.`,
+    );
+  }
+  if (changeSetFromFlag !== undefined && body !== undefined) {
+    throw new Error(
+      'Pass the change set once: --change-set / --change-set-file, or --body / --body-file, not both. Nothing was sent.',
+    );
+  }
+
+  let changeSet = changeSetFromFlag;
+  let changeSetId = opts.changeSetId;
+  let approvedChangeSetHash = opts.approvedChangeSetHash;
+  let envelopeMode: unknown;
+  if (body !== undefined) {
+    const envelope =
+      isPlainObject(body) && LISTINGS_ENVELOPE_KEYS.some((k) => Object.hasOwn(body, k));
+    if (envelope) {
+      changeSet = body.changeSet;
+      envelopeMode = body.mode;
+      if (!changeSetId && typeof body.changeSetId === 'string') changeSetId = body.changeSetId;
+      if (!approvedChangeSetHash && typeof body.approvedChangeSetHash === 'string') {
+        approvedChangeSetHash = body.approvedChangeSetHash;
+      }
+    } else {
+      changeSet = body;
+    }
+  }
+
+  if (!opts.commit) {
+    if (envelopeMode === 'commit' || changeSetId || approvedChangeSetHash) {
+      throw new Error(
+        `A change set id or hash means a commit: add --commit to commit the previewed change set, or drop them to preview. Nothing was sent.`,
+      );
+    }
+    if (changeSet === undefined) {
+      throw new Error(
+        `${operation} previews a change set first: pass it with --change-set-file <file> (or --change-set <json>). Nothing was sent.`,
+      );
+    }
+    return { changeSet, mode: 'preview' };
+  }
+
+  if (!changeSetId || !approvedChangeSetHash) {
+    throw new Error(
+      `--commit on ${operation} needs --change-set-id and --approved-change-set-hash, both from the preview of the same change set. Nothing was sent.`,
+    );
+  }
+  if (changeSet !== undefined) {
+    throw new Error(
+      'A commit sends the previewed change set by its id and hash, not the change set again: drop --change-set / --body for the commit. Nothing was sent.',
+    );
+  }
+  return { mode: 'commit', changeSetId, approvedChangeSetHash };
 }
 
 function registerCall(amazon: Command): void {
@@ -153,6 +252,19 @@ function registerCall(amazon: Command): void {
       'with --commit: your own key (8-128 letters, digits, . : - _). A resend with the same key ' +
         'replays the first commit and is never sent to Amazon twice.',
     )
+    .option(
+      '--change-set-file <file>',
+      'listings.patch_listings_item: JSON change set to preview, from a file',
+    )
+    .option('--change-set <json>', 'listings.patch_listings_item: inline JSON change set to preview')
+    .option(
+      '--change-set-id <id>',
+      'listings.patch_listings_item with --commit: the change set id from its preview',
+    )
+    .option(
+      '--approved-change-set-hash <hash>',
+      'listings.patch_listings_item with --commit: the change set hash from that same preview',
+    )
     .action(async (operation: string, opts: CallCliOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
       const startedAt = Date.now();
@@ -166,8 +278,43 @@ function registerCall(amazon: Command): void {
         } else if (opts.body) {
           body = JSON.parse(opts.body);
         }
+        if (opts.changeSetFile && opts.changeSet) {
+          return emitError(
+            new Error('Pass --change-set-file or --change-set, not both.'),
+            !!root.json,
+          );
+        }
+        let changeSetFromFlag: unknown;
+        if (opts.changeSetFile) {
+          changeSetFromFlag = JSON.parse(await readFile(opts.changeSetFile, 'utf8'));
+        } else if (opts.changeSet) {
+          changeSetFromFlag = JSON.parse(opts.changeSet);
+        }
 
-        if (opts.commit && !opts.idempotencyKey) {
+        // Guarded listing writes: the change set and mode go top-level on the
+        // call (mx-ops#295), so `body` is consumed here and never sent.
+        let listingsWrite: ListingsWriteFields | undefined;
+        if (isListingsWriteOperation(operation)) {
+          try {
+            listingsWrite = listingsWriteFields(operation, opts, body, changeSetFromFlag);
+          } catch (err) {
+            return emitError(err, !!root.json);
+          }
+          body = undefined;
+        } else if (
+          changeSetFromFlag !== undefined ||
+          opts.changeSetId ||
+          opts.approvedChangeSetHash
+        ) {
+          return emitError(
+            new Error(
+              `--change-set, --change-set-file, --change-set-id and --approved-change-set-hash are for listings.patch_listings_item only, not ${operation}. Nothing was sent.`,
+            ),
+            !!root.json,
+          );
+        }
+
+        if (opts.commit && !opts.idempotencyKey && !listingsWrite) {
           return emitError(
             new Error(
               '--commit needs --idempotency-key <key> (8-128 letters, digits, . : - _), so a resend of a lost answer replays the first commit instead of sending it twice. Nothing was sent.',
@@ -195,7 +342,10 @@ function registerCall(amazon: Command): void {
           pathParams: opts.path,
           query: opts.query as Record<string, SpApiQueryValue>,
           ...(body !== undefined ? { body } : {}),
-          ...(opts.commit ? { dryRun: false as const } : {}),
+          // A listing write commits by mode, id and hash; dryRun is the FBA
+          // inbound commit switch and is never sent with it.
+          ...(listingsWrite ?? {}),
+          ...(opts.commit && !listingsWrite ? { dryRun: false as const } : {}),
           ...(opts.previewId ? { previewId: opts.previewId } : {}),
           ...(opts.approvedQuoteHash ? { approvedQuoteHash: opts.approvedQuoteHash } : {}),
           ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),

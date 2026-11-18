@@ -331,6 +331,87 @@ describe('spapiCall: guarded inbound writes', () => {
   });
 });
 
+describe('spapiCall: guarded listing writes send their fields top-level (mx-ops#295)', () => {
+  const CHANGE_SET = {
+    items: [
+      {
+        sku: 'SKU-1',
+        productType: 'PRODUCT',
+        patches: [{ op: 'replace', path: '/attributes/generic_keyword', value: [{ value: 'a b c' }] }],
+      },
+    ],
+  };
+  const answer = (extra: Record<string, unknown>) => ({
+    ok: true,
+    operation: 'listings.patch_listings_item',
+    amazonSellerId: 'A1',
+    legacySellerId: 71,
+    marketplaceId: 'ATVPDKIKX0DER',
+    ...extra,
+  });
+
+  it('a preview sends changeSet and mode at the top level, and no body', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, answer({ mode: 'preview', changeSetId: 'cs-1', changeSetHash: 'b'.repeat(64) })),
+    );
+    const r = await spapiCall(
+      {
+        operation: 'listings.patch_listings_item',
+        pathParams: { sku: 'SKU-1' },
+        changeSet: CHANGE_SET,
+        mode: 'preview',
+      },
+      injected(fetchImpl),
+    );
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(sent).toEqual({
+      operation: 'listings.patch_listings_item',
+      pathParams: { sku: 'SKU-1' },
+      changeSet: CHANGE_SET,
+      mode: 'preview',
+    });
+    expect(sent).not.toHaveProperty('body');
+    expect(sent).not.toHaveProperty('dryRun');
+    // The preview's id and hash survive for the commit.
+    expect(r.ok && r.write).toMatchObject({ mode: 'preview', changeSetId: 'cs-1' });
+  });
+
+  it('a commit sends mode, changeSetId and approvedChangeSetHash at the top level', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(200, answer({ mode: 'commit' })));
+    await spapiCall(
+      {
+        operation: 'listings.patch_listings_item',
+        mode: 'commit',
+        changeSetId: 'cs-1',
+        approvedChangeSetHash: 'b'.repeat(64),
+      },
+      injected(fetchImpl),
+    );
+    const sent = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(sent).toEqual({
+      operation: 'listings.patch_listings_item',
+      mode: 'commit',
+      changeSetId: 'cs-1',
+      approvedChangeSetHash: 'b'.repeat(64),
+    });
+  });
+
+  it('a lost answer on a listing commit is an unknown outcome; on a preview it is not', async () => {
+    const timeout = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const fetchImpl = vi.fn().mockRejectedValue(timeout());
+    const commit = await spapiCall(
+      { operation: 'listings.patch_listings_item', mode: 'commit', changeSetId: 'cs-1', approvedChangeSetHash: 'h' },
+      injected(fetchImpl),
+    );
+    const preview = await spapiCall(
+      { operation: 'listings.patch_listings_item', mode: 'preview', changeSet: CHANGE_SET },
+      injected(fetchImpl),
+    );
+    expect(!commit.ok && commit.requestOutcome).toBe('unknown');
+    expect(!preview.ok && preview.requestOutcome).toBeUndefined();
+  });
+});
+
 describe('spapiCall: a lost answer on a commit is an unknown outcome', () => {
   const timeout = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 

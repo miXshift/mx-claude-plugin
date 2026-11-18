@@ -14,6 +14,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { registerAmazonSpApiCommands } from './amazon-spapi.js';
 import { spapiCall } from '../lib/amazon/spapi-call.js';
@@ -329,5 +332,182 @@ describe('amazon call: commit safety and honest outcomes', () => {
     expect(input).not.toHaveProperty('previewId');
     expect(input).not.toHaveProperty('idempotencyKey');
     expect(input).not.toHaveProperty('dryRun');
+  });
+});
+
+describe('amazon call listings.patch_listings_item: the change set goes top-level, not under body.body (mx-ops#295)', () => {
+  const CHANGE_SET = {
+    items: [
+      {
+        sku: 'SKU-1',
+        productType: 'PRODUCT',
+        patches: [{ op: 'replace', path: '/attributes/generic_keyword', value: [{ value: 'a b c' }] }],
+      },
+    ],
+  };
+  const HASH = 'c'.repeat(64);
+  let dir: string;
+  let fetchImpl: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mx-listings-'));
+    fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          operation: 'listings.patch_listings_item',
+          amazonSellerId: 'A1',
+          legacySellerId: 71,
+          marketplaceId: 'ATVPDKIKX0DER',
+          mode: 'preview',
+          changeSetId: 'cs-1',
+          changeSetHash: HASH,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    // Run the REAL client against a fake service, so these tests pin the JSON
+    // that actually leaves the CLI, not just the input object.
+    const actual = await vi.importActual<typeof import('../lib/amazon/spapi-call.js')>(
+      '../lib/amazon/spapi-call.js',
+    );
+    vi.mocked(spapiCall).mockImplementation((input, opts) =>
+      actual.spapiCall(input, {
+        ...opts,
+        apiBaseOverride: 'https://svc.test',
+        tokenProvider: async () => 'tok',
+        fetchImpl: fetchImpl as never,
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function file(name: string, content: unknown): Promise<string> {
+    const p = join(dir, name);
+    await writeFile(p, JSON.stringify(content), 'utf8');
+    return p;
+  }
+
+  function sentBody(): Record<string, unknown> {
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe('https://svc.test/api/amazon/spapi/call');
+    return JSON.parse(String(init.body)) as Record<string, unknown>;
+  }
+
+  it('--change-set-file previews: changeSet and mode=preview are top-level, no body', async () => {
+    const f = await file('cs.json', CHANGE_SET);
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--path', 'sku=SKU-1', '--change-set-file', f);
+    expect(sentBody()).toEqual({
+      operation: 'listings.patch_listings_item',
+      pathParams: { sku: 'SKU-1' },
+      changeSet: CHANGE_SET,
+      mode: 'preview',
+    });
+    // The preview's id and hash reach the caller for the commit.
+    expect(lastJsonOut()).toMatchObject({ status: 'ok', write: { changeSetId: 'cs-1', changeSetHash: HASH } });
+  });
+
+  it('--change-set inline previews the same way', async () => {
+    await runAmazon('call', 'listings.patch_listings_item', '--change-set', JSON.stringify(CHANGE_SET));
+    const sent = sentBody();
+    expect(sent.changeSet).toEqual(CHANGE_SET);
+    expect(sent.mode).toBe('preview');
+    expect(sent).not.toHaveProperty('body');
+  });
+
+  it('a --body-file holding { changeSet, mode } (what the customer sent) is lifted to the top level', async () => {
+    const f = await file('body.json', { changeSet: CHANGE_SET, mode: 'preview' });
+    await runAmazon('call', 'listings.patch_listings_item', '--path', 'sku=SKU-1', '--body-file', f);
+    const sent = sentBody();
+    expect(sent).not.toHaveProperty('body');
+    expect(sent.changeSet).toEqual(CHANGE_SET);
+    expect(sent.mode).toBe('preview');
+  });
+
+  it('a --body that is the change set itself is sent as the top-level changeSet', async () => {
+    await runAmazon('call', 'listings.patch_listings_item', '--body', JSON.stringify(CHANGE_SET));
+    const sent = sentBody();
+    expect(sent).not.toHaveProperty('body');
+    expect(sent.changeSet).toEqual(CHANGE_SET);
+    expect(sent.mode).toBe('preview');
+  });
+
+  it('--commit sends mode=commit, changeSetId and approvedChangeSetHash top-level; no change set, no dryRun', async () => {
+    await runAmazon(
+      'call',
+      'listings.patch_listings_item',
+      '--path',
+      'sku=SKU-1',
+      '--commit',
+      '--change-set-id',
+      'cs-1',
+      '--approved-change-set-hash',
+      HASH,
+    );
+    expect(sentBody()).toEqual({
+      operation: 'listings.patch_listings_item',
+      pathParams: { sku: 'SKU-1' },
+      mode: 'commit',
+      changeSetId: 'cs-1',
+      approvedChangeSetHash: HASH,
+    });
+  });
+
+  it('--commit with a --body-file holding { changeSetId, approvedChangeSetHash } lifts them top-level', async () => {
+    const f = await file('commit.json', { mode: 'commit', changeSetId: 'cs-1', approvedChangeSetHash: HASH });
+    await runAmazon('call', 'listings.patch_listings_item', '--commit', '--body-file', f);
+    const sent = sentBody();
+    expect(sent).toMatchObject({ mode: 'commit', changeSetId: 'cs-1', approvedChangeSetHash: HASH });
+    expect(sent).not.toHaveProperty('body');
+    expect(sent).not.toHaveProperty('changeSet');
+  });
+
+  it('refuses a preview with no change set, before anything is sent', async () => {
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--path', 'sku=SKU-1');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('--change-set-file');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('refuses --commit without the id and hash, before anything is sent', async () => {
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--commit', '--change-set-id', 'cs-1');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('--approved-change-set-hash');
+  });
+
+  it('refuses an id and hash without --commit', async () => {
+    await runAmazon(
+      '--json',
+      'call',
+      'listings.patch_listings_item',
+      '--change-set-id',
+      'cs-1',
+      '--approved-change-set-hash',
+      HASH,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('--commit');
+  });
+
+  it('refuses the FBA inbound commit flags on a listing write', async () => {
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--commit', '--preview-id', 'p-1');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('--change-set-id');
+  });
+
+  it('refuses the change set flags on any other operation', async () => {
+    await runAmazon('--json', 'call', 'listings.get_listings_item', '--change-set', '{}');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('listings.patch_listings_item only');
+  });
+
+  it('other operations still send --body under body, unchanged', async () => {
+    await runAmazon('call', 'data_kiosk.create_query', '--body', '{"query":"q"}');
+    const sent = sentBody();
+    expect(sent).toEqual({ operation: 'data_kiosk.create_query', body: { query: 'q' } });
   });
 });

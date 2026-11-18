@@ -105,6 +105,31 @@ export interface SpApiCallInput {
   /** Commits only: the caller's own key (8-128 chars). A resend with the same
    *  key replays the first commit and never reaches Amazon twice. */
   idempotencyKey?: string;
+  /** Guarded listing writes only (listings.patch_listings_item): the change set
+   *  to preview. Sent as a TOP-LEVEL `changeSet` field: the service's listings
+   *  write path reads it there and ignores anything under `body` (mx-ops#295). */
+  changeSet?: unknown;
+  /** Guarded listing writes only: 'preview' (nothing reaches Amazon) or
+   *  'commit'. Sent top-level, beside `changeSet`. */
+  mode?: ListingsWriteMode;
+  /** Commit of a listing write: the change set id its preview returned. */
+  changeSetId?: string;
+  /** Commit of a listing write: the change set hash its preview returned. */
+  approvedChangeSetHash?: string;
+}
+
+/** The two modes of a guarded listing write. */
+export type ListingsWriteMode = 'preview' | 'commit';
+
+/** Operations whose writes go through the service's guarded listings path
+ *  (preview a change set, then commit it by id and hash). Their change set and
+ *  mode are top-level fields on the call, never the `body` field. */
+export const LISTINGS_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
+  'listings.patch_listings_item',
+]);
+
+export function isListingsWriteOperation(operation: string): boolean {
+  return LISTINGS_WRITE_OPERATIONS.has(operation);
 }
 
 export interface SpApiCallSuccess {
@@ -215,6 +240,15 @@ export async function spapiCall(
   if (input.previewId) body.previewId = input.previewId;
   if (input.approvedQuoteHash) body.approvedQuoteHash = input.approvedQuoteHash;
   if (input.idempotencyKey) body.idempotencyKey = input.idempotencyKey;
+  // Guarded listing writes. Top-level, next to `operation`: the service's
+  // listings path reads changeSet / mode / changeSetId / approvedChangeSetHash
+  // from the call itself, and a change set nested under `body` is dropped
+  // without a word, which then reads as "preview requires a changeSet"
+  // (mx-ops#295). Each is sent only when the caller set it.
+  if (input.changeSet !== undefined) body.changeSet = input.changeSet;
+  if (input.mode) body.mode = input.mode;
+  if (input.changeSetId) body.changeSetId = input.changeSetId;
+  if (input.approvedChangeSetHash) body.approvedChangeSetHash = input.approvedChangeSetHash;
 
   // 60s: Data Kiosk getDocument and orders searches can be slow under load,
   // and unlike report documents the payload comes back inline.
@@ -222,7 +256,7 @@ export async function spapiCall(
   // UNKNOWN outcome, not an unreachable service: the caller must resend with the
   // same idempotencyKey or read the plan, never retry as a new request. Reads
   // and dry runs change nothing and keep the old wording.
-  const mayChangeState = input.dryRun === false;
+  const mayChangeState = input.dryRun === false || input.mode === 'commit';
   const r = await amazonRequest(
     { method: 'POST', path: '/api/amazon/spapi/call', body, surface: 'spapi', mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 },
@@ -248,10 +282,11 @@ export async function spapiCall(
   }
   // A guarded inbound write answers with its own shape (dryRun is a boolean on
   // it and on nothing else): keep the whole answer so a preview's id and hash
-  // are not lost.
+  // are not lost. A listing write sent with a mode keeps its whole answer the
+  // same way: the preview's change set id and hash are what a commit needs.
   const answer = json as Record<string, unknown>;
   const write =
-    typeof answer.dryRun === 'boolean'
+    typeof answer.dryRun === 'boolean' || input.mode !== undefined
       ? Object.fromEntries(Object.entries(answer).filter(([k]) => k !== 'ok'))
       : undefined;
   return {
