@@ -501,27 +501,27 @@ describe('labels commit: nothing is written without --commit', () => {
   });
 
   it('field-name without --commit sends nothing at all; with --commit it sends the PUT or the DELETE', async () => {
-    await run('labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', 'Pattern ID');
+    await run('labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', 'Collection');
     await run('labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--remove');
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stderr).toContain('NOT SENT (no --commit)');
-    expect(stderr).toContain('would show label_2 as "Pattern ID" on account 12345');
+    expect(stderr).toContain('would show label_2 as "Collection" on account 12345');
     expect(stderr).toContain('would show label_2 under its standard name again');
     stdout = '';
-    await run('--json', 'labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', 'Pattern ID');
-    expect(lastLineJson()).toMatchObject({ status: 'ok', committed: false, dry_run: true, field: 'label_2', name: 'Pattern ID' });
+    await run('--json', 'labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', 'Collection');
+    expect(lastLineJson()).toMatchObject({ status: 'ok', committed: false, dry_run: true, field: 'label_2', name: 'Collection' });
 
-    gateway = (req) => ({ status: 200, body: { ok: true, state: 'on', account: 12345, entity: 'item', field: 'label_2', display_name: req.method === 'PUT' ? 'Pattern ID' : null, ...(req.method === 'DELETE' ? { removed: true } : {}), friendly: req.method === 'PUT' ? 'Item Label 2 now shows as "Pattern ID" on this account.' : 'Item Label 2 shows its standard name again on this account.' } });
-    await run('labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', ' Pattern ID ', '--commit');
+    gateway = (req) => ({ status: 200, body: { ok: true, state: 'on', account: 12345, entity: 'item', field: 'label_2', display_name: req.method === 'PUT' ? 'Collection' : null, ...(req.method === 'DELETE' ? { removed: true } : {}), friendly: req.method === 'PUT' ? 'Item Label 2 now shows as "Collection" on this account.' : 'Item Label 2 shows its standard name again on this account.' } });
+    await run('labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--name', ' Collection ', '--commit');
     expect(seen[0]!.method).toBe('PUT');
     expect(seen[0]!.url.pathname).toBe('/api/labels/fields/names');
-    expect(seen[0]!.body).toEqual({ account: 12345, entity: 'item', field: 'label_2', name: 'Pattern ID' });
-    expect(stderr).toContain('✓ Item Label 2 now shows as "Pattern ID" on this account.');
+    expect(seen[0]!.body).toEqual({ account: 12345, entity: 'item', field: 'label_2', name: 'Collection' });
+    expect(stderr).toContain('✓ Item Label 2 now shows as "Collection" on this account.');
     await run('--json', 'labels', 'field-name', '--account', ACCOUNT, '--field', 'label_2', '--remove', '--commit');
     expect(seen[1]!.method).toBe('DELETE');
     expect(Object.fromEntries(seen[1]!.url.searchParams)).toEqual({ account: '12345', entity: 'item', field: 'label_2' });
     expect(lastLineJson()).toMatchObject({ status: 'ok', committed: true, removed: true, display_name: null });
-    expect(everythingTracked()).not.toContain('Pattern ID');
+    expect(everythingTracked()).not.toContain('Collection');
   });
 
   it('field-name refuses a bad name, a bad field, and both or neither of --name and --remove', async () => {
