@@ -8,15 +8,16 @@ description: >
   have and what is each one named", "which values are in use", "what labels
   are on these ASINs", "set Item Label 1 to X for these ASINs", clearing or
   renaming a value, naming a field for the account, what changed and who
-  changed it, and undoing a label change. Changes preview first and apply
-  only after the user confirms the exact change set. NOT sub-brands (finding
+  changed it, undoing a label change, and asking MixShift to turn labels on
+  for the account ("ask to turn on labels for our account"). Changes preview first and apply
+  only after the user confirms. NOT sub-brands (finding
   the brands inside a seller account, promoting a brand label, retiring a
   brand): that is mx-brand-context. Not Amazon Ads campaign settings:
   mx-amazon-ads. Not FBA shipment, box, prep or barcode labels:
   mx-amazon-inbound.
   Uses the MixShift plugin sign-in; no brand setup needed.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "MixShift"
 trigger_phrases:
   - item labels
@@ -39,6 +40,8 @@ trigger_phrases:
   - what changed in our labels
   - who changed this label
   - undo a label change
+  - ask to turn on labels for our account
+  - turn on labels for our account
 ---
 
 # Labels (item and campaign labels: read, preview, commit, undo)
@@ -115,6 +118,22 @@ Write-flow edge cases:
 ## After a commit
 
 After a commit, every label read from MixShift shows the new value at once, marked `[pending]` until the Legacy platform has it. The Legacy platform's own screens show the change within a few minutes. Do not claim a change is applied from the preview alone; go by the commit result.
+
+## When labels are not on for the account
+
+A labels command can answer `not_enabled` for three different reasons. Read the answer's `reason` or `state` and its message to tell them apart:
+
+1. **Labels are off for the account** (`reason: labels_off`, `state: off`, or a read command answering `not_enabled`): MixShift has not turned labels on for this account yet. Say so in one sentence and offer: "Want me to ask MixShift to turn them on?"
+2. **Label changes are not on yet** (`reason: tenant_not_on`, `state: observing`): MixShift is still checking its copy of this account's labels. Previews work; commits do not. Say so. Offer the request below only if the user has not already asked for it.
+3. **Label changes are turned off on MixShift as a whole** (`reason: writes_off`): there is nothing to request. Reads still work. Say so.
+
+**Sending the request.** If the user asked for it in their own words (for example "ask to turn on labels for our account"), that is their yes. If you offered it, wait for the user's yes in a later turn. Never send it in an unattended run (scheduled task, CI, headless): there, say that labels are off and stop. Send exactly this, run the same way as every other `mixshift` command above:
+
+```bash
+mixshift feedback "Labels request: please turn on labels for our account." --category feature_request --skill mx-labels
+```
+
+Keep the opening words `Labels request:` unchanged, because MixShift routes requests on them. The user may add their own note after that sentence (for example which accounts matter most). Never add account names, seller ids, ASINs or merchant names yourself. Show the user what was sent, then tell them MixShift turns labels on account by account and will let them know when theirs is on.
 
 ## When it does not fit
 
