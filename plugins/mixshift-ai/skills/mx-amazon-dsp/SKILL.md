@@ -649,7 +649,7 @@ other state before the call, and only a separate `dsp.update_*` change to
 |---|---|---|
 | `dsp.create_campaigns` | Campaigns (orders): name, flights with budgets, goal KPI, bid strategy, budget allocation, frequency caps, budget caps, agency fee, PO number | **5** |
 | `dsp.create_ad_groups` | Line items in existing campaigns: inventory type, dates, budget, bid, pacing, creative rotation, targeting settings (viewability, audience match type) | **20** |
-| `dsp.create_targets` | Targeting on line items: audiences, locations, domains, devices, apps, day parts, content and inventory targets; `negative: true` excludes | 200 |
+| `dsp.create_targets` | Targeting on line items: audiences, locations, domains, devices, apps, day parts, content and inventory targets; `negative: true` excludes. Audiences in one group are joined by OR, include groups by AND, and the exclusion group excludes a shopper in ANY of its audiences; `inGroupOperator` / `acrossGroupOperator` are read-only in Amazon's API (sending ANY changes nothing, and an exclusion group can read back ALL) | 200 |
 | `dsp.delete_targets` | Removes targets by id (a DSP target has no paused state); keeps a snapshot of each in the audit row | **1,000** |
 | `dsp.create_ad_associations` | Attaches EXISTING creatives to line items (creative id as `adId`) | **20** |
 
@@ -717,7 +717,10 @@ These rules are for **creating**. The edit operations (`dsp.update_campaigns`, `
    - **Audience match type** (`targetingSettings.defaultAudienceTargetingMatchType`):
      `EXACT` serves only the audiences named; `SIMILAR` lets Amazon expand to
      similar shoppers. On retargeting and loyalty lines the expansion can cost
-     many times more per purchase, so ask which they want per line.
+     many times more per purchase, so ask which they want per line. A line
+     meant to prospect works better on an AMC lookalike audience with `EXACT`
+     than on a buyer seed with `SIMILAR` (`mx-amazon-amc`, "Lookalike
+     audiences").
    - **Budget allocation** (`MANUAL` vs `AUTO`) and the goal KPI.
    - Where the audience ids come from: an AMC audience's 18-digit
      `dspCanonicalId` is on the audience itself (`amc.list_audiences`,
