@@ -165,8 +165,17 @@ describe('labels state', () => {
     gateway = () => ({ status: 200, body: { ok: true, state: 'off', backfilled_at: null, last_run: null, last_completed_at: null, running: false, freshness: { note: 'Labels are not turned on for this account; nothing is stored yet.' } } });
     await run('labels', 'state');
     expect(stdout).toContain('**Labels: not turned on yet**');
-    expect(stdout).toContain('Your MixShift contact can turn labels on');
+    expect(stdout).toContain('- To ask MixShift to turn labels on, say "Using MixShift, ask to turn on labels for our account".');
+    expect(stdout).not.toContain('MixShift contact');
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('an off tenant whose note already carries the ask prints it once', async () => {
+    const note = 'Labels are not turned on for this account. To ask for them, say "Using MixShift, ask to turn on labels for our account" in Claude with the MixShift plugin, or email support@mixshift.io.';
+    gateway = () => ({ status: 200, body: { ok: true, state: 'off', backfilled_at: null, last_run: null, last_completed_at: null, running: false, freshness: { note } } });
+    await run('labels', 'state');
+    expect(stdout.match(/ask to turn on labels/gi)).toHaveLength(1);
+    expect(stdout).not.toContain('- To ask MixShift to turn labels on');
   });
 
   it('not_enabled from the service renders as one plain sentence on stderr, exit 6, no stack', async () => {

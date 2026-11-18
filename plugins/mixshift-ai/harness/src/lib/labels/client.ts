@@ -689,7 +689,13 @@ function toLabelsFailure(json: Record<string, unknown>, httpStatus: number): Lab
   const kind: LabelsFailureKind = recognized ? (rawKind as LabelsFailureKind) : kindForStatus(httpStatus);
   // A route the service does not have answers `{ kind: 'unknown', friendly: 'not_found' }`: a bare word, not a sentence.
   const sentence = typeof json.friendly === 'string' && json.friendly.includes(' ') ? cleanServerText(json.friendly) : undefined;
-  const friendly = sentence ?? (httpStatus === 404 && kind === 'unknown' ? defaultFriendly('route_missing') : defaultFriendly(kind));
+  const reasonFriendly =
+    kind === 'not_enabled' && json.reason === 'writes_off'
+      ? 'Label changes are turned off on MixShift right now. Reading labels still works. Nothing was changed.'
+      : kind === 'not_enabled' && json.reason === 'tenant_not_on'
+        ? 'Label changes are not turned on for this account yet. You can preview a change, but it cannot be committed yet. Nothing was changed.'
+        : undefined;
+  const friendly = sentence ?? reasonFriendly ?? (httpStatus === 404 && kind === 'unknown' ? defaultFriendly('route_missing') : defaultFriendly(kind));
   const issues = parseRouteIssues(json.issues);
   const message = typeof json.message === 'string' ? cleanServerText(json.message) : issues?.detail;
   return {
@@ -726,7 +732,7 @@ function statusOnlyFailure(httpStatus: number, detail?: string): LabelsFailure {
 export function defaultFriendly(kind: LabelsFailureKind | 'route_missing'): string {
   switch (kind) {
     case 'not_enabled':
-      return 'Labels are not turned on for your account yet. Your MixShift contact can turn them on.';
+      return 'Labels are not turned on for your account yet. To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".';
     case 'not_available':
       return 'Labels are not available for this login right now. Try again in a minute, or ask your MixShift contact to check how it is connected.';
     case 'not_found':
