@@ -16,7 +16,10 @@
  *                            commit the previewed change set
  *
  * A listing write's change set, mode, change set id and hash are top-level
- * fields on the service call, never under `body` (mx-ops#295).
+ * fields on the service call, never under `body` (mx-ops#295). The change set
+ * is checked against the service's limits before it is sent (1 to 10 items,
+ * at most 20 patches per item, no keys beside `items`), and a body envelope's
+ * mode must agree with --commit.
  *
  * Discovery-first: run `amazon operations` and read the `notes` column before
  * calling — it carries required params, PascalCase gotchas on v0 operations,
@@ -132,8 +135,66 @@ type ListingsWriteFields = Pick<
 
 const LISTINGS_ENVELOPE_KEYS = ['changeSet', 'mode', 'changeSetId', 'approvedChangeSetHash'] as const;
 
+/** The service's change set limits (its call schema: `changeSet` is a strict
+ *  `{ items }`, 1 to 10 items, each `{ sku, productType, patches }` with at
+ *  most 20 patches). Checked here so a change set the service would refuse is
+ *  never sent, and named in --help (mx-ops#295, QA F3). */
+export const LISTINGS_CHANGE_SET_MAX_ITEMS = 10;
+export const LISTINGS_CHANGE_SET_MAX_PATCHES = 20;
+
+const CHANGE_SET_LIMITS_TEXT =
+  `a change set is { "items": [ { "sku", "productType", "patches": [...] } ] } with ` +
+  `1 to ${LISTINGS_CHANGE_SET_MAX_ITEMS} items and at most ${LISTINGS_CHANGE_SET_MAX_PATCHES} patches per item; ` +
+  `no other top-level keys`;
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.trim() !== '';
+}
+
+/** Refuse, before anything is sent, a change set the service's schema would
+ *  refuse. Throws with the reason and the limits. */
+export function validateListingsChangeSet(changeSet: unknown): void {
+  const refuse = (why: string): never => {
+    throw new Error(`Change set refused: ${why}. ${capitalize(CHANGE_SET_LIMITS_TEXT)}. Nothing was sent.`);
+  };
+  if (!isPlainObject(changeSet)) {
+    refuse(`it must be a JSON object, not ${changeSet === null ? 'null' : Array.isArray(changeSet) ? 'an array' : typeof changeSet}`);
+  }
+  const cs = changeSet as Record<string, unknown>;
+  const extra = Object.keys(cs).filter((k) => k !== 'items');
+  if (extra.length > 0) {
+    refuse(`unexpected top-level key(s) ${extra.map((k) => JSON.stringify(k)).join(', ')}`);
+  }
+  if (!Object.hasOwn(cs, 'items')) refuse('it has no "items" list');
+  const items = cs.items;
+  if (!Array.isArray(items)) refuse('"items" must be a list');
+  const list = items as unknown[];
+  if (list.length === 0) refuse('"items" is empty');
+  if (list.length > LISTINGS_CHANGE_SET_MAX_ITEMS) {
+    refuse(
+      `it has ${list.length} items; split it into change sets of at most ${LISTINGS_CHANGE_SET_MAX_ITEMS} and preview each`,
+    );
+  }
+  list.forEach((item, i) => {
+    const at = `items[${i}]`;
+    if (!isPlainObject(item)) refuse(`${at} must be an object`);
+    const it = item as Record<string, unknown>;
+    if (!isNonEmptyString(it.sku)) refuse(`${at} needs a "sku"`);
+    if (!isNonEmptyString(it.productType)) refuse(`${at} needs a "productType"`);
+    if (!Array.isArray(it.patches)) refuse(`${at} needs a "patches" list`);
+    const patches = it.patches as unknown[];
+    if (patches.length > LISTINGS_CHANGE_SET_MAX_PATCHES) {
+      refuse(`${at} has ${patches.length} patches; the most is ${LISTINGS_CHANGE_SET_MAX_PATCHES}`);
+    }
+  });
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** Build the listing-write fields for listings.patch_listings_item.
@@ -171,6 +232,19 @@ function listingsWriteFields(
     const envelope =
       isPlainObject(body) && LISTINGS_ENVELOPE_KEYS.some((k) => Object.hasOwn(body, k));
     if (envelope) {
+      const extra = Object.keys(body).filter(
+        (k) => !(LISTINGS_ENVELOPE_KEYS as readonly string[]).includes(k),
+      );
+      if (extra.length > 0) {
+        throw new Error(
+          `The body holds { ${LISTINGS_ENVELOPE_KEYS.join(', ')} } and nothing else; unexpected key(s) ${extra.map((k) => JSON.stringify(k)).join(', ')}. Nothing was sent.`,
+        );
+      }
+      if (Object.hasOwn(body, 'mode') && body.mode !== 'preview' && body.mode !== 'commit') {
+        throw new Error(
+          `The body's "mode" must be "preview" or "commit", not ${JSON.stringify(body.mode)}. Nothing was sent.`,
+        );
+      }
       changeSet = body.changeSet;
       envelopeMode = body.mode;
       if (!changeSetId && typeof body.changeSetId === 'string') changeSetId = body.changeSetId;
@@ -193,9 +267,15 @@ function listingsWriteFields(
         `${operation} previews a change set first: pass it with --change-set-file <file> (or --change-set <json>). Nothing was sent.`,
       );
     }
+    validateListingsChangeSet(changeSet);
     return { changeSet, mode: 'preview' };
   }
 
+  if (envelopeMode === 'preview') {
+    throw new Error(
+      `The body says "mode": "preview" but --commit was given. Drop --commit to preview, or set "mode": "commit" (or leave it out) to commit. Nothing was sent.`,
+    );
+  }
   if (!changeSetId || !approvedChangeSetHash) {
     throw new Error(
       `--commit on ${operation} needs --change-set-id and --approved-change-set-hash, both from the preview of the same change set. Nothing was sent.`,
@@ -215,7 +295,11 @@ function registerCall(amazon: Command): void {
     .description(
       'Execute one cataloged SP-API operation. Run `amazon operations` first for the ' +
         'operation id and its parameter notes. Guarded write operations (FBA inbound ' +
-        'shipments) preview by default; only --commit sends one to Amazon.',
+        'shipments, listings.patch_listings_item) preview by default; only --commit sends one to Amazon. ' +
+        `A listings change set holds 1 to ${LISTINGS_CHANGE_SET_MAX_ITEMS} items (split more SKUs into several ` +
+        `change sets) and at most ${LISTINGS_CHANGE_SET_MAX_PATCHES} patches per item; the CLI refuses one outside ` +
+        'these limits before sending. With --body / --body-file the body is the change set, or ' +
+        '{ changeSet, mode, changeSetId, approvedChangeSetHash } with nothing else, and its mode must agree with --commit.',
     )
     .option('--seller-id <id>', 'AmazonSellerID from `amazon merchants`')
     .option(
@@ -254,9 +338,12 @@ function registerCall(amazon: Command): void {
     )
     .option(
       '--change-set-file <file>',
-      'listings.patch_listings_item: JSON change set to preview, from a file',
+      `listings.patch_listings_item: JSON change set to preview, from a file (${CHANGE_SET_LIMITS_TEXT})`,
     )
-    .option('--change-set <json>', 'listings.patch_listings_item: inline JSON change set to preview')
+    .option(
+      '--change-set <json>',
+      `listings.patch_listings_item: inline JSON change set to preview (same limits as --change-set-file)`,
+    )
     .option(
       '--change-set-id <id>',
       'listings.patch_listings_item with --commit: the change set id from its preview',

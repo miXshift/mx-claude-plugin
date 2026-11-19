@@ -18,7 +18,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { registerAmazonSpApiCommands } from './amazon-spapi.js';
+import {
+  registerAmazonSpApiCommands,
+  LISTINGS_CHANGE_SET_MAX_ITEMS,
+  LISTINGS_CHANGE_SET_MAX_PATCHES,
+} from './amazon-spapi.js';
 import { spapiCall } from '../lib/amazon/spapi-call.js';
 import { track } from '../lib/telemetry/index.js';
 
@@ -509,5 +513,121 @@ describe('amazon call listings.patch_listings_item: the change set goes top-leve
     await runAmazon('call', 'data_kiosk.create_query', '--body', '{"query":"q"}');
     const sent = sentBody();
     expect(sent).toEqual({ operation: 'data_kiosk.create_query', body: { query: 'q' } });
+  });
+
+  // -- change set limits, checked before sending (QA qa-claude-plugin-20261118 F3) --
+
+  const item = (n: number, patches = 1) => ({
+    sku: `SKU-${n}`,
+    productType: 'PRODUCT',
+    patches: Array.from({ length: patches }, () => ({
+      op: 'replace',
+      path: '/attributes/generic_keyword',
+      value: [{ value: 'a b c' }],
+    })),
+  });
+  const items = (count: number) => Array.from({ length: count }, (_, i) => item(i + 1));
+
+  it(`a change set of exactly ${LISTINGS_CHANGE_SET_MAX_ITEMS} items with ${LISTINGS_CHANGE_SET_MAX_PATCHES} patches each is sent`, async () => {
+    const cs = {
+      items: Array.from({ length: LISTINGS_CHANGE_SET_MAX_ITEMS }, (_, i) =>
+        item(i + 1, LISTINGS_CHANGE_SET_MAX_PATCHES),
+      ),
+    };
+    const f = await file('ten.json', cs);
+    await runAmazon('call', 'listings.patch_listings_item', '--change-set-file', f);
+    expect(sentBody().changeSet).toEqual(cs);
+  });
+
+  const refusals: Array<[string, unknown, string]> = [
+    ['11 items (the 14-SKU case needs two change sets)', { items: items(11) }, 'at most 10'],
+    ['5000 items', { items: items(5000) }, 'split it into change sets'],
+    ['an empty object', {}, 'no "items" list'],
+    ['an empty items list', { items: [] }, '"items" is empty'],
+    ['null', null, 'not null'],
+    ['an array', [item(1)], 'not an array'],
+    ['an extra top-level key', { items: items(1), extra: 1 }, 'unexpected top-level key(s) "extra"'],
+    ['items that is not a list', { items: item(1) }, '"items" must be a list'],
+    ['an item that is not an object', { items: ['SKU-1'] }, 'items[0] must be an object'],
+    ['an item with no sku', { items: [{ productType: 'P', patches: [] }] }, 'items[0] needs a "sku"'],
+    ['an item with no productType', { items: [{ sku: 'S', patches: [] }] }, 'items[0] needs a "productType"'],
+    ['an item with no patches list', { items: [{ sku: 'S', productType: 'P' }] }, 'items[0] needs a "patches" list'],
+    ['21 patches on one item', { items: [item(1), item(2, 21)] }, 'items[1] has 21 patches'],
+  ];
+
+  for (const [name, cs, why] of refusals) {
+    it(`refuses a change set with ${name} before sending, naming the limits`, async () => {
+      await runAmazon('--json', 'call', 'listings.patch_listings_item', '--change-set', JSON.stringify(cs));
+      expect(fetchImpl).not.toHaveBeenCalled();
+      const message = String(lastJsonOut().message);
+      expect(message).toContain(why);
+      expect(message).toContain('1 to 10 items');
+      expect(message).toContain('Nothing was sent.');
+      expect(process.exitCode).toBe(1);
+    });
+  }
+
+  it('applies the same limits to a change set given as --body or inside a --body-file envelope', async () => {
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--body', JSON.stringify({ items: items(11) }));
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('at most 10');
+
+    const f = await file('env.json', { changeSet: null, mode: 'preview' });
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--body-file', f);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('not null');
+  });
+
+  // -- the body envelope: no extra keys, mode agrees with --commit (QA F4) --
+
+  it('refuses an envelope with a key beside changeSet / mode / changeSetId / approvedChangeSetHash', async () => {
+    await runAmazon(
+      '--json',
+      'call',
+      'listings.patch_listings_item',
+      '--body',
+      JSON.stringify({ changeSet: CHANGE_SET, mode: 'preview', note: 'x' }),
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('unexpected key(s) "note"');
+  });
+
+  it('refuses an envelope mode that is neither preview nor commit', async () => {
+    await runAmazon(
+      '--json',
+      'call',
+      'listings.patch_listings_item',
+      '--body',
+      JSON.stringify({ changeSet: CHANGE_SET, mode: 'delete' }),
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('"preview" or "commit"');
+  });
+
+  it('refuses --commit with an envelope that says mode=preview', async () => {
+    const f = await file('mixed.json', { mode: 'preview', changeSetId: 'cs-1', approvedChangeSetHash: HASH });
+    await runAmazon('--json', 'call', 'listings.patch_listings_item', '--commit', '--body-file', f);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(String(lastJsonOut().message)).toContain('"mode": "preview" but --commit');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('--commit with an envelope that leaves mode out still commits', async () => {
+    const f = await file('nomode.json', { changeSetId: 'cs-1', approvedChangeSetHash: HASH });
+    await runAmazon('call', 'listings.patch_listings_item', '--commit', '--body-file', f);
+    expect(sentBody()).toMatchObject({ mode: 'commit', changeSetId: 'cs-1', approvedChangeSetHash: HASH });
+  });
+
+  it('--help states the change set limits', () => {
+    const program = buildProgram();
+    const call = program.commands
+      .find((c) => c.name() === 'amazon')!
+      .commands.find((c) => c.name() === 'call')!;
+    // Commander wraps long help lines; compare with the wrapping collapsed.
+    const help = call.helpInformation().replace(/\s+/g, ' ');
+    expect(help).toContain('1 to 10 items');
+    expect(help).toContain('at most 20 patches per item');
+    expect(help).toContain('no other top-level keys');
+    expect(help).toContain('must agree with --commit');
   });
 });
