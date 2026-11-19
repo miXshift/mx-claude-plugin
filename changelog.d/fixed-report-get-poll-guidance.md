@@ -1,4 +1,4 @@
-- **A finished Amazon report no longer looks stuck when you check it with `report get`.**
+- **The report skill now waits for an Amazon report with `report poll`, then fetches it with `report get`.**
   Checking a run only with `mixshift amazon report get` could keep answering
   "not ready" after Amazon had finished, until a single `report poll` moved it
   along. The report skill now says to poll until it is done and then get, and
