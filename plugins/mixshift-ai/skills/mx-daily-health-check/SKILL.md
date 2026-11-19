@@ -7,7 +7,7 @@ description: >
   types, objectives, and item groups. Uses percentile-based confidence intervals
   to detect spend and ACOS anomalies requiring management attention.
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   author: "MixShift"
   ported-from: "upstream/daily-advertising-performance-health-check"
 ---
@@ -160,6 +160,8 @@ Determine the account type from brand context:
 - **Vendor Central (VC):** Use `vendor_sales_manufacturing_asin` for Ordered Revenue. VC has a 2-day data lag.
 
 Do not mix sources or discover the path mid-run. If account type is missing, stop and update brand context first.
+
+Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get their spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 ### Step 3: Load Pre-Fetched Data
 
@@ -533,7 +535,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick DHC
 // /tmp/dhc-sidecar-input.json
 {
   "skill": "mx-daily-health-check",
-  "skill_version": "0.2.1",
+  "skill_version": "0.2.2",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",   // T-1 (yesterday)

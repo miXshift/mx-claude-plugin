@@ -1,0 +1,1 @@
+- **Ad spend and TACOS answers now flag Full-Funnel and Review Requests campaigns, which the warehouse does not hold yet.** For an account that runs them, spend, ACOS and TACOS built from the warehouse read low. Claude now says so and points to the unified report from Amazon as the place to get their spend.

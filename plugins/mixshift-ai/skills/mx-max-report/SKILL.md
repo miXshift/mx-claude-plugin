@@ -1,6 +1,6 @@
 ---
 name: mx-max-report
-version: 2.6.2
+version: 2.6.3
 description: >
   The max tier of MixShift reporting: prepares a client-ready performance brief and a
   private internal companion for any account, on any cadence (monthly, bi-weekly, QBR).
@@ -577,7 +577,7 @@ threshold; `availability_interruptions` counts ASIN-days that were out of stock 
 sellable-unit floor was on hand (40 by default), a listing or procurability problem rather than a stockout, and
 usually the item the vendor manager acts on; `inventory` is the sellable and unsellable
 snapshot on the last loaded day plus net received units over the window. Ad figures come
-from `campaignmetric` on every channel, never from a monthly rollup table.
+from `campaignmetric` on every channel, never from a monthly rollup table. Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get their spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 **Dark days are an exception check, not a section of the brief.** The battery serves the
 zero-spend days and the normalization factor per window so you can normalize WHEN a window
