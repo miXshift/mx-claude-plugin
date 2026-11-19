@@ -108,7 +108,7 @@ Flag:
 - tacos_approaching_target: T-1 TACOS within 3pts of goal
 - tacos_margin_pts: goal - T-1 TACOS
 
-Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
+Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters. Only when the user asks for the full total, not on routine runs, get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 ### Step 3 — Goal Reporting Mode (MANDATORY)
 
