@@ -161,7 +161,7 @@ Determine the account type from brand context:
 
 Do not mix sources or discover the path mid-run. If account type is missing, stop and update brand context first.
 
-Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get their spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
+Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 ### Step 3: Load Pre-Fetched Data
 

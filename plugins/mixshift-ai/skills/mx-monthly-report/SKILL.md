@@ -69,7 +69,7 @@ When audience=client: strip nav, strip prior-month section. Save to same local r
 
 1b. **For sub-brand ACOS, use campaignmetric JOIN campaign ON campaign.Brand.** Cross-check against platform screenshot. Expect ~0.2–0.6 pt gap.
 
-1d. **Say when Full-Funnel and Review Requests spend is missing.** Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get their spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
+1d. **Say when Full-Funnel and Review Requests spend is missing.** Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 1c. **For MoM efficiency deltas, require the prior month's settled figure from platform screenshot.** Raw DB prior-month values carry restatement lag.
 
