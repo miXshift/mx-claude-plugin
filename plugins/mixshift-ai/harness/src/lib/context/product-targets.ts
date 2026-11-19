@@ -28,8 +28,11 @@
  *     object carrying the target (acos_target_pct, acos_target, target_acos,
  *     target_acos_pct, acos_pct, acos, target);
  *   - a list of rows ({asin: B0..., acos_target_pct: 25}) works like a map.
- * A fraction below 1 (0.25) is read as that share of 100 (25), since no ACoS
- * target is under 1%. An entry that cannot be read is listed in `skipped`
+ * A bare fraction below 1 (0.25) is read as that share of 100 (25), since no
+ * ACoS target is under 1%; a value written with a percent sign ("0.5%") is
+ * already a percent and is read as written (0.5). An ASIN key must be 10
+ * letters and digits. An empty map counts as no map (null). An entry that
+ * cannot be read is listed in `skipped`
  * with the reason, never dropped silently, so a skill can say which
  * products fell back to the brand target and why.
  *
@@ -87,10 +90,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /** Parse one target value to a whole percent, or a reason it cannot be read. */
 function parseTargetValue(v: unknown): { ok: true; value: number } | { ok: false; reason: string } {
   let n: number | undefined;
+  // A value written with a percent sign ("0.5%") is already a percent: the
+  // fraction rule below never applies to it (mx-ops#291, Q F5).
+  let hasPercentSign = false;
   if (typeof v === 'number') {
     n = v;
   } else if (typeof v === 'string') {
-    const s = v.trim().replace(/%$/, '').trim();
+    const trimmed = v.trim();
+    hasPercentSign = trimmed.endsWith('%');
+    const s = trimmed.replace(/%$/, '').trim();
     if (s.length > 0 && /^[+]?\d*\.?\d+$/.test(s)) n = Number(s);
   } else if (isRecord(v)) {
     for (const k of VALUE_KEYS) {
@@ -102,7 +110,7 @@ function parseTargetValue(v: unknown): { ok: true; value: number } | { ok: false
     return { ok: false, reason: 'not a number' };
   }
   if (n <= 0) return { ok: false, reason: 'target must be above 0' };
-  if (n < 1) n = Math.round(n * 100 * 1e6) / 1e6; // 0.25 means 25%
+  if (n < 1 && !hasPercentSign) n = Math.round(n * 100 * 1e6) / 1e6; // bare 0.25 means 25%
   if (n > MAX_TARGET_PCT) return { ok: false, reason: `target above ${MAX_TARGET_PCT}%` };
   return { ok: true, value: n };
 }
@@ -111,6 +119,15 @@ function normalizeId(kind: Kind, raw: string): string {
   const t = raw.trim();
   return kind === 'asin' ? t.toUpperCase() : t;
 }
+
+/**
+ * An ASIN is exactly 10 letters and digits (after upper-casing). A key such
+ * as "B0TESTAAA1:UK" or "B0TESTAAA2_DE" can never equal a real ASIN on a
+ * row, so it is reported in `skipped` instead of sitting unmatched in
+ * by_asin (mx-ops#291, Q F4).
+ */
+const ASIN_SHAPE = /^[A-Z0-9]{10}$/;
+export const NOT_AN_ASIN_REASON = 'not an ASIN (an ASIN is 10 letters and digits)';
 
 function kindOfKey(key: string): Kind | null {
   const k = key.toLowerCase();
@@ -136,6 +153,10 @@ class Collector {
     const id = normalizeId(kind, rawId);
     if (id.length === 0) {
       this.skipped.push({ path, id: rawId, reason: `empty ${kind.toUpperCase()}` });
+      return;
+    }
+    if (kind === 'asin' && !ASIN_SHAPE.test(id)) {
+      this.skipped.push({ path, id: rawId, reason: NOT_AN_ASIN_REASON });
       return;
     }
     const parsed = parseTargetValue(rawValue);
@@ -216,6 +237,17 @@ export function extractProductAcosTargets(context: unknown): ProductAcosTargets 
   }
 
   if (c.source_paths.length === 0) return null;
+  // An empty map (acos_target_by_asin: {}) sets no product target and has
+  // nothing to report, so the brand resolves exactly as with no map: no
+  // product_acos_targets key, no line (mx-ops#291, Q F3). A map whose every
+  // entry was skipped still returns, so the skipped reasons reach the user.
+  if (
+    Object.keys(c.by_asin).length === 0 &&
+    Object.keys(c.by_sku).length === 0 &&
+    c.skipped.length === 0
+  ) {
+    return null;
+  }
   return {
     by_asin: c.by_asin,
     by_sku: c.by_sku,
