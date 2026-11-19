@@ -14,12 +14,14 @@
 import type { Command } from 'commander';
 import {
   resolveBrandFields,
+  resolveProductAcosTargets,
   BRAND_FIELD_KEYS,
   isPlaceholderDefault,
   PLACEHOLDER_NOTE,
   type ResolvedField,
 } from '../lib/brain/read.js';
 import { noticeIfRetired } from '../lib/context-sync/lifecycle-notice.js';
+import type { ProductAcosTargets } from '../lib/context/product-targets.js';
 
 interface RootOptions {
   json?: boolean;
@@ -49,13 +51,23 @@ export function registerBrandContextCommands(brand: Command): void {
       // Explicit slug: a retired brand still resolves (and is fetched if this
       // machine has no copy yet). Brand retire only skips IMPLICIT bulk work.
       const fields = await resolveBrandFields(slug, root.dataDir, { explicit: true });
+      // Product-level ACoS targets (mx-ops#291), beside fields.acos_target_pct.
+      // Omitted entirely when the brand sets none, so such a brand's output is
+      // byte-identical to before.
+      const productTargets = await resolveProductAcosTargets(slug, root.dataDir);
       // Retired brand: one stderr line (who, when, how to undo). stdout below
       // is untouched, so the --json document stays byte-identical. Fails
       // open: an unknown lifecycle prints nothing.
       await noticeIfRetired(slug, { dataDirOverride: root.dataDir });
 
       if (root.json) {
-        process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + '\n');
+        process.stdout.write(
+          JSON.stringify(
+            productTargets ? { slug, fields, product_acos_targets: productTargets } : { slug, fields },
+            null,
+            2,
+          ) + '\n',
+        );
         return;
       }
 
@@ -86,12 +98,35 @@ export function registerBrandContextCommands(brand: Command): void {
           );
         }
       }
+      if (productTargets) lines.push(...formatProductTargets(productTargets));
       lines.push(
         `\n${confirmed} confirmed · ${prefilled} pre-filled · ${gaps} not set` +
           ` — set any with \`mixshift brand config ${slug}\`, or run a skill that captures it.`,
       );
       process.stdout.write(lines.join('\n') + '\n');
     });
+}
+
+/** The product-target lines of the text output (only when the brand sets any). */
+export function formatProductTargets(t: ProductAcosTargets): string[] {
+  const asins = Object.keys(t.by_asin).length;
+  const skus = Object.keys(t.by_sku).length;
+  const out = [
+    `  ✓ product_acos_targets: ${asins} per-ASIN, ${skus} per-SKU ` +
+      `(you confirmed; from ${t.source_paths.join(', ')}). ` +
+      'Skills use these per product and acos_target_pct everywhere else.',
+  ];
+  if (t.skipped.length > 0) {
+    out.push(
+      `    ${t.skipped.length} entr${t.skipped.length === 1 ? 'y' : 'ies'} could not be read and use the brand target: ` +
+        t.skipped
+          .slice(0, 5)
+          .map((s) => `${s.id} (${s.reason})`)
+          .join('; ') +
+        (t.skipped.length > 5 ? `; and ${t.skipped.length - 5} more` : ''),
+    );
+  }
+  return out;
 }
 
 function formatValue(v: unknown): string {

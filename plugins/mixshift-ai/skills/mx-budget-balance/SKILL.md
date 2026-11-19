@@ -109,6 +109,8 @@ Resolve the working values (whole-number percents) from `effective_config` in th
 - `cut_acos_multiple`: else 1.5.
 - `min_spend`: else 50 (account currency, over 14 days).
 
+**Product-level ACoS targets.** When the `--apply` response also carries `product_acos_targets` (only when the brand set per-ASIN or per-SKU targets in Brand Context; `mixshift brand context resolve <brand-slug> --json` shows the same map), judge each campaign against its own product's target: `by_asin[ASIN]`, else `by_sku[SKU]`, else `acos_target`. Every value is a whole-number percent, like `acos_target`. A campaign's products are the brand's ASINs or SKUs it advertises, where this skill's data names them. If every product in the campaign lands on the same target, use it for the efficient test and for `cut_acos_multiple` (the multiple applies to the campaign's own target). If they differ (a mixed campaign), or the data does not name the campaign's products, use `acos_target` and mark that campaign "brand target used" with the reason; do not split its spend and sales between products. Label each bucket reason with the target it used (for example "25%, ASIN target" or "20%, brand target"). A product target is the brand's own number even when `acos_target` is absent or only a placeholder, so judge those campaigns against it and run the rest as `acos_target` says above. Name any entries in `product_acos_targets.skipped` once in the Bottom Line: they could not be read, so those products used the brand target. When `product_acos_targets` is absent, run on `acos_target` exactly as described above.
+
 Label every default in the Bottom Line. Never block on this step.
 
 ### Step 2 - Run prefetch

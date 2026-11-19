@@ -94,6 +94,17 @@ export function renderConfirmationCard(
     lines.push(renderFieldLine(entry, labelWidth));
     const hint = renderSourceHint(entry);
     if (hint) lines.push(`${''.padStart(labelWidth + 2)}${hint}`);
+    // mx-ops#291: under the brand ACoS target, say that product-level
+    // targets from Brand Context apply first. Only when the brand sets any.
+    const pt = payload.product_acos_targets;
+    if (pt && entry.field.seed_from === 'context.management.acos_target_pct') {
+      const asins = Object.keys(pt.by_asin).length;
+      const skus = Object.keys(pt.by_sku).length;
+      lines.push(
+        `${''.padStart(labelWidth + 2)}product targets from Brand Context apply first ` +
+          `(${asins} per-ASIN, ${skus} per-SKU); this value covers every other product`,
+      );
+    }
   }
   const fields = lines.join('\n');
 

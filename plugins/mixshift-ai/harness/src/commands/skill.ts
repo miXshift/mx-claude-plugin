@@ -484,6 +484,12 @@ async function runApplyDecision(args: {
           // account-wide brain pre-fill, not overridden this call — the
           // JSON-driven caller must not present these as the sub-brand's own.
           account_wide_fields: result.account_wide_fields ?? [],
+          // mx-ops#291: per-ASIN / per-SKU ACoS targets (whole percents) beside
+          // effective_config's brand-level acos_target. Only when the brand sets
+          // product targets, so every other brand's output is unchanged.
+          ...(result.product_acos_targets
+            ? { product_acos_targets: result.product_acos_targets }
+            : {}),
         },
         null,
         2,

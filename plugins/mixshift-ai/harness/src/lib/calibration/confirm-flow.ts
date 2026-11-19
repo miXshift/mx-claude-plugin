@@ -72,6 +72,10 @@ import {
   brandFieldKeyForContextPath,
 } from '../brain/read.js';
 import { appendCaptureDiscoveries } from '../brain/discoveries.js';
+import {
+  extractProductAcosTargets,
+  type ProductAcosTargets,
+} from '../context/product-targets.js';
 import { pushAfterWrite } from '../context-sync/push-after-write.js';
 
 // ---------------------------------------------------------------------------
@@ -125,6 +129,16 @@ export interface ConfirmationPayload {
     has_missing_required: boolean;
     missing_keys: string[];
   };
+  /**
+   * The brand's product-level ACoS targets (per ASIN and per SKU, whole
+   * percents) from Brand Context, beside the brand target that seeds the
+   * skill's ACoS target field (mx-ops#291). Present only when the skill has a
+   * field seeded from management.acos_target_pct AND the brand sets product
+   * targets; absent otherwise, so every other payload is unchanged. Each
+   * product uses its own target and every other product uses the skill's
+   * effective ACoS target (see `rule`).
+   */
+  product_acos_targets?: ProductAcosTargets;
 }
 
 /**
@@ -173,6 +187,12 @@ export interface ApplyResult {
    * brand's ApplyResult stays exactly as it was before F5.
    */
   account_wide_fields?: string[];
+  /**
+   * Carried through from the payload on every 'ok' result (mx-ops#291): the
+   * product-level ACoS targets beside `effective_config`'s brand-level ACoS
+   * target, in the same whole-percent unit. Absent when the payload had none.
+   */
+  product_acos_targets?: ProductAcosTargets;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +295,14 @@ export async function prepareConfirmation(
     .filter((e) => e.field.required && e.source === 'missing')
     .map((e) => e.field.id);
 
+  // Product-level targets ride beside the brand ACoS target, only for a skill
+  // that seeds one (mx-ops#291). Read from the same context document the
+  // seeds above came from.
+  const seedsBrandTarget = entries.some(
+    (e) => e.field.seed_from === `context.${BRAND_ACOS_TARGET_PATH}`,
+  );
+  const productTargets = seedsBrandTarget ? extractProductAcosTargets(ctx) : null;
+
   return {
     skill_id: skillId,
     brand_slug: brandSlug,
@@ -286,7 +314,20 @@ export async function prepareConfirmation(
       has_missing_required: missing_keys.length > 0,
       missing_keys,
     },
+    ...(productTargets ? { product_acos_targets: productTargets } : {}),
   };
+}
+
+/** The brand-level ACoS target path that product targets sit beside. */
+const BRAND_ACOS_TARGET_PATH = 'management.acos_target_pct';
+
+/** `{}` or `{ product_acos_targets }`, spread into every 'ok' ApplyResult. */
+function productTargetsResult(
+  payload: ConfirmationPayload,
+): { product_acos_targets?: ProductAcosTargets } {
+  return payload.product_acos_targets
+    ? { product_acos_targets: payload.product_acos_targets }
+    : {};
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +386,7 @@ export async function applyConfirmation(
       saved_to: null,
       validation_issues: [],
       ...accountWideFieldsResult(payload, decision),
+      ...productTargetsResult(payload),
     };
   }
 
@@ -490,6 +532,7 @@ export async function applyConfirmation(
       saved_to: null,
       validation_issues: [],
       ...accountWideFieldsResult(payload, decision),
+      ...productTargetsResult(payload),
     };
   }
 
@@ -565,6 +608,7 @@ export async function applyConfirmation(
       value: s.display,
     })),
     ...accountWideFieldsResult(payload, decision),
+    ...productTargetsResult(payload),
   };
 }
 
