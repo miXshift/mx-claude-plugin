@@ -13,7 +13,7 @@ description: >
   context. Credential minting alone belongs to mx-auth-service-setup; this
   skill orchestrates the full task setup around it.
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   author: "MixShift"
 trigger_phrases:
   - set up a scheduled task
@@ -212,6 +212,8 @@ matches nothing on Cowork. The `*/harness/dist/cli.js` shape is specific enough.
 Run the preflight. It discovers the service credential, verifies it against the
 service, and pulls brand context for the brands this task uses:
   node "$MIXSHIFT_CLI" task preflight --brand [brand-slug] --json
+- The preflight JSON carries `version`, the plugin version of the copy that ran it.
+  Put that version in this run's report so a run on an older copy is visible.
 - READY (exit 0): run the export line from its output (export MIXSHIFT_DATA_DIR=...),
   then proceed. Invoke every MixShift command in this run as:
   node "$MIXSHIFT_CLI" [command], with MIXSHIFT_DATA_DIR exported.

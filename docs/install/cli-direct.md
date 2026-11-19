@@ -39,6 +39,8 @@ export PATH="$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/harness/bin:$PAT
 sudo ln -sf "$HOME/path/to/mx-claude-plugin/plugins/mixshift-ai/harness/bin/mixshift" /usr/local/bin/mixshift
 ```
 
+The symlink points at your clone, so it breaks if you move or delete the clone (a bare `mixshift` then fails). `mixshift doctor` reports a `mixshift` link whose target no longer exists and prints the one-line fix; if the link itself is what is broken, run it as `node <clone>/plugins/mixshift-ai/harness/dist/cli.js doctor`. Remove the link, or point it at the new location with `ln -sf`.
+
 Test:
 
 ```bash

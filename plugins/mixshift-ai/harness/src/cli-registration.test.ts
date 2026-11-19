@@ -83,3 +83,21 @@ describe('cli.ts registration — exitOverride covers every command group (mx-op
     expect(override).toBeGreaterThan(registrations.at(-1)!.index);
   });
 });
+
+describe('cli.ts registration - version surfaces (feedback 3070884)', () => {
+  // `mixshift --version` / `-V` prints the running copy's version. Commander
+  // provides the flags once `.version(...)` is set, and the value must come
+  // from plugin.json (getPluginVersion), never from harness/package.json,
+  // which is private and frozen at 0.0.1.
+  it('the program sets .version() from getPluginVersion(), which reads plugin.json', async () => {
+    const source = await readFile(cliPath, 'utf-8');
+    expect(source).toMatch(/\.version\(getPluginVersion\(\)\)/);
+    const pv = await readFile(join(here, 'lib', 'plugin-version.ts'), 'utf-8');
+    expect(pv).toContain("'.claude-plugin', 'plugin.json'");
+  });
+
+  it('registers `cli locate` (the current-CLI locator)', async () => {
+    const source = await readFile(cliPath, 'utf-8');
+    expect(source).toMatch(/^registerCliLocateCommand\(program\);/m);
+  });
+});

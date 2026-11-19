@@ -1,0 +1,1 @@
+- **A scheduled task's preflight now says which plugin version ran.** `mixshift task preflight` prints a `plugin: vX.Y.Z` line and its `--json` output carries a `version` field, so a scheduled run on an older plugin copy than the one your desktop shows is visible in the run output instead of a guess.

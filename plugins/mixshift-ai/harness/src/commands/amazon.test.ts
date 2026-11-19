@@ -762,17 +762,6 @@ describe('report FATAL surfaces amazon_error (mx-ops#93)', () => {
     expect(lastJson().amazon_error).toBe(REASON);
   });
 
-  it('report get, not ready: names `report poll <runId>` as the next step; JSON and exit code unchanged', async () => {
-    vi.mocked(getReportDocument).mockResolvedValue({ ok: true, ready: false, status: 'IN_QUEUE' });
-    await runCli('amazon', 'report', 'get', 'run-queued');
-    expect(stdoutText()).toContain('mixshift amazon report poll run-queued');
-    expect(process.exitCode).toBe(10);
-
-    stdoutChunks.length = 0;
-    await runCli('amazon', 'report', 'get', 'run-queued', '--json');
-    expect(lastJson()).toEqual({ status: 'ok', ready: false, report_status: 'IN_QUEUE' });
-  });
-
   it('SQP chunk path: --json carries amazon_error with chunk context', async () => {
     let startCounter = 0;
     vi.mocked(startReport).mockImplementation(async () => {

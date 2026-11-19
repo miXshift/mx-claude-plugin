@@ -9,7 +9,7 @@ description: >
   NOT use for first-run setup or sign-in (that is mx-welcome), or for
   general navigation and troubleshooting (that is mx-help).
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - update the plugin
@@ -52,6 +52,8 @@ Also run:
 mixshift update-actions --json
 ```
 This reports `pending`: post-update catch-up actions still owed to this install, computed against a persisted watermark, not a re-derivation of every historical release.
+
+To see every installed copy of the CLI with its version (a machine keeps each version the host ever installed, and a scheduled task can be running an older one), run `mixshift doctor` and read its `CLI copies` section, or `mixshift cli locate --list`. `mixshift cli locate` alone prints the newest copy's path. If doctor names a `Launcher` problem (a `mixshift` link that points at a folder that no longer exists), show the user the line it prints; do not delete the link for them.
 
 `session_behind_install` and `isStale` are independent facts, not mutually exclusive: the install record can itself be behind `latest` even while it is ahead of this session, so both can be true at once. Check these in order:
 - **If `session_behind_install` is true and `isStale` is false:** the update already succeeded and the install is already at `latest`. Do not walk Step 2's update commands, there is nothing further to update. Tell the user plainly: installed is `installed`, this session is running `current`, so they need to fully quit the application (not just start a new chat or session) and relaunch it. If the old version still shows after a full quit and relaunch, an earlier application process may still be running in the background and needs to be closed too. Then stop for this session.

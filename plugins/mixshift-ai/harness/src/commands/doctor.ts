@@ -42,6 +42,10 @@ import { fetchIdentity, formatIdentityLines, IDENTITY_TIMEOUT_MS, type IdentityR
 import { getTelemetryStatus } from '../lib/telemetry/consent.js';
 import { queueSizeBytes } from '../lib/telemetry/queue.js';
 import { REGISTRATION_URL } from '../lib/onboarding.js';
+import { resolvePluginRoot } from '../lib/prefetch/plugin-root.js';
+import { scanCliCopies, sortCopiesNewestFirst, type CliCopyScan } from '../lib/cli-copies.js';
+import { scanShims, describeShimProblems, type ShimFinding } from '../lib/cli-shim.js';
+import { join } from 'node:path';
 import {
   checkNamedPackCompat,
   type NamedPackResult,
@@ -91,6 +95,20 @@ interface DoctorFullReport {
     queuedBytes: number;
   };
   namedPack: NamedPackResult;
+  /** Every installed copy of this CLI found in the host plugin folders, newest
+   *  first, plus the folders scanned. Additive (feedback 3070886; mx-ops#274). */
+  cli_copies: {
+    newest: string | null;
+    running: string | null;
+    copies: Array<{ path: string; version: string | null; running: boolean; newest: boolean }>;
+    scanned_roots: string[];
+  };
+  /** True when the copy search stopped at its limit: there may be other copies. Additive. */
+  cli_copies_truncated: boolean;
+  /** `mixshift` launchers on PATH or in the usual user bin folders that are
+   *  broken or run an older copy. Empty when none need attention. Additive
+   *  (feedback 3070888). */
+  launcher_problems: ShimFinding[];
   network: DoctorReport;
   /** Raw version-check result (current vs latest only), kept for the --json
    *  consumer's back-compat. The renderer's stale banner now reads `build`
@@ -271,6 +289,28 @@ async function assembleFullReport(opts: {
   // only uses whatever token is valid afterwards and never refreshes on its own.
   const identity = await readDoctorIdentity(auth, network.health.reachable, opts.timeoutMs, opts.dataDirOverride);
 
+  // Installed copies of this CLI + broken launchers — local, best-effort.
+  let scan: CliCopyScan = { copies: [], newest: null, running: null, scannedRoots: [], truncated: false };
+  let runningRoot: string | undefined;
+  try {
+    runningRoot = resolvePluginRoot();
+  } catch {
+    runningRoot = undefined;
+  }
+  try {
+    scan = scanCliCopies({ runningPluginRoot: runningRoot });
+  } catch {
+    // never breaks the diagnostic
+  }
+  let launcherProblems: ShimFinding[] = [];
+  try {
+    launcherProblems = scanShims({ newestVersion: scan.newest?.version ?? null }).filter(
+      (f) => f.state !== 'ok',
+    );
+  } catch {
+    launcherProblems = [];
+  }
+
   // Telemetry — local state.
   const ts = await getTelemetryStatus(opts.dataDirOverride);
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
@@ -291,6 +331,19 @@ async function assembleFullReport(opts: {
       queuedBytes,
     },
     namedPack,
+    cli_copies: {
+      newest: scan.newest?.path ?? null,
+      running: scan.running?.path ?? null,
+      copies: sortCopiesNewestFirst(scan.copies).map((c) => ({
+        path: c.path,
+        version: c.version,
+        running: c.isRunning,
+        newest: c.isNewest,
+      })),
+      scanned_roots: scan.scannedRoots,
+    },
+    cli_copies_truncated: scan.truncated,
+    launcher_problems: launcherProblems,
     network,
     update,
     ok,
@@ -436,6 +489,57 @@ export function renderDoctorSignedInLines(auth: AuthSummary, identity?: Identity
   return lines;
 }
 
+/**
+ * The `CLI copies:` block. A machine keeps every version the host ever
+ * installed; this lists them so an agent or a person can see which one a
+ * scheduled run is using and which are older. Pure and exported.
+ */
+export function renderCliCopiesSection(
+  c: DoctorFullReport['cli_copies'],
+  runningVersion: string,
+  truncated = false,
+): string[] {
+  const out: string[] = ['CLI copies:'];
+  if (c.copies.length === 0) {
+    out.push('  none found in the host plugin folders (this does not mean the plugin is missing).');
+    if (truncated) out.push('  Search stopped early; there may be other copies.');
+    return out;
+  }
+  for (const copy of c.copies) {
+    const tags = [copy.newest ? 'newest' : null, copy.running ? 'running' : null].filter(Boolean);
+    out.push(
+      `  ${(copy.version ?? '(unreadable)').padEnd(10)} ${copy.path}` +
+        (tags.length ? `  [${tags.join(', ')}]` : ''),
+    );
+  }
+  const newest = c.copies.find((x) => x.newest);
+  if (newest && newest.version && compareVersions(newest.version, runningVersion) > 0) {
+    out.push(
+      `  This session is running ${runningVersion}; a newer copy (${newest.version}) is installed. ` +
+        'Resolve the CLI again with `mixshift cli locate` from the newest copy.',
+    );
+  }
+  if (c.copies.length > 1) {
+    out.push('  Older copies are left by the host on update; `mixshift cli locate` prints the newest.');
+  }
+  if (truncated) out.push('  Search stopped early; there may be other copies.');
+  return out;
+}
+
+/** The launcher block; empty when no `mixshift` launcher needs attention. Pure and exported. */
+export function renderLauncherSection(
+  problems: ShimFinding[],
+  newestCliPath: string | null,
+  newestVersion: string | null = null,
+): string[] {
+  if (problems.length === 0) return [];
+  // Newest copy's harness/bin/mixshift sits beside its dist/cli.js.
+  const newestLauncher = newestCliPath
+    ? join(newestCliPath, '..', '..', 'bin', 'mixshift')
+    : null;
+  return ['Launcher (`mixshift` on PATH):', ...describeShimProblems(problems, newestLauncher, newestVersion).map((l) => `  ${l}`)];
+}
+
 export function renderFull(r: DoctorFullReport): string {
   const out: string[] = [];
   out.push('mixshift doctor');
@@ -505,6 +609,19 @@ export function renderFull(r: DoctorFullReport): string {
     out.push(`  not checked (${r.namedPack.reason ?? 'unavailable'}).`);
   }
   out.push('');
+
+  // Installed CLI copies + launcher problems.
+  out.push(...renderCliCopiesSection(r.cli_copies, r.build.version, r.cli_copies_truncated));
+  out.push('');
+  const launcherLines = renderLauncherSection(
+    r.launcher_problems,
+    r.cli_copies.newest,
+    r.cli_copies.copies.find((c) => c.newest)?.version ?? null,
+  );
+  if (launcherLines.length > 0) {
+    out.push(...launcherLines);
+    out.push('');
+  }
 
   // Telemetry.
   out.push('Telemetry:');
