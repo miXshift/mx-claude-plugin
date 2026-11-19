@@ -308,8 +308,10 @@ conventions; the full synopsis lives in "Product Pricing pulls" below.
 - `report poll <runId>` returns `{ ready, status }`. **Gate on `ready`
   (boolean), never on the `status` string.**
 - `report get <runId>` fetches the document once ready. It is safe to call
-  before ready: it returns `ready: false` and exit code 10 (not an error),
-  so you can use it as the poll itself. **With `--out`, it streams the document
+  before ready: it returns `ready: false` and exit code 10 (not an error).
+  Wait with `report poll`, not `get`: on older gateways `get` does not refresh
+  the status, so it can keep saying not ready for a run Amazon has finished.
+  **With `--out`, it streams the document
   straight to the file in chunks, so a report of ANY size lands on disk** (it
   never buffers the whole thing in memory, so there is no size ceiling and no
   crash on multi-GB reports). Without `--out`, a small document prints inline
@@ -359,9 +361,10 @@ Practical guidance for chat:
   Then call `poll` once. If `ready` is false, surface the status ("Amazon is
   still generating it, status IN_PROGRESS") and either wait for the user's next
   turn or poll again after a short beat. Do not sit in a tight Bash loop.
-- You can skip a separate `poll` and just call `report get` repeatedly: it
-  returns `ready: false` (exit 10) until the document is available, then
-  returns the bytes. Either approach works; `get` is one fewer command.
+- Run `report poll` until it reports `ready: true`, then run `report get`.
+  `get` returns `ready: false` (exit 10) until the document is available, and
+  newer gateways also refresh the status when you call it, but `poll` is the
+  reliable wait. If `get` says not ready, run `poll`; do not keep calling `get`.
 - The `run_id` stays valid across turns and even across separate CLI
   invocations, so a slow report is never lost: poll it again later.
 
@@ -491,8 +494,7 @@ deliberate inversion from reports: pricing runs have no `ready` boolean and no
 exit-code-10 "not ready" convention. `poll-run` exits 0 while the run is still
 `IN_QUEUE` / `IN_PROGRESS`; keep polling until `status` is `DONE`, then call
 `get-run-result`. `poll-run` is the only poll on this surface: do NOT use
-`get-run-result` as the poll the way `report get` doubles as one (it has no
-"not ready" signal). Pace polls as for reports: poll once, surface progress
+`get-run-result` as the poll (it has no "not ready" signal). Pace polls as for reports: poll once, surface progress
 (`itemsCompleted` counts finished BATCHES, not items: progress is
 `itemsCompleted` / ceil(`itemsTotal` / 20) for Competitive Summary, / 40 for
 FOEP), and wait a beat or the user's next turn
