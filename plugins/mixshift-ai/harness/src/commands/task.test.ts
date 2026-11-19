@@ -47,6 +47,7 @@ import { createContextSyncClient, type ContextSyncClient } from '../lib/context-
 import { pull, type BrandActionResult } from '../lib/context-sync/engine.js';
 import { contextPath, credentialsPath } from '../lib/paths/resolve.js';
 import { track, EventName } from '../lib/telemetry/index.js';
+import { getPluginVersion } from '../lib/plugin-version.js';
 import type { WireManifestBrand } from '../lib/context-sync/types.js';
 
 vi.mock('../lib/auth/credentials.js', async (importOriginal) => {
@@ -409,6 +410,8 @@ describe('task preflight (command)', () => {
     const parsed = JSON.parse(stdoutText()) as Record<string, unknown>;
     expect(parsed).toEqual({
       ready: true,
+      // Additive (feedback 3070892): the version of the copy that ran.
+      version: getPluginVersion(),
       data_dir: expectedDataDir,
       export_line: `export MIXSHIFT_DATA_DIR='${expectedDataDir}'`,
       discovered_via: 'flag',
@@ -460,6 +463,7 @@ describe('task preflight (command)', () => {
       [
         `ok      data dir: ${expectedDataDir}  (via flag; 1 candidate(s) found)`,
         `          ${credentialsPath(expectedDataDir)}`,
+        `ok      plugin: v${getPluginVersion()}`,
         'ok      credential: service (svc:test-cron)',
         'ok      auth verify: minted a fresh access token',
         'ok      brand acme: present',
@@ -717,6 +721,7 @@ describe('task preflight (command)', () => {
     const parsed = JSON.parse(stdoutText()) as Record<string, unknown>;
     expect(parsed).toEqual({
       ready: false,
+      version: getPluginVersion(),
       data_dir: expectedDataDir,
       export_line: `export MIXSHIFT_DATA_DIR='${expectedDataDir}'`,
       discovered_via: 'flag',

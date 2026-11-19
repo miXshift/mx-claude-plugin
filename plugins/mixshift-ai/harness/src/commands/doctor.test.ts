@@ -33,6 +33,8 @@ import {
   buildDoctorBuildSection,
   renderBuildSection,
   renderBuildStaleBanner,
+  renderCliCopiesSection,
+  renderLauncherSection,
 } from './doctor.js';
 
 describe('buildDoctorBuildSection', () => {
@@ -346,5 +348,91 @@ describe('doctor identity read', () => {
     expect(renderDoctorSignedInLines({ ...auth, tokenEmail: 'actor@example.test' })).toEqual([
       '  signed in (interactive) as actor@example.test',
     ]);
+  });
+});
+
+describe('renderCliCopiesSection (feedback 3070886, mx-ops#274 item 2)', () => {
+  const copies = {
+    newest: '/p/new/harness/dist/cli.js',
+    running: '/p/old/harness/dist/cli.js',
+    copies: [
+      { path: '/p/new/harness/dist/cli.js', version: '0.8.22', running: false, newest: true },
+      { path: '/p/old/harness/dist/cli.js', version: '0.8.10', running: true, newest: false },
+    ],
+    scanned_roots: ['/p'],
+  };
+
+  it('lists every copy with its version and tags the newest and the running one', () => {
+    const text = renderCliCopiesSection(copies, '0.8.10').join('\n');
+    expect(text).toMatch(/0\.8\.22\s+\/p\/new\/harness\/dist\/cli\.js {2}\[newest\]/);
+    expect(text).toMatch(/0\.8\.10\s+\/p\/old\/harness\/dist\/cli\.js {2}\[running\]/);
+  });
+
+  it('says so when the running session is older than the newest installed copy', () => {
+    const text = renderCliCopiesSection(copies, '0.8.10').join('\n');
+    expect(text).toContain('This session is running 0.8.10; a newer copy (0.8.22) is installed.');
+    expect(text).toContain('mixshift cli locate');
+  });
+
+  it('no warning when the running copy is the newest', () => {
+    const only = {
+      ...copies,
+      copies: [{ path: '/p/new/harness/dist/cli.js', version: '0.8.22', running: true, newest: true }],
+    };
+    const text = renderCliCopiesSection(only, '0.8.22').join('\n');
+    expect(text).not.toContain('newer copy');
+  });
+
+  it('an empty scan does not claim the plugin is missing', () => {
+    const text = renderCliCopiesSection(
+      { newest: null, running: null, copies: [], scanned_roots: [] },
+      '0.8.22',
+    ).join('\n');
+    expect(text).toContain('none found');
+    expect(text).toContain('does not mean the plugin is missing');
+  });
+});
+
+describe('renderLauncherSection (feedback 3070888)', () => {
+  it('renders nothing when no launcher needs attention', () => {
+    expect(renderLauncherSection([], '/p/new/harness/dist/cli.js')).toEqual([]);
+  });
+
+  it('a dangling launcher names the broken link, the removal command, and re-points at the newest copy launcher', () => {
+    const text = renderLauncherSection(
+      [{ path: '/h/.local/bin/mixshift', state: 'dangling', target: '/gone/harness/bin/mixshift', version: null }],
+      '/p/new/harness/dist/cli.js',
+    ).join('\n');
+    expect(text).toContain('Launcher (`mixshift` on PATH):');
+    expect(text).toContain('/gone/harness/bin/mixshift, which no longer exists');
+    expect(text).toContain('rm "/h/.local/bin/mixshift"');
+    expect(text).toMatch(/ln -sf "[^"]*harness[\\/]bin[\\/]mixshift" "\/h\/\.local\/bin\/mixshift"/);
+  });
+});
+
+describe('doctor: truncated copy search and older-copy launcher (review fixes)', () => {
+  it('the CLI copies section ends with the plain line when the search stopped early, and not otherwise', () => {
+    const c = {
+      newest: '/p/n/harness/dist/cli.js',
+      running: '/p/n/harness/dist/cli.js',
+      copies: [{ path: '/p/n/harness/dist/cli.js', version: '0.8.22', running: true, newest: true }],
+      scanned_roots: ['/p'],
+    };
+    expect(renderCliCopiesSection(c, '0.8.22', true).at(-1)).toContain('Search stopped early; there may be other copies.');
+    expect(renderCliCopiesSection(c, '0.8.22', false).join('\n')).not.toContain('Search stopped early');
+    expect(
+      renderCliCopiesSection({ ...c, copies: [], newest: null, running: null }, '0.8.22', true).join('\n'),
+    ).toContain('Search stopped early');
+  });
+
+  it('an older-copy launcher shows the re-point and never an rm', () => {
+    const text = renderLauncherSection(
+      [{ path: '/usr/local/bin/mixshift', state: 'older_copy', target: null, version: '0.8.10' }],
+      '/p/new/harness/dist/cli.js',
+      '0.8.22',
+    ).join('\n');
+    expect(text).toContain('a newer copy (0.8.22) is installed');
+    expect(text).toContain('ln -sf');
+    expect(text).not.toContain('rm "');
   });
 });

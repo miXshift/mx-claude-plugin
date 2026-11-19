@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-update
 display_name: Update & Catch-Up
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Guides the user through updating the plugin on their surface (terminal,
   Claude Code, or Cowork), shows what changed via `mixshift whatsnew`, and

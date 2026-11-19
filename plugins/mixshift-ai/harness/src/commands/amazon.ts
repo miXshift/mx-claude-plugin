@@ -438,7 +438,7 @@ function registerReportGet(report: Command): void {
             return emitFailure(meta, !!root.json);
           }
           if (!meta.ready || !meta.document) {
-            return emitNotReady(meta.status, runId, startedAt, root.dataDir, !!root.json);
+            return emitNotReady(meta.status, startedAt, root.dataDir, !!root.json);
           }
 
           const outPath = resolvePath(opts.out);
@@ -467,7 +467,7 @@ function registerReportGet(report: Command): void {
           return emitFailure(result, !!root.json);
         }
         if (!result.ready) {
-          return emitNotReady(result.status, runId, startedAt, root.dataDir, !!root.json);
+          return emitNotReady(result.status, startedAt, root.dataDir, !!root.json);
         }
 
         const document = result.document ?? '';
@@ -528,7 +528,6 @@ function registerReportGet(report: Command): void {
  *  EXIT_NOT_READY code. Shared by the --out and stdout paths of `report get`. */
 function emitNotReady(
   status: string | undefined,
-  runId: string,
   startedAt: number,
   dataDir: string | undefined,
   json: boolean,
@@ -546,7 +545,7 @@ function emitNotReady(
     writeJson({ status: 'ok', ready: false, report_status: status });
   } else {
     process.stdout.write(
-      `\n• not ready yet (status: ${status ?? 'unknown'}). Next: run \`mixshift amazon report poll ${runId}\` until it reports done, then re-run get.\n`,
+      `\n• not ready yet (status: ${status ?? 'unknown'}). Poll again, then re-run get.\n`,
     );
   }
   process.exitCode = EXIT_NOT_READY;

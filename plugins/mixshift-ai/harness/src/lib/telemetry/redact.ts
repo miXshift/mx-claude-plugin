@@ -85,6 +85,16 @@ function redactBudgetValue(name: string, value: string): string {
 const BUDGET_VALUE_FLAG = /^(set|note)$/;
 
 /**
+ * `cli locate --root <dir>`: the folder is a path on the person's machine (home folder, user name),
+ * so its value is dropped, in both flag forms.
+ */
+function isCliLocate(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'cli', 'locate');
+}
+
+const CLI_ROOT_VALUE_FLAG = /^root$/;
+
+/**
  * The same for `forecast sub-brand ...`: the VALUES of `--name`, `--item-label` and
  * `--campaign-label` are the brand's own names and labels, which the privacy page
  * says are not collected (red team 2026-10-12 on #215, P1).
@@ -130,12 +140,21 @@ function redactGeneric(argv: readonly string[]): string[] {
   const subBrand = isForecastSubBrand(argv);
   // The business-value flags of this command, and how a value is redacted.
   const labels = isLabelsSearch(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
+  const cliLocate = isCliLocate(argv);
+  const valueFlag = budget
+    ? BUDGET_VALUE_FLAG
+    : subBrand
+      ? SUB_BRAND_VALUE_FLAG
+      : labels
+        ? LABELS_VALUE_FLAG
+        : cliLocate
+          ? CLI_ROOT_VALUE_FLAG
+          : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels;
+  const strictValue = subBrand || labels || cliLocate;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
@@ -235,7 +254,7 @@ const LABELS_SUBCOMMANDS = new Set(['state', 'fields', 'get', 'search', 'drift',
 const OTHER_TOP_LEVEL_COMMANDS = new Set([
   'profile', 'auth', 'brand', 'validate', 'prefetch', 'render', 'sidecar', 'ui', 'data', 'feedback', 'welcome', 'version', 'whatsnew',
   'update-actions', 'telemetry', 'skill', 'amazon', 'ads', 'dsp', 'walmart', 'shelf', 'intelligence', 'forecast', 'report', 'doctor',
-  'guide', 'demo', 'share-skill', 'context', 'timeline', 'task', 'help',
+  'guide', 'demo', 'share-skill', 'context', 'timeline', 'task', 'help', 'cli',
 ]);
 
 /** Root flags that take no value, and the root flags that do. */

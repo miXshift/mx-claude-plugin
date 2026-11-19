@@ -467,3 +467,16 @@ describe('shelf tracking lines vs labels lines and other shelf subcommands (seco
     }
   });
 });
+
+describe('redactArgs: cli locate --root (a folder path on the person machine)', () => {
+  it('drops the value of --root in both flag forms and keeps the rest', () => {
+    expect(redactArgs(['cli', 'locate', '--root', '/Users/someone/Library/x', '--list'])).toEqual(['cli', 'locate', '--root', '<redacted>', '--list']);
+    expect(redactArgs(['--json', 'cli', 'locate', '--root=/home/someone/p'])).toEqual(['--json', 'cli', 'locate', '--root=<redacted>']);
+    // A path that starts with a dash is still the value.
+    expect(redactArgs(['cli', 'locate', '--root', '-odd', '--root', 'C:/Users/someone'])).toEqual(['cli', 'locate', '--root', '<redacted>', '--root', '<redacted>']);
+  });
+
+  it('does not touch --root on other commands', () => {
+    expect(redactArgs(['ads', 'call', 'x', '--root', 'keep'])).toEqual(['ads', 'call', 'x', '--root', 'keep']);
+  });
+});

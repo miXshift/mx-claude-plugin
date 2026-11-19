@@ -54,6 +54,7 @@ import {
   credentialsPath,
   resolveDataDir,
 } from '../lib/paths/resolve.js';
+import { getPluginVersion } from '../lib/plugin-version.js';
 import { readServiceAttributionCache } from '../lib/telemetry/service-attribution-cache.js';
 import { EventName, track } from '../lib/telemetry/index.js';
 import {
@@ -136,6 +137,11 @@ interface CredentialSummary {
 
 interface PreflightResult {
   ready: boolean;
+  /** Version of the plugin copy that ran this preflight (from its own
+   *  plugin.json). Scheduled Cowork tasks mount one copy that can differ
+   *  from the desktop's newest, and the run output never said which ran
+   *  (feedback 3070892). Additive. */
+  version: string;
   data_dir: string;
   export_line: string | null;
   discovered_via: DiscoveredVia;
@@ -543,6 +549,8 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
       ),
     );
     for (const c of candidates) lines.push(`          ${c}`);
+    const pluginVersion = getPluginVersion();
+    lines.push(statusLine('ok', `plugin: v${pluginVersion}`));
     if (malformedResolvedWarning) {
       warnings.push(malformedResolvedWarning);
       lines.push(statusLine('warn', malformedResolvedWarning));
@@ -921,6 +929,7 @@ async function runPreflight(brandSlugs: string[], root: RootOptions): Promise<vo
 
     const resultOut: PreflightResult = {
       ready,
+      version: pluginVersion,
       data_dir: dataDir,
       export_line: exportLine,
       discovered_via: discoveredVia,
