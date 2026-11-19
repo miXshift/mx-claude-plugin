@@ -1,6 +1,6 @@
 ---
 name: mx-monthly-report
-version: 1.4.1
+version: 1.4.2
 description: >
   Generates and publishes a monthly Amazon advertising performance report for a brand
   in MixShift's canonical analytical voice. Covers MoM and YoY comparisons, H-Bridge efficiency analysis,
@@ -68,6 +68,8 @@ When audience=client: strip nav, strip prior-month section. Save to same local r
 1a. **Use sellermonthmetric for VC account-level ad metrics.** Do NOT use raw campaignmetric aggregates for ACOS, Ad Sales, ConvR, or AOV. sellermonthmetric is settled.
 
 1b. **For sub-brand ACOS, use campaignmetric JOIN campaign ON campaign.Brand.** Cross-check against platform screenshot. Expect ~0.2–0.6 pt gap.
+
+1d. **Say when Full-Funnel and Review Requests spend is missing.** Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters, and get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 1c. **For MoM efficiency deltas, require the prior month's settled figure from platform screenshot.** Raw DB prior-month values carry restatement lag.
 
@@ -332,7 +334,7 @@ Compose the input JSON (write to a temp file, then invoke the harness). Pick MPR
 // /tmp/mpr-sidecar-input.json
 {
   "skill": "mx-monthly-report",
-  "skill_version": "1.4.1",
+  "skill_version": "1.4.2",
   "brand_slug": "<brand-slug>",
   "run_kind": "per_account",
   "data_date": "YYYY-MM-DD",

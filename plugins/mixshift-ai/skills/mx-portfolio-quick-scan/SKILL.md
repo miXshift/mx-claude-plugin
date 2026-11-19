@@ -1,6 +1,6 @@
 ---
 name: mx-portfolio-quick-scan
-version: 1.1.1
+version: 1.1.2
 description: >
   Multi-account daily triage. Produces one status card per account answering a single question:
   do I need to log into the platform today? GREEN / YELLOW / RED verdict per account based on
@@ -28,6 +28,8 @@ sample_output: |
 standalone: true
 handoff_optional: true
 changelog:
+  - version: 1.1.2
+    change: "Spend, ACOS and TACOS answers say that Full-Funnel and Review Requests campaigns are not in the warehouse and read low for accounts that run them."
   - version: 1.1.1
     change: "An ACoS target that is only the bootstrap placeholder (management.acos_target_source: default) counts as missing for the card's status and is labeled for the user to confirm."
   - version: 1.0.0
@@ -105,6 +107,8 @@ Flag:
 - tacos_above_target: T-1 TACOS > account's TACOS goal
 - tacos_approaching_target: T-1 TACOS within 3pts of goal
 - tacos_margin_pts: goal - T-1 TACOS
+
+Full-Funnel and Review Requests campaigns are not loaded into `campaign` or `campaignmetric`. For an account that runs them, spend, ACOS and TACOS built from the warehouse read low, so say so when the number matters. Only when the user asks for the full total, not on routine runs, get Full-Funnel spend from Amazon's unified reporting (`reporting_v1.create_report`; see `mx-amazon-ads`). Amazon may not report Review Requests spend anywhere yet. Unified report slots are shared across everyone on MixShift, so run at most two at a time and reuse a report you already pulled.
 
 ### Step 3 — Goal Reporting Mode (MANDATORY)
 
@@ -343,7 +347,7 @@ Compose the input JSON (write to a temp file, then invoke the harness):
 // /tmp/pqs-sidecar-input.json
 {
   "skill": "mx-portfolio-quick-scan",
-  "skill_version": "1.1.1",
+  "skill_version": "1.1.2",
   "brand_slug": "portfolio",
   "run_kind": "portfolio",
   "data_date": "YYYY-MM-DD",
