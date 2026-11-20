@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-ads
 display_name: Amazon Ads (live account state + audited writes)
-version: "0.2.5"
+version: "0.2.6"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
@@ -9,11 +9,12 @@ description: >
   for the current state of an ad account (campaign, ad group, keyword,
   target, and product-ad lists with live bids and states; intraday budget
   usage; live bid, keyword, and budget recommendations; full account
-  exports; advanced v3 reporting) and for audited changes to it (pause and
-  enable, budget edits, campaign/keyword/target/negative creation, negative
-  deletes, across Sponsored Products, Brands, and Display). Writes preview
-  by default and never reach Amazon without the user confirming the exact
-  change set.
+  exports; advanced v3 reporting; Creative Asset Library lookups by name;
+  Sponsored Display creatives and their moderation) and for audited changes
+  to it (pause and enable, budget edits, campaign/keyword/target/negative
+  creation, negative deletes, Sponsored Display creative creation and edits,
+  across Sponsored Products, Brands, and Display). Writes preview by default
+  and never reach Amazon without the user confirming the exact change set.
 
 # Risk tier 3 + recommendation_only + review_required: always mirror the PPC
 # write skills' posture (mx-keyword-bid-health). This is the general Ads
@@ -76,7 +77,17 @@ notes: >
   An ambiguous selector returns merchant_not_found with a candidates list.
 
   Reads: POST .../list family takes an optional filter body (omit for the
-  first page); SD lists and sb.list_keywords are GET with --query params.
+  first page); the SD reads (sd.list_campaigns, sd.list_ad_groups,
+  sd.list_product_ads, sd.list_targets, sd.list_creatives,
+  sd.list_creative_moderations) and sb.list_keywords are GET with --query
+  params. sd.list_creatives and sd.list_creative_moderations take ONE of
+  adGroupIdFilter or creativeIdFilter; moderations also need language
+  (e.g. en-US). sd.preview_creative is the one SD read that is a POST with a
+  body; it renders HTML and stores nothing. Creative Assets family:
+  assets.search_by_name (body { text }; read nameSearch.coverage, only
+  "complete" can show an asset is absent) and assets.list_recent (newest
+  page only, NOT a search; body ignored). The asset library is per profile:
+  search the merchant whose brand owns the asset.
   Exports beat paginated lists for a full-account snapshot (~5x lighter
   throttle): create -> poll exports.get --path exportId= -> fetch the
   COMPLETED url WITHOUT auth headers -> gunzip JSON. sp.budget_usage gives
@@ -97,15 +108,23 @@ notes: >
   Per-call limits: each write operation's notes state its own; 200 at most
   (SB keywords and negative keywords take 200), 10 for SB campaign / ad
   group / ad creates and updates, 100 for SB targets, negative targets and
-  themes. A batch over the limit is refused before anything is sent (dry
-  run included); split it. SB theme targets: sb.list_themes, then
+  themes, 200 for SD writes except 100 for SD creatives. A batch over the
+  limit is refused before anything is sent (dry run included); split it.
+  SD creatives: sd.create_creatives / sd.update_creatives take a raw array
+  of { adGroupId or creativeId, creativeType? IMAGE|VIDEO (upper case),
+  properties }; images are { assetId, assetVersion, croppingCoordinates? }
+  (split the SB joined <assetId>:version_v1 form at the colon). An update
+  REPLACES properties and takes no before snapshot. Build paused (creative
+  has no state of its own), commit one first, never resend after a timeout,
+  and confirm moderation with sd.list_creative_moderations before saying
+  it is live. SB theme targets: sb.list_themes, then
   sb.update_themes (state and bid; a theme cannot be archived, pause it
   instead). insufficient_scope (exit 11) =
   credential cannot write; hand the user the change list. SP writes are
   proven (updates, creation incl. negatives, deletes via id-filter bodies
   where the pre-delete snapshot is the recreate-from source). SB/SD writes
-  carry wire-shape confidence caveats (raw-array bodies + lowercase enums;
-  SB v4 creates especially): the first real SB/SD apply must dry-run, then
+  carry wire-shape confidence caveats (raw-array bodies + lowercase enums,
+  except upper case on SD creatives; SB v4 creates especially): the first real SB/SD apply must dry-run, then
   commit ONE item with Sam watching.
 
   Cross-references and scope: bid/negation VERDICT workflows belong to

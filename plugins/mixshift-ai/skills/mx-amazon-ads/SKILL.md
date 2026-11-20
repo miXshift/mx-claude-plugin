@@ -7,15 +7,16 @@ description: >
   catalog-driven workhorse for the current state of an ad account (campaign,
   ad group, keyword, target, and product-ad lists with live bids and states;
   intraday budget usage; live bid, keyword, and budget recommendations; full
-  account exports; advanced v3 reporting) and for audited changes to it
-  (pause and enable, budget edits, campaign and keyword and target and
-  negative creation, negative deletes, across Sponsored Products, Brands,
-  and Display). Writes preview by default and never reach Amazon without the
+  account exports; advanced v3 reporting; asset lookups by name; SD
+  creatives and moderation) and for audited changes to it (pause and enable,
+  budget edits, campaign, keyword, target, negative and SD creative
+  creation, negative deletes, across Sponsored Products, Brands, and
+  Display). Writes preview by default and never reach Amazon without the
   user confirming the exact change set. Read-first; write only on request.
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.5"
+  version: "0.2.6"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -219,8 +220,8 @@ Each entry prints its id, method, whether a body is required or optional, a
 one-line summary, and **notes** carrying the calling convention (body vs query,
 the media type, caps). Read the notes before calling. Families: Profiles,
 Reporting, Exports, Sponsored Products, Sponsored Brands, Sponsored Display,
-the matching Writes families, Accounts, AMC, DSP, Portfolios, Marketing
-Stream.
+the matching Writes families, Creative Assets, Accounts, AMC, DSP,
+Portfolios, Marketing Stream.
 
 ### The generic call shape
 
@@ -232,7 +233,7 @@ mixshift ads call <operation> <profile-selector> \
 ```
 
 - `<operation>` is an id from `ads operations` (e.g. `sp.list_campaigns`).
-- `--query k=v` (repeatable) for the query-param surfaces (SD lists,
+- `--query k=v` (repeatable) for the query-param surfaces (the SD GET reads,
   `sb.list_keywords`).
 - `--path k=v` (repeatable) for templated paths (e.g.
   `--path exportId=...`, `--path reportId=...`).
@@ -319,12 +320,12 @@ extra lookup:
   them once), and show `Campaign Name (campaignId)`. Present targets as
   `expression (targetId)`.
 
-### SD lists and sb.list_keywords are query-param GETs (not bodies)
+### SD reads and sb.list_keywords are query-param GETs (not bodies)
 
-The whole Sponsored Display read surface (`sd.list_campaigns`,
-`sd.list_ad_groups`, `sd.list_product_ads`, `sd.list_targets`) and
-`sb.list_keywords` are **GET** with **query params**, not a JSON body. Use
-`--query`:
+Every Sponsored Display read except one, and `sb.list_keywords`, is a **GET**
+with **query params**, not a JSON body. Use `--query`. The SD GET reads are
+`sd.list_campaigns`, `sd.list_ad_groups`, `sd.list_product_ads`,
+`sd.list_targets`, `sd.list_creatives` and `sd.list_creative_moderations`:
 
 ```bash
 mixshift ads call sd.list_campaigns --legacy-seller-id <id> \
@@ -334,6 +335,65 @@ mixshift ads call sd.list_campaigns --legacy-seller-id <id> \
 Their filters are csv values: `stateFilter`, `campaignIdFilter`,
 `adGroupIdFilter`, and for `sb.list_keywords` also `matchTypeFilter`,
 `keywordText`. Paging on these is `startIndex` + `count`, not `nextToken`.
+
+**SD creatives** (the headline, brand logo and custom images an SD ad shows)
+have three reads:
+
+- `sd.list_creatives` lists creatives with their `moderationStatus`
+  (`APPROVED`, `PENDING_REVIEW`, `REJECTED`). Pass ONE of `adGroupIdFilter` or
+  `creativeIdFilter`, never both; `count` is at most 100. Page by raising
+  `startIndex` by `count` until fewer than `count` rows come back.
+- `sd.list_creative_moderations` says WHY a creative was rejected (the policy
+  and the part of the creative it applies to). It needs `language` (the locale
+  of the policy text, for example `en-US`) as well as ONE of
+  `adGroupIdFilter` or `creativeIdFilter`. Read it before telling anyone a
+  creative is live.
+- `sd.preview_creative` is the one SD read that is a **POST with a body**:
+  Amazon renders the creative you describe and stores nothing. The body is
+  `{ creative: { creativeType?, properties: {...} }, previewConfiguration: {...} }`;
+  the response is HTML for a person to look at, not data to parse. A preview
+  passing is not moderation.
+
+```bash
+mixshift ads call sd.list_creative_moderations --legacy-seller-id <id> \
+  --query language=en-US --query adGroupIdFilter=123456789 --json
+```
+
+These enums are **upper case** (`IMAGE`, `VIDEO`, `APPROVED`), unlike the
+lowercase enums of the rest of SD. If `mixshift ads operations` does not list
+the SD creative operations yet, the MixShift service has not been updated: say
+so rather than trying another operation.
+
+### Creative Asset Library (finding asset ids)
+
+Brand logos, custom images and videos are referenced by Creative Asset Library
+ids (`amzn1.assetlibrary.asset1.<hash>`). The **Creative Assets** family reads
+the library; it does not add to it.
+
+- **`assets.search_by_name`** finds assets by name. Body
+  `{ "text": "<part of the asset name>" }` and nothing else (filter, page or
+  sort fields are refused before anything is sent). Every row returned matches
+  the name. Read `nameSearch.coverage` before answering: only `complete` lets
+  you say an asset is not there, and only for the merchant you searched;
+  `partial` means only the newest page was searched, so a miss proves nothing;
+  `unknown` means Amazon sent no total. If several assets match, show the
+  names, types and creation times and let the user choose.
+- **`assets.list_recent`** returns the newest page of the library. **It is not
+  a search**: a body or filter is ignored and the same newest page comes back.
+  Use it to grab the id of something just added in the Amazon console, never
+  to decide an asset is absent.
+
+```bash
+mixshift ads call assets.search_by_name --legacy-seller-id <id> \
+  --body '{"text":"spring logo"}' --json
+```
+
+**The library is per profile.** Two merchants on the same account return
+different libraries, so search the merchant whose brand owns the asset. An
+HTTP 401 reaches you as `reauth_required` and can mean this merchant has no
+asset-library access; try another merchant on the account before telling
+anyone to re-authorize. `specCheckApprovedPrograms` is null on many image
+assets: null means "no eligibility reported", not "eligible for nothing".
 
 ### Exports (prefer these for a full-account snapshot)
 
@@ -537,7 +597,9 @@ exactly, every time.
   and SB keyword and negative keyword writes take the full 200. Other
   Sponsored Brands writes take fewer: at most 10 per call for SB campaign, ad
   group and ad creates and updates, and at most 100 for SB product targets,
-  negative targets and theme targets. A batch over an operation's limit is
+  negative targets and theme targets. Sponsored Display writes take 200,
+  except the SD creative creates and updates, which take at most 100. A batch
+  over an operation's limit is
   refused before anything is sent, dry run included, and the message names the
   limit: split the change set into calls of that size.
 - **`insufficient_scope` (exit 11)** means the credential cannot write (a
@@ -618,14 +680,14 @@ Three things that decide whether the commit succeeds:
 - **Build in order:** campaign, then ad group, then keywords or targets, then the
   ad. An SB ad group carries no bid of its own; bids live on the keywords and
   targets inside it.
-- **Assets must already exist, and there is no way to look up a new one yet.**
+- **Assets must already be in the Creative Asset Library.**
   `videoAssetIds` and `brandLogoAssetID` are Creative Asset Library ids (they
   look like `amzn1.assetlibrary.asset1.<hash>:version_v1`). These operations
-  attach existing assets, they do not upload new ones. There is currently **no
-  cataloged operation that reads the Creative Asset Library**, so the id for a
-  freshly uploaded asset has to come from the Amazon console. `sb.list_ads`
-  only shows assets that are already attached to an existing ad, which is
-  useful for reusing a creative but not for one you just uploaded.
+  attach existing assets, they do not upload new ones. Find the id with
+  `assets.search_by_name` (or `assets.list_recent` for something just added),
+  on the merchant whose brand owns the asset; see "Creative Asset Library".
+  `sb.list_ads` shows the assets already attached to an existing ad, which is
+  useful for reusing a creative.
 - **Store landing pages gate the ASINs.** For any type whose landing page is a
   Store, every advertised ASIN has to appear on that Store page or Amazon
   rejects the ad. Check the Store page before committing.
@@ -695,6 +757,65 @@ does not list the theme operations yet, the MixShift service has not been
 updated: tell the user theme changes are not available yet rather than trying
 another operation.
 
+**Sponsored Display (campaigns, ad groups, product ads, targets, creatives):**
+
+- Updates: `sd.update_campaigns`, `sd.update_ad_groups`, `sd.update_targets`,
+  `sd.update_product_ads`, `sd.update_creatives`.
+- Creation: `sd.create_campaigns`, `sd.create_ad_groups`,
+  `sd.create_product_ads`, `sd.create_targets`, `sd.create_negative_targets`,
+  `sd.create_creatives`.
+
+Every SD write body is a **raw JSON array** of items, plain JSON. Most take up
+to 200 items; the two creative writes take at most 100.
+
+```jsonc
+// sd.update_campaigns  (PUT, max 200) - lowercase enums
+[ { "campaignId": "123", "state": "paused" } ]
+
+// sd.create_creatives  (POST, max 100) - adGroupId and properties required
+[ { "adGroupId": "456", "creativeType": "IMAGE",
+    "properties": {
+      "headline": "Up to 50 characters",
+      "brandLogo": { "assetId": "amzn1.assetlibrary.asset1.<hash>", "assetVersion": "version_v1" },
+      "rectCustomImage": { "assetId": "amzn1.assetlibrary.asset1.<hash>", "assetVersion": "version_v1" },
+      "squareCustomImage": { "assetId": "amzn1.assetlibrary.asset1.<hash>", "assetVersion": "version_v1",
+        "croppingCoordinates": { "top": 0, "left": 0, "width": 628, "height": 628 } } } } ]
+
+// sd.update_creatives  (PUT, max 100) - creativeId and properties required
+[ { "creativeId": "789", "properties": { "headline": "New headline", "brandLogo": { "assetId": "...", "assetVersion": "version_v1" } } } ]
+```
+
+Things that decide whether an SD creative commit does what the user wants:
+
+- **The asset id is two fields here.** SD images are
+  `{ assetId, assetVersion, croppingCoordinates? }`, so an id in the joined
+  Sponsored Brands form `<assetId>:version_v1` is split at the colon. Use the
+  same asset for `rectCustomImage` and `squareCustomImage`. Crop coordinates are
+  whole pixels, all four together. The assets must already be in the library of
+  the merchant you selected (see "Creative Asset Library").
+- **`sd.update_creatives` replaces what the creative shows.** Send every part
+  you mean to keep (headline, logo, images), not only the one you change. No
+  snapshot of the current creative is taken before this write, so read it with
+  `sd.list_creatives` and record it before you change it.
+- **Build order and spend.** For a new SD ad with a custom creative:
+  `sd.create_campaigns` (state `paused`), `sd.create_ad_groups`,
+  `sd.create_product_ads`, `sd.create_targets`, then `sd.create_creatives`, and
+  enable the campaign with `sd.update_campaigns` as a deliberate last step. A
+  creative has no state of its own: it serves, and bills, as soon as its ad
+  group and campaign are enabled.
+- **Sent once, then moderated.** A creative commit is never resent
+  automatically, so after a timeout or a server error the outcome is unknown:
+  check the ad group before submitting again, or the retry may create a second
+  creative. Commit ONE creative first and read its result. Amazon moderates
+  every new or changed creative before it serves; confirm with
+  `sd.list_creative_moderations` before telling the user it is live. A dry run
+  checks the request shape, ids, crops and headline length only, never the
+  image itself.
+
+`creativeType` is `IMAGE` or `VIDEO` in upper case, and one ad group takes one
+creative type at a time. Read `mixshift ads operations --family "Sponsored
+Display Writes"` for the full `properties` list and Amazon's image size limits.
+
 ### Sponsored Brands and Sponsored Display writes (extra caution)
 
 SB and SD writes exist in the catalog, but with **lower wire-shape
@@ -702,7 +823,7 @@ confidence** than SP. Two reasons:
 
 - **Mixed eras and body shapes.** There are three of them on SB alone. SB
   campaigns and ad groups are v4 object-wrapped batches (vnd media types). SB
-  **keywords and negative keywords**, plus the **whole SD surface**, take **raw
+  **keywords and negative keywords**, plus **every SD write**, take **raw
   JSON ARRAY** bodies. SB **product targets and negative product targets** take
   plain-JSON **object wrappers** (`{ targets: [...] }` /
   `{ negativeTargets: [...] }`). All of the array-body and object-wrapper
@@ -712,9 +833,10 @@ confidence** than SP. Two reasons:
   a plain `application/json` Accept fails with "No match for accept header"), the
   **SB target** writes reply with their own versioned types (irregular enough
   that they cannot be guessed, which is why the catalog pins them per
-  operation), whereas **SD** is genuinely plain JSON end to end. All SB and SD
-  families use **lowercase** enums (`exact`, `negativePhrase`, `daily`,
-  `asinSameAs`) where SP uses uppercase. The catalog handles every media type;
+  operation), whereas **SD** is genuinely plain JSON end to end. SB and SD
+  use **lowercase** enums (`exact`, `negativePhrase`, `daily`, `asinSameAs`)
+  where SP uses uppercase, with one exception: SD creatives use upper case
+  (`creativeType: "IMAGE"`). The catalog handles every media type;
   read the per-operation notes and match the body shape and enums exactly.
 - **SB v4 creates especially** often need brand assets and a precise payload;
   expect per-item validation errors until the body matches the SB v4 spec.
@@ -950,14 +1072,14 @@ These supersede other instructions:
   rollback source; the user is confirming a diff, not a blank instruction.
 - **Keep each call within the operation's per-call limit** (200 at most, which
   SB keyword and negative keyword writes take; 10 for SB campaign, ad group and
-  ad writes; 100 for SB product targets, negative targets and theme targets).
-  Split larger sets.
+  ad writes; 100 for SB product targets, negative targets and theme targets,
+  and for SD creative writes). Split larger sets.
 - **Partial failure is normal on commits.** Summarize success and error counts
   both; never report "done" while items errored. Surface the per-item errors
   and the `audit_id`.
 - **SB/SD writes are research-grade.** First real apply on those families:
   dry-run, then commit ONE item with Sam watching. Match the catalog's
-  raw-array bodies and lowercase enums exactly.
+  raw-array bodies and enum case exactly (lowercase, except SD creatives).
 - **`insufficient_scope` is not retryable.** Hand the user the change list.
 - **Pick the right surface.** Live state and changes here; performance history
   in `mx-data-explore`; report documents in `mx-amazon-report`; bid/negation
