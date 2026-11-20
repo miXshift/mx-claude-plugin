@@ -120,7 +120,7 @@ describe('mx-amazon-ads Sponsored Display and Creative Assets copy', () => {
   it('keeps the skill and manifest versions in step', () => {
     const skillVersion = skill.match(/^\s+version: "([^"]+)"/m)?.[1];
     const manifestVersion = manifest.match(/^version: "([^"]+)"/m)?.[1];
-    expect(skillVersion).toBe('0.2.7');
+    expect(skillVersion).toBe('0.2.8');
     expect(manifestVersion).toBe(skillVersion);
   });
 });
