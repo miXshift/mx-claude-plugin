@@ -8,14 +8,14 @@ description: >
   warnings, the product page as it renders today, and who a third-party
   seller is. Reads back, free, where your ASINs ranked day by day for the
   keywords your organization tracks, and manages that tracking (owners,
-  admins and managers). Public shelf observations through MixShift's
+  admins, managers and builders). Public shelf observations through MixShift's
   service, never your Amazon credentials; each on-demand answer counts one
   against your organization's monthly shelf allowance. Runs a guided demo on
   your own ASIN and keyword (demo Amazon shelf) and a catalog with a plain
   what-is-this per call. Uses the MixShift plugin sign-in. Does not require
   brand setup. Beta.
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
   author: "MixShift"
 trigger_phrases:
   - shelf data
@@ -102,7 +102,7 @@ When characterizing this capability to the user, use these facts:
   `mixshift shelf rank-history` reads that history back, free, as the
   absolute, organic and sponsored rank per day and ASIN. Only keywords, zips
   and views a set lists answer, whether the set is running or paused
-  (anything else is `not_tracked`). An owner, admin or manager, signed in as
+  (anything else is `not_tracked`). An owner, admin, manager or builder, signed in as
   a person, changes the sets from the plugin ("Manage what's tracked"
   below); anyone else asks one of them, or MixShift. A machine credential,
   such as one a scheduled task uses, can never change them. Every running set
@@ -194,7 +194,7 @@ carries the inputs, the fields worth reading first, and a question it answers:
 | `shelf search <query>` | the results page for a keyword at a zip: rank and absolute rank, sponsored or organic, price, rating, reviews, bought in past month, badges, coupon, stock text, banners | counts 1 per page |
 | `shelf rank-history <query>` | where your ASINs ranked for a keyword your organization tracks, day by day at one zip, desktop or mobile: absolute, organic and sponsored rank per day and ASIN; `not_tracked` for anything not tracked | free |
 | `shelf tracking list` / `show <set>` | the tracking sets: keywords, zips, views, pages, ASINs, calls a day, last run; the projected monthly use against the allowance; whether you can change them | free |
-| `shelf tracking create` / `add` / `remove` / `pause` / `resume` / `delete` | change the tracking (owners, admins and managers) | free to change; each running set uses its calls a day |
+| `shelf tracking create` / `add` / `remove` / `pause` / `resume` / `delete` | change the tracking (owners, admins, managers and builders) | free to change; each running set uses its calls a day |
 | `shelf product <asin>` | the product page: title, bullets, details, images, best-seller ranks, rating, badge, Buy Box block, customers say (beta) | counts 1 |
 | `shelf seller <seller-id>` | who a third-party seller is: storefront name, rating, business details | counts 1 |
 | `shelf zips` | the shopper locations per country | free |
@@ -289,13 +289,13 @@ When a call answers `not_tracked` (exit 12), or the user asks to track
 keywords that are not tracked yet:
 
 1. Run `mixshift shelf tracking list --json`. If `can_edit` is true, the user
-   is an owner, admin or manager and can add the keyword themselves: offer it
+   is an owner, admin, manager or builder and can add the keyword themselves: offer it
    ("Manage what's tracked" below). A keyword in a set is searched at every
    zip and on every view the set lists, so add it to a set that already
    lists the zip and view the user asked about, or create a set for it; say
    which, and how many calls a day it adds (zips x views x pages of that
    set).
-2. If `can_edit` is false, say an owner, admin or manager in their
+2. If `can_edit` is false, say an owner, admin, manager or builder in their
    organization can add it, and offer to send the request to MixShift
    instead. With their yes, run:
 
@@ -327,7 +327,7 @@ What the user says, and what to run:
 How to run them:
 
 - **A person changes tracking.** Changing tracking needs a personal sign-in:
-  an owner, admin or manager signed in to MixShift as themselves, with their
+  an owner, admin, manager or builder signed in to MixShift as themselves, with their
   own Google or Microsoft work account. The shared team login, an unverified
   session and a machine credential, such as the one a scheduled task uses,
   are all refused (`forbidden` with `reason: identity_not_verified`), so
@@ -358,7 +358,7 @@ How to run them:
 - **A set keeps at least one keyword.** Removing the last one is refused;
   pause or delete the set instead.
 - **Refusals.** `forbidden` (exit 11) with `reason: role`: a verified
-  person without the role; only an owner, admin or manager can change
+  person without the role; only an owner, admin, manager or builder can change
   tracking, so say so and offer the MixShift request above. `forbidden` with
   `reason: identity_not_verified`: the shared team login, an unverified
   session, or a machine credential (a scheduled task); tell the user to sign
@@ -614,7 +614,7 @@ and a delete that went through answers `not_found`.
 | `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `tracking_over_allowance` | 10 | `shelf tracking` only: the change would take the projected monthly use past the allowance, so nothing changed; carries `projected_calls_per_month`, `allowance` and `request_more`. Give both numbers and the options ("Manage what's tracked"). |
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
-| `forbidden` | 11 | `shelf tracking` only. `reason: role`: a verified person who is not an owner, admin or manager; say so and offer the MixShift request ("Tracking keywords over time"). `reason: identity_not_verified`: the shared team login, an unverified session, or a machine credential such as a scheduled task's; the user signs in to MixShift as themselves (`mixshift auth login`) and runs it again in the conversation. |
+| `forbidden` | 11 | `shelf tracking` only. `reason: role`: a verified person who is not an owner, admin, manager or builder; say so and offer the MixShift request ("Tracking keywords over time"). `reason: identity_not_verified`: the shared team login, an unverified session, or a machine credential such as a scheduled task's; the user signs in to MixShift as themselves (`mixshift auth login`) and runs it again in the conversation. |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are; on a tracking change `unavailable` names the zips). Run `shelf zips` and pick one. |
 | `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking. Do not resend; offer to track it ("Tracking keywords over time"). |
 | `tracking_set_exists` | 12 | `shelf tracking create` only: the id is taken by a set that differs from the request, and nothing changed. Use `add` or `remove`, or `create ... --replace`. |

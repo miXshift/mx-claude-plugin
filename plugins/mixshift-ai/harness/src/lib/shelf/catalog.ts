@@ -99,7 +99,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'A tracking set is a list of keywords, shopper locations (zips), views (desktop, mobile), how many results pages to ' +
       'read, and the ASINs whose rank you want back. Once a day MixShift takes the results page for every keyword at every ' +
       'zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list ' +
-      'and show the sets; an owner, admin or manager, signed in as a person, can create one, add or remove keywords and ' +
+      'and show the sets; an owner, admin, manager or builder, signed in as a person, can create one, add or remove keywords and ' +
       'ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history ' +
       'readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. ' +
       'Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the ' +

@@ -11,7 +11,7 @@
  *   tracking pause <id> | resume <id>
  *   tracking delete <id> --yes
  *
- * Anyone in the organization can list and show; an owner, admin or manager
+ * Anyone in the organization can list and show; an owner, admin, manager or builder
  * signed in as a person can change the sets (the service refuses anyone else,
  * and every machine credential: forbidden, exit 11). A paused set keeps its
  * rank history readable; only a deleted set, or a keyword removed from a set,
@@ -105,7 +105,7 @@ export function registerShelfTracking(shelf: Command): void {
     .command('tracking')
     .description(
       "Your organization's rank tracking: the keywords MixShift searches once a day at each tracked zip and view, which " +
-        '`shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin or manager, signed in as a ' +
+        '`shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin, manager or builder, signed in as a ' +
         'person, can create, add, remove, pause, resume and delete (a machine credential never can). Free to read and change, ' +
         'but every running set takes keywords x zips x views x pages shelf requests a day from the monthly allowance. To stop ' +
         'paying for a set and keep its history readable, pause it.',
@@ -162,7 +162,7 @@ export function registerShelfTracking(shelf: Command): void {
   tracking
     .command('create <id>')
     .description(
-      'Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. ' +
+      'Create a tracking set (owners, admins, managers and builders): the keywords to search once a day at each zip, on each view. ' +
         'The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x ' +
         'views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected ' +
         'monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when that set ' +
@@ -249,10 +249,10 @@ export function registerShelfTracking(shelf: Command): void {
       .command(`${mode} <id>`)
       .description(
         mode === 'add'
-          ? 'Add keywords or ASINs to a tracking set (owners, admins and managers). Each keyword adds zips x views x pages ' +
+          ? 'Add keywords or ASINs to a tracking set (owners, admins, managers and builders). Each keyword adds zips x views x pages ' +
               'calls a day; a change that would take the set over the per-set limit of calls a day, or the projected monthly use ' +
               'past the allowance, is refused. ASINs cost nothing.'
-          : 'Remove keywords or ASINs from a tracking set (owners, admins and managers). The allowance never blocks a removal, ' +
+          : 'Remove keywords or ASINs from a tracking set (owners, admins, managers and builders). The allowance never blocks a removal, ' +
               'and each keyword removed saves zips x views x pages calls a day. `shelf rank-history` stops answering for a removed ' +
               'keyword unless another set lists it. A set keeps at least one keyword: pause or delete the set instead.',
       )
@@ -296,9 +296,9 @@ export function registerShelfTracking(shelf: Command): void {
       .command(`${mode} <id>`)
       .description(
         mode === 'pause'
-          ? 'Pause a tracking set (owners, admins and managers): its daily searches stop and it uses none of the allowance, and ' +
+          ? 'Pause a tracking set (owners, admins, managers and builders): its daily searches stop and it uses none of the allowance, and ' +
               'its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history.'
-          : 'Resume a paused tracking set (owners, admins and managers): the next daily run searches it again, and it uses its ' +
+          : 'Resume a paused tracking set (owners, admins, managers and builders): the next daily run searches it again, and it uses its ' +
               'calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance.',
       )
       .action(async (rawId: string, _opts: unknown, cmd: Command) => {
@@ -318,7 +318,7 @@ export function registerShelfTracking(shelf: Command): void {
   tracking
     .command('delete <id>')
     .description(
-      'Delete a tracking set (owners, admins and managers): its daily searches stop, and `shelf rank-history` no longer answers ' +
+      'Delete a tracking set (owners, admins, managers and builders): its daily searches stop, and `shelf rank-history` no longer answers ' +
         'for its keywords unless another set (running or paused) lists them. Needs --yes. To stop paying and keep the history ' +
         'readable, pause it instead.',
     )
@@ -586,8 +586,8 @@ export function projectionText(projected: number | null, allowance: number | nul
 
 function editHint(canEdit: boolean): string {
   return canEdit
-    ? 'You can change these sets (owner, admin or manager): `mixshift shelf tracking add <set> --keyword "<keyword>"`, `remove`, `pause`, `resume`, `create`, `delete`.'
-    : 'Only an owner, admin or manager can change these sets. Ask one of them, or say "track these keywords" to ask MixShift.';
+    ? 'You can change these sets (owner, admin, manager or builder): `mixshift shelf tracking add <set> --keyword "<keyword>"`, `remove`, `pause`, `resume`, `create`, `delete`.'
+    : 'Only an owner, admin, manager or builder can change these sets. Ask one of them, or say "track these keywords" to ask MixShift.';
 }
 
 export function renderTrackingList(r: ShelfTrackingList): string {

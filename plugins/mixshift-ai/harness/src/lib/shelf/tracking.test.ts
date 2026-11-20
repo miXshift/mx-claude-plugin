@@ -110,10 +110,10 @@ describe('shelf tracking client: request shapes', () => {
 describe('shelf tracking client: refusals', () => {
   it('the role refusal (forbidden, 403) keeps the service line; exit 11', async () => {
     const f = vi.fn().mockResolvedValueOnce(
-      jsonResponse(403, { ok: false, kind: 'forbidden', friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', source: 'account', retryable: false }),
+      jsonResponse(403, { ok: false, kind: 'forbidden', friendly: 'Only an owner, admin, manager or builder of your organization can change rank tracking.', source: 'account', retryable: false }),
     );
     const r = await shelfTrackingPatch('trail-snacks', { add_keywords: ['granola'] }, injected(f));
-    expect(r).toMatchObject({ ok: false, kind: 'forbidden', httpStatus: 403, friendly: 'Only an owner, admin or manager of your organization can change rank tracking.', source: 'account', retryable: false });
+    expect(r).toMatchObject({ ok: false, kind: 'forbidden', httpStatus: 403, friendly: 'Only an owner, admin, manager or builder of your organization can change rank tracking.', source: 'account', retryable: false });
     expect(exitCodeForShelfKind('forbidden')).toBe(11);
   });
 
@@ -131,9 +131,9 @@ describe('shelf tracking client: refusals', () => {
     const f = vi
       .fn()
       // The service's exact lines (its TRACKING_FORBIDDEN and TRACKING_IDENTITY_NOT_VERIFIED).
-      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.', source: 'account', retryable: false }))
+      .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin, manager or builder of your organization can change rank tracking. Ask one of them, or ask MixShift.', source: 'account', retryable: false }))
       .mockResolvedValueOnce(jsonResponse(403, { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.', source: 'account', retryable: false }));
-    expect(await shelfTrackingPatch('trail-snacks', { enabled: false }, injected(f))).toMatchObject({ kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.' });
+    expect(await shelfTrackingPatch('trail-snacks', { enabled: false }, injected(f))).toMatchObject({ kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin, manager or builder of your organization can change rank tracking. Ask one of them, or ask MixShift.' });
     expect(await shelfTrackingDelete('trail-snacks', injected(f))).toMatchObject({ kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.' });
   });
 

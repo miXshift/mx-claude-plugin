@@ -1,0 +1,1 @@
+- **Builders can change rank tracking too.** A person with the Builder role, signed in to MixShift as themselves, can now create, edit, pause and delete your organization's rank tracking sets, as owners, admins and managers already could. The shelf skill, `mixshift shelf tracking` help and its messages now say so.

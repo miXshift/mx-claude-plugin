@@ -103,7 +103,7 @@ const LIST = { ok: true as const, sets: [SET, PAUSED], projected_calls_per_month
 const written = (set: ShelfTrackingSet, projected = 248) => ({ ok: true as const, set, projected_calls_per_month: projected, allowance: 2000 });
 // Envelopes as the service's route tests pin them (forbidden: GW-143; tracking_over_allowance: GW-144; the per-set cap: GW-142).
 const notFound: ShelfFailure = { ok: false, kind: 'not_found', friendly: 'Your organization has no rank tracking set with that id.', httpStatus: 404, source: 'request', retryable: false };
-const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.', httpStatus: 403, source: 'account', retryable: false };
+const FORBIDDEN: ShelfFailure = { ok: false, kind: 'forbidden', reason: 'role', friendly: 'Only an owner, admin, manager or builder of your organization can change rank tracking. Ask one of them, or ask MixShift.', httpStatus: 403, source: 'account', retryable: false };
 const IDENTITY: ShelfFailure = { ok: false, kind: 'forbidden', reason: 'identity_not_verified', friendly: 'To change rank tracking, sign in to MixShift as yourself with your own Google or Microsoft work account, or ask MixShift. The shared team login cannot change tracking.', httpStatus: 403, source: 'account', retryable: false };
 /** The per-set cap, as the service answers it: invalid_request with both numbers. */
 const CAP: ShelfFailure = {
@@ -151,13 +151,13 @@ describe('shelf tracking list', () => {
     expect(stdout).toContain('| trail-snacks | Example snack terms | 2 | 10001, 60601 | desktop, mobile | 1 | 8 | yes | 2026-11-16 (7 of 8 ok, 1 failed) |');
     expect(stdout).toContain('| granola-test | - | 1 | 10001 | desktop | 1 | 1 | no (paused) | not yet |');
     expect(stdout).toContain('Projected monthly use: 248 of 2000 shelf requests a month for rank tracking.');
-    expect(stdout).toContain('You can change these sets (owner, admin or manager)');
+    expect(stdout).toContain('You can change these sets (owner, admin, manager or builder)');
     expect(stdout).toContain('up to 50 keywords, 10 zips and 5 pages, and at most 200 calls a day');
   });
 
   it('says who can change the sets when you cannot, flags a projection over the allowance, and handles no sets', () => {
     const md = renderTrackingList({ ...LIST, can_edit: false, projected_calls_per_month: 2232 });
-    expect(md).toContain('Only an owner, admin or manager can change these sets');
+    expect(md).toContain('Only an owner, admin, manager or builder can change these sets');
     expect(md).toContain('2232 of 2000 shelf requests a month for rank tracking, 232 over the allowance');
     expect(md).not.toContain('A set holds up to');
     const empty = renderTrackingList({ ...LIST, sets: [], projected_calls_per_month: 0 });
@@ -443,8 +443,8 @@ describe('shelf tracking add / remove', () => {
     vi.mocked(shelfTrackingGet).mockResolvedValueOnce({ ok: true, set: SET });
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce(FORBIDDEN);
     await run('shelf', 'tracking', 'add', 'trail-snacks', '--keyword', 'granola');
-    expect(stderr).toContain('✗ Only an owner, admin or manager of your organization can change rank tracking. Ask one of them, or ask MixShift.');
-    expect(stderr).toContain('ask an owner, admin or manager in your organization');
+    expect(stderr).toContain('✗ Only an owner, admin, manager or builder of your organization can change rank tracking. Ask one of them, or ask MixShift.');
+    expect(stderr).toContain('ask an owner, admin, manager or builder in your organization');
     expect(stderr).toContain('track these keywords');
     expect(stderr).not.toContain('Sign in to MixShift as yourself');
     expect(process.exitCode).toBe(11);
@@ -461,7 +461,7 @@ describe('shelf tracking add / remove', () => {
   it('forbidden with reason role: who can make the change, and the reason reaches --json and telemetry', async () => {
     vi.mocked(shelfTrackingPatch).mockResolvedValueOnce({ ...FORBIDDEN, reason: 'role' });
     await run('shelf', 'tracking', 'pause', 'trail-snacks');
-    expect(stderr).toContain('ask an owner, admin or manager in your organization');
+    expect(stderr).toContain('ask an owner, admin, manager or builder in your organization');
     expect(stderr).not.toContain('Sign in to MixShift as yourself');
     expect(process.exitCode).toBe(11);
     expect(lastTrack().payload).toMatchObject({ kind_failed: 'forbidden', reason: 'role' });
