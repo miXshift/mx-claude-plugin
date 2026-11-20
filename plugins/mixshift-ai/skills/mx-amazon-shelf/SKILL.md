@@ -8,7 +8,7 @@ description: >
   warnings, the product page as it renders today, and who a third-party
   seller is. Reads back, free, where your ASINs ranked day by day for the
   keywords your organization tracks, and manages that tracking (owners,
-  admins and managers). Public shelf observations through MixShift's
+  admins, managers and builders). Public shelf observations through MixShift's
   service, never your Amazon credentials; each on-demand answer counts one
   against your organization's monthly shelf allowance. Runs a guided demo on
   your own ASIN and keyword (demo Amazon shelf) and a catalog with a plain
