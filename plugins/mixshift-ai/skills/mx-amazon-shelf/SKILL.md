@@ -15,7 +15,7 @@ description: >
   what-is-this per call. Uses the MixShift plugin sign-in. Does not require
   brand setup. Beta.
 metadata:
-  version: "0.3.1"
+  version: "0.3.2"
   author: "MixShift"
 trigger_phrases:
   - shelf data
@@ -91,7 +91,10 @@ When characterizing this capability to the user, use these facts:
   monthly shelf allowance, whether or not MixShift had to observe the shelf
   for it. `mixshift shelf usage` shows allowance, used, remaining and the
   reset date; `shelf zips` and `shelf usage` are free. Unused requests do not
-  roll over.
+  roll over. When `shelf usage` or `shelf tracking list` carries a heads-up
+  (`warning`), tell the user plainly, in the message's own words: at the
+  monthly limit, tracking and new shelf answers pause until the month resets
+  (reading stored rank history stays free).
 - **Tracked over time:** an organization tracks keywords in tracking sets
   (keywords, zips, views, pages and the ASINs to read back). Once a day
   MixShift takes the search results page for each keyword at each zip on

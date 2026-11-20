@@ -445,6 +445,28 @@ describe('shelf offers, seller, zips, usage, catalog', () => {
     expect(lastTrack()).toMatchObject({ event_name: 'shelf.usage_read', payload: { allowance: 2000, used: 27 } });
   });
 
+  it('usage prints the heads-up line only when a warning is present; --json passes it through', async () => {
+    const u = { ok: true as const, period: '2026-10', allowance: 2000, used: 1700, remaining: 300, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery' };
+    const warning = { threshold: 80 as const, message: 'You have 300 checks left. Tracking pauses at the limit; resets 2026-11-01.' };
+    vi.mocked(shelfUsage).mockResolvedValueOnce({ ...u, warning });
+    await run('shelf', 'usage');
+    expect(stdout).toContain(`
+Heads-up: ${warning.message}
+`);
+
+    for (const v of [{ ...u, warning: undefined }, u]) {
+      stdout = '';
+      vi.mocked(shelfUsage).mockResolvedValueOnce(v as typeof u);
+      await run('shelf', 'usage');
+      expect(stdout).not.toContain('Heads-up');
+    }
+
+    stdout = '';
+    vi.mocked(shelfUsage).mockResolvedValueOnce({ ...u, warning });
+    await run('--json', 'shelf', 'usage');
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', warning });
+  });
+
   it('catalog lists every call with a what-is-this and names no provider', async () => {
     await run('--json', 'shelf', 'catalog');
     const out = JSON.parse(stdout);

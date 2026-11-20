@@ -165,6 +165,19 @@ describe('shelf tracking list', () => {
     expect(empty).toContain('mixshift shelf tracking create <set>');
   });
 
+  it('prints the heads-up line after the projection only when a warning is present; --json passes it through', async () => {
+    const warning = { threshold: 95 as const, message: 'You have 100 checks left. Tracking pauses at the limit; resets 2026-12-01.' };
+    const md = renderTrackingList({ ...LIST, warning });
+    expect(md).toContain(`Heads-up: ${warning.message}`);
+    expect(md.indexOf('Projected monthly use')).toBeLessThan(md.indexOf('Heads-up:'));
+    expect(renderTrackingList(LIST)).not.toContain('Heads-up');
+    expect(renderTrackingList({ ...LIST, warning: undefined })).not.toContain('Heads-up');
+
+    vi.mocked(shelfTrackingList).mockResolvedValueOnce({ ...LIST, warning });
+    await run('--json', 'shelf', 'tracking', 'list');
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', warning });
+  });
+
   it('a failure prints the friendly line and its exit code', async () => {
     vi.mocked(shelfTrackingList).mockResolvedValueOnce({ ok: false, kind: 'shelf_not_enabled', friendly: 'Shelf data is not enabled.', httpStatus: 403 });
     await run('--json', 'shelf', 'tracking', 'list');

@@ -51,6 +51,17 @@ describe('shelf tracking client: request shapes', () => {
     expect(r.sets[0]).toEqual(SET);
   });
 
+  it('list: warning kept when well formed, dropped when null or absent', async () => {
+    const body = { ok: true, sets: [SET], projected_calls_per_month: 248, allowance: 2000, can_edit: true };
+    const warning = { threshold: 95, message: 'You have 100 checks left this month.' };
+    const a = await shelfTrackingList(injected(vi.fn().mockResolvedValueOnce(jsonResponse(200, { ...body, warning }))));
+    expect(a).toMatchObject({ ok: true, warning });
+    for (const w of [null, undefined]) {
+      const r = await shelfTrackingList(injected(vi.fn().mockResolvedValueOnce(jsonResponse(200, { ...body, warning: w }))));
+      expect(r).not.toHaveProperty('warning');
+    }
+  });
+
   it('show: GET /api/shelf/tracking/:id with the id encoded', async () => {
     const f = vi.fn().mockResolvedValueOnce(jsonResponse(200, { ok: true, set: SET }));
     const r = await shelfTrackingGet('trail-snacks', injected(f));

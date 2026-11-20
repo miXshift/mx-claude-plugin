@@ -186,6 +186,20 @@ export interface ShelfZips {
   zips: string[];
 }
 
+/** A plain-English heads-up the service adds when the month's shelf checks run low (threshold: percent used). */
+export interface ShelfWarning {
+  threshold: 80 | 95;
+  message: string;
+}
+
+/** The warning when the service sent a well-formed one; otherwise undefined (absent and null both mean no warning). */
+export function parseShelfWarning(raw: unknown): ShelfWarning | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const w = raw as Record<string, unknown>;
+  if ((w.threshold !== 80 && w.threshold !== 95) || typeof w.message !== 'string' || w.message.trim() === '') return undefined;
+  return { threshold: w.threshold, message: w.message };
+}
+
 export interface ShelfUsage {
   ok: true;
   period: string;
@@ -194,6 +208,8 @@ export interface ShelfUsage {
   remaining: number;
   resets_at: string;
   source: 'discovery_first_month' | 'discovery' | 'entitlement' | string;
+  /** Set when the month's checks are running low; absent otherwise. */
+  warning?: ShelfWarning;
 }
 
 /** One ASIN at one snapshot (one day's tracked search, all its pages) of a tracked keyword. */
@@ -436,6 +452,7 @@ export async function shelfUsage(opts: ShelfClientOptions = {}): Promise<ShelfUs
     remaining: Number(j.remaining ?? Math.max(0, j.allowance - Number(j.used ?? 0))),
     resets_at: String(j.resets_at ?? ''),
     source: String(j.source ?? ''),
+    ...(parseShelfWarning(j.warning) ? { warning: parseShelfWarning(j.warning) } : {}),
   };
 }
 

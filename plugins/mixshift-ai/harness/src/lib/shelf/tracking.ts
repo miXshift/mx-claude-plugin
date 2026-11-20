@@ -26,12 +26,14 @@
 
 import {
   defaultFriendly,
+  parseShelfWarning,
   shelfRequest,
   unrecognizedShape,
   type ShelfClientOptions,
   type ShelfCountry,
   type ShelfFailure,
   type ShelfSurface,
+  type ShelfWarning,
 } from './client.js';
 
 /** Mirrors the service's check on a set id: lower-case letters, digits and hyphens, 2-63 characters, not starting with a hyphen. */
@@ -94,6 +96,8 @@ export interface ShelfTrackingList {
   /** Whether the signed-in person may change the sets (owner, admin or manager). */
   can_edit: boolean;
   limits: ShelfTrackingLimits;
+  /** Set when the month's shelf checks are running low; absent otherwise. */
+  warning?: ShelfWarning;
 }
 
 export interface ShelfTrackingOne {
@@ -156,6 +160,7 @@ export async function shelfTrackingList(opts: ShelfClientOptions = {}): Promise<
     projected_calls_per_month: numOrNull(j.projected_calls_per_month),
     allowance: numOrNull(j.allowance),
     can_edit: j.can_edit === true,
+    ...(parseShelfWarning(j.warning) ? { warning: parseShelfWarning(j.warning) } : {}),
     limits: {
       max_keywords: numOrNull(limits.max_keywords) ?? TRACKING_MAX_KEYWORDS,
       max_zips: numOrNull(limits.max_zips) ?? TRACKING_MAX_ZIPS,

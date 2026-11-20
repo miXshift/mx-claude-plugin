@@ -96,6 +96,17 @@ describe('free calls', () => {
     const r = await shelfUsage(injected(fetchImpl));
     expect(r).toEqual({ ok: true, period: '2026-10', allowance: 2000, used: 27, remaining: 1973, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery_first_month' });
   });
+
+  it('usage: warning kept when well formed, dropped when null, absent or malformed', async () => {
+    const base = { ok: true, period: '2026-10', allowance: 2000, used: 1700, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery' };
+    const warning = { threshold: 80, message: 'You have 300 checks left this month.' };
+    const withWarning = await shelfUsage(injected(vi.fn().mockResolvedValueOnce(jsonResponse(200, { ...base, warning }))));
+    expect(withWarning).toMatchObject({ ok: true, warning });
+    for (const w of [null, undefined, { threshold: 50, message: 'x' }, { threshold: 80 }, 'text']) {
+      const r = await shelfUsage(injected(vi.fn().mockResolvedValueOnce(jsonResponse(200, { ...base, warning: w }))));
+      expect(r).not.toHaveProperty('warning');
+    }
+  });
 });
 
 describe('failure mapping (the shelf kind set, never collapsed to unknown)', () => {

@@ -607,6 +607,7 @@ export function renderTrackingList(r: ShelfTrackingList): string {
     L.push('', 'A paused set uses none of the allowance and its rank history stays readable. `mixshift shelf tracking show <set>` lists its keywords and ASINs.');
   }
   L.push('', projectionText(r.projected_calls_per_month, r.allowance));
+  if (r.warning) L.push('', `Heads-up: ${r.warning.message}`);
   L.push('', editHint(r.can_edit));
   if (r.can_edit) {
     const cap = r.limits.max_calls_per_day_per_set !== null ? `, and at most ${r.limits.max_calls_per_day_per_set} calls a day` : '';
