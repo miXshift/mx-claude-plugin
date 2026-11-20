@@ -209,6 +209,16 @@ export interface ShelfRankPoint {
   sponsored_rank: number | null;
 }
 
+/** One snapshot served for the query, zip and view in range, whether or not a tracked ASIN held a position in it. */
+export interface ShelfRankSnapshot {
+  /** When the snapshot was taken. */
+  observed_at: string;
+  /** Results pages stored for it. */
+  pages: number;
+  /** Highest absolute_rank stored in it: an ASIN with no point that day was not in the top this many. */
+  positions: number;
+}
+
 /** The rank history of one tracked keyword at one zip and view over a range. Nothing in it says how it was produced. */
 export interface ShelfRankHistory {
   ok: true;
@@ -222,6 +232,8 @@ export interface ShelfRankHistory {
   to: string;
   /** One point per snapshot and ASIN, oldest first. */
   points: ShelfRankPoint[];
+  /** One per snapshot served, oldest first, regardless of the ASIN filter. Absent until the service ships it: read nothing into its absence. */
+  snapshots?: ShelfRankSnapshot[];
   /** Present only when the series was longer than one answer carries and its oldest points were cut. */
   truncated?: true;
 }

@@ -444,7 +444,15 @@ function movement(first: number | null, latest: number | null): string {
 export function renderRankHistory(h: ShelfRankHistory): string {
   const L: string[] = [];
   L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ''}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
+  // Snapshots (when the service sends them) say which days were observed at all, whether or not a tracked ASIN held a position.
+  // Absent, nothing below changes: a day with no point stays unexplained, as before.
+  const snapTop = new Map<string, number>();
+  for (const sn of h.snapshots ?? []) snapTop.set(day(sn.observed_at), Math.max(snapTop.get(day(sn.observed_at)) ?? 0, sn.positions));
   if (h.points.length === 0) {
+    if (snapTop.size > 0) {
+      L.push('', `${snapTop.size} day(s) observed in this range, and no tracked ASIN held a position on any of them (not in the top ${Math.max(...snapTop.values())} or fewer).`);
+      return L.join('\n');
+    }
     L.push('', '_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_');
     return L.join('\n');
   }
@@ -458,12 +466,37 @@ export function renderRankHistory(h: ShelfRankHistory): string {
   }
   const days = new Set(points.map((p) => day(p.observed_at))).size;
   L.push('', `${points.length} point(s) over ${days} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
-  L.push('', '**Latest per ASIN**', '', '| asin | as of | absolute | organic | sponsored | organic since first point |', '|---|---|---|---|---|---|');
+  const observed = snapTop.size > 0;
+  const rankedDays = new Map<string, Set<string>>();
+  for (const p of points) {
+    if (!rankedDays.has(p.asin)) rankedDays.set(p.asin, new Set());
+    rankedDays.get(p.asin)!.add(day(p.observed_at));
+  }
+  // Every day with a snapshot or a point, oldest first.
+  const seenDays = [...new Set([...snapTop.keys(), ...points.map((p) => day(p.observed_at))])].sort();
+  L.push('', '**Latest per ASIN**', '', `| asin | as of | absolute | organic | sponsored | organic since first point |${observed ? ' days ranked |' : ''}`, `|---|---|---|---|---|---|${observed ? '---|' : ''}`);
   for (const asin of [...latest.keys()].sort()) {
     const p = latest.get(asin)!;
     const f = first.get(asin)!;
     const move = f.observed_at === p.observed_at ? '-' : movement(f.organic_rank, p.organic_rank);
-    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
+    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |${observed ? ` ${rankedDays.get(asin)!.size} of ${seenDays.length} observed |` : ''}`);
+  }
+  if (observed) {
+    // Observed days with no point for an ASIN are "not in the top N" (N = that day's highest stored position), never a missed day.
+    const out: string[] = [];
+    for (const asin of [...latest.keys()].sort()) {
+      const ranked = rankedDays.get(asin)!;
+      const absent = seenDays.filter((d) => snapTop.has(d) && !ranked.has(d));
+      if (absent.length > 0) out.push(`- ${asin}: ${absent.map((d) => `${d} (not in the top ${snapTop.get(d)})`).join(', ')}`);
+    }
+    if (out.length > 0) L.push('', '**Observed, not in the top N** (a snapshot was taken that day and the ASIN held no position in it; not a missed day)', '', ...out);
+    // A calendar day between the first and last observed day with no snapshot at all is unobserved.
+    const missing: string[] = [];
+    for (let t = Date.parse(seenDays[0] + 'T00:00:00Z'); t <= Date.parse(seenDays[seenDays.length - 1] + 'T00:00:00Z'); t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      if (!snapTop.has(d)) missing.push(d);
+    }
+    if (missing.length > 0) L.push('', `No observation (no snapshot stored): ${missing.join(', ')}`);
   }
   L.push('', '**Every point** (oldest first)', '', '| date | asin | absolute | organic | sponsored |', '|---|---|---|---|---|');
   for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);

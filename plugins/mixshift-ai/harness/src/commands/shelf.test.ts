@@ -258,6 +258,60 @@ describe('shelf rank-history', () => {
     expect(renderRankHistory({ ...HISTORY, truncated: true })).toContain('oldest points were cut');
   });
 
+  describe('observed days (snapshots)', () => {
+    // 11-10 and 11-11 and 11-13 observed; 11-12 has no snapshot at all. B0EXAMPL01 ranked only on 11-13, B0EXAMPL02 on 11-11 and 11-13.
+    const WITH = {
+      ...HISTORY,
+      points: [
+        { observed_at: '2026-11-11T10:05:00.000Z', asin: 'B0EXAMPL02', absolute_rank: 14, organic_rank: 11, sponsored_rank: null },
+        { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPL01', absolute_rank: 2, organic_rank: 9, sponsored_rank: 1 },
+        { observed_at: '2026-11-13T10:04:00.000Z', asin: 'B0EXAMPL02', absolute_rank: 9, organic_rank: 6, sponsored_rank: null },
+      ],
+      snapshots: [
+        { observed_at: '2026-11-10T10:03:00.000Z', pages: 1, positions: 48 },
+        { observed_at: '2026-11-11T10:05:00.000Z', pages: 1, positions: 46 },
+        { observed_at: '2026-11-13T10:04:00.000Z', pages: 2, positions: 90 },
+      ],
+    };
+
+    it('says "not in the top N" for an observed day with no point, and "no observation" for a day in neither list', () => {
+      const md = renderRankHistory(WITH);
+      expect(md).toContain('| B0EXAMPL01 | 2026-11-13 | 2 | 9 | 1 | - | 1 of 3 observed |');
+      expect(md).toContain('| B0EXAMPL02 | 2026-11-13 | 9 | 6 | - | up 5 | 2 of 3 observed |');
+      expect(md).toContain('- B0EXAMPL01: 2026-11-10 (not in the top 48), 2026-11-11 (not in the top 46)');
+      expect(md).toContain('- B0EXAMPL02: 2026-11-10 (not in the top 48)');
+      expect(md).not.toContain('B0EXAMPL02: 2026-11-10 (not in the top 48), 2026-11-11');
+      expect(md).toContain('No observation (no snapshot stored): 2026-11-12');
+      expect(md).toContain('not a missed day');
+    });
+
+    it('prints no unobserved line when every day in the span has a snapshot', () => {
+      const md = renderRankHistory({ ...WITH, snapshots: [...WITH.snapshots, { observed_at: '2026-11-12T10:00:00.000Z', pages: 1, positions: 47 }] });
+      expect(md).not.toContain('No observation');
+      expect(md).toContain('2026-11-12 (not in the top 47)');
+    });
+
+    it('with snapshots but no points, says the days were observed and nothing held a position', () => {
+      const md = renderRankHistory({ ...WITH, points: [] });
+      expect(md).toContain('3 day(s) observed in this range, and no tracked ASIN held a position');
+      expect(md).not.toContain('no observations in this range');
+    });
+
+    it('absent or empty snapshots render exactly as before', () => {
+      const plain = renderRankHistory(HISTORY);
+      expect(renderRankHistory({ ...HISTORY, snapshots: [] })).toBe(plain);
+      expect(plain).not.toMatch(/days ranked|not in the top|No observation/);
+      expect(plain).toContain('| asin | as of | absolute | organic | sponsored | organic since first point |\n');
+      expect(renderRankHistory({ ...HISTORY, points: [], snapshots: [] })).toContain('no observations in this range');
+    });
+
+    it('--json passes snapshots through untouched', async () => {
+      vi.mocked(shelfRankHistory).mockResolvedValueOnce(WITH);
+      await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001');
+      expect(JSON.parse(stdout).snapshots).toEqual(WITH.snapshots);
+    });
+  });
+
   it('not_tracked prints the friendly line, the tracking hint and exit 12; the kind reaches telemetry', async () => {
     vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_tracked', friendly: 'not tracked here', httpStatus: 400, source: 'request', retryable: false });
     await run('shelf', 'rank-history', 'trail mix', '--zip', '10001');
