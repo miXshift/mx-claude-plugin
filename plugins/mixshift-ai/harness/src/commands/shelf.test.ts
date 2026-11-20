@@ -276,8 +276,8 @@ describe('shelf rank-history', () => {
 
     it('says "not in the top N" for an observed day with no point, and "no observation" for a day in neither list', () => {
       const md = renderRankHistory(WITH);
-      expect(md).toContain('| B0EXAMPL01 | 2026-11-13 | 2 | 9 | 1 | - | 1 of 3 observed |');
-      expect(md).toContain('| B0EXAMPL02 | 2026-11-13 | 9 | 6 | - | up 5 | 2 of 3 observed |');
+      expect(md).toContain('| B0EXAMPL01 | 2026-11-13 | 2 | 9 | 1 | - | 1 of 3 |');
+      expect(md).toContain('| B0EXAMPL02 | 2026-11-13 | 9 | 6 | - | up 5 | 2 of 3 |');
       expect(md).toContain('- B0EXAMPL01: 2026-11-10 (not in the top 48), 2026-11-11 (not in the top 46)');
       expect(md).toContain('- B0EXAMPL02: 2026-11-10 (not in the top 48)');
       expect(md).not.toContain('B0EXAMPL02: 2026-11-10 (not in the top 48), 2026-11-11');
@@ -293,7 +293,8 @@ describe('shelf rank-history', () => {
 
     it('with snapshots but no points, says the days were observed and nothing held a position', () => {
       const md = renderRankHistory({ ...WITH, points: [] });
-      expect(md).toContain('3 day(s) observed in this range, and no tracked ASIN held a position');
+      expect(md).toContain('3 day(s) observed in this range, and no ASIN you track or asked for held a position on any of them.');
+      expect(md).not.toContain('or fewer');
       expect(md).not.toContain('no observations in this range');
     });
 
@@ -303,6 +304,69 @@ describe('shelf rank-history', () => {
       expect(plain).not.toMatch(/days ranked|not in the top|No observation/);
       expect(plain).toContain('| asin | as of | absolute | organic | sponsored | organic since first point |\n');
       expect(renderRankHistory({ ...HISTORY, points: [], snapshots: [] })).toContain('no observations in this range');
+    });
+
+    const pt = (d: string, asin = 'B0EXAMPL01') => ({ observed_at: `${d}T10:00:00.000Z`, asin, absolute_rank: 3, organic_rank: 3, sponsored_rank: null });
+    const sn = (at: string, positions: number) => ({ observed_at: at, pages: 1, positions });
+
+    it('truncated: snapshot days before the oldest kept point are ignored, with one line saying so', () => {
+      const md = renderRankHistory({
+        ...HISTORY,
+        truncated: true,
+        points: [pt('2026-11-12'), pt('2026-11-13')],
+        snapshots: [sn('2026-11-09T10:00:00Z', 40), sn('2026-11-10T10:00:00Z', 40), sn('2026-11-11T10:00:00Z', 41), sn('2026-11-12T10:00:00Z', 42), sn('2026-11-13T10:00:00Z', 43)],
+      });
+      expect(md).not.toContain('2026-11-09');
+      expect(md).not.toContain('2026-11-10');
+      expect(md).not.toContain('2026-11-11');
+      expect(md).not.toContain('not in the top');
+      expect(md).toContain('| 2 of 2 |');
+      expect(md).toContain('Older days were trimmed with the oldest points, so the lines above start at 2026-11-12.');
+    });
+
+    it('--asin read: only the covered ASIN shows, the other ASINs in the snapshots do not matter', () => {
+      const md = renderRankHistory({ ...HISTORY, asins: ['B0EXAMPL02'], points: [pt('2026-11-13', 'B0EXAMPL02')], snapshots: [sn('2026-11-12T10:00:00Z', 30), sn('2026-11-13T10:00:00Z', 31)] });
+      expect(md).toContain('- B0EXAMPL02: 2026-11-12 (not in the top 30)');
+      expect(md).not.toContain('B0EXAMPL01');
+    });
+
+    it('a day with a point but no snapshot counts as observed and is not "no observation"', () => {
+      const md = renderRankHistory({ ...HISTORY, points: [pt('2026-11-11'), pt('2026-11-12'), pt('2026-11-13')], snapshots: [sn('2026-11-11T10:00:00Z', 20), sn('2026-11-13T10:00:00Z', 20)] });
+      expect(md).not.toContain('No observation');
+      expect(md).toContain('| 3 of 3 |');
+    });
+
+    it('two snapshots on one day with different positions: the larger wins', () => {
+      const md = renderRankHistory({ ...HISTORY, points: [pt('2026-11-13')], snapshots: [sn('2026-11-12T08:00:00Z', 20), sn('2026-11-12T20:00:00Z', 55), sn('2026-11-13T10:00:00Z', 20)] });
+      expect(md).toContain('2026-11-12 (not in the top 55)');
+      expect(md).not.toContain('(not in the top 20)');
+    });
+
+    it('a snapshot at 23:59Z belongs to its UTC day', () => {
+      const md = renderRankHistory({ ...HISTORY, points: [pt('2026-11-13')], snapshots: [sn('2026-11-12T23:59:00.000Z', 25), sn('2026-11-13T10:00:00Z', 25)] });
+      expect(md).toContain('2026-11-12 (not in the top 25)');
+      expect(md).not.toContain('No observation');
+    });
+
+    it('a multi-day gap is listed in full; days before the first and after the last observed day are not', () => {
+      const md = renderRankHistory({ ...HISTORY, from: '2026-11-01T00:00:00Z', to: '2026-11-20T00:00:00Z', points: [pt('2026-11-10'), pt('2026-11-14')], snapshots: [sn('2026-11-10T10:00:00Z', 20), sn('2026-11-14T10:00:00Z', 20)] });
+      expect(md).toContain('No observation (no snapshot stored): 2026-11-11, 2026-11-12, 2026-11-13');
+      expect(md).not.toMatch(/No observation[^\n]*2026-11-0|No observation[^\n]*2026-11-1[5-9]/);
+    });
+
+    it('an ASIN in asins with zero points still appears, with the days it was observed and not in the top N', () => {
+      const md = renderRankHistory({ ...HISTORY, asins: ['B0EXAMPL01', 'B0EXAMPL03'], points: [pt('2026-11-13')], snapshots: [sn('2026-11-12T10:00:00Z', 30), sn('2026-11-13T10:00:00Z', 31)] });
+      expect(md).toContain('- B0EXAMPL03: ranked on none of 2 observed day(s): 2026-11-12 (not in the top 30), 2026-11-13 (not in the top 31)');
+      expect(md).toContain('- B0EXAMPL01: 2026-11-12 (not in the top 30)');
+      const none = renderRankHistory({ ...HISTORY, asins: ['B0EXAMPL03'], points: [], snapshots: [sn('2026-11-12T10:00:00Z', 30), sn('2026-11-13T10:00:00Z', 31)] });
+      expect(none).toContain('2 day(s) observed in this range; none of the ASINs read held a position on any of them.');
+      expect(none).toContain('- B0EXAMPL03: ranked on none of 2 observed day(s)');
+    });
+
+    it('asins absent: an ASIN with no point does not appear', () => {
+      const md = renderRankHistory({ ...HISTORY, points: [pt('2026-11-13')], snapshots: [sn('2026-11-12T10:00:00Z', 30), sn('2026-11-13T10:00:00Z', 31)] });
+      expect(md).not.toContain('B0EXAMPL03');
+      expect(md).toContain('| days ranked / observed |');
     });
 
     it('--json passes snapshots through untouched', async () => {

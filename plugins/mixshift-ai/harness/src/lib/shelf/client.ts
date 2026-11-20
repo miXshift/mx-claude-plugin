@@ -234,6 +234,8 @@ export interface ShelfRankHistory {
   points: ShelfRankPoint[];
   /** One per snapshot served, oldest first, regardless of the ASIN filter. Absent until the service ships it: read nothing into its absence. */
   snapshots?: ShelfRankSnapshot[];
+  /** The ASINs the read covered (the `asin` filter, or the tracked ASINs for that keyword, zip and view), present even when `points` is empty. */
+  asins?: string[];
   /** Present only when the series was longer than one answer carries and its oldest points were cut. */
   truncated?: true;
 }
