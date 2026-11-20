@@ -15,7 +15,7 @@ description: >
   seller's live deals, coupons, price discounts, and basket-building offers).
   Read-only. No brand setup needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.5.2"
+  version: "0.5.3"
   author: "MixShift"
 trigger_phrases:
   - look up an asin
@@ -75,8 +75,8 @@ When characterizing this capability to the user, use these facts:
   request and response: you ask a question (titles for these ASINs, stock for
   these SKUs, metrics for this window) and get Amazon's answer back inline. It
   is a first-class, user-driven capability.
-- **The catalog:** 40 cataloged operations across 17 families as of this
-  skill version; the live `mixshift amazon operations` listing is always the
+- **The catalog:** cataloged operations across the families toured below;
+  the live `mixshift amazon operations` listing is always the
   source of truth. Discover them there and read each operation's `notes` before
   calling: the notes carry the required params, the casing gotchas (several v0
   operations use PascalCase query params), the caps, and the body shapes. Treat
@@ -122,6 +122,42 @@ which fits before calling (see "When to use this skill").
 
 For Search Query Performance on data already in the warehouse, use the plugin's
 `shared/sql-library/LIB-SQP-01.sql` (see mx-data-explore for how to run it) rather than summing `SearchQueryVolume` across ASIN rows, which overstates demand.
+
+## Operation names: use the exact id, never a guess
+
+An operation id is `family.verb`, spelled exactly as `mixshift amazon operations`
+prints it. The family names here are NOT Amazon's API names: pricing is
+`pricing` (not product_pricing), listings is `listings` (not listings_items),
+catalog is `catalog`. An id that is not in the catalog is refused before
+anything is sent, and guessing again wastes calls. Before the first call, pick
+the id from this list or from `mixshift amazon operations`.
+
+| If you were about to type | Use this instead |
+|---|---|
+| catalog.get_catalog_item | `catalog.get_item` (one ASIN, `--path asin=`) or `catalog.search_items` (a batch) |
+| product_pricing.get_item_offers, pricing.get_item_offers | `pricing.get_item_offers_batch` (POST, up to 20 ASINs) |
+| product_pricing.get_listing_offers | `pricing.get_listing_offers_batch` (POST, your own SKUs) |
+| any get_competitive_summary | `pricing.get_competitive_pricing` |
+| orders.get_orders | `orders.search_orders` (needs a time filter; one order is `orders.get_order`), or `orders.get_orders_v0` (deprecated) |
+| listings_items.get_listings_item | `listings.get_listings_item` (`--path sku=`) |
+| vendor_orders.get_purchase_orders_status | `vendor_orders.get_purchase_orders` or `vendor_orders.get_purchase_order` |
+
+If a gateway that has not been updated yet refuses an id this table gives you
+(for example `orders.search_orders`, newer than the v0 pair), run
+`mixshift amazon operations`, use what it lists for that family, and say so.
+
+Most used, all read-only: `catalog.search_items`, `catalog.get_item`,
+`fba_inventory.get_inventory_summaries`, `sales.get_order_metrics`,
+`pricing.get_item_offers_batch`, `pricing.get_competitive_pricing`,
+`listings.get_listings_item`, `listings.search_listings_items`,
+`orders.search_orders`, `finances.list_transactions`,
+`promotions.search_promotions`, `fees.get_my_fees_estimates`.
+
+A refused id answers with `suggested_operations` (in `--json`) and a "did you
+mean" line: take the first one that fits and call it. Parameter names are
+per operation and case-sensitive: copy them from the `notes` of the listing
+(v0 operations use PascalCase, the newer ones camelCase), never from Amazon's
+documentation.
 
 ## When to use this skill
 

@@ -223,6 +223,38 @@ describe('output helpers', () => {
     expect(lines).toContain('  Not retryable as sent: change the request before calling again.');
   });
 
+  it('an unknown-operation refusal carries the suggested operations into --json and text', async () => {
+    const r = await failureFrom(400, envelope('spapi_unknown_operation_hint'));
+    expect(r.suggestedOperations?.[0]).toBe('pricing.get_item_offers_batch');
+    expect(failureContractJson(r).suggested_operations).toEqual(r.suggestedOperations);
+    const lines = failureContractLines(r);
+    // The fix text already names them, so no second "did you mean" line.
+    expect(lines.some((l) => l.includes('did you mean'))).toBe(false);
+    expect(lines).toContain('  list every operation: mixshift amazon operations');
+  });
+
+  it('prints a did-you-mean line when the fix text does not name the suggestion', async () => {
+    const e = envelope('spapi_unknown_operation_hint');
+    e.fix = 'Check the catalog.';
+    const r = await failureFrom(400, e);
+    expect(failureContractLines(r)).toContain(
+      '  did you mean: pricing.get_item_offers_batch, pricing.get_listing_offers_batch, pricing.get_competitive_pricing, catalog.get_item, listings.get_listings_item',
+    );
+  });
+
+  it('only operation-shaped suggestions are kept, at most five', async () => {
+    const e = envelope('spapi_unknown_operation_hint');
+    e.suggested_operations = ['a.b', 'not an id', '\u001b[31mx.y', 'c.d', 'e.f', 'g.h', 'i.j', 'k.l'];
+    const r = await failureFrom(400, e);
+    expect(r.suggestedOperations).toEqual(['a.b', 'c.d', 'e.f', 'g.h', 'i.j']);
+  });
+
+  it('no suggestions: output is unchanged', async () => {
+    const r = await failureFrom(400, envelope('spapi_unknown_operation'));
+    expect(r.suggestedOperations).toBeUndefined();
+    expect(failureContractLines(r).some((l) => l.includes('list every operation'))).toBe(false);
+  });
+
   it('telemetry gets enums and a flag, never the fix text or Amazon\'s words', async () => {
     const refused = failureContractTelemetry(await failureFrom(400, envelope('spapi_measured_rule')));
     expect(refused).toEqual({ source: 'request', retryable: false, has_fix: true });

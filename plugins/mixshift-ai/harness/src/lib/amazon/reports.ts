@@ -277,6 +277,9 @@ export interface ReportFailure {
   fix?: string;
   /** Amazon's reference page for the operation, when the refusal names one. */
   docsUrl?: string;
+  /** On an unknown-operation refusal: the nearest valid operation ids, best
+   *  first (at most 5). Ids only, validated to the `family.verb` shape. */
+  suggestedOperations?: string[];
   /** Parameter NAMES (never values) the refusal is about. */
   missingParams?: string[];
   conflictingParams?: string[];
@@ -1811,6 +1814,17 @@ function paramNames(
   return names.length > 0 ? { [key]: names } : {};
 }
 
+/** The nearest valid operation ids an unknown-operation refusal names. Only
+ *  `family.verb` shaped strings survive, capped at 5, so nothing else the
+ *  server sends can reach a terminal or an agent through this field. */
+export function parseSuggestedOperations(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const ids = v
+    .filter((x): x is string => typeof x === 'string' && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(x))
+    .slice(0, 5);
+  return ids.length > 0 ? ids : undefined;
+}
+
 /** The contract fields of a failure, for a command's `--json` output. One
  *  helper so every Amazon command prints the same names (snake_case, like the
  *  rest of the output). Undefined fields drop out of JSON.stringify. */
@@ -1827,6 +1841,7 @@ export function failureContractJson(f: ReportFailure): Record<string, unknown> {
     missing_params: f.missingParams,
     conflicting_params: f.conflictingParams,
     invalid_params: f.invalidParams,
+    suggested_operations: f.suggestedOperations,
     amazon,
   };
 }
@@ -1836,6 +1851,13 @@ export function failureContractLines(f: ReportFailure): string[] {
   const lines: string[] = [];
   if (f.fix) lines.push(`  fix: ${f.fix}`);
   if (f.docsUrl && !(f.fix ?? '').includes(f.docsUrl)) lines.push(`  docs: ${f.docsUrl}`);
+  if (f.suggestedOperations && f.suggestedOperations.length > 0) {
+    // The gateway's fix text usually carries the same list; do not print it twice.
+    if (!(f.fix ?? '').includes(f.suggestedOperations[0]!)) {
+      lines.push(`  did you mean: ${f.suggestedOperations.join(', ')}`);
+    }
+    lines.push('  list every operation: mixshift amazon operations');
+  }
   if (f.retryable === false && (f.source === 'request' || f.kind === 'invalid_request')) {
     lines.push('  Not retryable as sent: change the request before calling again.');
   }
@@ -1993,6 +2015,9 @@ export function toReportFailure(
     ...paramNames('missingParams', json.missing_params),
     ...paramNames('conflictingParams', json.conflicting_params),
     ...paramNames('invalidParams', json.invalid_params ?? issues?.paths),
+    ...(parseSuggestedOperations(json.suggested_operations) !== undefined
+      ? { suggestedOperations: parseSuggestedOperations(json.suggested_operations) }
+      : {}),
     ...(json.responsePayload !== undefined ? { responsePayload: json.responsePayload } : {}),
     ...(amazonError !== undefined ? { amazonError } : {}),
     ...(strOrUndef(json.responseText) !== undefined

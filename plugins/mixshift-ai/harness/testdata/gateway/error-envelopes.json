@@ -125,5 +125,21 @@
     },
     "source": "amazon_rejected",
     "retryable": false
+  },
+  "spapi_unknown_operation_hint": {
+    "ok": false,
+    "kind": "invalid_request",
+    "friendly": "Unknown operation 'product_pricing.get_item_offers'. Did you mean: pricing.get_item_offers_batch, pricing.get_listing_offers_batch, pricing.get_competitive_pricing, catalog.get_item, listings.get_listings_item? List the catalog via GET /api/amazon/spapi/operations (or the amazon_spapi_operations tool; CLI: mixshift amazon operations).",
+    "fix": "Use one of: pricing.get_item_offers_batch, pricing.get_listing_offers_batch, pricing.get_competitive_pricing, catalog.get_item, listings.get_listings_item. List the catalog via GET /api/amazon/spapi/operations (or the amazon_spapi_operations tool; CLI: mixshift amazon operations). Use an operation id from it exactly as listed. Nothing was sent to Amazon.",
+    "suggested_operations": [
+      "pricing.get_item_offers_batch",
+      "pricing.get_listing_offers_batch",
+      "pricing.get_competitive_pricing",
+      "catalog.get_item",
+      "listings.get_listings_item"
+    ],
+    "list_operations": "GET /api/amazon/spapi/operations",
+    "source": "request",
+    "retryable": false
   }
 }

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-retail
 display_name: Amazon Retail Lookups (live SP-API)
-version: "0.5.2"
+version: "0.5.3"
 description: >
   Live Amazon SP-API retail lookups, straight from Amazon, for any merchant
   you are authorized for. The retail-operations analogue of mx-amazon-report:
@@ -89,7 +89,7 @@ trigger_phrases:
   - review topics for an asin
   - product type requirements
 notes: >
-  Live SP-API call surface: 40 cataloged operations across 17 families,
+  Live SP-API call surface: the cataloged operations across their families,
   reached via `mixshift amazon operations` (discovery) and
   `mixshift amazon call <operation>` (execute). Each call is a single fast
   request/response (no start/poll/get split), so chat hosts need no special
