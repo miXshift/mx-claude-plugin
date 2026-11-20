@@ -450,6 +450,8 @@ function notRankedDays(snapTop: Map<string, number>, ranked: Set<string>): strin
     .join(', ');
 }
 
+const nextDay = (d: string): string => new Date(Date.parse(d + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+
 export function renderRankHistory(h: ShelfRankHistory): string {
   const L: string[] = [];
   L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ''}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
@@ -459,12 +461,13 @@ export function renderRankHistory(h: ShelfRankHistory): string {
   // Absent, nothing below changes: a day with no point stays unexplained, as before.
   const snapTop = new Map<string, number>();
   for (const sn of h.snapshots ?? []) snapTop.set(day(sn.observed_at), Math.max(snapTop.get(day(sn.observed_at)) ?? 0, sn.positions));
-  // A truncated answer cut its oldest points but not its snapshots: days before the oldest kept point say nothing about "not ranked".
+  // A truncated answer cut its oldest points (by count, so the oldest kept day may be partly cut) but not its snapshots:
+  // days up to and including the oldest kept point's day say nothing about "not ranked".
   const oldestPoint = points.length > 0 ? day(points[0].observed_at) : null;
   let trimmed = false;
   if (h.truncated && oldestPoint !== null) {
     for (const d of [...snapTop.keys()]) {
-      if (d < oldestPoint) {
+      if (d <= oldestPoint) {
         snapTop.delete(d);
         trimmed = true;
       }
@@ -527,7 +530,7 @@ export function renderRankHistory(h: ShelfRankHistory): string {
       if (!have.has(d)) missing.push(d);
     }
     if (missing.length > 0) L.push('', `No observation (no snapshot stored): ${missing.join(', ')}`);
-    if (trimmed) L.push('', `Older days were trimmed with the oldest points, so the lines above start at ${oldestPoint}.`);
+    if (trimmed) L.push('', `Older days were trimmed with the oldest points, so the lines above start at ${nextDay(oldestPoint!)}.`);
   }
   L.push('', '**Every point** (oldest first)', '', '| date | asin | absolute | organic | sponsored |', '|---|---|---|---|---|');
   for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);

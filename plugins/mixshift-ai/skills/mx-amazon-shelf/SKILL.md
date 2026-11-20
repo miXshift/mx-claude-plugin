@@ -246,8 +246,8 @@ tell the user that, and never call a blank or dash a skipped or missed
 observation. When `snapshots` is absent (the service has not shipped it yet),
 you cannot tell the two apart: say a day with no point is not explained by the
 data, and do not claim it was missed.
-`asins[]`, when present, lists the ASINs the read covered, even with no points: an
-ASIN there with no point on any day was observed every day and never in the top N.
+`asins[]`, when present, lists the ASINs the read covered, even with no points:
+an ASIN there with no point held no position on the observed days in the range.
 
 ## Tracking keywords over time ("track these keywords", "rank history")
 
