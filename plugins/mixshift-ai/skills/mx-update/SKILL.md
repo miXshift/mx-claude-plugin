@@ -9,7 +9,7 @@ description: >
   NOT use for first-run setup or sign-in (that is mx-welcome), or for
   general navigation and troubleshooting (that is mx-help).
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   author: "MixShift"
 trigger_phrases:
   - update the plugin
@@ -54,6 +54,8 @@ mixshift update-actions --json
 This reports `pending`: post-update catch-up actions still owed to this install, computed against a persisted watermark, not a re-derivation of every historical release.
 
 To see every installed copy of the CLI with its version (a machine keeps each version the host ever installed, and a scheduled task can be running an older one), run `mixshift doctor` and read its `CLI copies` section, or `mixshift cli locate --list`. `mixshift cli locate` alone prints the newest copy's path. If doctor names a `Launcher` problem (a `mixshift` link that points at a folder that no longer exists), show the user the line it prints; do not delete the link for them.
+
+**Older copies after an update.** An update leaves the previous versions on disk, and removing them is optional: nothing in the plugin does it for you. After an update, if `mixshift doctor` (or `mixshift cli locate --list`) shows older copies, offer the preview and nothing more: run `mixshift cli remove-older` (it changes nothing), show the user what it lists, and say that `mixshift cli remove-older --yes` would move those copies into a `.trash` folder (moved, not deleted, and it prints the command to put each back). Run `--yes` only after the user agrees in a later turn, never in the same turn as the preview. If the preview says the search stopped early, `--yes` is refused unless `--allow-partial` is added: explain why and let the user decide. After a `--yes` run, relay its warning in your own words: a scheduled task, saved prompt or launcher link that names a moved copy by its full path will fail until it is updated. If the user declines, drop it; do not raise it again in the same session.
 
 `session_behind_install` and `isStale` are independent facts, not mutually exclusive: the install record can itself be behind `latest` even while it is ahead of this session, so both can be true at once. Check these in order:
 - **If `session_behind_install` is true and `isStale` is false:** the update already succeeded and the install is already at `latest`. Do not walk Step 2's update commands, there is nothing further to update. Tell the user plainly: installed is `installed`, this session is running `current`, so they need to fully quit the application (not just start a new chat or session) and relaunch it. If the old version still shows after a full quit and relaunch, an earlier application process may still be running in the background and needs to be closed too. Then stop for this session.

@@ -383,6 +383,23 @@ describe('renderCliCopiesSection (feedback 3070886, mx-ops#274 item 2)', () => {
     expect(text).not.toContain('newer copy');
   });
 
+  it('names `mixshift cli remove-older` as the optional next step when older copies exist (text only)', () => {
+    const text = renderCliCopiesSection(copies, '0.8.22').join('\n');
+    expect(text).toContain('mixshift cli remove-older');
+    expect(text).toContain('changes nothing until you add --yes');
+  });
+
+  it('does not mention remove-older when there is no older copy', () => {
+    const same = {
+      ...copies,
+      copies: [
+        { path: '/p/new/harness/dist/cli.js', version: '0.8.22', running: true, newest: true },
+        { path: '/p/dup/harness/dist/cli.js', version: '0.8.22', running: false, newest: false },
+      ],
+    };
+    expect(renderCliCopiesSection(same, '0.8.22').join('\n')).not.toContain('remove-older');
+  });
+
   it('an empty scan does not claim the plugin is missing', () => {
     const text = renderCliCopiesSection(
       { newest: null, running: null, copies: [], scanned_roots: [] },
