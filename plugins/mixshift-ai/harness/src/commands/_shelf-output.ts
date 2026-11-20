@@ -105,7 +105,7 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
       );
     } else if (failure.kind === 'forbidden') {
       // reason role: a verified person without the role.
-      process.stderr.write('  To have it changed: ask an owner, admin or manager in your organization, or say "track these keywords" to ask MixShift.\n');
+      process.stderr.write('  To have it changed: ask an owner, admin, manager or builder in your organization, or say "track these keywords" to ask MixShift.\n');
     }
     if (failure.kind === 'tracking_unavailable') {
       process.stderr.write(
@@ -115,7 +115,7 @@ export function emitFailure(failure: ShelfFailure, json: boolean): void {
     }
     if (failure.kind === 'not_tracked') {
       process.stderr.write(
-        '  To track it: an owner, admin or manager can add the keyword to a set that already lists that zip and view ' +
+        '  To track it: an owner, admin, manager or builder can add the keyword to a set that already lists that zip and view ' +
           '(`mixshift shelf tracking list` shows them) with `mixshift shelf tracking add <set> --keyword "<keyword>"`, or create a set ' +
           'for it; anyone can say "track these keywords" to ask MixShift.\n',
       );

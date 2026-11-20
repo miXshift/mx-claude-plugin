@@ -18,7 +18,7 @@
  *   (data calls also take --country, --fresh, --origin, --json)
  *
  * Reads, except `shelf tracking`, which changes only the organization's own
- * rank tracking sets (owners, admins and managers). Every data answer counts
+ * rank tracking sets (owners, admins, managers and builders). Every data answer counts
  * one against the organization's monthly shelf allowance (`shelf usage` shows
  * it); zips, usage, rank-history and tracking are free, though every tracked
  * search counts one each day it runs.

@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-shelf
 display_name: "Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)"
-version: "0.3.2"
+version: "0.3.3"
 description: >
   See the Amazon shelf the way a shopper at a given zip sees it, on demand,
   through the bundled harness CLI: who holds the Buy Box for an ASIN and with
@@ -10,7 +10,7 @@ description: >
   with badges, coupons and stock warnings, the product page as it renders
   today, and who a third-party seller is. Reads back, free, the rank history
   of the keywords the organization tracks (where its ASINs ranked day by
-  day), and lets its owners, admins and managers manage that tracking (list,
+  day), and lets its owners, admins, managers and builders manage that tracking (list,
   create, add and remove keywords and ASINs, pause, resume, delete). Public
   shelf observations from a licensed third-party
   provider on MixShift's own key, never your Amazon credentials. Each
@@ -140,7 +140,7 @@ notes: >
   anything not tracked answers not_tracked (exit 12).
   `mixshift shelf tracking list|show` shows the sets, each set's calls a day
   and the projected monthly use against the allowance, and whether the person
-  can change them (can_edit); an owner, admin or manager signed in as a
+  can change them (can_edit); an owner, admin, manager or builder signed in as a
   person changes them with `shelf tracking create|add|remove|pause|resume|delete`
   (forbidden, exit 11: reason role for a verified person without the role;
   reason identity_not_verified for the shared team login, an unverified

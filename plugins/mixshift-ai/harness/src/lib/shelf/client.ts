@@ -272,7 +272,7 @@ export type ShelfFailureKind =
   | 'upstream_unavailable' // 502: shelf data is temporarily unavailable
   | 'insufficient_scope' // 403: the credential lacks shelf:read
   | 'not_found' // 404: no such shelf endpoint (contract drift), or no tracking set with that id
-  | 'forbidden' // 403: only an owner, admin or manager, signed in as a person, may change the organization's rank tracking
+  | 'forbidden' // 403: only an owner, admin, manager or builder, signed in as a person, may change the organization's rank tracking
   | 'tracking_over_allowance' // the change would push projected monthly tracking use past the allowance
   // --- local-only ---
   | 'tracking_set_exists' // `shelf tracking create` without --replace on an id that is taken (and not as asked)
@@ -296,7 +296,7 @@ export interface ShelfFailure {
   used?: number;
   resetsAt?: string;
   requestMore?: string;
-  /** forbidden: why (`role`: not an owner, admin or manager; `identity_not_verified`: a shared or unverified sign-in). */
+  /** forbidden: why (`role`: not an owner, admin, manager or builder; `identity_not_verified`: a shared or unverified sign-in). */
   reason?: string;
   /** A refused tracking change: the monthly use it would have led to (compare with `allowance`). */
   projectedCallsPerMonth?: number;
@@ -749,9 +749,9 @@ export function defaultFriendly(kind: ShelfFailureKind): string {
     case 'zip_unavailable':
       return 'That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.';
     case 'not_tracked':
-      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
+      return 'That keyword, zip and view are not tracked for your organization. An owner, admin, manager or builder can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
     case 'forbidden':
-      return 'Only an owner, admin or manager of your organization can change rank tracking.';
+      return 'Only an owner, admin, manager or builder of your organization can change rank tracking.';
     case 'tracking_over_allowance':
       return "That change would take your organization's rank tracking past its monthly shelf allowance, so nothing was changed.";
     case 'tracking_set_exists':

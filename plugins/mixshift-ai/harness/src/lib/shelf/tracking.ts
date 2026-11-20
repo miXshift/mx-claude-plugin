@@ -14,7 +14,7 @@
  * every enabled set; each of those counts one against the organization's
  * monthly shelf allowance. Reading and changing the sets is free.
  *
- * Who may write: an owner, admin or manager of the organization; anyone else
+ * Who may write: an owner, admin, manager or builder of the organization; anyone else
  * is refused (forbidden, the service's friendly line). A change
  * that would push the projected monthly use past the allowance is refused
  * (tracking_over_allowance) with `projected_calls_per_month` and `allowance`.
@@ -93,7 +93,7 @@ export interface ShelfTrackingList {
   projected_calls_per_month: number | null;
   /** The organization's monthly shelf allowance. */
   allowance: number | null;
-  /** Whether the signed-in person may change the sets (owner, admin or manager). */
+  /** Whether the signed-in person may change the sets (owner, admin, manager or builder). */
   can_edit: boolean;
   limits: ShelfTrackingLimits;
   /** Set when the month's shelf checks are running low; absent otherwise. */
