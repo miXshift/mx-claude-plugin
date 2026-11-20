@@ -136,7 +136,7 @@ notes: >
   where the pre-delete snapshot is the recreate-from source). SB/SD writes
   carry wire-shape confidence caveats (raw-array bodies + lowercase enums,
   except upper case on SD creatives; SB v4 creates especially): the first real SB/SD apply must dry-run, then
-  commit ONE item with Sam watching.
+  commit ONE item with the user watching.
 
   Cross-references and scope: bid/negation VERDICT workflows belong to
   mx-keyword-bid-health, mx-search-term-negation, mx-asin-target-negation;

@@ -3,6 +3,133 @@
 All notable changes to the `mixshift-ai` plugin are recorded here. This log
 starts at 0.5.39; earlier versions predate the changelog.
 
+## 0.8.23
+
+
+### Added
+
+- **Read and change the labels on your items and campaigns by asking Claude.** Labels are the fields you use to organize your items (ASINs) and Amazon campaigns: Item Group, Brand, Item Label 1 and 2, and Tags 1 to 4 on both, plus Nickname and Parent ASIN on items and Manager and Objective on campaigns. Ask things like "Using MixShift, which item label fields do we have, and what is each one named?" or "Using MixShift, set Item Label 1 to Spring for these ASINs". Claude looks the labels up first, then shows a preview of exactly what would change, and nothing changes until you say yes. Every change made this way records who made it and can be undone, and the Legacy platform's screens show it within a few minutes. An item change reaches every marketplace of the merchant and cannot be limited to one marketplace; a campaign change reaches its one marketplace. One change can cover up to 1,000 items or campaigns, counting an item once for each marketplace it reaches. Scripts and automations can do the same with the `mixshift labels` commands, the REST API or the MCP tools. Labels are being turned on account by account. If yours is not on yet, say "Using MixShift, ask to turn on labels for our account" and MixShift will turn them on and let you know. The guide is at https://mixshift.ai/knowledge-base/labels.
+
+- **Heads-up: Full-Funnel and Review Requests ad spend is not in MixShift totals yet.** For an account that runs Full-Funnel or Review Requests campaigns, ad spend in Report Center, Report Center 2.0 and the other MixShift reports built on our warehouse reads low, and so does the TACOS built on it; ACOS leaves these campaigns out. Amazon sends Full-Funnel campaigns in the unified report, not in the reports MixShift loads today, and we are looking at how to bring them in. Until then, Claude says so when a spend total, ACOS or TACOS matters, and you can get Full-Funnel spend on demand: say "Using MixShift, what was our total ad spend last week, including Full-Funnel?" and Claude requests it from the unified report, which can take several minutes. Amazon does not send Review Requests spend in any report MixShift can pull yet, so MixShift totals cannot include it for now.
+
+- **Claude can now find your Creative Asset Library images by name and build
+  Sponsored Display creatives.** Ask for a logo or image by name and Claude
+  looks for it in the library of the merchant whose brand owns it. Amazon
+  returns only the newest assets in a library, so in a large library an older
+  image can be out of reach: Claude says when only part of the library was
+  searched and asks you for the image's id instead. For Sponsored Display it can list
+  creatives, preview one before it is built, create or edit the headline,
+  logo and custom images on a creative, and tell you why a creative was
+  rejected. Creative changes preview first and wait for your confirmation,
+  like every other ads change, and Claude builds one creative and checks it
+  before the rest.
+
+- **Build an AMC lookalike audience.** Ask the
+  Amazon Marketing Cloud skill for a lookalike of a seed audience, such as your
+  high-value buyers, and it builds one: the seed query picks the shoppers to
+  resemble, you choose how close or how broad (Most similar, Similar, Balanced,
+  Broad or Most broad, the same choices as the AMC console), and Amazon models
+  new shoppers like them and activates the audience on your DSP advertiser. You
+  see a preview first and confirm, as with other audience changes. A lookalike's
+  seed window is at most 90 days, the limit in the AMC console: a longer
+  window is refused with the limit, and the skill tells you what a shorter
+  window means for your seed.
+
+- **Move a DSP line item from a seed audience to its lookalike.** Once an AMC
+  lookalike is ready, the plugin can swap it onto a line item in place of the
+  seed audience, keep your exclusions, and set the line item to target exactly
+  the audiences you chose, so DSP does not widen the lookalike again. It writes
+  down the line item as it was first, so the change can be put back, and each
+  step is a preview you confirm. The skills also explain how DSP combines
+  included and excluded audiences on a line item.
+
+- **Manage your rank tracking from the plugin.** `mixshift shelf tracking list` lists the keywords your organization tracks, with each set's calls a day and the projected monthly use against your shelf allowance. Owners, admins and managers can create a tracking set, add and remove tracked keywords and ASINs, and pause, resume or delete a set; in chat, say "show my tracked keywords" or "add trail mix to my rank tracking". Every running set uses keywords x zips x views x pages of the monthly shelf allowance each day, and a change that would take the projected use past the allowance is refused with both numbers; reading the rank history stays free. Pausing a set stops its daily cost and keeps its rank history readable. Changes need a person's sign-in; anyone else can still ask MixShift to track a keyword.
+
+- **Rank history now tells "not in the top N" apart from a missed day.** `mixshift shelf rank-history` used to show nothing on a day your product held no position in the stored pages, which looked like a skipped observation even though that day was observed. Each ASIN now shows how many observed days it ranked on, lists the days it was observed but not in the top N (N is how deep that day's results went), and names any day with no snapshot as "no observation".
+
+- **See it before shelf checks run out.** When your organization is running low on its monthly shelf checks, `mixshift shelf usage` and `mixshift shelf tracking list` now print a "Heads-up:" line with how many checks are left, when the month resets, and that rank tracking pauses at the limit. Nothing changes while you have plenty left; reading stored rank history stays free.
+
+- **See which plugin copy is running, and catch a broken `mixshift` link.** A machine keeps each version the plugin host ever installed, so the first `cli.js` a search finds can be an old one. `mixshift cli locate` prints the path of the newest copy and `mixshift cli locate --list` shows every copy with its version. `mixshift doctor` has a new `CLI copies` section that says when this session is running an older copy than the newest installed one, and it names a `mixshift` link on your PATH (for example in `~/.local/bin`) that points at a plugin folder that was moved or removed, with the command to remove it; doctor only reports and never deletes anything. A scheduled task's `mixshift task preflight` now prints a `plugin: vX.Y.Z` line (and a `version` field in `--json`), so a run on an older copy is visible in its output. `mixshift --version` (or `-V`) prints just the running version.
+
+### Changed
+
+- **The privacy page now covers the release newsletter.** We email plugin users a
+  weekly note on what shipped. The privacy page now says how your work email gets on
+  that list (people using the plugin, never shared team logins), that Mailchimp sends
+  it for us, and that unsubscribing is permanent.
+
+- **The Walmart skill now says Walmart Connect.** Walmart Connect is the name Walmart
+  uses for its ads business, so the skill, its demo and its help text now use it. Say
+  "demo Walmart Connect" to see the demo. Nothing else changes: the phrases you
+  already use still work.
+
+### Fixed
+
+- **Credential messages now send you to the page you can use.** When a service
+  credential is rejected, when `mixshift task` finds a stale credential, or when a
+  setup code fails, the message now points to Machine credentials
+  (https://build.mixshift.ai/credentials) first, and to mcp.mixshift.io/admin only
+  for organizations that still sign in with one shared team login. People who sign
+  in with Google or Microsoft cannot reach `/admin`, so the old pointer left them
+  with nowhere to go. On Machine credentials, the person who made a credential can
+  rotate its secret without downtime: both secrets work until they confirm. The
+  sign-in, scheduled task and FBA inbound skills now say the same, and the inbound
+  skill adds that only an owner or admin can grant shipment write access. Report
+  Max now says a run counts as usage and is not a charge per run, the same as the
+  forecast skill.
+
+- **An AMC audience preview no longer shows settings that would be ignored.**
+  Creating or fixing an AMC audience now refuses any setting that kind of
+  audience does not take, in the preview too, and lists the settings it does
+  take. Before, a lookalike setting added to a rule-based audience appeared in
+  the preview as if it counted, and confirming would have built a plain
+  rule-based audience. Fixing a failed audience in place now sends the whole
+  audience back, as Amazon requires, instead of only the changed settings.
+
+- **Listing edits through `amazon call listings.patch_listings_item` now reach
+  the preview, and a change set is checked before it is sent.** Before, the
+  change set you passed with `--body` or `--body-file` never arrived, so every
+  try, even on one SKU, was refused with "requires a changeSet". Pass the change
+  set with `--change-set-file` (a body holding it still works) to get a preview.
+  A change set holds 1 to 10 items (split more SKUs into several change sets)
+  with at most 20 patches per item, and nothing beside `items`; one outside
+  these limits is refused with the reason and nothing is sent. The limits are in
+  `amazon call --help`. Where you can write listings, commit that preview with
+  `--commit --change-set-id <id> --approved-change-set-hash <hash>`, both taken
+  from the preview; a body whose `mode` is `"preview"` is not turned into a
+  commit by `--commit`. Search terms (`generic_keyword`) and titles
+  (`item_name`) are among the attributes you can change this way.
+
+- **ACoS targets you set per ASIN or per SKU in Brand Context are now used.**
+  Bid health, runaway spend, budget balance, the daily health check, search
+  term negation and harvest, ASIN target negation and the monthly report now
+  judge each product against the target you set for it, and use your brand
+  ACoS target for every other product. A campaign or ad group that mixes
+  products with different targets is judged on the brand target and marked as
+  such, rather than split. A target written with a percent sign is read as
+  written, so `"0.5%"` is 0.5% (a bare `0.25` is still read as 25%), and a key
+  that is not a 10-character ASIN (for example `B0EXAMPLE1:UK`) is listed as
+  "not an ASIN" instead of being kept as a target that never matches. Before,
+  every product was judged against the brand target. Brands without product
+  targets see no change.
+
+- **`mixshift amazon report get` now returns a finished report without a separate poll.** Before, checking a run only with `report get` could keep answering "not ready" after Amazon had finished, until a `report poll` moved it along. Now `report get` checks the run's status with Amazon while the report is not ready yet and returns it once it is done.
+
+- **Sign-in now records you as the person you signed in as.** If your organization
+  uses member sign-in with Google or Microsoft, the plugin now saves the address you
+  proved on the sign-in page, not the one you typed as a hint before it, and uses it
+  in usage data from the moment you sign in. Usage data now also says whether your
+  work email was verified by Google or Microsoft sign-in or typed on a shared team
+  login. See the privacy page for what is recorded.
+
+- **A wrong live-lookup operation name now tells the agent the right one.** Agents
+  were guessing operation names such as `product_pricing.get_item_offers` or
+  `catalog.get_catalog_item`, getting refused, and trying again several times. The
+  Amazon Retail skill now lists the exact names for the common lookups (offers,
+  catalog item, orders, listings, vendor orders), and a refused name shows the
+  nearest valid operations, in the text output and as
+  `suggested_operations` in `--json`.
+
 ## 0.8.22
 
 

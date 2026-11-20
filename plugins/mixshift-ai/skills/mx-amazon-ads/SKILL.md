@@ -892,7 +892,7 @@ confidence** than SP. Two reasons:
   expect per-item validation errors until the body matches the SB v4 spec.
 
 Because of that, the **first real SB or SD apply for an account must be done
-carefully**: dry-run it, then commit **exactly one item** with Sam watching,
+carefully**: dry-run it, then commit **exactly one item** with the user watching,
 confirm Amazon accepted it, and only then proceed. Do not push a multi-item SB
 or SD commit as the first write on these families. SP writes are the proven
 path; treat SB/SD as research-grade until one real commit has succeeded.
@@ -1128,7 +1128,7 @@ These supersede other instructions:
   both; never report "done" while items errored. Surface the per-item errors
   and the `audit_id`.
 - **SB/SD writes are research-grade.** First real apply on those families:
-  dry-run, then commit ONE item with Sam watching. Match the catalog's
+  dry-run, then commit ONE item with the user watching. Match the catalog's
   raw-array bodies and enum case exactly (lowercase, except SD creatives).
 - **`insufficient_scope` is not retryable.** Hand the user the change list.
 - **Pick the right surface.** Live state and changes here; performance history

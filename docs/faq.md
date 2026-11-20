@@ -193,6 +193,7 @@ The boundary is whether a skill needs a brand-context build. **Everything that n
 - `mx-data-explore` for ad-hoc warehouse query, sample, and export
 - `mx-amazon-report`, `mx-amazon-retail`, `mx-amazon-amc`, `mx-amazon-dsp` for live reads straight from Amazon
 - `mx-amazon-ads` for live Amazon Ads reads plus audited writes (preview, confirm, commit)
+- `mx-labels` for the labels on your items and campaigns: read them, and change them after a preview you confirm (labels are turned on account by account)
 - `mx-walmart-ads` for Walmart Connect: campaigns, reports and previewed changes, for Walmart advertisers connected to your MixShift account (beta)
 - `mx-walmart-retail` for your Walmart Marketplace seller account, read only: per-SKU sales, stock, inbound and days of supply, plus orders, items and inventory, for sellers connected to your MixShift account (beta)
 - `mx-amazon-shelf` for the Amazon shelf as a shopper at a zip sees it: Buy Box, every seller on a listing, keyword rank and its history for tracked keywords (owners, admins and managers manage the tracking from the plugin), the product page, who a seller is (beta; say "demo Amazon shelf")

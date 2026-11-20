@@ -1913,9 +1913,9 @@ var require_dispatcher_base = __commonJS({
       }
       close(callback) {
         if (callback === void 0) {
-          return new Promise((resolve6, reject) => {
+          return new Promise((resolve8, reject) => {
             this.close((err, data) => {
-              return err ? reject(err) : resolve6(data);
+              return err ? reject(err) : resolve8(data);
             });
           });
         }
@@ -1953,12 +1953,12 @@ var require_dispatcher_base = __commonJS({
           err = null;
         }
         if (callback === void 0) {
-          return new Promise((resolve6, reject) => {
+          return new Promise((resolve8, reject) => {
             this.destroy(err, (err2, data) => {
               return err2 ? (
                 /* istanbul ignore next: should never error */
                 reject(err2)
-              ) : resolve6(data);
+              ) : resolve8(data);
             });
           });
         }
@@ -3420,18 +3420,18 @@ var require_webidl = __commonJS({
     webidl.errors.exception = function(message) {
       return new TypeError(`${message.header}: ${message.message}`);
     };
-    webidl.errors.conversionFailed = function(context) {
-      const plural = context.types.length === 1 ? "" : " one of";
-      const message = `${context.argument} could not be converted to${plural}: ${context.types.join(", ")}.`;
+    webidl.errors.conversionFailed = function(context2) {
+      const plural2 = context2.types.length === 1 ? "" : " one of";
+      const message = `${context2.argument} could not be converted to${plural2}: ${context2.types.join(", ")}.`;
       return webidl.errors.exception({
-        header: context.prefix,
+        header: context2.prefix,
         message
       });
     };
-    webidl.errors.invalidArgument = function(context) {
+    webidl.errors.invalidArgument = function(context2) {
       return webidl.errors.exception({
-        header: context.prefix,
-        message: `"${context.value}" is an invalid ${context.type}.`
+        header: context2.prefix,
+        message: `"${context2.value}" is an invalid ${context2.type}.`
       });
     };
     webidl.brandCheck = function(V, I, opts) {
@@ -4225,8 +4225,8 @@ var require_util2 = __commonJS({
     function createDeferredPromise() {
       let res;
       let rej;
-      const promise2 = new Promise((resolve6, reject) => {
-        res = resolve6;
+      const promise2 = new Promise((resolve8, reject) => {
+        res = resolve8;
         rej = reject;
       });
       return { promise: promise2, resolve: res, reject: rej };
@@ -6463,12 +6463,12 @@ upgrade: ${upgrade}\r
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve6, reject) => {
+      const waitForDrain = () => new Promise((resolve8, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve6;
+          callback = resolve8;
         }
       });
       socket.on("close", onDrain).on("drain", onDrain);
@@ -7105,12 +7105,12 @@ var require_client_h2 = __commonJS({
           cb();
         }
       }
-      const waitForDrain = () => new Promise((resolve6, reject) => {
+      const waitForDrain = () => new Promise((resolve8, reject) => {
         assert2(callback === null);
         if (socket[kError]) {
           reject(socket[kError]);
         } else {
-          callback = resolve6;
+          callback = resolve8;
         }
       });
       h2stream.on("close", onDrain).on("drain", onDrain);
@@ -7588,16 +7588,16 @@ var require_client = __commonJS({
         return this[kNeedDrain] < 2;
       }
       async [kClose]() {
-        return new Promise((resolve6) => {
+        return new Promise((resolve8) => {
           if (this[kSize]) {
-            this[kClosedResolve] = resolve6;
+            this[kClosedResolve] = resolve8;
           } else {
-            resolve6(null);
+            resolve8(null);
           }
         });
       }
       async [kDestroy](err) {
-        return new Promise((resolve6) => {
+        return new Promise((resolve8) => {
           const requests = this[kQueue].splice(this[kPendingIdx]);
           for (let i = 0; i < requests.length; i++) {
             const request3 = requests[i];
@@ -7608,7 +7608,7 @@ var require_client = __commonJS({
               this[kClosedResolve]();
               this[kClosedResolve] = null;
             }
-            resolve6(null);
+            resolve8(null);
           };
           if (this[kHTTPContext]) {
             this[kHTTPContext].destroy(err, callback);
@@ -7659,7 +7659,7 @@ var require_client = __commonJS({
         });
       }
       try {
-        const socket = await new Promise((resolve6, reject) => {
+        const socket = await new Promise((resolve8, reject) => {
           client[kConnector]({
             host,
             hostname: hostname4,
@@ -7671,7 +7671,7 @@ var require_client = __commonJS({
             if (err) {
               reject(err);
             } else {
-              resolve6(socket2);
+              resolve8(socket2);
             }
           });
         });
@@ -8007,8 +8007,8 @@ var require_pool_base = __commonJS({
         if (this[kQueue].isEmpty()) {
           await Promise.all(this[kClients].map((c) => c.close()));
         } else {
-          await new Promise((resolve6) => {
-            this[kClosedResolve] = resolve6;
+          await new Promise((resolve8) => {
+            this[kClosedResolve] = resolve8;
           });
         }
       }
@@ -9223,7 +9223,7 @@ var require_readable = __commonJS({
         if (this._readableState.closeEmitted) {
           return null;
         }
-        return await new Promise((resolve6, reject) => {
+        return await new Promise((resolve8, reject) => {
           if (this[kContentLength] > limit) {
             this.destroy(new AbortError());
           }
@@ -9236,7 +9236,7 @@ var require_readable = __commonJS({
             if (signal?.aborted) {
               reject(signal.reason ?? new AbortError());
             } else {
-              resolve6(null);
+              resolve8(null);
             }
           }).on("error", noop).on("data", function(chunk2) {
             limit -= chunk2.length;
@@ -9255,7 +9255,7 @@ var require_readable = __commonJS({
     }
     async function consume(stream, type) {
       assert2(!stream[kConsume]);
-      return new Promise((resolve6, reject) => {
+      return new Promise((resolve8, reject) => {
         if (isUnusable(stream)) {
           const rState = stream._readableState;
           if (rState.destroyed && rState.closeEmitted === false) {
@@ -9272,7 +9272,7 @@ var require_readable = __commonJS({
             stream[kConsume] = {
               type,
               stream,
-              resolve: resolve6,
+              resolve: resolve8,
               reject,
               length: 0,
               body: []
@@ -9342,18 +9342,18 @@ var require_readable = __commonJS({
       return buffer;
     }
     function consumeEnd(consume2) {
-      const { type, body, resolve: resolve6, stream, length } = consume2;
+      const { type, body, resolve: resolve8, stream, length } = consume2;
       try {
         if (type === "text") {
-          resolve6(chunksDecode(body, length));
+          resolve8(chunksDecode(body, length));
         } else if (type === "json") {
-          resolve6(JSON.parse(chunksDecode(body, length)));
+          resolve8(JSON.parse(chunksDecode(body, length)));
         } else if (type === "arrayBuffer") {
-          resolve6(chunksConcat(body, length).buffer);
+          resolve8(chunksConcat(body, length).buffer);
         } else if (type === "blob") {
-          resolve6(new Blob(body, { type: stream[kContentType] }));
+          resolve8(new Blob(body, { type: stream[kContentType] }));
         } else if (type === "bytes") {
-          resolve6(chunksConcat(body, length));
+          resolve8(chunksConcat(body, length));
         }
         consumeFinish(consume2);
       } catch (err) {
@@ -9524,17 +9524,17 @@ var require_api_request = __commonJS({
           }
         }
       }
-      onConnect(abort, context) {
+      onConnect(abort, context2) {
         if (this.reason) {
           abort(this.reason);
           return;
         }
         assert2(this.callback);
         this.abort = abort;
-        this.context = context;
+        this.context = context2;
       }
       onHeaders(statusCode, rawHeaders, resume, statusMessage) {
-        const { callback, opaque, abort, context, responseHeaders, highWaterMark } = this;
+        const { callback, opaque, abort, context: context2, responseHeaders, highWaterMark } = this;
         const headers = responseHeaders === "raw" ? util.parseRawHeaders(rawHeaders) : util.parseHeaders(rawHeaders);
         if (statusCode < 200) {
           if (this.onInfo) {
@@ -9571,7 +9571,7 @@ var require_api_request = __commonJS({
               trailers: this.trailers,
               opaque,
               body: res,
-              context
+              context: context2
             });
           }
         }
@@ -9610,9 +9610,9 @@ var require_api_request = __commonJS({
     };
     function request3(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve6, reject) => {
+        return new Promise((resolve8, reject) => {
           request3.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve6(data);
+            return err ? reject(err) : resolve8(data);
           });
         });
       }
@@ -9740,17 +9740,17 @@ var require_api_stream = __commonJS({
         }
         addSignal(this, signal);
       }
-      onConnect(abort, context) {
+      onConnect(abort, context2) {
         if (this.reason) {
           abort(this.reason);
           return;
         }
         assert2(this.callback);
         this.abort = abort;
-        this.context = context;
+        this.context = context2;
       }
       onHeaders(statusCode, rawHeaders, resume, statusMessage) {
-        const { factory, opaque, context, callback, responseHeaders } = this;
+        const { factory, opaque, context: context2, callback, responseHeaders } = this;
         const headers = responseHeaders === "raw" ? util.parseRawHeaders(rawHeaders) : util.parseHeaders(rawHeaders);
         if (statusCode < 200) {
           if (this.onInfo) {
@@ -9778,7 +9778,7 @@ var require_api_stream = __commonJS({
             statusCode,
             headers,
             opaque,
-            context
+            context: context2
           });
           if (!res || typeof res.write !== "function" || typeof res.end !== "function" || typeof res.on !== "function") {
             throw new InvalidReturnValueError("expected Writable");
@@ -9835,9 +9835,9 @@ var require_api_stream = __commonJS({
     };
     function stream(opts, factory, callback) {
       if (callback === void 0) {
-        return new Promise((resolve6, reject) => {
+        return new Promise((resolve8, reject) => {
           stream.call(this, opts, factory, (err, data) => {
-            return err ? reject(err) : resolve6(data);
+            return err ? reject(err) : resolve8(data);
           });
         });
       }
@@ -9970,7 +9970,7 @@ var require_api_pipeline = __commonJS({
         this.res = null;
         addSignal(this, signal);
       }
-      onConnect(abort, context) {
+      onConnect(abort, context2) {
         const { ret, res } = this;
         if (this.reason) {
           abort(this.reason);
@@ -9979,10 +9979,10 @@ var require_api_pipeline = __commonJS({
         assert2(!res, "pipeline cannot be retried");
         assert2(!ret.destroyed);
         this.abort = abort;
-        this.context = context;
+        this.context = context2;
       }
       onHeaders(statusCode, rawHeaders, resume) {
-        const { opaque, handler, context } = this;
+        const { opaque, handler, context: context2 } = this;
         if (statusCode < 200) {
           if (this.onInfo) {
             const headers = this.responseHeaders === "raw" ? util.parseRawHeaders(rawHeaders) : util.parseHeaders(rawHeaders);
@@ -10000,7 +10000,7 @@ var require_api_pipeline = __commonJS({
             headers,
             opaque,
             body: this.res,
-            context
+            context: context2
           });
         } catch (err) {
           this.res.on("error", util.nop);
@@ -10084,7 +10084,7 @@ var require_api_upgrade = __commonJS({
         this.context = null;
         addSignal(this, signal);
       }
-      onConnect(abort, context) {
+      onConnect(abort, context2) {
         if (this.reason) {
           abort(this.reason);
           return;
@@ -10098,7 +10098,7 @@ var require_api_upgrade = __commonJS({
       }
       onUpgrade(statusCode, rawHeaders, socket) {
         assert2(statusCode === 101);
-        const { callback, opaque, context } = this;
+        const { callback, opaque, context: context2 } = this;
         removeSignal(this);
         this.callback = null;
         const headers = this.responseHeaders === "raw" ? util.parseRawHeaders(rawHeaders) : util.parseHeaders(rawHeaders);
@@ -10106,7 +10106,7 @@ var require_api_upgrade = __commonJS({
           headers,
           socket,
           opaque,
-          context
+          context: context2
         });
       }
       onError(err) {
@@ -10122,9 +10122,9 @@ var require_api_upgrade = __commonJS({
     };
     function upgrade(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve6, reject) => {
+        return new Promise((resolve8, reject) => {
           upgrade.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve6(data);
+            return err ? reject(err) : resolve8(data);
           });
         });
       }
@@ -10175,20 +10175,20 @@ var require_api_connect = __commonJS({
         this.abort = null;
         addSignal(this, signal);
       }
-      onConnect(abort, context) {
+      onConnect(abort, context2) {
         if (this.reason) {
           abort(this.reason);
           return;
         }
         assert2(this.callback);
         this.abort = abort;
-        this.context = context;
+        this.context = context2;
       }
       onHeaders() {
         throw new SocketError("bad connect", null);
       }
       onUpgrade(statusCode, rawHeaders, socket) {
-        const { callback, opaque, context } = this;
+        const { callback, opaque, context: context2 } = this;
         removeSignal(this);
         this.callback = null;
         let headers = rawHeaders;
@@ -10200,7 +10200,7 @@ var require_api_connect = __commonJS({
           headers,
           socket,
           opaque,
-          context
+          context: context2
         });
       }
       onError(err) {
@@ -10216,9 +10216,9 @@ var require_api_connect = __commonJS({
     };
     function connect(opts, callback) {
       if (callback === void 0) {
-        return new Promise((resolve6, reject) => {
+        return new Promise((resolve8, reject) => {
           connect.call(this, opts, (err, data) => {
-            return err ? reject(err) : resolve6(data);
+            return err ? reject(err) : resolve8(data);
           });
         });
       }
@@ -10883,9 +10883,9 @@ var require_pluralizer = __commonJS({
       this: "these"
     };
     module.exports = class Pluralizer {
-      constructor(singular, plural) {
+      constructor(singular, plural2) {
         this.singular = singular;
-        this.plural = plural;
+        this.plural = plural2;
       }
       pluralize(count) {
         const one = count === 1;
@@ -11687,10 +11687,10 @@ var require_headers = __commonJS({
         const lowercaseName = isLowerCase ? name : name.toLowerCase();
         const exists = this[kHeadersMap].get(lowercaseName);
         if (exists) {
-          const delimiter = lowercaseName === "cookie" ? "; " : ", ";
+          const delimiter2 = lowercaseName === "cookie" ? "; " : ", ";
           this[kHeadersMap].set(lowercaseName, {
             name: exists.name,
-            value: `${exists.value}${delimiter}${value}`
+            value: `${exists.value}${delimiter2}${value}`
           });
         } else {
           this[kHeadersMap].set(lowercaseName, { name, value });
@@ -14080,7 +14080,7 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url2 = requestCurrentURL(request3);
         const agent = fetchParams.controller.dispatcher;
-        return new Promise((resolve6, reject) => agent.dispatch(
+        return new Promise((resolve8, reject) => agent.dispatch(
           {
             path: url2.pathname + url2.search,
             origin: url2.origin,
@@ -14156,7 +14156,7 @@ var require_fetch = __commonJS({
                 }
               }
               const onError = this.onError.bind(this);
-              resolve6({
+              resolve8({
                 status,
                 statusText,
                 headersList,
@@ -14202,7 +14202,7 @@ var require_fetch = __commonJS({
               for (let i = 0; i < rawHeaders.length; i += 2) {
                 headersList.append(bufferToLowerCasedHeaderName(rawHeaders[i]), rawHeaders[i + 1].toString("latin1"), true);
               }
-              resolve6({
+              resolve8({
                 status,
                 statusText: STATUS_CODES[status],
                 headersList,
@@ -17894,8 +17894,8 @@ var require_util8 = __commonJS({
       return true;
     }
     function delay(ms) {
-      return new Promise((resolve6) => {
-        setTimeout(resolve6, ms).unref();
+      return new Promise((resolve8) => {
+        setTimeout(resolve8, ms).unref();
       });
     }
     module.exports = {
@@ -19560,7 +19560,7 @@ var require_command = __commonJS({
           writeErr: (str7) => process5.stderr.write(str7),
           getOutHelpWidth: () => process5.stdout.isTTY ? process5.stdout.columns : void 0,
           getErrHelpWidth: () => process5.stderr.isTTY ? process5.stderr.columns : void 0,
-          outputError: (str7, write) => write(str7)
+          outputError: (str7, write2) => write2(str7)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -21359,16 +21359,16 @@ Expecting one of '${allowedValues.join("', '")}'`);
        */
       _getHelpContext(contextOptions) {
         contextOptions = contextOptions || {};
-        const context = { error: !!contextOptions.error };
-        let write;
-        if (context.error) {
-          write = (arg) => this._outputConfiguration.writeErr(arg);
+        const context2 = { error: !!contextOptions.error };
+        let write2;
+        if (context2.error) {
+          write2 = (arg) => this._outputConfiguration.writeErr(arg);
         } else {
-          write = (arg) => this._outputConfiguration.writeOut(arg);
+          write2 = (arg) => this._outputConfiguration.writeOut(arg);
         }
-        context.write = contextOptions.write || write;
-        context.command = this;
-        return context;
+        context2.write = contextOptions.write || write2;
+        context2.command = this;
+        return context2;
       }
       /**
        * Output help information for this command.
@@ -21383,23 +21383,23 @@ Expecting one of '${allowedValues.join("', '")}'`);
           deprecatedCallback = contextOptions;
           contextOptions = void 0;
         }
-        const context = this._getHelpContext(contextOptions);
-        this._getCommandAndAncestors().reverse().forEach((command) => command.emit("beforeAllHelp", context));
-        this.emit("beforeHelp", context);
-        let helpInformation = this.helpInformation(context);
+        const context2 = this._getHelpContext(contextOptions);
+        this._getCommandAndAncestors().reverse().forEach((command) => command.emit("beforeAllHelp", context2));
+        this.emit("beforeHelp", context2);
+        let helpInformation = this.helpInformation(context2);
         if (deprecatedCallback) {
           helpInformation = deprecatedCallback(helpInformation);
           if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
             throw new Error("outputHelp callback must return a string or a Buffer");
           }
         }
-        context.write(helpInformation);
+        context2.write(helpInformation);
         if (this._getHelpOption()?.long) {
           this.emit(this._getHelpOption().long);
         }
-        this.emit("afterHelp", context);
+        this.emit("afterHelp", context2);
         this._getCommandAndAncestors().forEach(
-          (command) => command.emit("afterAllHelp", context)
+          (command) => command.emit("afterAllHelp", context2)
         );
       }
       /**
@@ -21484,15 +21484,15 @@ Expecting one of '${allowedValues.join("', '")}'`);
 Expecting one of '${allowedValues.join("', '")}'`);
         }
         const helpEvent = `${position}Help`;
-        this.on(helpEvent, (context) => {
+        this.on(helpEvent, (context2) => {
           let helpStr;
           if (typeof text === "function") {
-            helpStr = text({ error: context.error, command: context.command });
+            helpStr = text({ error: context2.error, command: context2.command });
           } else {
             helpStr = text;
           }
           if (helpStr) {
-            context.write(`${helpStr}
+            context2.write(`${helpStr}
 `);
           }
         });
@@ -24682,9 +24682,9 @@ var require_timestamp = __commonJS({
         const match = str7.match(timestamp.test);
         if (!match)
           throw new Error("!!timestamp expects a date, starting with yyyy-mm-dd");
-        const [, year, month, day2, hour, minute, second] = match.map(Number);
+        const [, year, month, day3, hour, minute, second] = match.map(Number);
         const millisec = match[7] ? Number((match[7] + "00").substr(1, 3)) : 0;
-        let date5 = Date.UTC(year, month - 1, day2, hour || 0, minute || 0, second || 0, millisec);
+        let date5 = Date.UTC(year, month - 1, day3, hour || 0, minute || 0, second || 0, millisec);
         const tz = match[8];
         if (tz && tz !== "Z") {
           let d = parseSexagesimal(tz, false);
@@ -26896,15 +26896,15 @@ var require_cst_scalar = __commonJS({
       }
       return null;
     }
-    function createScalarToken(value, context) {
-      const { implicitKey = false, indent, inFlow = false, offset = -1, type = "PLAIN" } = context;
+    function createScalarToken(value, context2) {
+      const { implicitKey = false, indent, inFlow = false, offset = -1, type = "PLAIN" } = context2;
       const source = stringifyString.stringifyString({ type, value }, {
         implicitKey,
         indent: indent > 0 ? " ".repeat(indent) : "",
         inFlow,
         options: { blockQuote: true, lineWidth: -1 }
       });
-      const end = context.end ?? [
+      const end = context2.end ?? [
         { type: "newline", offset: -1, indent, source: "\n" }
       ];
       switch (source[0]) {
@@ -26928,8 +26928,8 @@ var require_cst_scalar = __commonJS({
           return { type: "scalar", offset, indent, source, end };
       }
     }
-    function setScalarValue(token, value, context = {}) {
-      let { afterKey = false, implicitKey = false, inFlow = false, type } = context;
+    function setScalarValue(token, value, context2 = {}) {
+      let { afterKey = false, implicitKey = false, inFlow = false, type } = context2;
       let indent = "indent" in token ? token.indent : null;
       if (afterKey && typeof indent === "number")
         indent += 2;
@@ -30180,8 +30180,8 @@ var init_regexes = __esm({
     _emoji = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`;
     ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
     ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
-    mac = (delimiter) => {
-      const escapedDelim = escapeRegex(delimiter ?? ":");
+    mac = (delimiter2) => {
+      const escapedDelim = escapeRegex(delimiter2 ?? ":");
       return new RegExp(`^(?:[0-9A-F]{2}${escapedDelim}){5}[0-9A-F]{2}$|^(?:[0-9a-f]{2}${escapedDelim}){5}[0-9a-f]{2}$`);
     };
     cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
@@ -44786,7 +44786,7 @@ var require_lib = __commonJS({
       tab: 9,
       carriageReturn: 13
     };
-    var isRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+    var isRecord3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
     var isWordChar = (code) => code >= 65 && code <= 90 || code >= 97 && code <= 122 || code >= 48 && code <= 57 || code === 95;
     var isWhitespace = (code) => code === charCode.space || code === charCode.tab || code === charCode.newline || code === charCode.carriageReturn;
     var hasOnlyWhitespaceBetween = (sql, start2, end) => {
@@ -44913,7 +44913,7 @@ var require_lib = __commonJS({
         return "NULL";
       let year;
       let month;
-      let day2;
+      let day3;
       let hour;
       let minute;
       let second;
@@ -44921,7 +44921,7 @@ var require_lib = __commonJS({
       if (timezone === "local") {
         year = date5.getFullYear();
         month = date5.getMonth() + 1;
-        day2 = date5.getDate();
+        day3 = date5.getDate();
         hour = date5.getHours();
         minute = date5.getMinutes();
         second = date5.getSeconds();
@@ -44934,13 +44934,13 @@ var require_lib = __commonJS({
         const adjustedDate = new Date(time3);
         year = adjustedDate.getUTCFullYear();
         month = adjustedDate.getUTCMonth() + 1;
-        day2 = adjustedDate.getUTCDate();
+        day3 = adjustedDate.getUTCDate();
         hour = adjustedDate.getUTCHours();
         minute = adjustedDate.getUTCMinutes();
         second = adjustedDate.getUTCSeconds();
         millisecond = adjustedDate.getUTCMilliseconds();
       }
-      return escapeString(pad4(year) + "-" + pad2(month) + "-" + pad2(day2) + " " + pad2(hour) + ":" + pad2(minute) + ":" + pad2(second) + "." + pad3(millisecond));
+      return escapeString(pad4(year) + "-" + pad2(month) + "-" + pad2(day3) + " " + pad2(hour) + ":" + pad2(minute) + ":" + pad2(second) + "." + pad3(millisecond));
     };
     exports.dateToString = dateToString;
     var escapeId = (value, forbidQualified) => {
@@ -45020,7 +45020,7 @@ var require_lib = __commonJS({
             return String(value.toSqlString());
           if (!(stringifyObjects === void 0 || stringifyObjects === null))
             return escapeString(String(value));
-          if (isRecord2(value))
+          if (isRecord3(value))
             return (0, exports.objectToValues)(value, timezone);
           return escapeString(String(value));
         }
@@ -45059,7 +45059,7 @@ var require_lib = __commonJS({
         else if (typeof currentValue === "object" && currentValue !== null && !stringifyObjects) {
           if (setIndex === -2)
             setIndex = findSetKeyword(sql);
-          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord2(currentValue)) {
+          if (setIndex !== -1 && setIndex <= placeholderPosition && hasOnlyWhitespaceBetween(sql, setIndex, placeholderPosition) && !hasSqlString(currentValue) && !Array.isArray(currentValue) && !node_buffer_1.Buffer.isBuffer(currentValue) && !(currentValue instanceof Uint8Array) && !isDate(currentValue) && isRecord3(currentValue)) {
             escapedValue = (0, exports.objectToValues)(currentValue, timezone);
             setIndex = findSetKeyword(sql, placeholderEnd);
           } else
@@ -61416,9 +61416,9 @@ var require_tracing = __commonJS({
       }
       return channel.hasSubscribers ?? channel.start?.hasSubscribers ?? false;
     }
-    function traceCallback(channel, fn, position, context, thisArg, ...args) {
+    function traceCallback(channel, fn, position, context2, thisArg, ...args) {
       if (shouldTrace(channel)) {
-        return channel.traceCallback(fn, position, context(), thisArg, ...args);
+        return channel.traceCallback(fn, position, context2(), thisArg, ...args);
       }
       return fn.apply(thisArg, args);
     }
@@ -61540,7 +61540,7 @@ var require_named_placeholders = __commonJS({
         }
         return s;
       }
-      function join38(tree) {
+      function join41(tree) {
         if (tree.length === 1) {
           return tree;
         }
@@ -61566,7 +61566,7 @@ var require_named_placeholders = __commonJS({
         if (cache && (tree = cache.get(query2))) {
           return toArrayParams(tree, paramsObj);
         }
-        tree = join38(parse4(query2));
+        tree = join41(parse4(query2));
         if (cache) {
           cache.set(query2, tree);
         }
@@ -61723,11 +61723,11 @@ var require_connection2 = __commonJS({
             const config2 = this.config;
             tracePromise(
               connectChannel,
-              () => new Promise((resolve6, reject) => {
+              () => new Promise((resolve8, reject) => {
                 let onConnect, onError;
                 onConnect = (param) => {
                   this.removeListener("error", onError);
-                  resolve6(param);
+                  resolve8(param);
                 };
                 onError = (err) => {
                   this.removeListener("connect", onConnect);
@@ -62152,9 +62152,9 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(queryChannel)) {
           tracePromise(
             queryChannel,
-            () => new Promise((resolve6, reject) => {
+            () => new Promise((resolve8, reject) => {
               cmdQuery.once("error", reject);
-              cmdQuery.once("end", () => resolve6());
+              cmdQuery.once("end", () => resolve8());
               this.addCommand(cmdQuery);
             }),
             () => {
@@ -62301,12 +62301,12 @@ var require_connection2 = __commonJS({
         } else if (shouldTrace(executeChannel)) {
           tracePromise(
             executeChannel,
-            () => new Promise((resolve6, reject) => {
+            () => new Promise((resolve8, reject) => {
               prepareAndExecute((err) => {
                 executeCommand.emit("error", err);
               });
               executeCommand.once("error", reject);
-              executeCommand.once("end", () => resolve6());
+              executeCommand.once("end", () => resolve8());
             }),
             () => {
               const server = getServerContext(this.config);
@@ -62573,13 +62573,13 @@ var require_make_done_cb = __commonJS({
   "node_modules/mysql2/lib/promise/make_done_cb.js"(exports, module) {
     "use strict";
     var { applyCapturedStack } = require_capture_local_err();
-    function makeDoneCb(resolve6, reject, stackHolder) {
+    function makeDoneCb(resolve8, reject, stackHolder) {
       return function(err, rows, fields) {
         if (err) {
           applyCapturedStack(err, stackHolder);
           reject(err);
         } else {
-          resolve6([rows, fields]);
+          resolve8([rows, fields]);
         }
       };
     }
@@ -62603,8 +62603,8 @@ var require_prepared_statement_info = __commonJS({
         const stackHolder = captureStackHolder(
           _PromisePreparedStatementInfo.prototype.execute
         );
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           if (parameters) {
             s.execute(parameters, done);
           } else {
@@ -62613,9 +62613,9 @@ var require_prepared_statement_info = __commonJS({
         });
       }
       close() {
-        return new this.Promise((resolve6) => {
+        return new this.Promise((resolve8) => {
           this.statement.close();
-          resolve6();
+          resolve8();
         });
       }
     };
@@ -62688,8 +62688,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           if (params !== void 0) {
             c.query(query2, params, done);
           } else {
@@ -62705,8 +62705,8 @@ var require_connection3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           if (params !== void 0) {
             c.execute(query2, params, done);
           } else {
@@ -62715,8 +62715,8 @@ var require_connection3 = __commonJS({
         });
       }
       end() {
-        return new this.Promise((resolve6) => {
-          this.connection.end(resolve6);
+        return new this.Promise((resolve8) => {
+          this.connection.end(resolve8);
         });
       }
       async [Symbol.asyncDispose]() {
@@ -62729,16 +62729,16 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.beginTransaction
         );
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           c.beginTransaction(done);
         });
       }
       commit() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.commit);
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           c.commit(done);
         });
       }
@@ -62747,21 +62747,21 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.rollback
         );
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           c.rollback(done);
         });
       }
       ping() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.ping);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           c.ping((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6(true);
+              resolve8(true);
             }
           });
         });
@@ -62769,13 +62769,13 @@ var require_connection3 = __commonJS({
       reset() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.reset);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           c.reset((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6();
+              resolve8();
             }
           });
         });
@@ -62783,13 +62783,13 @@ var require_connection3 = __commonJS({
       connect() {
         const c = this.connection;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.connect);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           c.connect((err, param) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6(param);
+              resolve8(param);
             }
           });
         });
@@ -62798,7 +62798,7 @@ var require_connection3 = __commonJS({
         const c = this.connection;
         const promiseImpl = this.Promise;
         const stackHolder = captureStackHolder(_PromiseConnection.prototype.prepare);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           c.prepare(options, (err, statement) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
@@ -62808,7 +62808,7 @@ var require_connection3 = __commonJS({
                 statement,
                 promiseImpl
               );
-              resolve6(wrappedStatement);
+              resolve8(wrappedStatement);
             }
           });
         });
@@ -62818,13 +62818,13 @@ var require_connection3 = __commonJS({
         const stackHolder = captureStackHolder(
           _PromiseConnection.prototype.changeUser
         );
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           c.changeUser(options, (err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6();
+              resolve8();
             }
           });
         });
@@ -63291,12 +63291,12 @@ var require_pool3 = __commonJS({
       }
       getConnection() {
         const corePool = this.pool;
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           corePool.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve6(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve8(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63312,8 +63312,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           if (args !== void 0) {
             corePool.query(sql, args, done);
           } else {
@@ -63329,8 +63329,8 @@ var require_pool3 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           if (args) {
             corePool.execute(sql, args, done);
           } else {
@@ -63341,13 +63341,13 @@ var require_pool3 = __commonJS({
       end() {
         const corePool = this.pool;
         const stackHolder = captureStackHolder(_PromisePool.prototype.end);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           corePool.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6();
+              resolve8();
             }
           });
         });
@@ -63779,12 +63779,12 @@ var require_pool_cluster2 = __commonJS({
       }
       getConnection() {
         const corePoolNamespace = this.poolNamespace;
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           corePoolNamespace.getConnection((err, coreConnection) => {
             if (err) {
               reject(err);
             } else {
-              resolve6(new PromisePoolConnection(coreConnection, this.Promise));
+              resolve8(new PromisePoolConnection(coreConnection, this.Promise));
             }
           });
         });
@@ -63799,8 +63799,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           corePoolNamespace.query(sql, values, done);
         });
       }
@@ -63814,8 +63814,8 @@ var require_pool_cluster2 = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           corePoolNamespace.execute(sql, values, done);
         });
       }
@@ -63854,9 +63854,9 @@ var require_promise = __commonJS({
           "no Promise implementation available.Use promise-enabled node version or pass userland Promise implementation as parameter, for example: { Promise: require('bluebird') }"
         );
       }
-      return new thePromise((resolve6, reject) => {
+      return new thePromise((resolve8, reject) => {
         coreConnection.once("connect", () => {
-          resolve6(new PromiseConnection(coreConnection, thePromise));
+          resolve8(new PromiseConnection(coreConnection, thePromise));
         });
         coreConnection.once("error", (err) => {
           applyCapturedStack(err, stackHolder);
@@ -63883,7 +63883,7 @@ var require_promise = __commonJS({
       }
       getConnection(pattern, selector) {
         const corePoolCluster = this.poolCluster;
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           corePoolCluster.getConnection(
             pattern,
             selector,
@@ -63891,7 +63891,7 @@ var require_promise = __commonJS({
               if (err) {
                 reject(err);
               } else {
-                resolve6(new PromisePoolConnection(coreConnection, this.Promise));
+                resolve8(new PromisePoolConnection(coreConnection, this.Promise));
               }
             }
           );
@@ -63905,8 +63905,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           corePoolCluster.query(sql, args, done);
         });
       }
@@ -63920,8 +63920,8 @@ var require_promise = __commonJS({
             "Callback function is not available with promise clients."
           );
         }
-        return new this.Promise((resolve6, reject) => {
-          const done = makeDoneCb(resolve6, reject, stackHolder);
+        return new this.Promise((resolve8, reject) => {
+          const done = makeDoneCb(resolve8, reject, stackHolder);
           corePoolCluster.execute(sql, args, done);
         });
       }
@@ -63934,13 +63934,13 @@ var require_promise = __commonJS({
       end() {
         const corePoolCluster = this.poolCluster;
         const stackHolder = captureStackHolder(_PromisePoolCluster.prototype.end);
-        return new this.Promise((resolve6, reject) => {
+        return new this.Promise((resolve8, reject) => {
           corePoolCluster.end((err) => {
             if (err) {
               applyCapturedStack(err, stackHolder);
               reject(err);
             } else {
-              resolve6();
+              resolve8();
             }
           });
         });
@@ -64383,7 +64383,7 @@ async function doMintServiceToken(service, dataDirOverride) {
   }
   if (res.status === 401) {
     throw new Error(
-      `Service credential rejected (revoked, or rotated without updating this machine). Ask your tenant admin to check the credential at ${service.api_base}/admin, then re-run \`mixshift auth service-setup\` with the current secret.`
+      `Service credential rejected (revoked, or rotated without updating this machine). Ask whoever manages credentials in your organization to check it at Machine credentials (https://build.mixshift.ai/credentials), or at ${service.api_base}/admin if your organization signs in with one shared team login, then re-run \`mixshift auth service-setup\` with a fresh setup code or the current secret.`
     );
   }
   if (res.status === 429) {
@@ -65563,6 +65563,18 @@ var init_events = __esm({
       // series was cut, outcome and duration; never the keyword, the zip, the
       // ASINs or the ranks.
       ShelfRankHistoryRead: "shelf.rank_history_read",
+      // `mixshift shelf tracking list|show` (the organization's rank tracking
+      // sets): which read, how many sets (and how many run), whether the person may
+      // change them, a set's keyword, ASIN, zip, view and page counts and its calls
+      // a day, the projected monthly use and the allowance, outcome and duration;
+      // never a set id, a note, a keyword, a zip or an ASIN.
+      ShelfTrackingRead: "shelf.tracking_read",
+      // `mixshift shelf tracking create|add|remove|pause|resume|delete`: which
+      // change, how many keywords and ASINs were asked for and how many were added
+      // or removed, the set's counts and calls a day after it, the projected
+      // monthly use and the allowance, outcome (with the failure kind) and
+      // duration; never a set id, a note, a keyword, a zip or an ASIN.
+      ShelfTrackingChanged: "shelf.tracking_changed",
       // Emitted by the mx-amazon-shelf SKILL (not the harness) once per conclusion
       // it reaches for the user: payload.label from the closed list in its
       // SKILL.md (rank_found, promise_loss, price_undercut, ...). Label only: never
@@ -65859,7 +65871,9 @@ function decodeAccessTokenClaims(token) {
     return {
       user_id: nonEmptyString(obj2.sub) ?? nonEmptyString(obj2.user_id),
       email: nonEmptyString(obj2.email),
-      actor: nonEmptyString(obj2.actor)
+      actor: nonEmptyString(obj2.actor),
+      ...obj2.idv === "member" ? { idv: "member" } : {},
+      ...obj2.idv === "member" && nonEmptyString(obj2.org) ? { org: obj2.org } : {}
     };
   } catch {
     return {};
@@ -65908,13 +65922,20 @@ async function resolveAttribution(dataDirOverride) {
     const service = credentials?.service;
     if (datahub) {
       const claims = decodeAccessTokenClaims(datahub.access_token);
+      const identity = claims.actor === void 0 ? "stored_label" : claims.idv === "member" ? "member_sign_in" : "shared_login";
       return {
         personLabel: claims.actor ?? datahub.person_label,
         tenantEmail: claims.email ?? datahub.email,
         // A human session present => not automation, even if a service block
         // also exists on this data dir (preserves prior semantics).
         automation: false,
-        actor: { kind: "human", user_id: claims.user_id ?? datahub.user_id }
+        actor: {
+          kind: "human",
+          user_id: claims.user_id ?? datahub.user_id,
+          identity,
+          verified: identity === "member_sign_in",
+          ...identity === "member_sign_in" && claims.org ? { org_id: claims.org } : {}
+        }
       };
     }
     if (service) {
@@ -65930,6 +65951,7 @@ async function resolveAttribution(dataDirOverride) {
         automation: true,
         actor: {
           kind: "service",
+          identity: "service_credential",
           svc_label: service.label,
           svc_client_id: service.client_id,
           ...enriched
@@ -65969,6 +65991,12 @@ async function track(input, dataDirOverride) {
     const tenantEmail = attribution.tenantEmail ?? profileEmail;
     const automationPayload = attribution.automation ? { automation: true } : {};
     const actorPayload = { actor: attribution.actor };
+    const overridden = overriddenColumns(input, datahubPersonLabel, tenantEmail);
+    const recordActor = overridden.length ? {
+      ...attribution.actor,
+      overridden,
+      ...overridden.includes("person_label") && attribution.actor.kind === "human" ? { verified: false } : {}
+    } : attribution.actor;
     const userAgent = buildUserAgent(pluginVersion, surface, os);
     if (wasJustCreated && input.event_name !== EventName.PluginInstalled) {
       const synthetic = {
@@ -65992,7 +66020,8 @@ async function track(input, dataDirOverride) {
     const record2 = {
       event_name: input.event_name,
       install_id: installId,
-      email: input.email ?? tenantEmail,
+      // An empty string is "not supplied", like undefined, never a stored ''.
+      email: input.email || tenantEmail,
       person_label: input.person_label ?? datahubPersonLabel,
       plugin_version: pluginVersion,
       install_path: installPath,
@@ -66001,7 +66030,7 @@ async function track(input, dataDirOverride) {
       node_version: process.version,
       user_agent: userAgent,
       ts: nowIso,
-      payload: { ...input.payload ?? {}, ...automationPayload, ...actorPayload },
+      payload: { ...input.payload ?? {}, ...automationPayload, actor: recordActor },
       skill_id: input.skill_id,
       duration_ms: input.duration_ms,
       outcome: input.outcome,
@@ -66046,6 +66075,15 @@ async function maybeFlush(dataDirOverride) {
 function detectInstallPath() {
   if (process.env.CLAUDE_PLUGIN_ROOT) return "plugin-host";
   return "cli";
+}
+function sameAddress(a, b) {
+  return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
+function overriddenColumns(input, personLabel, tenantEmail) {
+  const out2 = [];
+  if (input.email && !sameAddress(input.email, tenantEmail)) out2.push("email");
+  if (input.person_label !== void 0 && !sameAddress(input.person_label, personLabel)) out2.push("person_label");
+  return out2;
 }
 function detectOs() {
   return `${platform()}-${release()}`;
@@ -66896,10 +66934,10 @@ function blankLiterals(sql) {
   return out2;
 }
 function referencedTables(sql) {
-  const clean = blankLiterals(stripSqlComments(sql));
+  const clean2 = blankLiterals(stripSqlComments(sql));
   const out2 = /* @__PURE__ */ new Map();
   const re = /\b(?:from|join)\s+`?([\w$]+(?:\.[\w$]+)?)`?(?:\s+(?:as\s+)?`?([\w$]+)`?)?/gi;
-  for (let m = re.exec(clean); m; m = re.exec(clean)) {
+  for (let m = re.exec(clean2); m; m = re.exec(clean2)) {
     const table = m[1].split(".").pop().toLowerCase();
     out2.set(table, table);
     const alias = m[2]?.toLowerCase();
@@ -67238,57 +67276,57 @@ async function paginateOverCap(sql, exec4, opts = {}) {
 function deriveQueryShape(sql) {
   const nulls = { table: null, select_star: false, projected_cols: null };
   if (!sql) return nulls;
-  const clean = stripSqlComments(sql).trim().replace(/;\s*$/, "").trim();
-  if (!clean) return nulls;
-  const inner = unwrapPagerWrapper(clean);
+  const clean2 = stripSqlComments(sql).trim().replace(/;\s*$/, "").trim();
+  if (!clean2) return nulls;
+  const inner = unwrapPagerWrapper(clean2);
   if (inner !== null) return deriveQueryShape(inner);
-  const selIdx = firstKeywordAtDepth0(clean, 0, "select");
+  const selIdx = firstKeywordAtDepth0(clean2, 0, "select");
   if (selIdx < 0) return nulls;
   const afterSelect = selIdx + "select".length;
-  const fromIdx = firstKeywordAtDepth0(clean, afterSelect, "from");
-  let projection = (fromIdx < 0 ? clean.slice(afterSelect) : clean.slice(afterSelect, fromIdx)).trim();
+  const fromIdx = firstKeywordAtDepth0(clean2, afterSelect, "from");
+  let projection = (fromIdx < 0 ? clean2.slice(afterSelect) : clean2.slice(afterSelect, fromIdx)).trim();
   projection = projection.replace(/^(?:distinct|all)\s+/i, "").trim();
   const selectStar = isStarProjection(projection);
   const projectedCols = selectStar ? null : countTopLevelTerms(projection);
-  let table = fromIdx < 0 ? null : parsePrimaryTable(clean, fromIdx + "from".length);
-  if (table !== null && /^with\b/i.test(clean)) {
-    const cteNames = collectCteNames(clean);
+  let table = fromIdx < 0 ? null : parsePrimaryTable(clean2, fromIdx + "from".length);
+  if (table !== null && /^with\b/i.test(clean2)) {
+    const cteNames = collectCteNames(clean2);
     if (cteNames.includes(table)) table = null;
   }
   return { table, select_star: selectStar, projected_cols: projectedCols };
 }
-function collectCteNames(clean) {
-  const head = /^with\s+(?:recursive\s+)?/i.exec(clean);
+function collectCteNames(clean2) {
+  const head = /^with\s+(?:recursive\s+)?/i.exec(clean2);
   if (!head) return [];
   const names = [];
-  const len = clean.length;
+  const len = clean2.length;
   let i = head[0].length;
   const skipWs = () => {
-    while (i < len && /\s/.test(clean[i])) i++;
+    while (i < len && /\s/.test(clean2[i])) i++;
   };
   for (; ; ) {
     skipWs();
-    const nameMatch = /^(`[^`]+`|[\w$]+)/.exec(clean.slice(i));
+    const nameMatch = /^(`[^`]+`|[\w$]+)/.exec(clean2.slice(i));
     if (!nameMatch) break;
     const name = nameMatch[1].replace(/`/g, "").toLowerCase();
     i += nameMatch[0].length;
     skipWs();
-    if (clean[i] === "(") {
-      const close = matchingParen(clean, i);
+    if (clean2[i] === "(") {
+      const close = matchingParen(clean2, i);
       if (close < 0) break;
       i = close + 1;
       skipWs();
     }
-    if (!/^as\b/i.test(clean.slice(i))) break;
+    if (!/^as\b/i.test(clean2.slice(i))) break;
     i += 2;
     skipWs();
-    if (clean[i] !== "(") break;
-    const bodyClose = matchingParen(clean, i);
+    if (clean2[i] !== "(") break;
+    const bodyClose = matchingParen(clean2, i);
     if (bodyClose < 0) break;
     names.push(name);
     i = bodyClose + 1;
     skipWs();
-    if (clean[i] === ",") {
+    if (clean2[i] === ",") {
       i++;
       continue;
     }
@@ -67390,15 +67428,15 @@ function matchingParen(sql, openIdx) {
   }
   return -1;
 }
-function unwrapPagerWrapper(clean) {
-  const m = /^select\s+\*\s+from\s*\(/i.exec(clean);
+function unwrapPagerWrapper(clean2) {
+  const m = /^select\s+\*\s+from\s*\(/i.exec(clean2);
   if (!m) return null;
   const openIdx = m[0].length - 1;
-  const closeIdx = matchingParen(clean, openIdx);
+  const closeIdx = matchingParen(clean2, openIdx);
   if (closeIdx < 0) return null;
-  const after = clean.slice(closeIdx + 1).trim();
+  const after = clean2.slice(closeIdx + 1).trim();
   if (!/^as\s+_mx_page\b/i.test(after)) return null;
-  return clean.slice(openIdx + 1, closeIdx).trim();
+  return clean2.slice(openIdx + 1, closeIdx).trim();
 }
 function isStarProjection(projection) {
   if (!projection) return false;
@@ -69438,8 +69476,8 @@ async function raceDeadline(op, ms) {
   try {
     return await Promise.race([
       op,
-      new Promise((resolve6) => {
-        timer = setTimeout(() => resolve6(DEADLINE), ms);
+      new Promise((resolve8) => {
+        timer = setTimeout(() => resolve8(DEADLINE), ms);
         timer.unref?.();
       })
     ]);
@@ -70259,11 +70297,11 @@ Either pick a different slug, delete the existing directory, or pass --force to 
     }
   }
   const existingBinding = options.force ? await readExistingBinding(ctxPath) : null;
-  const context = buildContext(suggestion, validAccounts, options.asOfDate);
+  const context2 = buildContext(suggestion, validAccounts, options.asOfDate);
   if (existingBinding) {
-    context.binding = existingBinding;
+    context2.binding = existingBinding;
   }
-  const parsed = contextSchema.safeParse(context);
+  const parsed = contextSchema.safeParse(context2);
   if (!parsed.success) {
     throw new Error(
       `Bootstrap produced an invalid context.yaml for "${suggestion.slug}". This is a bug in the harness; please report it.
@@ -70895,14 +70933,14 @@ __export(flush_log_exports, {
   tailFlushLog: () => tailFlushLog
 });
 import { appendFile as appendFile2, mkdir as mkdir26, readFile as readFile36 } from "node:fs/promises";
-import { join as join24, dirname as dirname31 } from "node:path";
+import { join as join25, dirname as dirname32 } from "node:path";
 function flushLogPath(dataDirOverride) {
-  return join24(telemetryDir(dataDirOverride), LOG_FILENAME);
+  return join25(telemetryDir(dataDirOverride), LOG_FILENAME);
 }
 async function appendFlushLog(result, dataDirOverride) {
   try {
     const path2 = flushLogPath(dataDirOverride);
-    await mkdir26(dirname31(path2), { recursive: true });
+    await mkdir26(dirname32(path2), { recursive: true });
     const errorField = result.error ? result.error.replace(/[\t\n\r]+/g, " ").slice(0, 300) : "";
     const line = `${(/* @__PURE__ */ new Date()).toISOString()}	${result.status}	${result.events_sent}	${errorField}
 `;
@@ -71591,15 +71629,15 @@ async function mirrorKeyAssignments(op, brandSlugs, dataDirOverride, client) {
 }
 function mirrorStatusNote(outcomes) {
   if (outcomes.length === 0) return "";
-  const failed = outcomes.filter((o) => !o.mirrored);
-  if (failed.length === 0) {
+  const failed2 = outcomes.filter((o) => !o.mirrored);
+  if (failed2.length === 0) {
     return "  \u2713 Key brands mirrored to the org store.\n";
   }
-  const mirrored = outcomes.length - failed.length;
-  const detail = failed[0]?.detail ?? "unreachable";
-  const commands = [...new Set(failed.map((o) => `mixshift brand key ${o.op} ${o.brand_slug}`))];
+  const mirrored = outcomes.length - failed2.length;
+  const detail = failed2[0]?.detail ?? "unreachable";
+  const commands = [...new Set(failed2.map((o) => `mixshift brand key ${o.op} ${o.brand_slug}`))];
   const lead = mirrored > 0 ? `  \u2713 ${mirrored} mirrored to the org store. Note: ` : "  note: ";
-  return `${lead}${failed.length} key-brand change(s) could not be mirrored to the org store (${detail}). Your local list is updated. To mirror when back online, re-run: ${commands.join("; ")}
+  return `${lead}${failed2.length} key-brand change(s) could not be mirrored to the org store (${detail}). Your local list is updated. To mirror when back online, re-run: ${commands.join("; ")}
 `;
 }
 
@@ -72917,7 +72955,7 @@ ${candidates}`
   }
   const canonicalSlug = row.slug;
   const ctxResult = await validateBrandContext(canonicalSlug, args.dataDir);
-  const context = ctxResult.ok ? ctxResult.context : null;
+  const context2 = ctxResult.ok ? ctxResult.context : null;
   const { config: brandConfig } = await readBrandConfig(
     canonicalSlug,
     args.dataDir
@@ -72938,12 +72976,12 @@ ${candidates}`
   );
   blocks.push(
     renderScorecardRow(
-      buildScorecards({ row, context, brandConfig, runs, isKey, framing })
+      buildScorecards({ row, context: context2, brandConfig, runs, isKey, framing })
     )
   );
-  if (context) {
+  if (context2) {
     blocks.push(
-      renderCard({ title: "Context", body: renderContextBody(context, framing) })
+      renderCard({ title: "Context", body: renderContextBody(context2, framing) })
     );
   } else {
     blocks.push(
@@ -74695,6 +74733,167 @@ import { readFile as readFile17, writeFile as writeFile10, mkdir as mkdir10, ren
 import { dirname as dirname14 } from "node:path";
 init_resolve();
 init_load2();
+
+// src/lib/context/product-targets.ts
+var PRODUCT_TARGET_RULE = "Each product on a row uses by_asin[ASIN], else by_sku[SKU], else the brand acos_target. If every product on the row lands on the same target, use it. If they differ, or the row names no product, use the brand acos_target and say so on that row.";
+var MAX_TARGET_PCT = 1e3;
+var VALUE_KEYS = [
+  "acos_target_pct",
+  "acos_target",
+  "target_acos_pct",
+  "target_acos",
+  "acos_pct",
+  "acos",
+  "target"
+];
+var ASIN_ROW_KEYS = ["asin", "ASIN", "child_asin", "parent_asin"];
+var SKU_ROW_KEYS = ["sku", "SKU", "seller_sku", "msku"];
+function isRecord(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+function parseTargetValue(v) {
+  let n;
+  let hasPercentSign = false;
+  if (typeof v === "number") {
+    n = v;
+  } else if (typeof v === "string") {
+    const trimmed = v.trim();
+    hasPercentSign = trimmed.endsWith("%");
+    const s = trimmed.replace(/%$/, "").trim();
+    if (s.length > 0 && /^[+]?\d*\.?\d+$/.test(s)) n = Number(s);
+  } else if (isRecord(v)) {
+    for (const k of VALUE_KEYS) {
+      if (v[k] !== void 0 && v[k] !== null) return parseTargetValue(v[k]);
+    }
+    return { ok: false, reason: `no target value (expected one of ${VALUE_KEYS.join(", ")})` };
+  }
+  if (n === void 0 || !Number.isFinite(n)) {
+    return { ok: false, reason: "not a number" };
+  }
+  if (n <= 0) return { ok: false, reason: "target must be above 0" };
+  if (n < 1 && !hasPercentSign) n = Math.round(n * 100 * 1e6) / 1e6;
+  if (n > MAX_TARGET_PCT) return { ok: false, reason: `target above ${MAX_TARGET_PCT}%` };
+  return { ok: true, value: n };
+}
+function normalizeId(kind, raw) {
+  const t = raw.trim();
+  return kind === "asin" ? t.toUpperCase() : t;
+}
+var ASIN_SHAPE = /^[A-Z0-9]{10}$/;
+var NOT_AN_ASIN_REASON = "not an ASIN (an ASIN is 10 letters and digits)";
+function kindOfKey(key) {
+  const k = key.toLowerCase();
+  const aboutTarget = k.includes("acos") || k.includes("target");
+  if (!aboutTarget) return null;
+  if (k.includes("asin")) return "asin";
+  if (k.includes("sku")) return "sku";
+  return null;
+}
+var NESTED_KEYS = {
+  asin: ["by_asin", "asin", "asins", "per_asin"],
+  sku: ["by_sku", "sku", "skus", "per_sku"]
+};
+var Collector = class {
+  by_asin = {};
+  by_sku = {};
+  source_paths = [];
+  skipped = [];
+  add(kind, path2, rawId, rawValue) {
+    const id = normalizeId(kind, rawId);
+    if (id.length === 0) {
+      this.skipped.push({ path: path2, id: rawId, reason: `empty ${kind.toUpperCase()}` });
+      return;
+    }
+    if (kind === "asin" && !ASIN_SHAPE.test(id)) {
+      this.skipped.push({ path: path2, id: rawId, reason: NOT_AN_ASIN_REASON });
+      return;
+    }
+    const parsed = parseTargetValue(rawValue);
+    if (!parsed.ok) {
+      this.skipped.push({ path: path2, id: rawId, reason: parsed.reason });
+      return;
+    }
+    const map2 = kind === "asin" ? this.by_asin : this.by_sku;
+    const existing = map2[id];
+    if (existing !== void 0 && existing !== parsed.value) {
+      this.skipped.push({
+        path: path2,
+        id: rawId,
+        reason: `conflicts with ${existing}% set earlier for the same ${kind.toUpperCase()}; kept ${existing}%`
+      });
+      return;
+    }
+    map2[id] = parsed.value;
+  }
+  /** Read a map or a list of rows into `kind`. Returns true if it looked like one. */
+  readBlock(kind, path2, block) {
+    if (Array.isArray(block)) {
+      const idKeys = kind === "asin" ? ASIN_ROW_KEYS : SKU_ROW_KEYS;
+      block.forEach((row, i) => {
+        if (!isRecord(row)) {
+          this.skipped.push({ path: path2, id: `#${i}`, reason: "row is not an object" });
+          return;
+        }
+        const idKey = idKeys.find((k) => typeof row[k] === "string" && row[k].trim() !== "");
+        if (!idKey) {
+          this.skipped.push({ path: path2, id: `#${i}`, reason: `row has no ${kind.toUpperCase()}` });
+          return;
+        }
+        this.add(kind, path2, row[idKey], row);
+      });
+      this.source_paths.push(path2);
+      return true;
+    }
+    if (isRecord(block)) {
+      for (const [id, v] of Object.entries(block)) this.add(kind, path2, id, v);
+      this.source_paths.push(path2);
+      return true;
+    }
+    return false;
+  }
+};
+function extractProductAcosTargets(context2) {
+  if (!isRecord(context2)) return null;
+  const thresholds = context2.thresholds;
+  if (!isRecord(thresholds)) return null;
+  const c = new Collector();
+  const keys = Object.keys(thresholds).sort((a, b) => rank(a) - rank(b));
+  for (const key of keys) {
+    const block = thresholds[key];
+    const path2 = `thresholds.${key}`;
+    const kind = kindOfKey(key);
+    if (kind) {
+      c.readBlock(kind, path2, block);
+      continue;
+    }
+    const k = key.toLowerCase();
+    if ((k.includes("acos") || k.includes("target")) && isRecord(block)) {
+      for (const nk of ["asin", "sku"]) {
+        for (const sub of NESTED_KEYS[nk]) {
+          if (block[sub] !== void 0) c.readBlock(nk, `${path2}.${sub}`, block[sub]);
+        }
+      }
+    }
+  }
+  if (c.source_paths.length === 0) return null;
+  if (Object.keys(c.by_asin).length === 0 && Object.keys(c.by_sku).length === 0 && c.skipped.length === 0) {
+    return null;
+  }
+  return {
+    by_asin: c.by_asin,
+    by_sku: c.by_sku,
+    source_paths: c.source_paths,
+    skipped: c.skipped,
+    rule: PRODUCT_TARGET_RULE
+  };
+}
+function rank(key) {
+  if (key === "acos_target_by_asin") return 0;
+  if (key === "acos_target_by_sku") return 1;
+  return 2;
+}
+
+// src/lib/brain/read.ts
 init_format_error();
 
 // src/lib/context-sync/autosync.ts
@@ -75458,6 +75657,11 @@ async function resolveBrandFields(brandSlug, dataDirOverride, options = {}) {
     out2[key] = resolveFieldFrom(ctx, brain, BRAND_FIELD_REGISTRY[key]);
   }
   return out2;
+}
+async function resolveProductAcosTargets(brandSlug, dataDirOverride) {
+  const ctx = await validateBrandContext(brandSlug, dataDirOverride);
+  if (!ctx.ok) return null;
+  return extractProductAcosTargets(ctx.context);
 }
 var CONTEXT_PATH_TO_KEY = {};
 for (const k of BRAND_FIELD_KEYS) {
@@ -76283,17 +76487,24 @@ async function noticeIfRetired(slug, options = {}) {
 
 // src/commands/brand-context.ts
 function registerBrandContextCommands(brand) {
-  const context = brand.command("context").description(
+  const context2 = brand.command("context").description(
     "Resolved brand context \u2014 the brand-level fields skills read, each tagged with its source (Tier-3 context.yaml = you confirmed it, Tier-2 brain = auto pre-filled) so output can show confidence."
   );
-  context.command("resolve <slug>").description(
+  context2.command("resolve <slug>").description(
     "Resolve every brand-level field across the tiers in one pass. --json emits { field: { value, source, fetched_at, account_wide? } | null }; a null field means neither tier has it (use the skill default); account_wide is present and true only for a bound sub-brand whose pre-filled value describes the whole seller account, not this brand."
   ).action(async (slug, _opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const fields = await resolveBrandFields(slug, root.dataDir, { explicit: true });
+    const productTargets = await resolveProductAcosTargets(slug, root.dataDir);
     await noticeIfRetired(slug, { dataDirOverride: root.dataDir });
     if (root.json) {
-      process.stdout.write(JSON.stringify({ slug, fields }, null, 2) + "\n");
+      process.stdout.write(
+        JSON.stringify(
+          productTargets ? { slug, fields, product_acos_targets: productTargets } : { slug, fields },
+          null,
+          2
+        ) + "\n"
+      );
       return;
     }
     const lines = [`
@@ -76319,12 +76530,26 @@ Resolved brand context for ${slug}:`];
         );
       }
     }
+    if (productTargets) lines.push(...formatProductTargets(productTargets));
     lines.push(
       `
 ${confirmed} confirmed \xB7 ${prefilled} pre-filled \xB7 ${gaps} not set \u2014 set any with \`mixshift brand config ${slug}\`, or run a skill that captures it.`
     );
     process.stdout.write(lines.join("\n") + "\n");
   });
+}
+function formatProductTargets(t) {
+  const asins = Object.keys(t.by_asin).length;
+  const skus = Object.keys(t.by_sku).length;
+  const out2 = [
+    `  \u2713 product_acos_targets: ${asins} per-ASIN, ${skus} per-SKU (you confirmed; from ${t.source_paths.join(", ")}). Skills use these per product and acos_target_pct everywhere else.`
+  ];
+  if (t.skipped.length > 0) {
+    out2.push(
+      `    ${t.skipped.length} entr${t.skipped.length === 1 ? "y" : "ies"} could not be read and use the brand target: ` + t.skipped.slice(0, 5).map((s) => `${s.id} (${s.reason})`).join("; ") + (t.skipped.length > 5 ? `; and ${t.skipped.length - 5} more` : "")
+    );
+  }
+  return out2;
 }
 function formatValue(v) {
   if (Array.isArray(v)) return `[${v.length} item${v.length === 1 ? "" : "s"}]`;
@@ -77333,7 +77558,7 @@ async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
   const dir = brandDir(brandSlug, dataDirOverride);
   const briPath = join13(dir, "brand-intelligence.yaml");
   const corporaPath = join13(dir, "corpora");
-  const [context, narrative, intel, corpora, brainResult] = await Promise.all([
+  const [context2, narrative, intel, corpora, brainResult] = await Promise.all([
     readYamlIfExists(ctxPath),
     readTextIfExists(narPath),
     readYamlIfExists(briPath),
@@ -77345,9 +77570,9 @@ async function readBrandContextSources(brandSlug, _runDate, dataDirOverride) {
     stockout_candidates: brainResult.brain.stockouts ?? [],
     brand_term_typo_candidates: brainResult.brain.brand_term_typos ?? []
   } : null;
-  const last_updated = context?.last_updated ?? null;
+  const last_updated = context2?.last_updated ?? null;
   return {
-    context,
+    context: context2,
     context_path: ctxPath,
     narrative_md: narrative,
     narrative_path: narPath,
@@ -77382,7 +77607,7 @@ function parseNarrativeSections(md) {
   }
   return out2;
 }
-function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date()) {
+function computeAuditCoverage(context2, labels, now = /* @__PURE__ */ new Date()) {
   const rows = [];
   let required_present = 0;
   let required_total = 0;
@@ -77392,11 +77617,11 @@ function computeAuditCoverage(context, labels, now = /* @__PURE__ */ new Date())
   let open_gaps_count = 0;
   let placeholder_count = 0;
   for (const label of labels) {
-    const value = context ? resolveAuditPath(context, label.path) : void 0;
+    const value = context2 ? resolveAuditPath(context2, label.path) : void 0;
     const isPresent2 = !isAuditMissing(value);
     const isStale2 = !!(label.fresh_check && isPresent2 && typeof value === "string" && isStaleDate(value, now));
     if (isStale2) stale_count += 1;
-    const isPlaceholder = isPresent2 && label.path === "management.acos_target_pct" && getNested(context, "management.acos_target_source") === "default";
+    const isPlaceholder = isPresent2 && label.path === "management.acos_target_pct" && getNested(context2, "management.acos_target_source") === "default";
     if (isPlaceholder) placeholder_count += 1;
     if (label.tier === "required") {
       required_total += 1;
@@ -79420,10 +79645,10 @@ var SBD_QUERY_COUNT = 7;
 var REPORT_BEARING_QUERY_IDS = ["sbd-01", "sbd-02", "sbd-03", "sbd-04"];
 function classifyFetchOutcome(fetched) {
   if (fetched.ok) return "ok";
-  const failed = new Set(fetched.errors.map((e) => e.query_id));
-  if (failed.has("resolve_seller_ids")) return "error";
-  if (REPORT_BEARING_QUERY_IDS.every((id) => failed.has(id))) return "error";
-  return failed.size >= SBD_QUERY_COUNT ? "error" : "partial";
+  const failed2 = new Set(fetched.errors.map((e) => e.query_id));
+  if (failed2.has("resolve_seller_ids")) return "error";
+  if (REPORT_BEARING_QUERY_IDS.every((id) => failed2.has(id))) return "error";
+  return failed2.size >= SBD_QUERY_COUNT ? "error" : "partial";
 }
 
 // src/lib/binding/stake.ts
@@ -79440,7 +79665,7 @@ function utcDatePart(iso) {
   return iso.slice(0, 10);
 }
 function buildCoverageStakePayload(report) {
-  const day2 = utcDatePart(report.generated_at);
+  const day3 = utcDatePart(report.generated_at);
   const interpretation = summarizeCoverage(report).slice(0, MAX_INTERPRETATION_CHARS2);
   return {
     brand_slug: accountNamespaceSlug(report.seller_id),
@@ -79460,7 +79685,7 @@ function buildCoverageStakePayload(report) {
       match_rate: report.match.match_rate === null ? null : round24(report.match.match_rate),
       classification_proposal: report.classification.proposal
     },
-    idempotency_key: coverageIdempotencyKey(report.seller_id, day2)
+    idempotency_key: coverageIdempotencyKey(report.seller_id, day3)
   };
 }
 function round24(n) {
@@ -79863,9 +80088,9 @@ async function buildOldBrandPlan(brand, items, dataDirOverride) {
     triage
   };
 }
-function buildTriageProposals(context, items) {
+function buildTriageProposals(context2, items) {
   const proposals = [];
-  (context.structural_events ?? []).forEach((event, idx) => {
+  (context2.structural_events ?? []).forEach((event, idx) => {
     const match = matchAgainstItems(event.interpretation, items);
     proposals.push({
       section: `structural_events[${idx}]`,
@@ -79875,7 +80100,7 @@ function buildTriageProposals(context, items) {
       rationale: match ? `Mentions the "${match.label}" label by name.` : "No label match found; treated as account-wide/shared by default so no sub-brand loses this event."
     });
   });
-  (context.sub_brands ?? []).forEach((sb, idx) => {
+  (context2.sub_brands ?? []).forEach((sb, idx) => {
     const match = items.find((i) => i.label.toLowerCase() === sb.name.toLowerCase());
     proposals.push({
       section: `sub_brands[${idx}]`,
@@ -79885,7 +80110,7 @@ function buildTriageProposals(context, items) {
       rationale: match ? "This row names a label becoming its own bound sub-brand; the binding now encodes the same identity (design doc \xA72.3), so the duplicate row retires." : "No matching promoted label; carrying forward as a shared reference unless corrected."
     });
   });
-  for (const term of context.negation?.protected_terms ?? []) {
+  for (const term of context2.negation?.protected_terms ?? []) {
     const match = matchAgainstItems(term, items);
     proposals.push({
       section: "negation.protected_terms",
@@ -79903,7 +80128,7 @@ function buildTriageProposals(context, items) {
     { key: "reporting" }
   ];
   for (const s of sharedSections) {
-    if (context[s.key] === void 0) continue;
+    if (context2[s.key] === void 0) continue;
     proposals.push({
       section: s.key,
       summary: `${s.key} settings`,
@@ -79911,7 +80136,7 @@ function buildTriageProposals(context, items) {
       rationale: "Account-level operating settings: the design copies shared answers into every sub-brand at setup, never a read-time merge (design doc \xA74.2 step 3 / \xA75.1)."
     });
   }
-  if (context.brand_terms !== void 0) {
+  if (context2.brand_terms !== void 0) {
     proposals.push({
       section: "brand_terms",
       summary: "brand_terms map",
@@ -82963,13 +83188,13 @@ var PromisePolyfill = class extends Promise {
   // Available starting from Node 22
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers
   static withResolver() {
-    let resolve6;
+    let resolve8;
     let reject;
     const promise2 = new Promise((res, rej) => {
-      resolve6 = res;
+      resolve8 = res;
       reject = rej;
     });
-    return { promise: promise2, resolve: resolve6, reject };
+    return { promise: promise2, resolve: resolve8, reject };
   }
 };
 
@@ -82994,11 +83219,11 @@ function getCallSites() {
 }
 function createPrompt(view) {
   const callSites = getCallSites();
-  const prompt = (config2, context = {}) => {
-    const { input = process.stdin, signal } = context;
+  const prompt = (config2, context2 = {}) => {
+    const { input = process.stdin, signal } = context2;
     const cleanups = /* @__PURE__ */ new Set();
     const output = new import_mute_stream.default();
-    output.pipe(context.output ?? process.stdout);
+    output.pipe(context2.output ?? process.stdout);
     const rl = readline2.createInterface({
       terminal: true,
       input,
@@ -83006,7 +83231,7 @@ function createPrompt(view) {
     });
     output.mute();
     const screen = new ScreenManager(rl);
-    const { promise: promise2, resolve: resolve6, reject } = PromisePolyfill.withResolver();
+    const { promise: promise2, resolve: resolve8, reject } = PromisePolyfill.withResolver();
     const cancel = () => reject(new CancelPromptError());
     if (signal) {
       const abort = () => reject(new AbortPromptError({ cause: signal.reason }));
@@ -83037,7 +83262,7 @@ function createPrompt(view) {
           try {
             const nextView = view(config2, (value) => {
               if (effectsSettled) {
-                resolve6(value);
+                resolve8(value);
               } else {
                 pendingDone = { value };
               }
@@ -83060,7 +83285,7 @@ function createPrompt(view) {
           if (pendingDone !== null) {
             const { value } = pendingDone;
             pendingDone = null;
-            resolve6(value);
+            resolve8(value);
           }
         });
       };
@@ -83077,7 +83302,7 @@ function createPrompt(view) {
         throw error51;
       }).finally(() => {
         cleanups.forEach((cleanup) => cleanup());
-        screen.done({ clearContent: Boolean(context.clearPromptOnDone) });
+        screen.done({ clearContent: Boolean(context2.clearPromptOnDone) });
         output.end();
       }).then(() => promise2), { cancel });
     });
@@ -83472,6 +83697,8 @@ function resolveClientId(cliFlag) {
 }
 
 // src/lib/auth/login-flow.ts
+init_token_claims();
+init_schema3();
 init_load();
 init_save();
 init_telemetry();
@@ -83551,7 +83778,7 @@ async function pollDeviceFlow(opts) {
         ok: true,
         mode: "device",
         apiBase,
-        personLabel: opts.personLabel,
+        personLabel: datahub.person_label,
         email: poll.email,
         userId: poll.user_id,
         clientId: poll.client_id ?? clientId,
@@ -83623,9 +83850,9 @@ var defaultOpenBrowser = async (url2) => {
     stdio: "ignore",
     shell: true
   });
-  await new Promise((resolve6, reject) => {
+  await new Promise((resolve8, reject) => {
     child.once("error", reject);
-    setImmediate(() => resolve6());
+    setImmediate(() => resolve8());
   });
   child.unref();
 };
@@ -83750,7 +83977,7 @@ Opening MixShift sign-in in your browser. If it doesn't open automatically, visi
       ok: true,
       mode: "pkce",
       apiBase: opts.apiBase,
-      personLabel: opts.personLabel,
+      personLabel: datahub.person_label,
       email: exchanged.email,
       userId: exchanged.user_id,
       clientId: exchanged.client_id ?? opts.clientId,
@@ -83783,7 +84010,7 @@ function buildLoginUrl(opts, pkce, redirectUri) {
   return `${opts.apiBase}/login?${params.toString()}`;
 }
 function startCallbackServer(expectedState) {
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve8, reject) => {
     let resolveCallback = () => {
     };
     let rejectCallback = () => {
@@ -83855,14 +84082,14 @@ function startCallbackServer(expectedState) {
         reject(new Error("Could not determine local callback port"));
         return;
       }
-      resolve6({ server, port: addr.port, callbackPromise });
+      resolve8({ server, port: addr.port, callbackPromise });
     });
     server.on("error", (err) => reject(err));
   });
 }
 function closeServer(server) {
-  return new Promise((resolve6) => {
-    server.close(() => resolve6());
+  return new Promise((resolve8) => {
+    server.close(() => resolve8());
   });
 }
 function respondHtml(res, status, body) {
@@ -83922,7 +84149,7 @@ async function runDeviceLogin(opts) {
         ok: true,
         mode: "device",
         apiBase: opts.apiBase,
-        personLabel: opts.personLabel,
+        personLabel: datahub.person_label,
         email: poll.email,
         userId: poll.user_id,
         clientId: poll.client_id ?? opts.clientId,
@@ -83985,7 +84212,7 @@ function toDatahubCreds(opts, resp) {
     refresh_expires_at: resp.refresh_expires_at,
     user_id: resp.user_id,
     email: resp.email,
-    person_label: opts.personLabel,
+    person_label: signedInPersonLabel(resp.access_token, opts.personLabel),
     device_label: opts.deviceLabel,
     client_id: opts.clientId
   };
@@ -84041,6 +84268,10 @@ async function postLoginDiscoverBestEffort(dataDirOverride, email3, personLabel)
       dataDirOverride
     );
   }
+}
+function signedInPersonLabel(accessToken, typed) {
+  const actor = decodeAccessTokenClaims(accessToken).actor;
+  return actor && datahubCredsSchema.shape.person_label.safeParse(actor).success ? actor : typed;
 }
 function isLikelyEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -84219,7 +84450,7 @@ async function exchangeSetupCode(apiBase, setupCode, fetchImpl = fetch) {
     const body = await res.json().catch(() => ({}));
     if (body.error === "invalid_setup_code") {
       throw new Error(
-        "That setup code is unknown, expired, or already used. Codes are single-use and last 10 minutes, and a gateway deploy drops any pending code. Mint a fresh one at People & access (https://build.mixshift.ai/people) and retry right away. On a legacy single sign-in tenant that hasn't moved to OAuth yet? Use mcp.mixshift.io/admin for now."
+        "That setup code is unknown, expired, or already used. Codes are single-use and last 10 minutes, and a gateway deploy drops any pending code. Mint a fresh one at Machine credentials (https://build.mixshift.ai/credentials) and retry right away. If your organization still signs in with one shared team login, use mcp.mixshift.io/admin for now."
       );
     }
     throw new Error("The exchange endpoint rejected the request (invalid_request).");
@@ -84568,13 +84799,13 @@ Try: \`mixshift data query --sql "SELECT 1"\` to verify warehouse access.
 }
 function registerServiceSetupSubcommand(auth) {
   auth.command("service-setup").description(
-    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from your tenant admin (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias MIXSHIFT_CLIENT_SECRET), never argv."
+    "Configure a service credential for unattended runs (scheduled tasks, cloud automations, CI). Preferred: --setup-code from People & access (one-time, no secret handling). Raw path: --client-id plus --client-secret-file or MIXSHIFT_SERVICE_CLIENT_SECRET (alias MIXSHIFT_CLIENT_SECRET), never argv."
   ).option(
     "--api-base <url>",
     "mx-legacy-auth service URL (default: https://mcp.mixshift.io, or MIXSHIFT_GATEWAY_BASE_URL)."
   ).option(
     "--setup-code <code>",
-    "One-time setup code (SVC-XXXX-XXXX) minted by your admin at People & access (https://build.mixshift.ai/people). Legacy single sign-in tenants that have not moved to OAuth yet can use mcp.mixshift.io/admin for now."
+    "One-time setup code (SVC-XXXX-XXXX) made at Machine credentials (https://build.mixshift.ai/credentials). Organizations still on one shared team login can use mcp.mixshift.io/admin for now."
   ).option(
     "--client-id <id>",
     "Service client id (svc_...). Raw path only. Defaults to the MIXSHIFT_SERVICE_CLIENT_ID env var."
@@ -85205,19 +85436,19 @@ init_load2();
 
 // src/lib/prefetch/params.ts
 function buildStandardParams(opts) {
-  const { context, runDate, paramOverrides = {} } = opts;
+  const { context: context2, runDate, paramOverrides = {} } = opts;
   if (!isIsoDate(runDate)) {
     throw new Error(
       `runDate must be a YYYY-MM-DD string, got "${runDate}".`
     );
   }
-  if (context.accounts.length === 0) {
+  if (context2.accounts.length === 0) {
     throw new Error(
-      `Brand "${context.brand_slug}" has no accounts in context.yaml. Re-run brand discovery / bootstrap.`
+      `Brand "${context2.brand_slug}" has no accounts in context.yaml. Re-run brand discovery / bootstrap.`
     );
   }
-  const primary = context.accounts.find((a) => a.role === "primary") ?? context.accounts[0];
-  const sellerIdList = context.accounts.map((a) => Number(a.seller_id));
+  const primary = context2.accounts.find((a) => a.role === "primary") ?? context2.accounts[0];
+  const sellerIdList = context2.accounts.map((a) => Number(a.seller_id));
   const lookbackDays = typeof paramOverrides.lookback_days === "number" ? paramOverrides.lookback_days : 30;
   const runDateD = isoToDate(runDate);
   const yesterday = isoFromDate(addDays(runDateD, -1));
@@ -85231,7 +85462,7 @@ function buildStandardParams(opts) {
   );
   const currentMonthEnd = isoFromDate(lastOfMonth(runDateD));
   const lifetimeOrdersThreshold = readNumberFromUnknownObject(
-    context.negation?.asin_negation,
+    context2.negation?.asin_negation,
     "pre_check_lifetime_orders_threshold",
     3
   );
@@ -85533,7 +85764,7 @@ init_telemetry();
 async function runPrefetch(opts) {
   const t0 = Date.now();
   const manifest = await loadSkillManifest(opts.skill);
-  const { context } = await loadBrandContext(opts.brand, opts.dataDirOverride);
+  const { context: context2 } = await loadBrandContext(opts.brand, opts.dataDirOverride);
   await track(
     {
       event_name: EventName.PrefetchStarted,
@@ -85543,11 +85774,11 @@ async function runPrefetch(opts) {
     opts.dataDirOverride
   );
   const params = buildStandardParams({
-    context,
+    context: context2,
     runDate: opts.runDate,
     paramOverrides: opts.paramOverrides
   });
-  const binding = context.binding ?? null;
+  const binding = context2.binding ?? null;
   const lensDecisions = [];
   const paramsFor = (id) => {
     const lens = lensFor(id, binding);
@@ -85557,7 +85788,7 @@ async function runPrefetch(opts) {
   };
   const derivedByQueryId = /* @__PURE__ */ new Map();
   const derivedSellerKey = String(params.seller_id ?? "");
-  const derivedForSeller = context.campaign_structure?.derived_labels?.[derivedSellerKey];
+  const derivedForSeller = context2.campaign_structure?.derived_labels?.[derivedSellerKey];
   if (derivedForSeller) {
     for (const [queryId, { dimension, column }] of Object.entries(LABEL_QUERY_COLUMNS)) {
       if (!manifest.sql_ids.includes(queryId)) continue;
@@ -85653,10 +85884,10 @@ async function runPrefetch(opts) {
   const lensWarnings = buildPrefetchLensWarnings(
     reconciledLensDecisions,
     perQueryResults,
-    context.brand_slug
+    context2.brand_slug
   );
   const artifact_paths = await writePrefetchArtifacts({
-    brand_slug: context.brand_slug,
+    brand_slug: context2.brand_slug,
     skill_id: manifest.skill_id,
     run_date: opts.runDate,
     query_outputs: queryOutputs,
@@ -85664,8 +85895,8 @@ async function runPrefetch(opts) {
       skill_version: manifest.version,
       schema_version: manifest.schema_version,
       run_kind: manifest.run_kind,
-      account_count: context.accounts.length,
-      primary_metric: context.management.primary_metric,
+      account_count: context2.accounts.length,
+      primary_metric: context2.management.primary_metric,
       // Durable per-run record of the lens (null = unbound brand): the run
       // artifact must say which numbers are label-scoped, in the artifact
       // itself, not only in session output.
@@ -85692,7 +85923,7 @@ async function runPrefetch(opts) {
     opts.dataDirOverride
   );
   return {
-    brand_slug: context.brand_slug,
+    brand_slug: context2.brand_slug,
     skill_id: manifest.skill_id,
     run_date: opts.runDate,
     artifact_paths,
@@ -86297,7 +86528,7 @@ import { dirname as dirname25 } from "node:path";
 
 // src/lib/output/csv.ts
 function createCsvWriter(stream, columns) {
-  let written = 0;
+  let written2 = 0;
   let headerWritten = false;
   return {
     writeHeader() {
@@ -86308,12 +86539,12 @@ function createCsvWriter(stream, columns) {
     writeRow(row) {
       if (!headerWritten) this.writeHeader();
       stream.write(columns.map((c) => formatCell2(row[c.name])).join(",") + "\n");
-      written++;
+      written2++;
     },
     end() {
     },
     rowsWritten() {
-      return written;
+      return written2;
     }
   };
 }
@@ -86335,8 +86566,8 @@ function formatDate2(d) {
   if (!Number.isFinite(d.getTime())) return "";
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day2 = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day2}`;
+  const day3 = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day3}`;
 }
 
 // src/lib/output/csv-file-sink.ts
@@ -86359,10 +86590,10 @@ function createCsvFileSink(outPath) {
   }
   function waitDrain(s) {
     if (!s.writableNeedDrain) return Promise.resolve();
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve8, reject) => {
       const onDrain = () => {
         cleanup();
-        resolve6();
+        resolve8();
       };
       const onError = (err) => {
         cleanup();
@@ -86387,7 +86618,7 @@ function createCsvFileSink(outPath) {
     if (!stream || closed) return Promise.resolve();
     const s = stream;
     closed = true;
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve8, reject) => {
       if (streamError) {
         s.destroy();
         reject(streamError);
@@ -86399,7 +86630,7 @@ function createCsvFileSink(outPath) {
       };
       const onFinish = () => {
         cleanup();
-        resolve6();
+        resolve8();
       };
       const onError = (err) => {
         cleanup();
@@ -87153,8 +87384,8 @@ function formatCellForMd(v) {
     const d = v;
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day2 = String(d.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${day2}`;
+    const day3 = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day3}`;
   }
   const s = String(v);
   return s.replace(/\|/g, "\\|");
@@ -88422,6 +88653,256 @@ function registerVersionCommand(program3) {
   );
 }
 
+// src/commands/cli-locate.ts
+init_plugin_root();
+
+// src/lib/cli-copies.ts
+import { readFileSync as readFileSync2, readdirSync, realpathSync, statSync as statSync2 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { dirname as dirname28, join as join21, resolve as resolve2 } from "node:path";
+var SKIP_DIRS = /* @__PURE__ */ new Set([
+  "node_modules",
+  ".git",
+  ".trash",
+  ".Trash",
+  "marketplaces"
+]);
+var PLUGIN_LOCATION_NAMES = /* @__PURE__ */ new Set([
+  "mnt",
+  ".remote-plugins",
+  ".claude",
+  "plugins",
+  "cache",
+  "synced"
+]);
+function isPluginLocationName(name) {
+  return PLUGIN_LOCATION_NAMES.has(name) || name.startsWith("plugin_") || name.startsWith("mixshift-ai") || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(_[0-9a-f-]+)?$/i.test(name) || /^\d+(\.\d+){1,3}([-+].*)?$/.test(name);
+}
+var DEFAULT_MAX_DEPTH = 9;
+var DEFAULT_MAX_ENTRIES = 2e5;
+function defaultScanRoots(opts = {}) {
+  const home = opts.home ?? homedir5();
+  const platform3 = opts.platform ?? process.platform;
+  const env = opts.env ?? process.env;
+  const roots = [join21(home, ".claude", "plugins")];
+  if (platform3 === "darwin") {
+    roots.push(join21(home, "Library", "Application Support", "Claude"));
+  } else if (platform3 === "win32") {
+    if (env.APPDATA) roots.push(join21(env.APPDATA, "Claude"));
+    if (env.LOCALAPPDATA) roots.push(join21(env.LOCALAPPDATA, "Claude"));
+  } else {
+    roots.push(join21(home, ".config", "Claude"));
+    roots.push("/sessions");
+  }
+  return roots;
+}
+function isDir(p) {
+  try {
+    return statSync2(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile(p) {
+  try {
+    return statSync2(p).isFile();
+  } catch {
+    return false;
+  }
+}
+function readPluginFolderVersion(pluginRoot) {
+  try {
+    const raw = readFileSync2(join21(pluginRoot, ".claude-plugin", "plugin.json"), "utf-8");
+    const v = JSON.parse(raw).version;
+    return typeof v === "string" && isValidVersion(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function underTrash(p) {
+  return p.split(/[\\/]/).some((seg) => seg === ".trash" || seg === ".Trash");
+}
+function sameFile(a, b) {
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return resolve2(a) === resolve2(b);
+  }
+}
+function walk(root, maxDepth, budget, found, restricted) {
+  const stack = [{ dir: root, depth: 0 }];
+  while (stack.length > 0) {
+    if (budget.left <= 0) return true;
+    const { dir, depth } = stack.pop();
+    const cli = join21(dir, "harness", "dist", "cli.js");
+    if (isFile(cli)) {
+      found.add(cli);
+      continue;
+    }
+    if (depth >= maxDepth) continue;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      budget.left -= 1;
+      if (!e.isDirectory()) continue;
+      if (SKIP_DIRS.has(e.name)) continue;
+      if (restricted && depth > 0 && !isPluginLocationName(e.name)) continue;
+      stack.push({ dir: join21(dir, e.name), depth: depth + 1 });
+    }
+  }
+  return false;
+}
+function markNewest(copies) {
+  let best = null;
+  for (const c of copies) {
+    if (c.version === null) continue;
+    if (best === null) {
+      best = c;
+      continue;
+    }
+    const cmp = compareVersions(c.version, best.version);
+    if (cmp > 0 || cmp === 0 && c.isRunning && !best.isRunning) best = c;
+  }
+  if (best) best.isNewest = true;
+  return best;
+}
+function scanCliCopies(opts = {}) {
+  const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
+  const budget = { left: opts.maxEntries ?? DEFAULT_MAX_ENTRIES };
+  const roots = [
+    ...opts.onlyExtraRoots ? [] : defaultScanRoots(opts),
+    ...opts.extraRoots ?? []
+  ];
+  const scannedRoots = [];
+  const found = /* @__PURE__ */ new Set();
+  const restrictedRoots = (opts.restrictedRoots ?? ["/sessions"]).map((r) => resolve2(r));
+  let truncated = false;
+  if (opts.runningPluginRoot) {
+    const cli = join21(opts.runningPluginRoot, "harness", "dist", "cli.js");
+    if (isFile(cli)) found.add(cli);
+  }
+  for (const root of roots) {
+    if (!isDir(root)) continue;
+    scannedRoots.push(root);
+    if (walk(root, maxDepth, budget, found, restrictedRoots.includes(resolve2(root)))) truncated = true;
+  }
+  const copies = [];
+  const seen = [];
+  for (const cli of [...found].sort()) {
+    if (underTrash(cli)) continue;
+    if (seen.some((s) => sameFile(s, cli))) continue;
+    seen.push(cli);
+    const pluginRoot = dirname28(dirname28(dirname28(cli)));
+    copies.push({
+      path: cli,
+      pluginRoot,
+      version: readPluginFolderVersion(pluginRoot),
+      isRunning: opts.runningPluginRoot !== void 0 && sameFile(pluginRoot, opts.runningPluginRoot),
+      isNewest: false
+    });
+  }
+  const newest = markNewest(copies);
+  return {
+    copies,
+    newest,
+    running: copies.find((c) => c.isRunning) ?? null,
+    scannedRoots,
+    truncated
+  };
+}
+function sortCopiesNewestFirst(copies) {
+  return [...copies].sort((a, b) => {
+    if (a.version === null && b.version === null) return a.path.localeCompare(b.path);
+    if (a.version === null) return 1;
+    if (b.version === null) return -1;
+    return compareVersions(b.version, a.version) || a.path.localeCompare(b.path);
+  });
+}
+
+// src/commands/cli-locate.ts
+function collect(value, prev) {
+  return [...prev, value];
+}
+function runningRootOrUndefined() {
+  try {
+    return resolvePluginRoot();
+  } catch {
+    return void 0;
+  }
+}
+function copyJson(c) {
+  return {
+    path: c.path,
+    version: c.version,
+    running: c.isRunning,
+    newest: c.isNewest
+  };
+}
+function buildLocateJson(scan) {
+  return {
+    newest: scan.newest ? copyJson(scan.newest) : null,
+    running: scan.running ? copyJson(scan.running) : null,
+    copies: sortCopiesNewestFirst(scan.copies).map(copyJson),
+    scanned_roots: scan.scannedRoots,
+    truncated: scan.truncated
+  };
+}
+var TRUNCATED_LINE = "Search stopped early; there may be other copies.";
+function renderCopiesList(scan) {
+  const out2 = [];
+  for (const c of sortCopiesNewestFirst(scan.copies)) {
+    const tags = [c.isNewest ? "newest" : null, c.isRunning ? "running" : null].filter(
+      Boolean
+    );
+    out2.push(
+      `${(c.version ?? "(version unreadable)").padEnd(10)} ${c.path}` + (tags.length ? `  [${tags.join(", ")}]` : "")
+    );
+  }
+  if (scan.truncated) out2.push(TRUNCATED_LINE);
+  return out2.join("\n") + (out2.length ? "\n" : "");
+}
+function registerCliLocateCommand(program3) {
+  const cli = program3.command("cli").description("Find installed copies of this CLI (a machine keeps every version it installed).");
+  cli.command("locate").description(
+    "Print the path of the newest installed cli.js (highest version from each copy's plugin.json; .trash skipped). --list shows every copy found."
+  ).option("--list", "list every copy with its version instead of only the newest").option(
+    "--root <dir>",
+    "scan this folder instead of the default host plugin folders (repeatable); the running copy is always included",
+    collect,
+    []
+  ).action((opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const scan = scanCliCopies({
+      runningPluginRoot: runningRootOrUndefined(),
+      extraRoots: opts.root,
+      onlyExtraRoots: opts.root.length > 0
+    });
+    if (root.json) {
+      process.stdout.write(JSON.stringify(buildLocateJson(scan), null, 2) + "\n");
+      process.exitCode = scan.newest ? 0 : 1;
+      return;
+    }
+    if (!scan.newest) {
+      process.stderr.write(
+        "No MixShift CLI copy with a readable version was found in the host plugin folders.\nFall back to: find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null (skip .trash, take the highest version from each copy's .claude-plugin/plugin.json).\n"
+      );
+      if (scan.truncated) process.stderr.write(TRUNCATED_LINE + "\n");
+      process.exitCode = 1;
+      return;
+    }
+    if (opts.list) {
+      process.stdout.write(renderCopiesList(scan));
+      return;
+    }
+    process.stdout.write(scan.newest.path + "\n");
+    if (scan.truncated) process.stderr.write(TRUNCATED_LINE + "\n");
+  });
+}
+
 // src/commands/whatsnew.ts
 init_plugin_version();
 init_telemetry();
@@ -88429,7 +88910,7 @@ init_telemetry();
 // src/lib/changelog.ts
 init_resolve();
 import { readFile as readFile33, writeFile as writeFile22, mkdir as mkdir23 } from "node:fs/promises";
-import { dirname as dirname28, join as join21 } from "node:path";
+import { dirname as dirname29, join as join22 } from "node:path";
 init_gateway_url();
 var CHANGELOG_URL = "https://raw.githubusercontent.com/miXshift/mx-claude-plugin/main/CHANGELOG.md";
 var RELEASES_URL = "https://github.com/miXshift/mx-claude-plugin/releases";
@@ -88471,7 +88952,7 @@ function whatsNewFor(entries, current) {
   return entries.length > 0 ? [entries[0]] : [];
 }
 function cachePath(dataDirOverride) {
-  return join21(resolveDataDir(dataDirOverride), "changelog-cache.json");
+  return join22(resolveDataDir(dataDirOverride), "changelog-cache.json");
 }
 async function loadChangelog(opts = {}) {
   const path2 = cachePath(opts.dataDirOverride);
@@ -88492,7 +88973,7 @@ async function loadChangelog(opts = {}) {
   const fetched = await fetchChangelogMarkdown();
   if (fetched.markdown !== null) {
     try {
-      await mkdir23(dirname28(path2), { recursive: true });
+      await mkdir23(dirname29(path2), { recursive: true });
       await writeFile22(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), markdown: fetched.markdown }, null, 2) + "\n",
@@ -88632,7 +89113,7 @@ init_plugin_version();
 // src/lib/update-actions-state.ts
 init_resolve();
 import { readFile as readFile34, writeFile as writeFile23, mkdir as mkdir24, rename as rename20, unlink as unlink8 } from "node:fs/promises";
-import { dirname as dirname29, join as join22 } from "node:path";
+import { dirname as dirname30, join as join23 } from "node:path";
 var UPDATE_ACTIONS_LEDGER_FILENAME = "update-actions-ledger.json";
 var ACTION_STATUSES = [
   "completed",
@@ -88650,7 +89131,7 @@ function actionsLedgerDir(dataDirOverride) {
   return process.env.CLAUDE_PLUGIN_DATA || resolveDataDir(dataDirOverride);
 }
 function actionsLedgerPath(dataDirOverride) {
-  return join22(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
+  return join23(actionsLedgerDir(dataDirOverride), UPDATE_ACTIONS_LEDGER_FILENAME);
 }
 async function loadActionsLedger(dataDirOverride) {
   try {
@@ -88677,7 +89158,7 @@ function coerceLedger(parsed) {
 }
 async function saveActionsLedger(ledger, dataDirOverride) {
   const path2 = actionsLedgerPath(dataDirOverride);
-  await mkdir24(dirname29(path2), { recursive: true });
+  await mkdir24(dirname30(path2), { recursive: true });
   const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   try {
     await writeFile23(tmp, JSON.stringify(ledger, null, 2) + "\n", { encoding: "utf-8" });
@@ -88710,7 +89191,7 @@ init_resolve();
 init_plugin_root();
 import { readFile as readFile35, writeFile as writeFile24, mkdir as mkdir25 } from "node:fs/promises";
 import { readdir as readdir5 } from "node:fs/promises";
-import { dirname as dirname30, join as join23 } from "node:path";
+import { dirname as dirname31, join as join24 } from "node:path";
 init_credentials();
 init_clients();
 init_gateway_url();
@@ -88801,7 +89282,7 @@ function parseActions(yamlText) {
   return out2;
 }
 function actionsCachePath(dataDirOverride) {
-  return join23(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
+  return join24(resolveDataDir(dataDirOverride), "actions.yaml.cache.json");
 }
 async function loadActions(opts = {}) {
   const path2 = actionsCachePath(opts.dataDirOverride);
@@ -88822,7 +89303,7 @@ async function loadActions(opts = {}) {
   const fetched = await fetchActionsYaml();
   if (fetched.yaml !== null) {
     try {
-      await mkdir25(dirname30(path2), { recursive: true });
+      await mkdir25(dirname31(path2), { recursive: true });
       await writeFile24(
         path2,
         JSON.stringify({ checked_at: (/* @__PURE__ */ new Date()).toISOString(), yaml: fetched.yaml }, null, 2) + "\n",
@@ -89457,6 +89938,10 @@ async function prepareConfirmation(opts) {
     };
   });
   const missing_keys = entries.filter((e) => e.field.required && e.source === "missing").map((e) => e.field.id);
+  const seedsBrandTarget = entries.some(
+    (e) => e.field.seed_from === `context.${BRAND_ACOS_TARGET_PATH}`
+  );
+  const productTargets = seedsBrandTarget ? extractProductAcosTargets(ctx) : null;
   return {
     skill_id: skillId,
     brand_slug: brandSlug,
@@ -89467,8 +89952,13 @@ async function prepareConfirmation(opts) {
     blocking: {
       has_missing_required: missing_keys.length > 0,
       missing_keys
-    }
+    },
+    ...productTargets ? { product_acos_targets: productTargets } : {}
   };
+}
+var BRAND_ACOS_TARGET_PATH = "management.acos_target_pct";
+function productTargetsResult(payload) {
+  return payload.product_acos_targets ? { product_acos_targets: payload.product_acos_targets } : {};
 }
 async function applyConfirmation(payload, decision, opts) {
   if (decision.action === "cancel") {
@@ -89505,7 +89995,8 @@ async function applyConfirmation(payload, decision, opts) {
       did_persist: false,
       saved_to: null,
       validation_issues: [],
-      ...accountWideFieldsResult(payload, decision)
+      ...accountWideFieldsResult(payload, decision),
+      ...productTargetsResult(payload)
     };
   }
   if (decision.action !== "edit") {
@@ -89600,7 +90091,8 @@ async function applyConfirmation(payload, decision, opts) {
       did_persist: false,
       saved_to: null,
       validation_issues: [],
-      ...accountWideFieldsResult(payload, decision)
+      ...accountWideFieldsResult(payload, decision),
+      ...productTargetsResult(payload)
     };
   }
   const accountWideSaved = accountWideFieldsResult(payload, decision).account_wide_fields;
@@ -89648,7 +90140,8 @@ async function applyConfirmation(payload, decision, opts) {
       label: s.field.label ?? humanizeFieldId(s.field.id),
       value: s.display
     })),
-    ...accountWideFieldsResult(payload, decision)
+    ...accountWideFieldsResult(payload, decision),
+    ...productTargetsResult(payload)
   };
 }
 function accountWideFieldsResult(payload, decision) {
@@ -89762,6 +90255,14 @@ function renderConfirmationCard(payload, options = {}) {
     lines.push(renderFieldLine2(entry, labelWidth));
     const hint = renderSourceHint2(entry);
     if (hint) lines.push(`${"".padStart(labelWidth + 2)}${hint}`);
+    const pt = payload.product_acos_targets;
+    if (pt && entry.field.seed_from === "context.management.acos_target_pct") {
+      const asins = Object.keys(pt.by_asin).length;
+      const skus = Object.keys(pt.by_sku).length;
+      lines.push(
+        `${"".padStart(labelWidth + 2)}product targets from Brand Context apply first (${asins} per-ASIN, ${skus} per-SKU); this value covers every other product`
+      );
+    }
   }
   const fields = lines.join("\n");
   const extras_note = Object.keys(payload.extras).length > 0 ? renderExtrasNote(payload.extras) : null;
@@ -89910,7 +90411,7 @@ init_clients();
 init_telemetry();
 init_resolve();
 import { mkdir as mkdir27, readFile as readFile38, writeFile as writeFile25 } from "node:fs/promises";
-import { dirname as dirname32 } from "node:path";
+import { dirname as dirname33 } from "node:path";
 function registerSkillCommands(program3) {
   const skill = program3.command("skill").description(
     "Per-skill OCL (Objective Level Configuration) management and the apply-gate (the apply-gate is not yet wired to any shipped skill). See `mixshift skill config --help`."
@@ -90231,7 +90732,11 @@ async function runApplyDecision2(args) {
           // F5: fields in effective_config that are a bound sub-brand's
           // account-wide brain pre-fill, not overridden this call — the
           // JSON-driven caller must not present these as the sub-brand's own.
-          account_wide_fields: result.account_wide_fields ?? []
+          account_wide_fields: result.account_wide_fields ?? [],
+          // mx-ops#291: per-ASIN / per-SKU ACoS targets (whole percents) beside
+          // effective_config's brand-level acos_target. Only when the brand sets
+          // product targets, so every other brand's output is unchanged.
+          ...result.product_acos_targets ? { product_acos_targets: result.product_acos_targets } : {}
         },
         null,
         2
@@ -90318,7 +90823,7 @@ async function applyDryRun(args) {
     args.runDate,
     args.dataDir
   );
-  const runDir = dirname32(path2);
+  const runDir = dirname33(path2);
   const suggestions = await readJsonIfExists(`${runDir}/suggestions.json`);
   if (!suggestions) {
     throw new Error(
@@ -90365,7 +90870,7 @@ async function applyDryRun(args) {
     rows_with_overrides: rowsWithOverrides,
     rows: appliedRows
   };
-  await mkdir27(dirname32(path2), { recursive: true });
+  await mkdir27(dirname33(path2), { recursive: true });
   await writeFile25(path2, JSON.stringify(body, null, 2), "utf-8");
   return {
     applied_path: path2,
@@ -90441,7 +90946,7 @@ function emitError8(json3, message) {
 }
 
 // src/commands/amazon.ts
-import { resolve as resolvePath2, dirname as dirname36 } from "node:path";
+import { resolve as resolvePath2, dirname as dirname37 } from "node:path";
 import { mkdir as mkdir30, writeFile as writeFile27 } from "node:fs/promises";
 
 // src/lib/amazon/reports.ts
@@ -90450,7 +90955,7 @@ init_intent();
 init_refusal_copy();
 import { createWriteStream as createWriteStream2 } from "node:fs";
 import { mkdir as mkdir28, rename as rename21 } from "node:fs/promises";
-import { dirname as dirname33 } from "node:path";
+import { dirname as dirname34 } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, gunzipSync } from "node:zlib";
@@ -90817,7 +91322,7 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
   }
   let out2;
   try {
-    await mkdir28(dirname33(outPath), { recursive: true });
+    await mkdir28(dirname34(outPath), { recursive: true });
     out2 = createWriteStream2(outPath);
     const source = Readable.fromWeb(res.body);
     const monitor = new Transform({
@@ -90856,8 +91361,8 @@ async function attemptDownloadOnce(document, outPath, opts, stallMs, deadlineMs)
 }
 function closeWritable(out2) {
   if (out2.closed) return Promise.resolve();
-  return new Promise((resolve6) => {
-    out2.once("close", () => resolve6());
+  return new Promise((resolve8) => {
+    out2.once("close", () => resolve8());
     if (!out2.destroyed) out2.destroy();
   });
 }
@@ -91224,6 +91729,11 @@ function paramNames(key, v) {
   const names = v.filter((n) => typeof n === "string" && n.trim() !== "").slice(0, 50).map((n) => cleanServerText(n)).filter(Boolean);
   return names.length > 0 ? { [key]: names } : {};
 }
+function parseSuggestedOperations(v) {
+  if (!Array.isArray(v)) return void 0;
+  const ids = v.filter((x) => typeof x === "string" && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(x)).slice(0, 5);
+  return ids.length > 0 ? ids : void 0;
+}
 function failureContractJson(f) {
   const amazon = f.amazonStatus !== void 0 || f.amazonErrorCode !== void 0 || f.amazonMessage !== void 0 ? { status: f.amazonStatus, code: f.amazonErrorCode, message: f.amazonMessage } : void 0;
   return {
@@ -91234,6 +91744,7 @@ function failureContractJson(f) {
     missing_params: f.missingParams,
     conflicting_params: f.conflictingParams,
     invalid_params: f.invalidParams,
+    suggested_operations: f.suggestedOperations,
     amazon
   };
 }
@@ -91241,6 +91752,12 @@ function failureContractLines(f) {
   const lines = [];
   if (f.fix) lines.push(`  fix: ${f.fix}`);
   if (f.docsUrl && !(f.fix ?? "").includes(f.docsUrl)) lines.push(`  docs: ${f.docsUrl}`);
+  if (f.suggestedOperations && f.suggestedOperations.length > 0) {
+    if (!(f.fix ?? "").includes(f.suggestedOperations[0])) {
+      lines.push(`  did you mean: ${f.suggestedOperations.join(", ")}`);
+    }
+    lines.push("  list every operation: mixshift amazon operations");
+  }
   if (f.retryable === false && (f.source === "request" || f.kind === "invalid_request")) {
     lines.push("  Not retryable as sent: change the request before calling again.");
   }
@@ -91333,6 +91850,7 @@ function toReportFailure(json3, httpStatus, surface) {
     ...paramNames("missingParams", json3.missing_params),
     ...paramNames("conflictingParams", json3.conflicting_params),
     ...paramNames("invalidParams", json3.invalid_params ?? issues?.paths),
+    ...parseSuggestedOperations(json3.suggested_operations) !== void 0 ? { suggestedOperations: parseSuggestedOperations(json3.suggested_operations) } : {},
     ...json3.responsePayload !== void 0 ? { responsePayload: json3.responsePayload } : {},
     ...amazonError !== void 0 ? { amazonError } : {},
     ...strOrUndef(json3.responseText) !== void 0 ? { responseText: strOrUndef(json3.responseText) } : {},
@@ -91547,7 +92065,7 @@ function safeJsonPreview(json3) {
 // src/lib/reports/catalog.ts
 var import_yaml24 = __toESM(require_dist(), 1);
 import { readFile as readFile39 } from "node:fs/promises";
-import { dirname as dirname34, join as join25 } from "node:path";
+import { dirname as dirname35, join as join26 } from "node:path";
 import { fileURLToPath as fileURLToPath7 } from "node:url";
 async function loadReportCatalog(overridePath) {
   const candidates = overridePath ? [overridePath] : candidatePaths4();
@@ -91599,12 +92117,12 @@ function normalizeOptions(v) {
   return v.filter((o) => !!o && typeof o.key === "string").map((o) => ({ key: o.key, example: o.example, note: o.note }));
 }
 function candidatePaths4() {
-  const here = dirname34(fileURLToPath7(import.meta.url));
+  const here = dirname35(fileURLToPath7(import.meta.url));
   const candidates = [];
   let dir = here;
   for (let i = 0; i < 8; i++) {
-    candidates.push(join25(dir, "shared", "reports", "catalog.yaml"));
-    const parent = dirname34(dir);
+    candidates.push(join26(dir, "shared", "reports", "catalog.yaml"));
+    const parent = dirname35(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -91715,7 +92233,7 @@ init_telemetry();
 // src/lib/amazon/pricing-handles.ts
 init_resolve();
 import { mkdir as mkdir29, readFile as readFile40, rename as rename22, writeFile as writeFile26 } from "node:fs/promises";
-import { dirname as dirname35 } from "node:path";
+import { dirname as dirname36 } from "node:path";
 var MAX_HANDLES = 50;
 async function loadLedger(path2) {
   try {
@@ -91730,7 +92248,7 @@ async function loadLedger(path2) {
   }
 }
 async function saveLedger(path2, handles) {
-  await mkdir29(dirname35(path2), { recursive: true });
+  await mkdir29(dirname36(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile26(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename22(tmp, path2);
@@ -92264,6 +92782,12 @@ function writeJson(obj2) {
 import { readFile as readFile42 } from "node:fs/promises";
 
 // src/lib/amazon/spapi-call.ts
+var LISTINGS_WRITE_OPERATIONS = /* @__PURE__ */ new Set([
+  "listings.patch_listings_item"
+]);
+function isListingsWriteOperation(operation) {
+  return LISTINGS_WRITE_OPERATIONS.has(operation);
+}
 async function listOperations(family, opts = {}) {
   const qs = family ? `?family=${encodeURIComponent(family)}` : "";
   const r = await amazonRequest(
@@ -92306,7 +92830,11 @@ async function spapiCall(input, opts = {}) {
   if (input.previewId) body.previewId = input.previewId;
   if (input.approvedQuoteHash) body.approvedQuoteHash = input.approvedQuoteHash;
   if (input.idempotencyKey) body.idempotencyKey = input.idempotencyKey;
-  const mayChangeState = input.dryRun === false;
+  if (input.changeSet !== void 0) body.changeSet = input.changeSet;
+  if (input.mode) body.mode = input.mode;
+  if (input.changeSetId) body.changeSetId = input.changeSetId;
+  if (input.approvedChangeSetHash) body.approvedChangeSetHash = input.approvedChangeSetHash;
+  const mayChangeState = input.dryRun === false || input.mode === "commit";
   const r = await amazonRequest(
     { method: "POST", path: "/api/amazon/spapi/call", body, surface: "spapi", mayChangeState },
     { ...opts, timeoutMs: opts.timeoutMs ?? 6e4 }
@@ -92327,7 +92855,7 @@ async function spapiCall(input, opts = {}) {
     };
   }
   const answer = json3;
-  const write = typeof answer.dryRun === "boolean" ? Object.fromEntries(Object.entries(answer).filter(([k]) => k !== "ok")) : void 0;
+  const write2 = typeof answer.dryRun === "boolean" || input.mode !== void 0 ? Object.fromEntries(Object.entries(answer).filter(([k]) => k !== "ok")) : void 0;
   return {
     ok: true,
     operation: json3.operation,
@@ -92335,7 +92863,7 @@ async function spapiCall(input, opts = {}) {
     legacySellerId: Number(json3.legacySellerId ?? 0),
     marketplaceId: String(json3.marketplaceId ?? ""),
     payload: json3.payload,
-    ...write ? { write } : {}
+    ...write2 ? { write: write2 } : {}
   };
 }
 
@@ -92378,9 +92906,129 @@ function registerOperations(amazon) {
     }
   });
 }
+var LISTINGS_ENVELOPE_KEYS = ["changeSet", "mode", "changeSetId", "approvedChangeSetHash"];
+var LISTINGS_CHANGE_SET_MAX_ITEMS = 10;
+var LISTINGS_CHANGE_SET_MAX_PATCHES = 20;
+var CHANGE_SET_LIMITS_TEXT = `a change set is { "items": [ { "sku", "productType", "patches": [...] } ] } with 1 to ${LISTINGS_CHANGE_SET_MAX_ITEMS} items and at most ${LISTINGS_CHANGE_SET_MAX_PATCHES} patches per item; no other top-level keys`;
+function isPlainObject3(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim() !== "";
+}
+function validateListingsChangeSet(changeSet) {
+  const refuse = (why) => {
+    throw new Error(`Change set refused: ${why}. ${capitalize(CHANGE_SET_LIMITS_TEXT)}. Nothing was sent.`);
+  };
+  if (!isPlainObject3(changeSet)) {
+    refuse(`it must be a JSON object, not ${changeSet === null ? "null" : Array.isArray(changeSet) ? "an array" : typeof changeSet}`);
+  }
+  const cs = changeSet;
+  const extra = Object.keys(cs).filter((k) => k !== "items");
+  if (extra.length > 0) {
+    refuse(`unexpected top-level key(s) ${extra.map((k) => JSON.stringify(k)).join(", ")}`);
+  }
+  if (!Object.hasOwn(cs, "items")) refuse('it has no "items" list');
+  const items = cs.items;
+  if (!Array.isArray(items)) refuse('"items" must be a list');
+  const list2 = items;
+  if (list2.length === 0) refuse('"items" is empty');
+  if (list2.length > LISTINGS_CHANGE_SET_MAX_ITEMS) {
+    refuse(
+      `it has ${list2.length} items; split it into change sets of at most ${LISTINGS_CHANGE_SET_MAX_ITEMS} and preview each`
+    );
+  }
+  list2.forEach((item, i) => {
+    const at = `items[${i}]`;
+    if (!isPlainObject3(item)) refuse(`${at} must be an object`);
+    const it = item;
+    if (!isNonEmptyString(it.sku)) refuse(`${at} needs a "sku"`);
+    if (!isNonEmptyString(it.productType)) refuse(`${at} needs a "productType"`);
+    if (!Array.isArray(it.patches)) refuse(`${at} needs a "patches" list`);
+    const patches = it.patches;
+    if (patches.length > LISTINGS_CHANGE_SET_MAX_PATCHES) {
+      refuse(`${at} has ${patches.length} patches; the most is ${LISTINGS_CHANGE_SET_MAX_PATCHES}`);
+    }
+  });
+}
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function listingsWriteFields(operation, opts, body, changeSetFromFlag) {
+  if (opts.previewId || opts.approvedQuoteHash) {
+    throw new Error(
+      `${operation} commits by --change-set-id and --approved-change-set-hash; --preview-id and --approved-quote-hash belong to FBA inbound writes. Nothing was sent.`
+    );
+  }
+  if (changeSetFromFlag !== void 0 && body !== void 0) {
+    throw new Error(
+      "Pass the change set once: --change-set / --change-set-file, or --body / --body-file, not both. Nothing was sent."
+    );
+  }
+  let changeSet = changeSetFromFlag;
+  let changeSetId = opts.changeSetId;
+  let approvedChangeSetHash = opts.approvedChangeSetHash;
+  let envelopeMode;
+  if (body !== void 0) {
+    const envelope = isPlainObject3(body) && LISTINGS_ENVELOPE_KEYS.some((k) => Object.hasOwn(body, k));
+    if (envelope) {
+      const extra = Object.keys(body).filter(
+        (k) => !LISTINGS_ENVELOPE_KEYS.includes(k)
+      );
+      if (extra.length > 0) {
+        throw new Error(
+          `The body holds { ${LISTINGS_ENVELOPE_KEYS.join(", ")} } and nothing else; unexpected key(s) ${extra.map((k) => JSON.stringify(k)).join(", ")}. Nothing was sent.`
+        );
+      }
+      if (Object.hasOwn(body, "mode") && body.mode !== "preview" && body.mode !== "commit") {
+        throw new Error(
+          `The body's "mode" must be "preview" or "commit", not ${JSON.stringify(body.mode)}. Nothing was sent.`
+        );
+      }
+      changeSet = body.changeSet;
+      envelopeMode = body.mode;
+      if (!changeSetId && typeof body.changeSetId === "string") changeSetId = body.changeSetId;
+      if (!approvedChangeSetHash && typeof body.approvedChangeSetHash === "string") {
+        approvedChangeSetHash = body.approvedChangeSetHash;
+      }
+    } else {
+      changeSet = body;
+    }
+  }
+  if (!opts.commit) {
+    if (envelopeMode === "commit" || changeSetId || approvedChangeSetHash) {
+      throw new Error(
+        `A change set id or hash means a commit: add --commit to commit the previewed change set, or drop them to preview. Nothing was sent.`
+      );
+    }
+    if (changeSet === void 0) {
+      throw new Error(
+        `${operation} previews a change set first: pass it with --change-set-file <file> (or --change-set <json>). Nothing was sent.`
+      );
+    }
+    validateListingsChangeSet(changeSet);
+    return { changeSet, mode: "preview" };
+  }
+  if (envelopeMode === "preview") {
+    throw new Error(
+      `The body says "mode": "preview" but --commit was given. Drop --commit to preview, or set "mode": "commit" (or leave it out) to commit. Nothing was sent.`
+    );
+  }
+  if (!changeSetId || !approvedChangeSetHash) {
+    throw new Error(
+      `--commit on ${operation} needs --change-set-id and --approved-change-set-hash, both from the preview of the same change set. Nothing was sent.`
+    );
+  }
+  if (changeSet !== void 0) {
+    throw new Error(
+      "A commit sends the previewed change set by its id and hash, not the change set again: drop --change-set / --body for the commit. Nothing was sent."
+    );
+  }
+  return { mode: "commit", changeSetId, approvedChangeSetHash };
+}
 function registerCall(amazon) {
   amazon.command("call <operation>").description(
-    "Execute one cataloged SP-API operation. Run `amazon operations` first for the operation id and its parameter notes. Guarded write operations (FBA inbound shipments) preview by default; only --commit sends one to Amazon."
+    `Execute one cataloged SP-API operation. Run \`amazon operations\` first for the operation id and its parameter notes. Guarded write operations (FBA inbound shipments, listings.patch_listings_item) preview by default; only --commit sends one to Amazon. A listings change set holds 1 to ${LISTINGS_CHANGE_SET_MAX_ITEMS} items (split more SKUs into several change sets) and at most ${LISTINGS_CHANGE_SET_MAX_PATCHES} patches per item; the CLI refuses one outside these limits before sending. With --body / --body-file the body is the change set, or { changeSet, mode, changeSetId, approvedChangeSetHash } with nothing else, and its mode must agree with --commit.`
   ).option("--seller-id <id>", "AmazonSellerID from `amazon merchants`").option(
     "--legacy-seller-id <id>",
     "exact per-marketplace seller record id (authoritative disambiguator)"
@@ -92403,6 +93051,18 @@ function registerCall(amazon) {
   ).option(
     "--idempotency-key <key>",
     "with --commit: your own key (8-128 letters, digits, . : - _). A resend with the same key replays the first commit and is never sent to Amazon twice."
+  ).option(
+    "--change-set-file <file>",
+    `listings.patch_listings_item: JSON change set to preview, from a file (${CHANGE_SET_LIMITS_TEXT})`
+  ).option(
+    "--change-set <json>",
+    `listings.patch_listings_item: inline JSON change set to preview (same limits as --change-set-file)`
+  ).option(
+    "--change-set-id <id>",
+    "listings.patch_listings_item with --commit: the change set id from its preview"
+  ).option(
+    "--approved-change-set-hash <hash>",
+    "listings.patch_listings_item with --commit: the change set hash from that same preview"
   ).action(async (operation, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
@@ -92416,7 +93076,35 @@ function registerCall(amazon) {
       } else if (opts.body) {
         body = JSON.parse(opts.body);
       }
-      if (opts.commit && !opts.idempotencyKey) {
+      if (opts.changeSetFile && opts.changeSet) {
+        return emitError9(
+          new Error("Pass --change-set-file or --change-set, not both."),
+          !!root.json
+        );
+      }
+      let changeSetFromFlag;
+      if (opts.changeSetFile) {
+        changeSetFromFlag = JSON.parse(await readFile42(opts.changeSetFile, "utf8"));
+      } else if (opts.changeSet) {
+        changeSetFromFlag = JSON.parse(opts.changeSet);
+      }
+      let listingsWrite;
+      if (isListingsWriteOperation(operation)) {
+        try {
+          listingsWrite = listingsWriteFields(operation, opts, body, changeSetFromFlag);
+        } catch (err) {
+          return emitError9(err, !!root.json);
+        }
+        body = void 0;
+      } else if (changeSetFromFlag !== void 0 || opts.changeSetId || opts.approvedChangeSetHash) {
+        return emitError9(
+          new Error(
+            `--change-set, --change-set-file, --change-set-id and --approved-change-set-hash are for listings.patch_listings_item only, not ${operation}. Nothing was sent.`
+          ),
+          !!root.json
+        );
+      }
+      if (opts.commit && !opts.idempotencyKey && !listingsWrite) {
         return emitError9(
           new Error(
             "--commit needs --idempotency-key <key> (8-128 letters, digits, . : - _), so a resend of a lost answer replays the first commit instead of sending it twice. Nothing was sent."
@@ -92440,7 +93128,10 @@ function registerCall(amazon) {
         pathParams: opts.path,
         query: opts.query,
         ...body !== void 0 ? { body } : {},
-        ...opts.commit ? { dryRun: false } : {},
+        // A listing write commits by mode, id and hash; dryRun is the FBA
+        // inbound commit switch and is never sent with it.
+        ...listingsWrite ?? {},
+        ...opts.commit && !listingsWrite ? { dryRun: false } : {},
         ...opts.previewId ? { previewId: opts.previewId } : {},
         ...opts.approvedQuoteHash ? { approvedQuoteHash: opts.approvedQuoteHash } : {},
         ...opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}
@@ -92940,7 +93631,7 @@ function registerReportGet(report) {
         const spillPath = resolvePath2(
           `${outputDir(root.dataDir)}/report-${sanitizeForFilename(runId)}-${Date.now()}.txt`
         );
-        await mkdir30(dirname36(spillPath), { recursive: true });
+        await mkdir30(dirname37(spillPath), { recursive: true });
         await writeFile27(spillPath, document, "utf-8");
         const { preview, truncated, totalLines } = previewLines(document);
         if (root.json) {
@@ -93224,7 +93915,7 @@ function registerReportRun(report) {
       try {
         const merged = mergeSqpDocuments(docs, fullAsinList);
         bytes2 = Buffer.byteLength(merged, "utf8");
-        await mkdir30(dirname36(outPath), { recursive: true });
+        await mkdir30(dirname37(outPath), { recursive: true });
         await writeFile27(outPath, merged, "utf8");
       } catch (mergeErr) {
         emitMergeFailure(mergeErr, !!root.json, chunks.length, runIds, outPath);
@@ -94172,12 +94863,12 @@ function deriveEntityType(operation) {
 var ENTITY_ID_KEY_RE = /^(campaign|adGroup|keyword|target|targeting|ad|productAd|negativeKeyword|negativeTarget|portfolio)Id$/i;
 function extractEntityIds(body, cap2 = ENTITY_IDS_CAP) {
   const found = /* @__PURE__ */ new Set();
-  const walk = (node, depth) => {
+  const walk2 = (node, depth) => {
     if (found.size >= cap2 || depth > 4 || node === null || typeof node !== "object") return;
     if (Array.isArray(node)) {
       for (const item of node) {
         if (found.size >= cap2) return;
-        walk(item, depth + 1);
+        walk2(item, depth + 1);
       }
       return;
     }
@@ -94186,11 +94877,11 @@ function extractEntityIds(body, cap2 = ENTITY_IDS_CAP) {
       if (ENTITY_ID_KEY_RE.test(key) && (typeof value === "string" || typeof value === "number")) {
         found.add(String(value));
       } else {
-        walk(value, depth + 1);
+        walk2(value, depth + 1);
       }
     }
   };
-  walk(body, 0);
+  walk2(body, 0);
   return [...found];
 }
 function buildResultSummary(payload) {
@@ -94222,7 +94913,7 @@ init_credentials();
 init_token_claims();
 init_service_attribution_cache();
 import { mkdir as mkdir31, readFile as readFile43, rename as rename23, writeFile as writeFile28, chmod as chmod6 } from "node:fs/promises";
-import { dirname as dirname37, join as join26 } from "node:path";
+import { dirname as dirname38, join as join27 } from "node:path";
 var NUMERIC_ID = /^\d{1,30}$/;
 var entrySchema = external_exports.object({
   tenant: external_exports.string().min(1),
@@ -94242,7 +94933,7 @@ var fileSchema = external_exports.object({
   entries: external_exports.array(entrySchema)
 });
 function creativeMapPath(dataDirOverride) {
-  return join26(resolveDataDir(dataDirOverride), "dsp", "creative-map.json");
+  return join27(resolveDataDir(dataDirOverride), "dsp", "creative-map.json");
 }
 async function loadCreativeMap(dataDirOverride) {
   const path2 = creativeMapPath(dataDirOverride);
@@ -94266,7 +94957,7 @@ async function loadCreativeMap(dataDirOverride) {
 async function saveCreativeMap(file2, dataDirOverride) {
   const validated = fileSchema.parse(file2);
   const path2 = creativeMapPath(dataDirOverride);
-  await mkdir31(dirname37(path2), { recursive: true, mode: 448 });
+  await mkdir31(dirname38(path2), { recursive: true, mode: 448 });
   const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
   await writeFile28(tmp, JSON.stringify(validated, null, 2) + "\n", { encoding: "utf8", mode: 384 });
   await chmod6(tmp, 384);
@@ -95787,9 +96478,9 @@ async function checkDspReadiness(call, advertiserId, campaignId, options = {}) {
   }
   for (const li of report.lineItems) {
     const label = `Targeting on line item ${li.name ? `"${li.name}" ` : ""}${li.adGroupId}`;
-    const failed = targetFailures.get(li.adGroupId);
-    if (failed) {
-      add({ id: "targeting", adGroupId: li.adGroupId, level: "unchecked", label, detail: `Could not read targets: ${failed}` });
+    const failed2 = targetFailures.get(li.adGroupId);
+    if (failed2) {
+      add({ id: "targeting", adGroupId: li.adGroupId, level: "unchecked", label, detail: `Could not read targets: ${failed2}` });
       continue;
     }
     const intended = Object.entries(li.targetsByType).filter(([t]) => !DEFAULT_TARGET_TYPES.has(t));
@@ -95914,16 +96605,16 @@ async function checkDspReadiness(call, advertiserId, campaignId, options = {}) {
     const rejected = judged.filter((j) => j.status === "REJECTED");
     const describe3 = (js) => js.map((j) => j.cid).join(", ");
     if (live.length) {
-      const clean = live.filter((j) => !j.exceptions);
+      const clean2 = live.filter((j) => !j.exceptions);
       const partial2 = live.filter((j) => j.exceptions);
       const partialReasons = [...new Set(partial2.flatMap((j) => j.reasons))].slice(0, 2);
       add({
         id: "creative",
         adGroupId: li.adGroupId,
-        level: creativeTruncated ? "unchecked" : clean.length ? "pass" : "warn",
+        level: creativeTruncated ? "unchecked" : clean2.length ? "pass" : "warn",
         label,
-        detail: (clean.length ? `approved: ${describe3(clean)}` : "") + (clean.length && partial2.length ? "; " : "") + (partial2.length ? `approved with exceptions: ${describe3(partial2)}` + (partialReasons.length ? ` (${partialReasons.join("; ")})` : "") : "") + (pending.length ? `; still pending: ${describe3(pending)}` : "") + (rejected.length ? `; rejected: ${describe3(rejected)}` : ""),
-        ...clean.length ? {} : { fix: "It can serve where it is approved; some of the targeted supply is still reviewing it." }
+        detail: (clean2.length ? `approved: ${describe3(clean2)}` : "") + (clean2.length && partial2.length ? "; " : "") + (partial2.length ? `approved with exceptions: ${describe3(partial2)}` + (partialReasons.length ? ` (${partialReasons.join("; ")})` : "") : "") + (pending.length ? `; still pending: ${describe3(pending)}` : "") + (rejected.length ? `; rejected: ${describe3(rejected)}` : ""),
+        ...clean2.length ? {} : { fix: "It can serve where it is approved; some of the targeted supply is still reviewing it." }
       });
     } else if (approvedPaused.length) {
       add({
@@ -96164,7 +96855,7 @@ function renderSupplyPlan(plan) {
 init_resolve();
 init_telemetry();
 import { mkdir as mkdir32, writeFile as writeFile29 } from "node:fs/promises";
-import { join as join27, resolve as resolve2 } from "node:path";
+import { join as join28, resolve as resolve3 } from "node:path";
 var EXIT_NOT_READY2 = 3;
 var NUMERIC_ID2 = /^\d{1,30}$/;
 function registerDspCommands(program3) {
@@ -96530,12 +97221,12 @@ function registerSupplyPreset(dsp) {
         await trackSupply("failed", startedAt, root.dataDir, { kind: plan.kind, stage: "plan" });
         return emitFailure6(plan, json3);
       }
-      const outDir = resolve2(opts.outDir ?? join27(resolveDataDir(root.dataDir), "dsp"));
+      const outDir = resolve3(opts.outDir ?? join28(resolveDataDir(root.dataDir), "dsp"));
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
       const previews = [];
       if (plan.batches.length) await mkdir32(outDir, { recursive: true });
       for (const [i, targetIds] of plan.batches.entries()) {
-        const bodyFile = join27(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
+        const bodyFile = join28(outDir, `supply-${opts.preset}-${opts.advertiserId}-${stamp}-${i + 1}.json`);
         await writeFile29(bodyFile, JSON.stringify({ targetIds }, null, 2) + "\n", "utf8");
         const res = await adsCall(
           {
@@ -96613,7 +97304,7 @@ function shellQuote(s) {
 }
 function commitCommand(selector, advertiserId, bodyFile, auditId, dataDir) {
   const parts = ["mixshift"];
-  if (dataDir) parts.push(`--data-dir ${shellQuote(resolve2(dataDir))}`);
+  if (dataDir) parts.push(`--data-dir ${shellQuote(resolve3(dataDir))}`);
   parts.push("ads call dsp.delete_targets");
   if (selector.profileId) parts.push(`--profile-id ${shellQuote(selector.profileId)}`);
   if (selector.legacySellerId) parts.push(`--legacy-seller-id ${shellQuote(selector.legacySellerId)}`);
@@ -97562,7 +98253,7 @@ function renderOperations3(operations, families = []) {
 function registerWalmartCommands(program3) {
   const walmart = program3.command("walmart").description("Call Walmart APIs for the Walmart accounts connected to your MixShift account.");
   const ads = walmart.command("ads").description(
-    "Walmart Connect (Walmart ads): Sponsored Search and Display campaigns, ad groups, keywords, reports, and audited writes (preview by default, --commit to apply)."
+    "Walmart Connect: Sponsored Search and Display campaigns, ad groups, keywords, reports, and audited writes (preview by default, --commit to apply)."
   );
   registerAdvertisers(ads);
   registerOperations4(ads);
@@ -97876,6 +98567,12 @@ init_credentials();
 init_intent();
 var SHELF_COUNTRIES = ["us", "ca", "uk", "de", "fr", "it", "es", "in"];
 var SHELF_SURFACES = ["desktop", "mobile"];
+function parseShelfWarning(raw) {
+  if (typeof raw !== "object" || raw === null) return void 0;
+  const w = raw;
+  if (w.threshold !== 80 && w.threshold !== 95 || typeof w.message !== "string" || w.message.trim() === "") return void 0;
+  return { threshold: w.threshold, message: w.message };
+}
 function isShelfFailure(x) {
   return x.ok === false;
 }
@@ -97888,6 +98585,7 @@ function exitCodeForShelfKind(kind) {
     case "shelf_not_configured":
     case "shelf_not_enabled":
     case "shelf_not_enrolled":
+    case "tracking_unavailable":
       return 6;
     // shelf data is not enabled (service-wide, or for this organization)
     case "not_found":
@@ -97895,15 +98593,19 @@ function exitCodeForShelfKind(kind) {
     case "throttled":
       return 8;
     case "shelf_allowance_exhausted":
+    case "tracking_over_allowance":
       return 10;
-    // the month's included requests are used; resets next month
+    // the allowance: used up this month, or a tracking change would not fit in it
     case "insufficient_scope":
+    case "forbidden":
       return 11;
+    // this sign-in may not do that (a scope, or the person's role)
     case "bad_request":
     case "zip_unavailable":
     case "not_tracked":
+    case "tracking_set_exists":
       return 12;
-    // terminal as sent: fix the request (or ask MixShift to track it)
+    // terminal as sent: fix the request (or track it first)
     case "invalid_request":
       return 15;
     // MixShift refused it before sending: change the request
@@ -97953,7 +98655,8 @@ async function shelfUsage(opts = {}) {
     used: Number(j.used ?? 0),
     remaining: Number(j.remaining ?? Math.max(0, j.allowance - Number(j.used ?? 0))),
     resets_at: String(j.resets_at ?? ""),
-    source: String(j.source ?? "")
+    source: String(j.source ?? ""),
+    ...parseShelfWarning(j.warning) ? { warning: parseShelfWarning(j.warning) } : {}
   };
 }
 async function shelfRankHistory(input, opts = {}) {
@@ -98001,9 +98704,9 @@ function commonBody(input) {
   };
 }
 async function dataCall(path2, body, opts) {
-  const clean = {};
-  for (const [k, v] of Object.entries(body)) if (v !== void 0 && v !== null && v !== "") clean[k] = v;
-  const r = await shelfRequest({ method: "POST", path: path2, body: clean }, { ...opts, timeoutMs: opts.timeoutMs ?? DATA_TIMEOUT_MS });
+  const clean2 = {};
+  for (const [k, v] of Object.entries(body)) if (v !== void 0 && v !== null && v !== "") clean2[k] = v;
+  const r = await shelfRequest({ method: "POST", path: path2, body: clean2 }, { ...opts, timeoutMs: opts.timeoutMs ?? DATA_TIMEOUT_MS });
   if (!r.ok) return r;
   const j = r.json;
   if (j.ok !== true || typeof j.kind !== "string" || typeof j.observed_at !== "string" || j.data === void 0) {
@@ -98117,6 +98820,8 @@ var KNOWN_KINDS4 = /* @__PURE__ */ new Set([
   "upstream_unavailable",
   "insufficient_scope",
   "not_found",
+  "forbidden",
+  "tracking_over_allowance",
   "unknown"
 ]);
 function isServerFailureEnvelope3(json3) {
@@ -98143,7 +98848,12 @@ function toShelfFailure(json3, httpStatus) {
     ...num(json3.used) !== void 0 ? { used: num(json3.used) } : {},
     ...str4(json3.resets_at) !== void 0 ? { resetsAt: str4(json3.resets_at) } : {},
     ...str4(json3.request_more) !== void 0 ? { requestMore: str4(json3.request_more) } : {},
+    ...str4(json3.reason) !== void 0 ? { reason: str4(json3.reason) } : {},
+    ...num(json3.projected_calls_per_month) !== void 0 ? { projectedCallsPerMonth: num(json3.projected_calls_per_month) } : {},
+    ...num(json3.calls_per_day) !== void 0 ? { callsPerDay: num(json3.calls_per_day) } : {},
+    ...num(json3.max_calls_per_day_per_set) !== void 0 ? { maxCallsPerDayPerSet: num(json3.max_calls_per_day_per_set) } : {},
     ...num(json3.available_count) !== void 0 ? { availableCount: num(json3.available_count) } : {},
+    ...Array.isArray(json3.unavailable) && json3.unavailable.length > 0 ? { unavailableZips: json3.unavailable.map(String) } : {},
     ...num(json3.retryAfterMs) !== void 0 ? { retryAfterMs: num(json3.retryAfterMs) } : {},
     ...typeof json3.required === "string" ? { requiredScope: json3.required } : {},
     ...recognized ? {} : { unrecognizedKind: rawKind || "(absent)" },
@@ -98181,7 +98891,15 @@ function defaultFriendly4(kind) {
     case "zip_unavailable":
       return "That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.";
     case "not_tracked":
-      return 'That keyword, zip and view are not tracked for your organization. Say "track these keywords" to ask MixShift to add them to your rank tracking.';
+      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
+    case "forbidden":
+      return "Only an owner, admin or manager of your organization can change rank tracking.";
+    case "tracking_over_allowance":
+      return "That change would take your organization's rank tracking past its monthly shelf allowance, so nothing was changed.";
+    case "tracking_set_exists":
+      return "A tracking set with that id already exists.";
+    case "tracking_unavailable":
+      return "Rank tracking is not available on the MixShift service yet, so nothing was read or changed.";
     case "bad_request":
       return "The shelf request was refused as sent (for example no such ASIN or seller on this marketplace). Check the inputs.";
     case "invalid_request":
@@ -98262,12 +98980,23 @@ var SHELF_CATALOG = [
     id: "rank-history",
     tool: "shelf_get_rank_history",
     what: "Where your ASINs ranked for a keyword MixShift tracks for you, day by day, at one zip, on desktop or mobile.",
-    explain: 'MixShift can track keywords for your organization: once a day it takes the search results page for each tracked keyword at each tracked shopper location, on desktop and mobile, and keeps every position. This reads that history back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views MixShift tracks for you answer (anything else is not_tracked); say "track these keywords" to ask for more. The daily observations count against the allowance; reading them back is free.',
+    explain: "MixShift can track keywords for your organization: once a day it takes the search results page for each tracked keyword at each tracked shopper location, on desktop and mobile, and keeps every position. This reads that history back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views your organization tracks answer (anything else is not_tracked); `shelf tracking` shows and changes what is tracked. The daily observations count against the allowance; reading them back is free.",
     inputs: "a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country",
     returns: "points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated",
     cost: "free",
     say: 'how has our rank for "backpacking meals" in New York moved this month?',
     example: 'mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --json'
+  },
+  {
+    id: "tracking",
+    tool: "shelf_list_tracking",
+    what: "Your organization's rank tracking: the keywords, zips, views and ASINs MixShift searches once a day for rank-history.",
+    explain: "A tracking set is a list of keywords, shopper locations (zips), views (desktop, mobile), how many results pages to read, and the ASINs whose rank you want back. Once a day MixShift takes the results page for every keyword at every zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list and show the sets; an owner, admin or manager, signed in as a person, can create one, add or remove keywords and ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,860 a month (the projection counts 31 days). A change that would take the projected monthly use past the allowance is refused; removing and pausing always go through.",
+    inputs: "list | show <set> | create <set> --keyword K --zip Z [--view desktop|mobile] [--asin A] [--pages N] [--note T] | add <set> / remove <set> [--keyword K] [--asin A] | pause <set> | resume <set> | delete <set> --yes (flags repeat)",
+    returns: "sets[] (id, note, keywords, zips, surfaces, asins, pages, enabled, calls_per_day, last_run_at, last_run_summary), projected_calls_per_month, allowance, can_edit, limits",
+    cost: "free",
+    say: "show my tracked keywords",
+    example: "mixshift shelf tracking list --json"
   },
   {
     id: "product",
@@ -98341,7 +99070,7 @@ function renderShelfCatalogChat(entries = SHELF_CATALOG) {
 
 // src/commands/shelf-featured-offer-check.ts
 import { promises as fs } from "node:fs";
-import { join as join28, resolve as resolvePath3 } from "node:path";
+import { join as join29, resolve as resolvePath3 } from "node:path";
 
 // src/lib/shelf/featured-offer-check.ts
 var HELD_SHARE_FLOOR = 0.99;
@@ -98648,7 +99377,7 @@ async function start(opts, root, startedAt) {
   if (!merchant) throw new Error("No merchant you can act for matches that id. Run `mixshift amazon merchants --json` and pass its legacySellerId.");
   const country = COUNTRY_TO_SHELF[(merchant.countryCode ?? "US").toUpperCase()];
   if (!country) throw new Error(`Shelf data does not cover marketplace ${merchant.countryCode ?? "unknown"} yet (us, ca, uk, de, fr, it, es, in).`);
-  const dir = opts.out ? resolvePath3(opts.out) : join28(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
+  const dir = opts.out ? resolvePath3(opts.out) : join29(outputDir(root.dataDir), "featured-offer-check", `${merchant.legacySellerId ?? merchant.amazonSellerId}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`);
   await fs.mkdir(dir, { recursive: true });
   const state = {
     version: 1,
@@ -98775,9 +99504,9 @@ async function advance(state, dir, budget, root, startedAt) {
       return;
     }
     const report = buildReport(state);
-    const html = join28(dir, "report.html");
-    const md = join28(dir, "report.md");
-    const js = join28(dir, "report.json");
+    const html = join29(dir, "report.html");
+    const md = join29(dir, "report.md");
+    const js = join29(dir, "report.json");
     await fs.writeFile(html, renderReportHtml(report), "utf8");
     await fs.writeFile(md, renderReportMarkdown(report), "utf8");
     await fs.writeFile(js, JSON.stringify(report, null, 2), "utf8");
@@ -98817,12 +99546,12 @@ function buildReport(state) {
 }
 async function writeState(dir, state) {
   state.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-  await fs.writeFile(join28(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
+  await fs.writeFile(join29(dir, "state.json"), JSON.stringify(state, null, 2), "utf8");
 }
 async function readState(dir) {
   let raw;
   try {
-    raw = await fs.readFile(join28(dir, "state.json"), "utf8");
+    raw = await fs.readFile(join29(dir, "state.json"), "utf8");
   } catch {
     throw new Error(`No check found at ${dir} (no state.json). Start one with \`mixshift shelf featured-offer-check start\`.`);
   }
@@ -98832,17 +99561,17 @@ async function readState(dir) {
 }
 async function resolveOutDir(out2, dataDir) {
   if (out2) return resolvePath3(out2);
-  const base2 = join28(outputDir(dataDir), "featured-offer-check");
+  const base2 = join29(outputDir(dataDir), "featured-offer-check");
   let entries;
   try {
     entries = (await fs.readdir(base2, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
   } catch {
     throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
   }
-  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join28(base2, name))).mtimeMs })));
+  const stamped = await Promise.all(entries.map(async (name) => ({ name, mtime: (await fs.stat(join29(base2, name))).mtimeMs })));
   stamped.sort((a, b) => b.mtime - a.mtime);
   if (!stamped[0]) throw new Error("No featured-offer check has been started yet. Run `mixshift shelf featured-offer-check start`.");
-  return join28(base2, stamped[0].name);
+  return join29(base2, stamped[0].name);
 }
 function parseBudget(raw) {
   if (raw === void 0) return DEFAULT_BUDGET;
@@ -98943,14 +99672,755 @@ function emitError14(err, json3) {
   process.exitCode = 1;
 }
 
+// src/lib/shelf/tracking.ts
+var TRACKING_ID_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
+var TRACKING_MAX_KEYWORDS = 50;
+var TRACKING_MAX_ZIPS = 10;
+var TRACKING_MAX_PAGES = 5;
+var TIMEOUT_MS = 3e4;
+function normalizeKeyword(k) {
+  return k.trim().toLowerCase().replace(/\s+/g, " ");
+}
+async function shelfTrackingList(opts = {}) {
+  const r = await shelfRequest({ method: "GET", path: "/api/shelf/tracking" }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
+  if (!r.ok) return trackingFailure(r, { write: false });
+  const j = r.json;
+  if (j.ok !== true || !Array.isArray(j.sets)) return unrecognizedShape(r.httpStatus, "tracking list");
+  const sets = [];
+  for (const raw of j.sets) {
+    const s = parseSet(raw);
+    if (s) sets.push(s);
+  }
+  const limits = typeof j.limits === "object" && j.limits !== null ? j.limits : {};
+  return {
+    ok: true,
+    sets,
+    projected_calls_per_month: numOrNull2(j.projected_calls_per_month),
+    allowance: numOrNull2(j.allowance),
+    can_edit: j.can_edit === true,
+    ...parseShelfWarning(j.warning) ? { warning: parseShelfWarning(j.warning) } : {},
+    limits: {
+      max_keywords: numOrNull2(limits.max_keywords) ?? TRACKING_MAX_KEYWORDS,
+      max_zips: numOrNull2(limits.max_zips) ?? TRACKING_MAX_ZIPS,
+      max_pages: numOrNull2(limits.max_pages) ?? TRACKING_MAX_PAGES,
+      max_asins: numOrNull2(limits.max_asins),
+      max_calls_per_day_per_set: numOrNull2(limits.max_calls_per_day_per_set)
+    }
+  };
+}
+async function shelfTrackingGet(id, opts = {}) {
+  const r = await shelfRequest({ method: "GET", path: setPath(id) }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
+  if (!r.ok) return trackingFailure(r, { setId: id, write: false });
+  const j = r.json;
+  const set2 = j.ok === true ? parseSet(j.set) : null;
+  if (!set2) return unrecognizedShape(r.httpStatus, "tracking set");
+  return { ok: true, set: set2 };
+}
+async function shelfTrackingPut(id, input, opts = {}) {
+  return write({ method: "PUT", path: setPath(id), body: clean({ ...input }) }, void 0, opts);
+}
+async function shelfTrackingPatch(id, input, opts = {}) {
+  return write({ method: "PATCH", path: setPath(id), body: clean({ ...input }) }, id, opts);
+}
+async function shelfTrackingDelete(id, opts = {}) {
+  const r = await shelfRequest({ method: "DELETE", path: setPath(id) }, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
+  if (!r.ok) return trackingFailure(r, { setId: id, write: true });
+  if (r.json.ok !== true) return unrecognizedShape(r.httpStatus, "tracking delete");
+  return { ok: true };
+}
+async function write(spec, setId, opts) {
+  const r = await shelfRequest(spec, { ...opts, timeoutMs: opts.timeoutMs ?? TIMEOUT_MS });
+  if (!r.ok) return trackingFailure(r, { setId, write: true });
+  const j = r.json;
+  const set2 = j.ok === true ? parseSet(j.set) : null;
+  if (!set2) return unrecognizedShape(r.httpStatus, "tracking write");
+  return { ok: true, set: set2, projected_calls_per_month: numOrNull2(j.projected_calls_per_month), allowance: numOrNull2(j.allowance) };
+}
+function setPath(id) {
+  return `/api/shelf/tracking/${encodeURIComponent(id)}`;
+}
+function clean(body) {
+  const out2 = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (v === void 0) continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    out2[k] = v;
+  }
+  return out2;
+}
+var ENDPOINT_MISSING = "No such shelf endpoint.";
+function trackingFailure(f, call) {
+  const defaulted = f.friendly === defaultFriendly4(f.kind);
+  if (f.kind === "not_found" && call.setId !== void 0 && defaulted) {
+    return { ...f, friendly: `There is no tracking set "${call.setId}" in your organization. Run \`mixshift shelf tracking list\` for the sets there are.` };
+  }
+  if (f.kind === "not_found" && f.friendly === ENDPOINT_MISSING) {
+    return { ...f, kind: "tracking_unavailable", friendly: defaultFriendly4("tracking_unavailable") };
+  }
+  let kind = f.kind;
+  if (f.projectedCallsPerMonth !== void 0 && (f.unrecognizedKind !== void 0 || f.kind === "shelf_allowance_exhausted")) kind = "tracking_over_allowance";
+  else if (call.write && f.unrecognizedKind !== void 0 && f.httpStatus === 403) kind = "forbidden";
+  if (kind === f.kind) return f;
+  return { ...f, kind, friendly: defaulted ? defaultFriendly4(kind) : f.friendly };
+}
+function numOrNull2(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+function strings(v) {
+  return Array.isArray(v) ? v.filter((x) => typeof x === "string" || typeof x === "number").map(String) : [];
+}
+function strOrNull(v) {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+function parseSummary(v) {
+  if (typeof v !== "object" || v === null) return null;
+  const s = v;
+  const n = (x) => typeof x === "number" && Number.isFinite(x) ? x : 0;
+  return { calls: n(s.calls), ok: n(s.ok), failed: n(s.failed), stale: n(s.stale), exhausted: n(s.exhausted), stopped_reason: strOrNull(s.stopped_reason) };
+}
+function parseSet(raw) {
+  if (typeof raw !== "object" || raw === null) return null;
+  const s = raw;
+  if (typeof s.id !== "string" || !s.id) return null;
+  const keywords = strings(s.keywords);
+  const zips = strings(s.zips);
+  const surfaces = strings(s.surfaces).filter((x) => x === "desktop" || x === "mobile");
+  const pages = typeof s.pages === "number" && Number.isFinite(s.pages) ? s.pages : 1;
+  return {
+    id: s.id,
+    retailer: String(s.retailer ?? "amazon"),
+    country: String(s.country ?? "us"),
+    keywords,
+    zips,
+    surfaces,
+    asins: strings(s.asins),
+    pages,
+    cadence: s.cadence === "off" ? "off" : "daily",
+    enabled: s.enabled !== false,
+    note: strOrNull(s.note),
+    calls_per_day: numOrNull2(s.calls_per_day) ?? keywords.length * zips.length * surfaces.length * pages,
+    last_run_date: strOrNull(s.last_run_date),
+    last_run_at: strOrNull(s.last_run_at),
+    last_run_summary: parseSummary(s.last_run_summary),
+    updated_at: strOrNull(s.updated_at),
+    updated_by: strOrNull(s.updated_by)
+  };
+}
+
+// src/commands/_shelf-output.ts
+init_telemetry();
+function failurePayload(failure3, base2) {
+  return {
+    ...base2,
+    kind_failed: failure3.kind,
+    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
+    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
+    // The service's error contract: enums and a flag; never the friendly text.
+    ...failure3.source !== void 0 && CONTRACT_WORD.test(failure3.source) ? { source: failure3.source } : {},
+    ...failure3.retryable !== void 0 ? { retryable: failure3.retryable } : {},
+    ...failure3.reason !== void 0 && CONTRACT_WORD.test(failure3.reason) ? { reason: failure3.reason } : {}
+  };
+}
+async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
+  await track(
+    {
+      event_name: eventName,
+      outcome,
+      duration_ms: Date.now() - startedAt,
+      ...outcome === "failed" && typeof payload.kind_failed === "string" ? { error_class: payload.kind_failed } : {},
+      payload
+    },
+    dataDir
+  );
+}
+function writeJson7(obj2) {
+  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
+}
+function emitFailure9(failure3, json3) {
+  if (json3) {
+    writeJson7({
+      status: "error",
+      failure_kind: failure3.kind,
+      message: failure3.friendly,
+      detail: failure3.message,
+      http_status: failure3.httpStatus,
+      period: failure3.period,
+      allowance: failure3.allowance,
+      used: failure3.used,
+      resets_at: failure3.resetsAt,
+      request_more: failure3.requestMore,
+      reason: failure3.reason,
+      projected_calls_per_month: failure3.projectedCallsPerMonth,
+      calls_per_day: failure3.callsPerDay,
+      max_calls_per_day_per_set: failure3.maxCallsPerDayPerSet,
+      available_count: failure3.availableCount,
+      unavailable: failure3.unavailableZips,
+      retry_after_ms: failure3.retryAfterMs,
+      required_scope: failure3.requiredScope,
+      unrecognized_kind: failure3.unrecognizedKind,
+      source: failure3.source,
+      retryable: failure3.retryable,
+      invalid_params: failure3.invalidParams
+    });
+  } else {
+    process.stderr.write(`
+\u2717 ${failure3.friendly}
+`);
+    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
+`);
+    if (failure3.projectedCallsPerMonth !== void 0) {
+      process.stderr.write(`  projected monthly use: ${failure3.projectedCallsPerMonth} shelf requests; allowance: ${failure3.allowance ?? "?"} a month
+`);
+    }
+    if (failure3.callsPerDay !== void 0 || failure3.maxCallsPerDayPerSet !== void 0) {
+      process.stderr.write(
+        `  calls a day for this set: ${failure3.callsPerDay ?? "?"}; the most one set may make: ${failure3.maxCallsPerDayPerSet ?? "?"} (keywords x zips x views x pages). Trim it, or split it into more sets.
+`
+      );
+    }
+    if (failure3.unavailableZips) {
+      process.stderr.write(`  not available: ${failure3.unavailableZips.join(", ")} (\`mixshift shelf zips\` lists the ones that are)
+`);
+    }
+    if (failure3.kind === "shelf_allowance_exhausted") {
+      if (failure3.resetsAt) process.stderr.write(`  used ${failure3.used ?? "?"} of ${failure3.allowance ?? "?"} for ${failure3.period ?? "this month"}; resets ${failure3.resetsAt}
+`);
+      process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
+    }
+    if (failure3.kind === "tracking_over_allowance") {
+      process.stderr.write(
+        '  To make room: `mixshift shelf tracking remove <set> --keyword "<keyword>"` or `mixshift shelf tracking pause <set>`; for a larger allowance, say "request more shelf requests".\n'
+      );
+    }
+    if (failure3.kind === "forbidden" && failure3.reason === "identity_not_verified") {
+      process.stderr.write(
+        "  Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`), not a shared team login, then run it again. A machine credential, such as one a scheduled task uses, can never change tracking: make the change in a conversation, signed in as yourself.\n"
+      );
+    } else if (failure3.kind === "forbidden") {
+      process.stderr.write('  To have it changed: ask an owner, admin or manager in your organization, or say "track these keywords" to ask MixShift.\n');
+    }
+    if (failure3.kind === "tracking_unavailable") {
+      process.stderr.write(
+        '  Meanwhile, to have MixShift track keywords for you, say "track these keywords" (the skill sends the request as feedback); `mixshift shelf rank-history` keeps answering for what is already tracked.\n'
+      );
+    }
+    if (failure3.kind === "not_tracked") {
+      process.stderr.write(
+        '  To track it: an owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking list` shows them) with `mixshift shelf tracking add <set> --keyword "<keyword>"`, or create a set for it; anyone can say "track these keywords" to ask MixShift.\n'
+      );
+    }
+    if (failure3.retryable === false && failure3.source === "request") {
+      process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
+    }
+  }
+  process.exitCode = exitCodeForShelfKind(failure3.kind);
+}
+function emitError15(err, json3) {
+  const message = err instanceof Error ? err.message : String(err);
+  if (json3) writeJson7({ status: "error", message });
+  else process.stderr.write(`error: ${message}
+`);
+  process.exitCode = 1;
+}
+
+// src/commands/shelf-tracking.ts
+init_telemetry();
+var ASIN_RE = /^[A-Z0-9]{10}$/;
+var KEYWORD_MAX_LENGTH = 200;
+function collect2(value, previous) {
+  return [...previous ?? [], value];
+}
+function registerShelfTracking(shelf) {
+  const tracking = shelf.command("tracking").description(
+    "Your organization's rank tracking: the keywords MixShift searches once a day at each tracked zip and view, which `shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin or manager, signed in as a person, can create, add, remove, pause, resume and delete (a machine credential never can). Free to read and change, but every running set takes keywords x zips x views x pages shelf requests a day from the monthly allowance. To stop paying for a set and keep its history readable, pause it."
+  );
+  tracking.command("list").description(
+    "Every tracking set: its note, keyword count, zips, views, pages, calls a day, whether it is enabled and its last run; then the projected monthly use against the allowance, and whether you can change the sets. Free."
+  ).action(async (_opts, cmd) => {
+    const ctx = context(cmd);
+    try {
+      const r = await shelfTrackingList(ctx.client);
+      if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingRead, r, { action: "list" });
+      const running = r.sets.filter(isRunning);
+      await trackShelf(EventName.ShelfTrackingRead, "ok", ctx.startedAt, ctx.dataDir, {
+        action: "list",
+        sets: r.sets.length,
+        running: running.length,
+        can_edit: r.can_edit,
+        keywords: r.sets.reduce((n, s) => n + s.keywords.length, 0),
+        calls_per_day: running.reduce((n, s) => n + s.calls_per_day, 0),
+        projected_calls_per_month: r.projected_calls_per_month,
+        allowance: r.allowance
+      });
+      if (ctx.json) return writeJson7({ status: "ok", ...r });
+      process.stderr.write(`
+\u2713 ${r.sets.length} rank tracking set(s), ${running.length} running
+
+`);
+      process.stdout.write(renderTrackingList(r) + "\n");
+    } catch (err) {
+      emitError15(err, ctx.json);
+    }
+  });
+  tracking.command("show <id>").description("One tracking set in full: every keyword and ASIN, its zips, views and pages, calls a day, last run, and who changed it last. Free.").action(async (rawId, _opts, cmd) => {
+    const ctx = context(cmd);
+    try {
+      const id = parseId(rawId);
+      const r = await shelfTrackingGet(id, ctx.client);
+      if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingRead, r, { action: "show" });
+      await trackShelf(EventName.ShelfTrackingRead, "ok", ctx.startedAt, ctx.dataDir, { action: "show", ...setCounts(r.set) });
+      if (ctx.json) return writeJson7({ status: "ok", ...r });
+      process.stderr.write(`
+\u2713 tracking set ${r.set.id}
+
+`);
+      process.stdout.write(renderTrackingSet(r.set) + "\n");
+    } catch (err) {
+      emitError15(err, ctx.json);
+    }
+  });
+  tracking.command("create <id>").description(
+    "Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when that set already has these keywords and zips (and any other values given): a create run again after a lost answer, which answers that nothing changed, or that the set is paused and how to resume it."
+  ).option("--keyword <keyword>", `a keyword to track (repeatable; 1 to ${TRACKING_MAX_KEYWORDS})`, collect2).option("--zip <zip>", `a shopper location from \`shelf zips\` (repeatable; 1 to ${TRACKING_MAX_ZIPS})`, collect2).option("--view <view>", "desktop or mobile (repeatable; default both)", collect2).option("--asin <asin>", "an ASIN whose rank to read back (repeatable)", collect2).option("--pages <n>", `results pages per search, 1 (default) to ${TRACKING_MAX_PAGES}`).option("--note <text>", "what the set is for, shown by `tracking list`").option("--country <code>", "marketplace country: us (default for a new set), ca, uk, de, fr, it, es, in").option("--replace", "overwrite the set if the id is taken: its keywords and zips become these; views, ASINs, pages and note you leave out keep their values").action(async (rawId, opts, cmd) => {
+    const ctx = context(cmd);
+    try {
+      const id = parseId(rawId);
+      const keywords = parseKeywords(opts.keyword);
+      if (keywords.length === 0) throw new Error("--keyword is required: at least one keyword to track (repeat the flag for more).");
+      if (keywords.length > TRACKING_MAX_KEYWORDS) throw new Error(`A set tracks at most ${TRACKING_MAX_KEYWORDS} keywords; split them into more sets.`);
+      const zips = parseZips(opts.zip);
+      if (zips.length === 0) throw new Error("--zip is required: at least one shopper location from `mixshift shelf zips` (repeat the flag for more).");
+      if (zips.length > TRACKING_MAX_ZIPS) throw new Error(`A set tracks at most ${TRACKING_MAX_ZIPS} zips; split them into more sets.`);
+      const views = parseViews(opts.view);
+      const asins = parseAsins(opts.asin);
+      const pages = parsePages(opts.pages);
+      const note = opts.note?.trim() || void 0;
+      const country = parseCountry(opts.country);
+      const asked = { keywords_asked: keywords.length, zips_asked: zips.length, views_asked: views.length, asins_asked: asins.length, has_note: !!note, ...country ? { country } : {} };
+      const prior = await shelfTrackingGet(id, ctx.client);
+      if (isShelfFailure(prior) && !isNotFound(prior)) return failed(ctx, EventName.ShelfTrackingChanged, prior, { action: "create", stage: "lookup", ...asked });
+      const before = isShelfFailure(prior) ? null : prior.set;
+      if (before && !opts.replace && sameAsAsked(before, { keywords, zips, views, asins, pages, note, country })) {
+        const running = isRunning(before);
+        const all = await shelfTrackingList(ctx.client);
+        const projection = isShelfFailure(all) ? { projected_calls_per_month: null, allowance: null } : { projected_calls_per_month: all.projected_calls_per_month, allowance: all.allowance };
+        const state = running ? { unchanged: true } : { paused: true };
+        await trackShelf(EventName.ShelfTrackingChanged, "ok", ctx.startedAt, ctx.dataDir, { action: "create", ...state, ...asked, ...setCounts(before), ...projection });
+        if (ctx.json) return writeJson7({ status: "ok", action: "create", id, ...state, set: before, ...projection });
+        process.stderr.write(`
+\u2713 tracking set ${id} already exists with these keywords and zips${running ? "" : ", paused"}
+
+`);
+        process.stdout.write(renderUnchanged(before, projection.projected_calls_per_month, projection.allowance) + "\n");
+        return;
+      }
+      if (before && !opts.replace) {
+        return failed(
+          ctx,
+          EventName.ShelfTrackingChanged,
+          {
+            ok: false,
+            kind: "tracking_set_exists",
+            friendly: `A tracking set "${id}" already exists, with other keywords, zips or settings (${plural(before.keywords.length, "keyword")}, ${before.calls_per_day} calls a day). Nothing was changed.`,
+            message: `To change it: \`mixshift shelf tracking add ${id}\` or \`remove ${id}\`. To overwrite it, run create again with --replace.`
+          },
+          { action: "create", stage: "lookup", ...asked }
+        );
+      }
+      const action = before ? "replace" : "create";
+      const r = await shelfTrackingPut(
+        id,
+        {
+          keywords,
+          zips,
+          ...views.length ? { surfaces: views } : {},
+          ...asins.length ? { asins } : {},
+          ...pages !== void 0 ? { pages } : {},
+          ...note ? { note } : {},
+          ...country ? { country } : {}
+        },
+        ctx.client
+      );
+      if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action, stage: "write", ...asked });
+      await written(ctx, action, id, r, diffSets(before, r.set), asked);
+    } catch (err) {
+      emitError15(err, ctx.json);
+    }
+  });
+  for (const mode of ["add", "remove"]) {
+    tracking.command(`${mode} <id>`).description(
+      mode === "add" ? "Add keywords or ASINs to a tracking set (owners, admins and managers). Each keyword adds zips x views x pages calls a day; a change that would take the set over the per-set limit of calls a day, or the projected monthly use past the allowance, is refused. ASINs cost nothing." : "Remove keywords or ASINs from a tracking set (owners, admins and managers). The allowance never blocks a removal, and each keyword removed saves zips x views x pages calls a day. `shelf rank-history` stops answering for a removed keyword unless another set lists it. A set keeps at least one keyword: pause or delete the set instead."
+    ).option("--keyword <keyword>", `a keyword to ${mode} (repeatable)`, collect2).option("--asin <asin>", `an ASIN to ${mode} (repeatable)`, collect2).action(async (rawId, opts, cmd) => {
+      const ctx = context(cmd);
+      try {
+        const id = parseId(rawId);
+        const keywords = parseKeywords(opts.keyword);
+        const asins = parseAsins(opts.asin);
+        if (keywords.length === 0 && asins.length === 0) throw new Error(`Name at least one --keyword or --asin to ${mode}.`);
+        const asked = { keywords_asked: keywords.length, asins_asked: asins.length };
+        const prior = await shelfTrackingGet(id, ctx.client);
+        if (isShelfFailure(prior)) return failed(ctx, EventName.ShelfTrackingChanged, prior, { action: mode, stage: "lookup", ...asked });
+        if (mode === "remove") {
+          const drop = new Set(keywords.map(normalizeKeyword));
+          if (prior.set.keywords.length > 0 && prior.set.keywords.every((k) => drop.has(normalizeKeyword(k)))) {
+            throw new Error(
+              `That would leave "${id}" with no keywords, and a set keeps at least one. To stop paying for it and keep its history readable, pause it (\`mixshift shelf tracking pause ${id}\`); to remove it, delete it (\`mixshift shelf tracking delete ${id} --yes\`).`
+            );
+          }
+        }
+        const r = await shelfTrackingPatch(
+          id,
+          mode === "add" ? { add_keywords: keywords, add_asins: asins } : { remove_keywords: keywords, remove_asins: asins },
+          ctx.client
+        );
+        if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action: mode, stage: "write", ...asked });
+        await written(ctx, mode, id, r, diffSets(prior.set, r.set, { mode, keywords, asins }), asked);
+      } catch (err) {
+        emitError15(err, ctx.json);
+      }
+    });
+  }
+  for (const mode of ["pause", "resume"]) {
+    tracking.command(`${mode} <id>`).description(
+      mode === "pause" ? "Pause a tracking set (owners, admins and managers): its daily searches stop and it uses none of the allowance, and its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history." : "Resume a paused tracking set (owners, admins and managers): the next daily run searches it again, and it uses its calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance."
+    ).action(async (rawId, _opts, cmd) => {
+      const ctx = context(cmd);
+      try {
+        const id = parseId(rawId);
+        const r = await shelfTrackingPatch(id, mode === "resume" ? { enabled: true, cadence: "daily" } : { enabled: false }, ctx.client);
+        if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action: mode, stage: "write" });
+        await written(ctx, mode, id, r, null, {});
+      } catch (err) {
+        emitError15(err, ctx.json);
+      }
+    });
+  }
+  tracking.command("delete <id>").description(
+    "Delete a tracking set (owners, admins and managers): its daily searches stop, and `shelf rank-history` no longer answers for its keywords unless another set (running or paused) lists them. Needs --yes. To stop paying and keep the history readable, pause it instead."
+  ).option("--yes", "confirm the delete (without it nothing is deleted)").action(async (rawId, opts, cmd) => {
+    const ctx = context(cmd);
+    try {
+      const id = parseId(rawId);
+      if (!opts.yes) {
+        await trackShelf(EventName.ShelfTrackingChanged, "failed", ctx.startedAt, ctx.dataDir, { action: "delete", stage: "confirm", kind_failed: "confirmation_required" });
+        throw new Error(
+          `Nothing was deleted. Deleting "${id}" stops its daily searches, and rank-history no longer answers for its keywords unless another set lists them. To stop paying and keep its history readable, pause it instead: \`mixshift shelf tracking pause ${id}\`. To delete it, run \`mixshift shelf tracking delete ${id} --yes\`.`
+        );
+      }
+      const prior = await shelfTrackingGet(id, ctx.client);
+      if (isShelfFailure(prior)) return failed(ctx, EventName.ShelfTrackingChanged, prior, { action: "delete", stage: "lookup" });
+      const r = await shelfTrackingDelete(id, ctx.client);
+      if (isShelfFailure(r)) return failed(ctx, EventName.ShelfTrackingChanged, r, { action: "delete", stage: "write", ...setCounts(prior.set) });
+      const after = await shelfTrackingList(ctx.client);
+      const projection = isShelfFailure(after) ? { projected_calls_per_month: null, allowance: null } : { projected_calls_per_month: after.projected_calls_per_month, allowance: after.allowance };
+      await trackShelf(EventName.ShelfTrackingChanged, "ok", ctx.startedAt, ctx.dataDir, { action: "delete", ...setCounts(prior.set), ...projection });
+      if (ctx.json) return writeJson7({ status: "ok", action: "delete", id, deleted: prior.set, ...projection });
+      process.stderr.write(`
+\u2713 deleted tracking set ${id}
+
+`);
+      process.stdout.write(renderDeleted(prior.set, projection.projected_calls_per_month, projection.allowance) + "\n");
+    } catch (err) {
+      emitError15(err, ctx.json);
+    }
+  });
+}
+function context(cmd) {
+  const root = cmd.optsWithGlobals();
+  return { json: !!root.json, dataDir: root.dataDir, startedAt: Date.now(), client: { dataDirOverride: root.dataDir } };
+}
+async function failed(ctx, eventName, f, base2) {
+  await trackShelf(eventName, "failed", ctx.startedAt, ctx.dataDir, failurePayload(f, base2));
+  emitFailure9(f, ctx.json);
+  const namesASet = base2.action !== "list" && !((base2.action === "create" || base2.action === "replace") && base2.stage === "write");
+  if (!ctx.json && isNotFound(f) && namesASet) {
+    process.stderr.write("  `mixshift shelf tracking list` shows the sets your organization has.\n");
+    if (base2.action === "delete") process.stderr.write("  If you deleted it a moment ago and the answer was lost, it may already be deleted.\n");
+  }
+  if (!ctx.json && f.kind === "host_unreachable" && base2.stage === "write") {
+    process.stderr.write(
+      "  The change may or may not have been made: `mixshift shelf tracking show <set>` says. Running it again is safe: a create that went through answers that the set is already as asked, and a delete that went through answers not_found.\n"
+    );
+  }
+}
+async function written(ctx, action, id, r, changes, asked) {
+  await trackShelf(EventName.ShelfTrackingChanged, "ok", ctx.startedAt, ctx.dataDir, {
+    action,
+    ...asked,
+    ...changes ? {
+      keywords_added: changes.keywords_added.length,
+      keywords_removed: changes.keywords_removed.length,
+      asins_added: changes.asins_added.length,
+      asins_removed: changes.asins_removed.length
+    } : {},
+    ...setCounts(r.set),
+    projected_calls_per_month: r.projected_calls_per_month,
+    allowance: r.allowance
+  });
+  if (ctx.json) return writeJson7({ status: "ok", action, id, ...changes ? { changes } : {}, set: r.set, projected_calls_per_month: r.projected_calls_per_month, allowance: r.allowance });
+  const verb = { create: "created", replace: "replaced", add: "changed", remove: "changed", pause: "paused", resume: "resumed", delete: "deleted" }[action];
+  process.stderr.write(`
+\u2713 ${verb} tracking set ${id}
+
+`);
+  process.stdout.write(renderWritten(action, r, changes) + "\n");
+}
+function isNotFound(f) {
+  return f.kind === "not_found";
+}
+function sameAsAsked(s, a) {
+  const same = (x, y) => x.length === y.length && x.every((v) => y.includes(v));
+  if (!same([...new Set(s.keywords.map(normalizeKeyword))], a.keywords)) return false;
+  if (!same([...new Set(s.zips.map((z2) => z2.trim().replace(/\s+/g, " ").toUpperCase()))], a.zips)) return false;
+  if (a.views.length > 0 && !same(s.surfaces, a.views)) return false;
+  if (a.asins.length > 0 && !same([...new Set(s.asins.map((x) => x.toUpperCase()))], a.asins)) return false;
+  if (a.pages !== void 0 && s.pages !== a.pages) return false;
+  if (a.note !== void 0 && s.note !== a.note) return false;
+  if (a.country !== void 0 && s.country !== a.country) return false;
+  return true;
+}
+function isRunning(s) {
+  return s.enabled && s.cadence === "daily";
+}
+function setCounts(s) {
+  return {
+    keywords: s.keywords.length,
+    asins: s.asins.length,
+    zips: s.zips.length,
+    views: s.surfaces.length,
+    pages: s.pages,
+    calls_per_day: s.calls_per_day,
+    enabled: s.enabled,
+    cadence: s.cadence
+  };
+}
+function diffSets(before, after, asked) {
+  const bk = new Set((before?.keywords ?? []).map(normalizeKeyword));
+  const ak = new Set(after.keywords.map(normalizeKeyword));
+  const ba = new Set((before?.asins ?? []).map((a) => a.toUpperCase()));
+  const aa = new Set(after.asins.map((a) => a.toUpperCase()));
+  const changes = {
+    keywords_added: after.keywords.filter((k) => !bk.has(normalizeKeyword(k))),
+    keywords_removed: (before?.keywords ?? []).filter((k) => !ak.has(normalizeKeyword(k))),
+    asins_added: after.asins.filter((a) => !ba.has(a.toUpperCase())),
+    asins_removed: (before?.asins ?? []).filter((a) => !aa.has(a.toUpperCase())),
+    keywords_unchanged: [],
+    asins_unchanged: []
+  };
+  if (asked) {
+    const present = (k) => bk.has(normalizeKeyword(k));
+    changes.keywords_unchanged = asked.keywords.filter((k) => asked.mode === "add" ? present(k) : !present(k));
+    changes.asins_unchanged = asked.asins.filter((a) => asked.mode === "add" ? ba.has(a) : !ba.has(a));
+  }
+  if (before && !asked) {
+    if (before.zips.join("\n") !== after.zips.join("\n")) changes.zips_before = before.zips;
+    if (before.surfaces.join("\n") !== after.surfaces.join("\n")) changes.views_before = before.surfaces;
+    if (before.pages !== after.pages) changes.pages_before = before.pages;
+  }
+  return changes;
+}
+function parseId(raw) {
+  const id = raw.trim();
+  if (!TRACKING_ID_RE.test(id)) {
+    throw new Error("A set id is 2 to 63 lower-case letters, digits or hyphens, starting with a letter or digit (for example trail-snacks).");
+  }
+  return id;
+}
+function parseKeywords(raw) {
+  const out2 = [];
+  for (const k of raw ?? []) {
+    const n = normalizeKeyword(k);
+    if (!n) throw new Error("--keyword cannot be empty.");
+    if (n.length > KEYWORD_MAX_LENGTH) throw new Error(`A keyword is at most ${KEYWORD_MAX_LENGTH} characters.`);
+    if (!out2.includes(n)) out2.push(n);
+  }
+  return out2;
+}
+function parseZips(raw) {
+  const out2 = [];
+  for (const z2 of raw ?? []) {
+    const n = z2.trim().replace(/\s+/g, " ").toUpperCase();
+    if (n.length < 3 || n.length > 10) throw new Error(`--zip "${z2}" is not a zip or postal code (3 to 10 characters; \`mixshift shelf zips\` lists them).`);
+    if (!out2.includes(n)) out2.push(n);
+  }
+  return out2;
+}
+function parseViews(raw) {
+  const out2 = [];
+  for (const v of raw ?? []) {
+    if (!SHELF_SURFACES.includes(v)) throw new Error(`--view must be ${SHELF_SURFACES.join(" or ")}.`);
+    if (!out2.includes(v)) out2.push(v);
+  }
+  return out2;
+}
+function parseAsins(raw) {
+  const out2 = [];
+  for (const a of raw ?? []) {
+    const n = a.trim().toUpperCase();
+    if (!ASIN_RE.test(n)) throw new Error(`--asin "${a}" is not an ASIN (10 letters or digits).`);
+    if (!out2.includes(n)) out2.push(n);
+  }
+  return out2;
+}
+function parseCountry(raw) {
+  if (raw === void 0) return void 0;
+  const v = raw.trim().toLowerCase();
+  if (!SHELF_COUNTRIES.includes(v)) throw new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`);
+  return v;
+}
+function parsePages(raw) {
+  if (raw === void 0) return void 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > TRACKING_MAX_PAGES) throw new Error(`--pages must be a whole number from 1 to ${TRACKING_MAX_PAGES}.`);
+  return n;
+}
+var cell2 = (s) => s ? s.replace(/\|/g, "/").replace(/\s*\r?\n\s*/g, " ") : "-";
+var day = (iso) => iso ? iso.slice(0, 10) : "-";
+var plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+var viewsText = (v) => v.length ? v.join(" and ") : "-";
+var quoted = (list2) => list2.map((k) => `"${k}"`).join(", ");
+function enabledText(s) {
+  if (!s.enabled) return "no (paused)";
+  return s.cadence === "off" ? "yes (cadence off)" : "yes";
+}
+function callsBreakdown(s) {
+  return `${s.calls_per_day} (${plural(s.keywords.length, "keyword")} x ${plural(s.zips.length, "zip")} x ${plural(s.surfaces.length, "view")} x ${plural(s.pages, "page")})`;
+}
+function lastRunText(s) {
+  if (s.last_run_at) {
+    const r = s.last_run_summary;
+    if (!r) return day(s.last_run_at);
+    const parts = [`${r.ok} of ${r.calls} ok`];
+    if (r.failed) parts.push(`${r.failed} failed`);
+    if (r.stale) parts.push(`${r.stale} from an earlier observation`);
+    if (r.exhausted) parts.push(`${r.exhausted} refused, allowance used up`);
+    if (r.stopped_reason) parts.push(`stopped: ${r.stopped_reason}`);
+    return `${day(s.last_run_at)} (${parts.join(", ")})`;
+  }
+  if (s.last_run_date) return `${s.last_run_date} (running)`;
+  return "not yet";
+}
+function projectionText(projected, allowance) {
+  if (projected === null) return "Projected monthly use: not available here; `mixshift shelf tracking list` shows it.";
+  if (allowance === null) return `Projected monthly use: ${projected} shelf requests a month for rank tracking.`;
+  const base2 = `Projected monthly use: ${projected} of ${allowance} shelf requests a month for rank tracking`;
+  if (projected > allowance) {
+    return `${base2}, ${projected - allowance} over the allowance. A change that adds tracking is refused until it fits; removing and pausing always go through.`;
+  }
+  return `${base2}. On-demand shelf answers count against the same allowance.`;
+}
+function editHint(canEdit) {
+  return canEdit ? 'You can change these sets (owner, admin or manager): `mixshift shelf tracking add <set> --keyword "<keyword>"`, `remove`, `pause`, `resume`, `create`, `delete`.' : 'Only an owner, admin or manager can change these sets. Ask one of them, or say "track these keywords" to ask MixShift.';
+}
+function renderTrackingList(r) {
+  const L = [];
+  const running = r.sets.filter(isRunning).length;
+  L.push(`**Rank tracking: ${plural(r.sets.length, "set")}, ${running} running**`);
+  if (r.sets.length === 0) {
+    L.push("", "_(no rank tracking sets yet)_");
+    if (r.can_edit) L.push("", 'Start one: `mixshift shelf tracking create <set> --keyword "<keyword>" --zip <zip>` (both views, page 1, daily).');
+  } else {
+    L.push("", "| set | note | keywords | zips | views | pages | calls a day | enabled | last run |", "|---|---|---|---|---|---|---|---|---|");
+    for (const s of r.sets) {
+      L.push(
+        `| ${s.id} | ${cell2(s.note)} | ${s.keywords.length} | ${cell2(s.zips.join(", "))} | ${cell2(s.surfaces.join(", "))} | ${s.pages} | ${s.calls_per_day} | ${enabledText(s)} | ${cell2(lastRunText(s))} |`
+      );
+    }
+    L.push("", "A paused set uses none of the allowance and its rank history stays readable. `mixshift shelf tracking show <set>` lists its keywords and ASINs.");
+  }
+  L.push("", projectionText(r.projected_calls_per_month, r.allowance));
+  if (r.warning) L.push("", `Heads-up: ${r.warning.message}`);
+  L.push("", editHint(r.can_edit));
+  if (r.can_edit) {
+    const cap2 = r.limits.max_calls_per_day_per_set !== null ? `, and at most ${r.limits.max_calls_per_day_per_set} calls a day` : "";
+    L.push(`A set holds up to ${r.limits.max_keywords} keywords, ${r.limits.max_zips} zips and ${r.limits.max_pages} pages${cap2}.`);
+  }
+  return L.join("\n");
+}
+function renderTrackingSet(s) {
+  const L = [];
+  L.push(`**Tracking set \`${s.id}\`** (${s.retailer} ${s.country})`, "");
+  if (s.note) L.push(`- note: ${s.note}`);
+  L.push(`- enabled: ${enabledText(s)}`);
+  L.push(`- zips (${s.zips.length}): ${s.zips.join(", ") || "-"}`);
+  L.push(`- views: ${viewsText(s.surfaces)}; pages per search: ${s.pages}`);
+  L.push(`- calls a day: ${callsBreakdown(s)}${isRunning(s) ? "" : ", none while paused"}`);
+  L.push(`- last run: ${lastRunText(s)}`);
+  if (s.updated_at || s.updated_by) L.push(`- last changed: ${day(s.updated_at)}${s.updated_by ? ` by ${s.updated_by}` : ""}`);
+  L.push("", `**Keywords (${s.keywords.length})**`, "");
+  s.keywords.forEach((k, i) => L.push(`${i + 1}. ${k}`));
+  L.push("", `**ASINs (${s.asins.length})**`, "");
+  L.push(s.asins.length ? s.asins.join(", ") : "_(none listed: `shelf rank-history` then needs `--asin`)_");
+  return L.join("\n");
+}
+function renderWritten(action, r, changes) {
+  const s = r.set;
+  const L = [];
+  const title = { create: "Created", replace: "Replaced", add: "Changed", remove: "Changed", pause: "Paused", resume: "Resumed", delete: "Deleted" }[action];
+  L.push(`**${title} tracking set \`${s.id}\`**`, "");
+  if (action === "create") {
+    L.push(`- keywords (${s.keywords.length}): ${quoted(s.keywords)}`);
+    L.push(`- zips: ${s.zips.join(", ")}`);
+    L.push(`- views: ${viewsText(s.surfaces)}; pages per search: ${s.pages}`);
+    L.push(`- ASINs: ${s.asins.length ? s.asins.join(", ") : `none listed (\`shelf rank-history\` then needs \`--asin\`; \`shelf tracking add ${s.id} --asin <ASIN>\` adds them)`}`);
+    if (s.note) L.push(`- note: ${s.note}`);
+    L.push("- the first snapshot lands with the next daily run; `shelf rank-history` has points for these keywords from then on");
+  } else if (action === "pause") {
+    L.push("- paused: no daily searches until you resume it, so it uses none of the allowance");
+    L.push("- its rank history stays readable with `shelf rank-history`; days while paused have no new points");
+  } else if (action === "resume") {
+    L.push("- resumed: the next daily run searches it again and adds new points to its rank history");
+  } else if (changes) {
+    if (changes.keywords_added.length) L.push(`- added ${plural(changes.keywords_added.length, "keyword")}: ${quoted(changes.keywords_added)}`);
+    if (changes.keywords_removed.length) {
+      L.push(`- removed ${plural(changes.keywords_removed.length, "keyword")}: ${quoted(changes.keywords_removed)}`);
+      L.push("- `shelf rank-history` stops answering for a removed keyword unless another set lists it");
+    }
+    if (changes.asins_added.length) L.push(`- added ${plural(changes.asins_added.length, "ASIN")}: ${changes.asins_added.join(", ")}`);
+    if (changes.asins_removed.length) L.push(`- removed ${plural(changes.asins_removed.length, "ASIN")}: ${changes.asins_removed.join(", ")}`);
+    const unchanged = [...changes.keywords_unchanged.map((k) => `"${k}"`), ...changes.asins_unchanged];
+    if (unchanged.length) L.push(`- ${action === "add" ? "already tracked" : "not on the set"}, so unchanged: ${unchanged.join(", ")}`);
+    if (changes.zips_before) L.push(`- zips: ${s.zips.join(", ")} (was ${changes.zips_before.join(", ") || "-"})`);
+    if (changes.views_before) L.push(`- views: ${viewsText(s.surfaces)} (was ${viewsText(changes.views_before)})`);
+    if (changes.pages_before !== void 0) L.push(`- pages per search: ${s.pages} (was ${changes.pages_before})`);
+    if (L.length === 2) L.push("- nothing changed");
+    L.push(`- the set now tracks ${plural(s.keywords.length, "keyword")} and ${plural(s.asins.length, "ASIN")}`);
+  }
+  L.push("", `Calls a day for this set: ${callsBreakdown(s)}${isRunning(s) ? "" : ", none while paused"}.`);
+  L.push(projectionText(r.projected_calls_per_month, r.allowance));
+  return L.join("\n");
+}
+function renderUnchanged(s, projected, allowance) {
+  const running = isRunning(s);
+  return [
+    `**Tracking set \`${s.id}\` already exists with these keywords and zips${running ? "" : ", but it is paused"}**`,
+    "",
+    "- nothing changed (running create again after a lost answer is safe)",
+    ...running ? [] : [`- it takes no daily searches while paused; to restart it: \`mixshift shelf tracking resume ${s.id}\``],
+    "",
+    `Calls a day for this set: ${callsBreakdown(s)}${isRunning(s) ? "" : ", none while paused"}.`,
+    projectionText(projected, allowance)
+  ].join("\n");
+}
+function renderDeleted(s, projected, allowance) {
+  return [
+    `**Deleted tracking set \`${s.id}\`**`,
+    "",
+    `- it tracked ${plural(s.keywords.length, "keyword")} at ${plural(s.zips.length, "zip")} on ${viewsText(s.surfaces)}, ${s.calls_per_day} calls a day${isRunning(s) ? "" : " when running"}; those searches stop`,
+    "- `shelf rank-history` no longer answers for its keywords unless another set (running or paused) lists them",
+    "",
+    projectionText(projected, allowance)
+  ].join("\n");
+}
+
 // src/commands/shelf.ts
 init_telemetry();
 var ORIGINS = /* @__PURE__ */ new Set(["on_demand", "featured_offer_check", "demo", "subscription"]);
-var ASIN_RE = /^[A-Z0-9]{10}$/i;
+var ASIN_RE2 = /^[A-Z0-9]{10}$/i;
 var ISO_DATE_OR_TIME_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 function registerShelfCommands(program3) {
   const shelf = program3.command("shelf").description(
-    "Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, search rank, product page, seller), plus the rank history for keywords MixShift tracks for you, through the MixShift service. Reads only; each data answer counts one against your organization's monthly shelf allowance (rank-history, zips and usage are free)."
+    "Shelf data: what a shopper at a zip sees on Amazon for an ASIN or a keyword (Buy Box, offers, search rank, product page, seller), plus the rank history for the keywords your organization tracks and the tracking itself, through the MixShift service. Each data answer counts one against your organization's monthly shelf allowance (rank-history, tracking, zips and usage are free; every tracked search counts one each day it runs)."
   );
   shelf.command("catalog").description("Every shelf call, with a plain explanation of what it answers, what it takes and what it costs.").action(async (_opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -98961,7 +100431,7 @@ function registerShelfCommands(program3) {
   shelf.command("zips").description("The shopper locations (zip/postal codes) shelf data can be observed from. Free.").option("--country <code>", "marketplace country: us (default), ca, uk, de, fr, it, es, in").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
-    const country = parseCountry(opts.country);
+    const country = parseCountry2(opts.country);
     if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
     const result = await shelfZips(country, { dataDirOverride: root.dataDir });
     if (isShelfFailure(result)) {
@@ -98995,12 +100465,12 @@ function registerShelfCommands(program3) {
     else process.stdout.write(renderUsage(result) + "\n");
   });
   shelf.command("rank-history <query>").description(
-    'Where your ASINs ranked for a keyword MixShift tracks for your organization, day by day at one zip, on desktop or mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer (anything else is not_tracked; say "track these keywords" to ask MixShift).'
+    "Where your ASINs ranked for a keyword your organization tracks, day by day at one zip, on desktop or mobile: absolute, organic and sponsored rank per day and ASIN. Free. Only tracked keywords, zips and views answer (anything else is not_tracked; `shelf tracking list` shows what is tracked)."
   ).requiredOption("--zip <zip>", "the tracked shopper location (one of the zips on your tracking set)").option("--view <view>", "desktop (default) or mobile").option("--from <date>", "start, an ISO date (YYYY-MM-DD) or time; default 30 days before --to").option("--to <date>", "end, an ISO date or time (a date means the end of that day); default now").option("--asin <asin>", "one ASIN; default the ASINs on your tracking").option("--country <code>", "marketplace country: us (default), ca, uk, de, fr, it, es, in").action(async (query2, opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
-      const country = parseCountry(opts.country);
+      const country = parseCountry2(opts.country);
       if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
       let surface;
       if (opts.view !== void 0) {
@@ -99010,7 +100480,7 @@ function registerShelfCommands(program3) {
         surface = opts.view;
       }
       const asin = opts.asin?.trim() || void 0;
-      if (asin !== void 0 && !ASIN_RE.test(asin)) return emitError15(new Error("--asin must be a 10-character ASIN."), !!root.json);
+      if (asin !== void 0 && !ASIN_RE2.test(asin)) return emitError15(new Error("--asin must be a 10-character ASIN."), !!root.json);
       const from = opts.from?.trim() || void 0;
       const to = opts.to?.trim() || void 0;
       for (const [flag, v] of [
@@ -99042,7 +100512,7 @@ function registerShelfCommands(program3) {
       }
       process.stderr.write(
         `
-\u2713 rank history for "${result.query}"${result.zip ? ` at ${result.zip}` : ""} (${result.country}, ${result.surface}), ${day(result.from)} to ${day(result.to)}
+\u2713 rank history for "${result.query}"${result.zip ? ` at ${result.zip}` : ""} (${result.country}, ${result.surface}), ${day2(result.from)} to ${day2(result.to)}
 
 `
       );
@@ -99056,6 +100526,7 @@ function registerShelfCommands(program3) {
   registerData(shelf, "search", "<query>", "The search results page for a keyword as a shopper at a zip sees it: organic and sponsored rank, badges, prices.", true);
   registerData(shelf, "product", "<asin>", "The product page for an ASIN as a shopper at a zip sees it: title, bullets, details, images, best-seller ranks (beta).", true);
   registerData(shelf, "seller", "<seller-id>", "Who a third-party seller is: storefront name, rating, business details. No zip.", false);
+  registerShelfTracking(shelf);
   registerFeaturedOfferCheck(shelf);
 }
 function registerData(shelf, kind, arg, description, takesZip) {
@@ -99072,7 +100543,7 @@ function registerData(shelf, kind, arg, description, takesZip) {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     try {
-      const country = parseCountry(opts.country);
+      const country = parseCountry2(opts.country);
       if (!country) return emitError15(new Error(`--country must be one of ${SHELF_COUNTRIES.join(", ")}.`), !!root.json);
       if (opts.origin !== void 0 && !ORIGINS.has(opts.origin)) {
         return emitError15(new Error(`--origin must be one of ${[...ORIGINS].join(", ")}.`), !!root.json);
@@ -99129,7 +100600,7 @@ function registerData(shelf, kind, arg, description, takesZip) {
     }
   });
 }
-function parseCountry(raw) {
+function parseCountry2(raw) {
   if (raw === void 0 || raw === "") return "us";
   const v = raw.trim().toLowerCase();
   return SHELF_COUNTRIES.includes(v) ? v : null;
@@ -99138,84 +100609,10 @@ function ageSeconds(observedAt, now) {
   const t = Date.parse(observedAt);
   return Number.isFinite(t) ? Math.max(0, Math.round((now - t) / 1e3)) : null;
 }
-function failurePayload(failure3, base2) {
-  return {
-    ...base2,
-    kind_failed: failure3.kind,
-    ...failure3.httpStatus ? { http_status: failure3.httpStatus } : {},
-    ...failure3.unrecognizedKind ? { unrecognized_kind: failure3.unrecognizedKind } : {},
-    // Gateway contract (mx-ops#144): enums and a flag; never the friendly text.
-    ...failure3.source !== void 0 && CONTRACT_WORD.test(failure3.source) ? { source: failure3.source } : {},
-    ...failure3.retryable !== void 0 ? { retryable: failure3.retryable } : {}
-  };
-}
-async function trackShelf(eventName, outcome, startedAt, dataDir, payload) {
-  await track(
-    {
-      event_name: eventName,
-      outcome,
-      duration_ms: Date.now() - startedAt,
-      ...outcome === "failed" && typeof payload.kind_failed === "string" ? { error_class: payload.kind_failed } : {},
-      payload
-    },
-    dataDir
-  );
-}
-function writeJson7(obj2) {
-  process.stdout.write(JSON.stringify(obj2, null, 2) + "\n");
-}
-function emitFailure9(failure3, json3) {
-  if (json3) {
-    writeJson7({
-      status: "error",
-      failure_kind: failure3.kind,
-      message: failure3.friendly,
-      detail: failure3.message,
-      http_status: failure3.httpStatus,
-      period: failure3.period,
-      allowance: failure3.allowance,
-      used: failure3.used,
-      resets_at: failure3.resetsAt,
-      request_more: failure3.requestMore,
-      available_count: failure3.availableCount,
-      retry_after_ms: failure3.retryAfterMs,
-      required_scope: failure3.requiredScope,
-      unrecognized_kind: failure3.unrecognizedKind,
-      source: failure3.source,
-      retryable: failure3.retryable,
-      invalid_params: failure3.invalidParams
-    });
-  } else {
-    process.stderr.write(`
-\u2717 ${failure3.friendly}
-`);
-    if (failure3.message && failure3.message !== failure3.friendly) process.stderr.write(`  ${failure3.message}
-`);
-    if (failure3.kind === "shelf_allowance_exhausted") {
-      if (failure3.resetsAt) process.stderr.write(`  used ${failure3.used ?? "?"} of ${failure3.allowance ?? "?"} for ${failure3.period ?? "this month"}; resets ${failure3.resetsAt}
-`);
-      process.stderr.write('  To ask MixShift for more now: say "request more shelf requests" (the skill sends feedback with your organization and period).\n');
-    }
-    if (failure3.kind === "not_tracked") {
-      process.stderr.write('  To ask MixShift to track it: say "track these keywords" (the skill sends the request with the keywords, locations and views).\n');
-    }
-    if (failure3.retryable === false && failure3.source === "request") {
-      process.stderr.write("  Not retryable as sent: change the request before calling again.\n");
-    }
-  }
-  process.exitCode = exitCodeForShelfKind(failure3.kind);
-}
-function emitError15(err, json3) {
-  const message = err instanceof Error ? err.message : String(err);
-  if (json3) writeJson7({ status: "error", message });
-  else process.stderr.write(`error: ${message}
-`);
-  process.exitCode = 1;
-}
 var money2 = (n) => typeof n === "number" ? n.toFixed(2) : "-";
 var days = (n) => typeof n === "number" ? `${n} d` : "-";
 var yes = (b) => b === true ? "yes" : b === false ? "no" : "-";
-var cell2 = (s) => s ? s.replace(/\|/g, "/") : "-";
+var cell3 = (s) => s ? s.replace(/\|/g, "/") : "-";
 function renderUsage(u) {
   return [
     `**Shelf allowance for ${u.period}**`,
@@ -99223,6 +100620,7 @@ function renderUsage(u) {
     `- used: ${u.used} of ${u.allowance} (${u.remaining} left)`,
     `- resets: ${u.resets_at}`,
     `- source: ${u.source === "discovery_first_month" ? "first-month discovery allowance" : u.source === "discovery" ? "monthly discovery allowance" : u.source === "entitlement" ? "your shelf package" : u.source}`,
+    ...u.warning ? ["", `Heads-up: ${u.warning.message}`] : [],
     "",
     "Every data answer counts one; `shelf zips` and `shelf usage` are free. Unused requests do not roll over."
   ].join("\n");
@@ -99248,21 +100646,21 @@ function renderBuybox(b) {
   return [
     "| field | value |",
     "|---|---|",
-    `| price | ${cell2(b.currency)}${money2(b.price)} |`,
-    `| sold by | ${cell2(b.sold_by)}${b.seller_id ? ` (${b.seller_id})` : ""} |`,
-    `| ships from | ${cell2(b.ships_from)} |`,
+    `| price | ${cell3(b.currency)}${money2(b.price)} |`,
+    `| sold by | ${cell3(b.sold_by)}${b.seller_id ? ` (${b.seller_id})` : ""} |`,
+    `| ships from | ${cell3(b.ships_from)} |`,
     `| Prime | ${yes(b.prime)} |`,
     `| in stock | ${yes(b.in_stock)}${typeof b.stock === "number" ? ` (${b.stock})` : ""} |`,
-    `| free delivery | ${cell2(b.free_delivery)} (${days(b.promise_days_free)}) |`,
-    `| fastest delivery | ${cell2(b.fastest_delivery)} (${days(b.promise_days_fastest)}) |`,
-    `| order within | ${cell2(b.order_within)} |`,
-    `| delivering to | ${cell2(b.delivery_to)} |`
+    `| free delivery | ${cell3(b.free_delivery)} (${days(b.promise_days_free)}) |`,
+    `| fastest delivery | ${cell3(b.fastest_delivery)} (${days(b.promise_days_fastest)}) |`,
+    `| order within | ${cell3(b.order_within)} |`,
+    `| delivering to | ${cell3(b.delivery_to)} |`
   ].join("\n");
 }
 function renderOffers(o) {
   const L = [];
   if (o.product) {
-    L.push(`**Featured offer:** ${cell2(o.product.sold_by)} at ${cell2(o.product.price)}${o.product.fba ? ", FBA" : ""}; fastest ${cell2(o.product.fastest_delivery)} (${days(o.product.promise_days_fastest)})`);
+    L.push(`**Featured offer:** ${cell3(o.product.sold_by)} at ${cell3(o.product.price)}${o.product.fba ? ", FBA" : ""}; fastest ${cell3(o.product.fastest_delivery)} (${days(o.product.promise_days_fastest)})`);
     if (o.product.title) L.push(`_${o.product.title}_${typeof o.product.rating === "number" ? ` (${o.product.rating} stars, ${o.product.reviews ?? "-"} reviews)` : ""}`);
     L.push("");
   }
@@ -99272,7 +100670,7 @@ function renderOffers(o) {
   }
   L.push(`**${o.offer_count} offer(s)**`, "", "| # | price | sold by | seller id | FBA | condition | fastest delivery |", "|---|---|---|---|---|---|---|");
   o.offers.forEach((x, i) => {
-    L.push(`| ${i + 1} | ${cell2(x.price)} | ${cell2(x.sold_by)} | ${cell2(x.seller_id)} | ${yes(x.fba)} | ${cell2(x.conditions)} | ${cell2(x.fastest_delivery)} (${days(x.promise_days_fastest)}) |`);
+    L.push(`| ${i + 1} | ${cell3(x.price)} | ${cell3(x.sold_by)} | ${cell3(x.seller_id)} | ${yes(x.fba)} | ${cell3(x.conditions)} | ${cell3(x.fastest_delivery)} (${days(x.promise_days_fastest)}) |`);
   });
   return L.join("\n");
 }
@@ -99288,19 +100686,19 @@ function renderSearch(s) {
   L.push(`**${s.surface} page ${s.page}: ${s.products.length} positions, ${s.sponsored_count} sponsored${typeof s.total_results === "number" ? `, ${s.total_results} results in all` : ""}${s.delivery_to ? `, delivering to ${s.delivery_to}` : ""}**`);
   if (s.banners.length > 0) {
     L.push("");
-    L.push("Sponsored-brand banners: " + s.banners.map((b) => `${cell2(b.brand)} ("${cell2(b.headline)}")`).join("; "));
+    L.push("Sponsored-brand banners: " + s.banners.map((b) => `${cell3(b.brand)} ("${cell3(b.headline)}")`).join("; "));
   }
   L.push("", "| rank | asin | spons. | price | rating | reviews | bought/mo | badge | coupon | stock | title |", "|---|---|---|---|---|---|---|---|---|---|---|");
   for (const p of s.products) {
     L.push(
-      `| ${p.absolute_rank} | ${p.asin} | ${p.is_sponsored ? "yes" : ""} | ${cell2(p.price)} | ${p.rating ?? "-"} | ${p.reviews ?? "-"} | ${p.monthly_sales ?? "-"} | ${badgeOf(p)} | ${cell2(p.coupon)} | ${cell2(p.stock_level)} | ${cell2(p.title ? p.title.slice(0, 60) : null)} |`
+      `| ${p.absolute_rank} | ${p.asin} | ${p.is_sponsored ? "yes" : ""} | ${cell3(p.price)} | ${p.rating ?? "-"} | ${p.reviews ?? "-"} | ${p.monthly_sales ?? "-"} | ${badgeOf(p)} | ${cell3(p.coupon)} | ${cell3(p.stock_level)} | ${cell3(p.title ? p.title.slice(0, 60) : null)} |`
     );
   }
   if (s.related_keywords.length > 0) L.push("", "Related keywords: " + s.related_keywords.join(", "));
   if (s.has_more) L.push("", `More positions: \`--page ${s.page + 1}\` (one answer per page).`);
   return L.join("\n");
 }
-var day = (iso) => iso.length >= 10 ? iso.slice(0, 10) : iso || "-";
+var day2 = (iso) => iso.length >= 10 ? iso.slice(0, 10) : iso || "-";
 var rankCell = (n) => typeof n === "number" ? String(n) : "-";
 function movement(first, latest) {
   if (first === null && latest === null) return "-";
@@ -99309,41 +100707,93 @@ function movement(first, latest) {
   const d = first - latest;
   return d === 0 ? "same" : d > 0 ? `up ${d}` : `down ${-d}`;
 }
+function notRankedDays(snapTop, ranked) {
+  return [...snapTop.keys()].sort().filter((d) => !ranked.has(d)).map((d) => `${d} (not in the top ${snapTop.get(d)})`).join(", ");
+}
+var nextDay = (d) => new Date(Date.parse(d + "T00:00:00Z") + 864e5).toISOString().slice(0, 10);
 function renderRankHistory(h) {
   const L = [];
-  L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ""}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
-  if (h.points.length === 0) {
+  L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ""}, ${h.surface}, ${day2(h.from)} to ${day2(h.to)}**`);
+  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  const snapTop = /* @__PURE__ */ new Map();
+  for (const sn of h.snapshots ?? []) snapTop.set(day2(sn.observed_at), Math.max(snapTop.get(day2(sn.observed_at)) ?? 0, sn.positions));
+  const oldestPoint = points.length > 0 ? day2(points[0].observed_at) : null;
+  let trimmed = false;
+  if (h.truncated && oldestPoint !== null) {
+    for (const d of [...snapTop.keys()]) {
+      if (d <= oldestPoint) {
+        snapTop.delete(d);
+        trimmed = true;
+      }
+    }
+  }
+  const observed = snapTop.size > 0;
+  const covered = [.../* @__PURE__ */ new Set([...h.asins ?? [], ...points.map((p) => p.asin)])].sort();
+  if (points.length === 0) {
+    if (observed) {
+      const n = snapTop.size;
+      if ((h.asins ?? []).length === 0) {
+        L.push("", `${n} day(s) observed in this range, and no ASIN you track or asked for held a position on any of them.`);
+      } else {
+        L.push("", `${n} day(s) observed in this range; none of the ASINs read held a position on any of them.`, "", "**Observed, not in the top N** (a snapshot was taken that day and the ASIN held no position in it; not a missed day)", "");
+        for (const asin of covered) L.push(`- ${asin}: ranked on none of ${n} observed day(s): ${notRankedDays(snapTop, /* @__PURE__ */ new Set())}`);
+      }
+      return L.join("\n");
+    }
     L.push("", "_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_");
     return L.join("\n");
   }
-  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
   const first = /* @__PURE__ */ new Map();
   const latest = /* @__PURE__ */ new Map();
   for (const p of points) {
     if (!first.has(p.asin)) first.set(p.asin, p);
     latest.set(p.asin, p);
   }
-  const days2 = new Set(points.map((p) => day(p.observed_at))).size;
+  const days2 = new Set(points.map((p) => day2(p.observed_at))).size;
   L.push("", `${points.length} point(s) over ${days2} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
-  L.push("", "**Latest per ASIN**", "", "| asin | as of | absolute | organic | sponsored | organic since first point |", "|---|---|---|---|---|---|");
+  const rankedDays = /* @__PURE__ */ new Map();
+  for (const p of points) {
+    if (!rankedDays.has(p.asin)) rankedDays.set(p.asin, /* @__PURE__ */ new Set());
+    rankedDays.get(p.asin).add(day2(p.observed_at));
+  }
+  const seenDays = [.../* @__PURE__ */ new Set([...snapTop.keys(), ...points.map((p) => day2(p.observed_at))])].sort();
+  L.push("", "**Latest per ASIN**", "", `| asin | as of | absolute | organic | sponsored | organic since first point |${observed ? " days ranked / observed |" : ""}`, `|---|---|---|---|---|---|${observed ? "---|" : ""}`);
   for (const asin of [...latest.keys()].sort()) {
     const p = latest.get(asin);
     const f = first.get(asin);
     const move = f.observed_at === p.observed_at ? "-" : movement(f.organic_rank, p.organic_rank);
-    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
+    L.push(`| ${asin} | ${day2(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |${observed ? ` ${rankedDays.get(asin).size} of ${seenDays.length} |` : ""}`);
+  }
+  if (observed) {
+    const out2 = [];
+    for (const asin of covered) {
+      const ranked = rankedDays.get(asin) ?? /* @__PURE__ */ new Set();
+      const absent = notRankedDays(snapTop, ranked);
+      if (absent === "") continue;
+      out2.push(ranked.size === 0 ? `- ${asin}: ranked on none of ${snapTop.size} observed day(s): ${absent}` : `- ${asin}: ${absent}`);
+    }
+    if (out2.length > 0) L.push("", "**Observed, not in the top N** (a snapshot was taken that day and the ASIN held no position in it; not a missed day)", "", ...out2);
+    const have = new Set(seenDays);
+    const missing = [];
+    for (let t = Date.parse(seenDays[0] + "T00:00:00Z"); t <= Date.parse(seenDays[seenDays.length - 1] + "T00:00:00Z"); t += 864e5) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      if (!have.has(d)) missing.push(d);
+    }
+    if (missing.length > 0) L.push("", `No observation (no snapshot stored): ${missing.join(", ")}`);
+    if (trimmed) L.push("", `Older days were trimmed with the oldest points, so the lines above start at ${nextDay(oldestPoint)}.`);
   }
   L.push("", "**Every point** (oldest first)", "", "| date | asin | absolute | organic | sponsored |", "|---|---|---|---|---|");
-  for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
+  for (const p of points) L.push(`| ${day2(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);
   if (h.truncated) L.push("", "The series was longer than one answer carries, so its oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.");
   return L.join("\n");
 }
 function renderProduct(p) {
   const L = [];
-  L.push(`**${cell2(p.title)}**${p.landing_asin ? ` (${p.landing_asin})` : ""}`);
+  L.push(`**${cell3(p.title)}**${p.landing_asin ? ` (${p.landing_asin})` : ""}`);
   L.push("");
   L.push(`- rating: ${p.rating ?? "-"} (${p.reviews ?? "-"} reviews); bought in past month: ${p.monthly_sales ?? "-"}${p.badge_text ? `; badge: ${p.badge_text}` : ""}`);
   if (p.bsr.length > 0) L.push(`- best-seller rank: ${p.bsr.map((b) => `#${b.rank} in ${b.category}`).join("; ")}`);
-  if (p.buybox) L.push(`- Buy Box: ${cell2(p.buybox.sold_by)} at ${cell2(p.buybox.currency)}${money2(p.buybox.price)}, in stock ${yes(p.buybox.in_stock)}, fastest ${cell2(p.buybox.fastest_delivery)} (${days(p.buybox.promise_days_fastest)})`);
+  if (p.buybox) L.push(`- Buy Box: ${cell3(p.buybox.sold_by)} at ${cell3(p.buybox.currency)}${money2(p.buybox.price)}, in stock ${yes(p.buybox.in_stock)}, fastest ${cell3(p.buybox.fastest_delivery)} (${days(p.buybox.promise_days_fastest)})`);
   L.push(`- images: ${p.media.images.length}${p.media.primary_image ? ` (primary ${p.media.primary_image})` : ""}; videos: ${p.media.videos.length}`);
   if (p.bullet_points.length > 0) {
     L.push("", "**Bullet points**");
@@ -99352,7 +100802,7 @@ function renderProduct(p) {
   const details = Object.entries(p.details);
   if (details.length > 0) {
     L.push("", "**Details**", "", "| field | value |", "|---|---|");
-    for (const [k, v] of details) L.push(`| ${cell2(k)} | ${cell2(v)} |`);
+    for (const [k, v] of details) L.push(`| ${cell3(k)} | ${cell3(v)} |`);
   }
   if (p.customer_say) L.push("", `**Customers say:** ${p.customer_say}`);
   L.push("", "_Beta: the product page is parsed from a changing layout; a field can be missing on some listings._");
@@ -99360,7 +100810,7 @@ function renderProduct(p) {
 }
 function renderSeller(s) {
   const L = [];
-  L.push(`**${cell2(s.name)}**${typeof s.rating === "number" ? ` (${s.rating} stars, ${s.rating_count ?? "-"} ratings)` : ""}`);
+  L.push(`**${cell3(s.name)}**${typeof s.rating === "number" ? ` (${s.rating} stars, ${s.rating_count ?? "-"} ratings)` : ""}`);
   if (s.description) L.push("", s.description);
   if (s.details.length > 0) {
     L.push("", "**Business details**");
@@ -99436,7 +100886,7 @@ function exitCodeForLabelsKind(kind) {
       return 1;
   }
 }
-var TIMEOUT_MS = 3e4;
+var TIMEOUT_MS2 = 3e4;
 async function labelsState(opts = {}) {
   const r = await labelsRequest({ method: "GET", path: "/api/labels/state" }, opts);
   if (!r.ok) return r;
@@ -99445,9 +100895,9 @@ async function labelsState(opts = {}) {
   return {
     ok: true,
     state: j.state,
-    backfilled_at: strOrNull(j.backfilled_at),
+    backfilled_at: strOrNull2(j.backfilled_at),
     last_run: j.last_run && typeof j.last_run === "object" ? j.last_run : null,
-    last_completed_at: strOrNull(j.last_completed_at),
+    last_completed_at: strOrNull2(j.last_completed_at),
     running: j.running === true,
     freshness: j.freshness && typeof j.freshness === "object" ? j.freshness : {}
   };
@@ -99469,7 +100919,7 @@ async function labelsList(input, opts = {}) {
   const j = r.json;
   const rows = input.entity === "item" ? j.items : j.campaigns;
   if (!isState(j.state) || !Array.isArray(rows)) return unrecognizedShape2(r.httpStatus, "list");
-  const nextCursor = strOrNull(j.next_cursor);
+  const nextCursor = strOrNull2(j.next_cursor);
   return {
     ok: true,
     state: j.state,
@@ -99522,7 +100972,7 @@ async function labelsDrift(input, opts = {}) {
   if (!r.ok) return r;
   const j = r.json;
   if (!isState(j.state) || !Array.isArray(j.drift)) return unrecognizedShape2(r.httpStatus, "drift");
-  const nextCursor = strOrNull(j.next_cursor);
+  const nextCursor = strOrNull2(j.next_cursor);
   return {
     ok: true,
     state: j.state,
@@ -99548,7 +100998,7 @@ async function labelsChanges(input, opts = {}) {
     account: Number(j.account),
     merchant_type: String(j.merchant_type ?? ""),
     rows: j.changes,
-    next_cursor: strOrNull(j.next_cursor),
+    next_cursor: strOrNull2(j.next_cursor),
     has_more: j.has_more === true,
     limit: Number(j.limit ?? input.limit ?? 0),
     ...typeof j.as_of === "string" ? { as_of: j.as_of } : {},
@@ -99579,7 +101029,7 @@ async function collectPages(fetchPage, opts) {
   return { ok: true, first, rows, pages, truncated: more, next_cursor: l.next_cursor };
 }
 var isState = (v) => v === "off" || v === "observing" || v === "on";
-var strOrNull = (v) => typeof v === "string" && v ? v : null;
+var strOrNull2 = (v) => typeof v === "string" && v ? v : null;
 function query(params) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== void 0) qs.set(k, String(v));
@@ -99600,7 +101050,7 @@ async function labelsRequest(spec, opts) {
   if ("ok" in resolved) return resolved;
   const { apiBase, tokenProvider } = resolved;
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS2;
   const doFetch = async (bearer) => {
     try {
       const res2 = await fetchImpl(`${apiBase}${spec.path}`, {
@@ -99709,7 +101159,8 @@ function toLabelsFailure(json3, httpStatus) {
   const recognized = KNOWN_KINDS5.has(rawKind);
   const kind = recognized ? rawKind : kindForStatus3(httpStatus);
   const sentence = typeof json3.friendly === "string" && json3.friendly.includes(" ") ? cleanServerText(json3.friendly) : void 0;
-  const friendly = sentence ?? (httpStatus === 404 && kind === "unknown" ? defaultFriendly5("route_missing") : defaultFriendly5(kind));
+  const reasonFriendly = kind === "not_enabled" && json3.reason === "writes_off" ? "Label changes are turned off on MixShift right now. Reading labels still works. Nothing was changed." : kind === "not_enabled" && json3.reason === "tenant_not_on" ? "Label changes are not turned on for this account yet. You can preview a change, but it cannot be committed yet. Nothing was changed." : void 0;
+  const friendly = sentence ?? reasonFriendly ?? (httpStatus === 404 && kind === "unknown" ? defaultFriendly5("route_missing") : defaultFriendly5(kind));
   const issues = parseRouteIssues(json3.issues);
   const message = typeof json3.message === "string" ? cleanServerText(json3.message) : issues?.detail;
   return {
@@ -99742,7 +101193,7 @@ function statusOnlyFailure5(httpStatus, detail) {
 function defaultFriendly5(kind) {
   switch (kind) {
     case "not_enabled":
-      return "Labels are not turned on for your account yet. Your MixShift contact can turn them on.";
+      return 'Labels are not turned on for your account yet. To ask MixShift to turn them on, say "Using MixShift, ask to turn on labels for our account".';
     case "not_available":
       return "Labels are not available for this login right now. Try again in a minute, or ask your MixShift contact to check how it is connected.";
     case "not_found":
@@ -100180,13 +101631,13 @@ function noteFreshness(state) {
   }
 }
 var MAX_CELL = 40;
-function cell3(s, max = MAX_CELL) {
+function cell4(s, max = MAX_CELL) {
   if (s === null || s === void 0 || s === "") return "-";
   const one = s.replace(/\s+/g, " ").replace(/\|/g, "/");
   const points = Array.from(one);
   return points.length > max ? points.slice(0, max - 1).join("") + "\u2026" : one;
 }
-var blank = (v, none = "(blank)") => v === null || v === void 0 ? none : v === "" ? "(blank)" : cell3(v);
+var blank = (v, none = "(blank)") => v === null || v === void 0 ? none : v === "" ? "(blank)" : cell4(v);
 function renderState(s) {
   const L = [];
   const word = s.state === "off" ? "not turned on yet" : s.state === "observing" ? "on, observing (a copy kept current from the Data Manager)" : "on";
@@ -100204,7 +101655,9 @@ function renderState(s) {
     }
     L.push(`- refreshing now: ${s.running ? "yes" : "no"}`);
   } else {
-    L.push("- Your MixShift contact can turn labels on for your account.");
+    if (!/ask to turn on labels/i.test(s.freshness.note ?? "")) {
+      L.push('- To ask MixShift to turn labels on, say "Using MixShift, ask to turn on labels for our account".');
+    }
   }
   return L.join("\n");
 }
@@ -100220,8 +101673,8 @@ function renderFields(a) {
 }
 function renderFieldRow(f) {
   const name = f.display_name ? `${f.display_name} (${f.label})` : f.label;
-  const top = f.values.slice(0, 5).map((v) => `${cell3(v.value, 24)} (${v.count})`).join("; ");
-  return `| ${f.key} | ${cell3(name)} | ${f.max_length} ${f.length_unit} | ${f.items_labeled} | ${f.distinct_values}${f.values_truncated ? "+" : ""} | ${top || "-"} |`;
+  const top = f.values.slice(0, 5).map((v) => `${cell4(v.value, 24)} (${v.count})`).join("; ");
+  return `| ${f.key} | ${cell4(name)} | ${f.max_length} ${f.length_unit} | ${f.items_labeled} | ${f.distinct_values}${f.values_truncated ? "+" : ""} | ${top || "-"} |`;
 }
 function renderRows(rows, fields) {
   if (rows.length === 0) return "_(none)_";
@@ -100233,10 +101686,10 @@ function renderRows(rows, fields) {
     const cells = used.map((k) => {
       const v = r.labels[k];
       if (!v) return "-";
-      const text = v.cleared ? "(cleared)" : cell3(v.value);
+      const text = v.cleared ? "(cleared)" : cell4(v.value);
       return v.sync === "synced" ? text : `${text} [${v.sync}]`;
     });
-    L.push(`| ${[cell3(r.id, 24), status, ...cells].join(" | ")} |`);
+    L.push(`| ${[cell4(r.id, 24), status, ...cells].join(" | ")} |`);
   }
   L.push("", "never seen: the service has not read this id yet. blank: known, no label set (a clear that has reached the Data Manager also reads blank). [pending] or [failed]: the change has not reached the Data Manager yet.");
   return L.join("\n");
@@ -100245,19 +101698,19 @@ function renderDrift2(rows) {
   if (rows.length === 0) return "_(no drift: every row agrees)_";
   const L = ["| entity | id | field | values in the Data Manager rows | the Data Manager picks | MixShift holds | last seen |", "|---|---|---|---|---|---|---|"];
   for (const r of rows) {
-    L.push(`| ${r.entity} | ${cell3(r.id, 24)} | ${r.field} | ${r.legacy_values.map((v) => blank(v)).join(" / ")} | ${blank(r.picked_value)} | ${blank(r.store_value, "(no row)")} | ${r.last_seen_at} |`);
+    L.push(`| ${r.entity} | ${cell4(r.id, 24)} | ${r.field} | ${r.legacy_values.map((v) => blank(v)).join(" / ")} | ${blank(r.picked_value)} | ${blank(r.store_value, "(no row)")} | ${r.last_seen_at} |`);
   }
   return L.join("\n");
 }
 var SOURCE_WORDS = { service: "MixShift", dash: "Data Manager", backfill: "first import", inherit: "carried over" };
-var sourceWords = (source) => SOURCE_WORDS[source] ?? cell3(source);
+var sourceWords = (source) => SOURCE_WORDS[source] ?? cell4(source);
 function renderChanges(rows) {
   if (rows.length === 0) return "_(no changes in this window)_";
   const L = ["| time | entity | id | field | before | after | source | by |", "|---|---|---|---|---|---|---|---|"];
   for (const c of rows) {
     const before = c.before === null ? "(never set)" : blank(c.before);
-    const after = c.after === null || c.after === "" ? "(cleared)" : cell3(c.after);
-    L.push(`| ${c.time} | ${c.entity} | ${cell3(c.entity_id, 24)} | ${c.field} | ${before} | ${after} | ${sourceWords(c.source)} | ${cell3(c.actor)} |`);
+    const after = c.after === null || c.after === "" ? "(cleared)" : cell4(c.after);
+    L.push(`| ${c.time} | ${c.entity} | ${cell4(c.entity_id, 24)} | ${c.field} | ${before} | ${after} | ${sourceWords(c.source)} | ${cell4(c.actor)} |`);
   }
   L.push("", "before (never set): the field had no value. after (cleared): the value was removed.");
   return L.join("\n");
@@ -100453,15 +101906,15 @@ function parseSetFlags(entity, sets, clears) {
 function parseCsv(text) {
   const records = [];
   let cells = [];
-  let cell4 = "";
+  let cell5 = "";
   let inQuotes = false;
   let quotedCell = false;
   let line = 1;
   let startLine = 1;
   let pending = false;
   const endCell = () => {
-    cells.push(cell4);
-    cell4 = "";
+    cells.push(cell5);
+    cell5 = "";
     quotedCell = false;
   };
   const endRecord = () => {
@@ -100478,16 +101931,16 @@ function parseCsv(text) {
     if (inQuotes) {
       if (ch === '"') {
         if (text[i + 1] === '"') {
-          cell4 += '"';
+          cell5 += '"';
           i += 1;
         } else inQuotes = false;
       } else {
         if (ch === "\n") line += 1;
-        cell4 += ch;
+        cell5 += ch;
       }
       continue;
     }
-    if (ch === '"' && cell4 === "" && !quotedCell) {
+    if (ch === '"' && cell5 === "" && !quotedCell) {
       inQuotes = true;
       quotedCell = true;
       if (!pending) {
@@ -100516,7 +101969,7 @@ function parseCsv(text) {
       startLine = line;
     }
     if (quotedCell) return { ok: false, message: `line ${line}: text after a closing quote. Check the quotes in that row.` };
-    cell4 += ch;
+    cell5 += ch;
   }
   if (inQuotes) return { ok: false, message: `line ${startLine}: a quoted cell is never closed.` };
   endRecord();
@@ -100617,16 +102070,16 @@ function parseChangeCsv(text, entity) {
 // src/lib/labels/pending.ts
 init_resolve();
 import { chmod as chmod7, mkdir as mkdir33, readdir as readdir6, readFile as readFile47, rename as rename24, rm, writeFile as writeFile30 } from "node:fs/promises";
-import { dirname as dirname38, join as join29 } from "node:path";
+import { dirname as dirname39, join as join30 } from "node:path";
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var HASH_RE = /^[0-9a-f]{64}$/i;
-var pendingDir = (dataDirOverride) => join29(resolveDataDir(dataDirOverride), "labels", "pending");
-var fileFor = (id, dataDirOverride) => join29(pendingDir(dataDirOverride), `${id.toLowerCase()}.json`);
+var pendingDir = (dataDirOverride) => join30(resolveDataDir(dataDirOverride), "labels", "pending");
+var fileFor = (id, dataDirOverride) => join30(pendingDir(dataDirOverride), `${id.toLowerCase()}.json`);
 async function savePending(rec, dataDirOverride) {
   if (!UUID_RE.test(rec.change_set_id) || !HASH_RE.test(rec.approval_hash)) return false;
   try {
     const path2 = fileFor(rec.change_set_id, dataDirOverride);
-    await mkdir33(dirname38(path2), { recursive: true, mode: 448 });
+    await mkdir33(dirname39(path2), { recursive: true, mode: 448 });
     const tmp = `${path2}.tmp.${process.pid}.${Date.now()}`;
     await writeFile30(tmp, JSON.stringify({ ...rec, approval_hash: rec.approval_hash.toLowerCase() }, null, 2) + "\n", { encoding: "utf8", mode: 384 });
     await chmod7(tmp, 384);
@@ -100671,17 +102124,17 @@ async function sweepExpired(dataDirOverride, now = Date.now()) {
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
-      const j = JSON.parse(await readFile47(join29(dir, name), "utf8"));
+      const j = JSON.parse(await readFile47(join30(dir, name), "utf8"));
       const at = Date.parse(String(j.expires_at ?? ""));
-      if (!Number.isFinite(at) || now - at > 24 * 3600 * 1e3) await rm(join29(dir, name), { force: true });
+      if (!Number.isFinite(at) || now - at > 24 * 3600 * 1e3) await rm(join30(dir, name), { force: true });
     } catch {
-      await rm(join29(dir, name), { force: true }).catch(() => void 0);
+      await rm(join30(dir, name), { force: true }).catch(() => void 0);
     }
   }
 }
 
 // src/commands/labels-write.ts
-var collect = (value, previous = []) => [...previous, value];
+var collect3 = (value, previous = []) => [...previous, value];
 var SHOW_ROWS = 50;
 var MATCH_MAX = 4e3;
 var NAME_MAX = 80;
@@ -100694,7 +102147,7 @@ function registerLabelsWriteCommands(program3) {
   if (!labels) throw new Error("registerLabelsCommands must run before registerLabelsWriteCommands");
   labels.command("preview").description(
     "Preview a label change. Changes NOTHING: it prints a change set id and a summary of exactly what would change (counts, the accounts reached, what was left out and why, warnings, a before and after sample) and expires in 24 hours. Pick items or campaigns with --ids / --ids-file, with --where field=value (everything whose field has that value), with --file (a CSV, one row per item or campaign), or rename a value everywhere with --rename. Apply it with `labels commit <id> --commit`, only after the person has confirmed this preview. Works once label editing is turned on for the account."
-  ).requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").option("--ids <list>", "comma-separated ASINs (or campaign ids with --entity campaign) to change").option("--ids-file <path>", "a text file of ids, separated by commas, spaces or new lines").option("--where <field=value>", 'every item or campaign whose field equals this exact value (case and spacing included), for example item_group="Water Bottles"').option("--file <path>", `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}. A cell cannot start with = + - or @ (a spreadsheet would read it as a formula): set such a value with --set instead`).option("--set <field=value>", 'with --ids, --ids-file or --where: set a field to a value (repeatable), for example --set brand="Acme Home"', collect).option("--clear <field>", "with --ids, --ids-file or --where: remove the label from a field (repeatable)", collect).option("--rename <field>", "rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)").option("--from <value>", "with --rename: the exact value to replace").option("--to <value>", "with --rename: the new value").option("--scope <scope>", "marketplace (this account only), region (every marketplace of the merchant; the usual default) or all (every account of that merchant type). Items only: a campaign belongs to one account").action(async (opts, cmd) => runPreview(opts, cmd.optsWithGlobals()));
+  ).requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").option("--ids <list>", "comma-separated ASINs (or campaign ids with --entity campaign) to change").option("--ids-file <path>", "a text file of ids, separated by commas, spaces or new lines").option("--where <field=value>", 'every item or campaign whose field equals this exact value (case and spacing included), for example item_group="Water Bottles"').option("--file <path>", `a CSV: a header (asin or campaign_id first, then one column per label field), then one row per item or campaign; at most ${CHANGE_SET_MAX} rows. An empty cell leaves a field alone and <clear> removes it. Works best when many rows share the same values: each different combination of values is its own change set, and one file may make at most ${FILE_GROUPS_MAX}. A cell cannot start with = + - or @ (a spreadsheet would read it as a formula): set such a value with --set instead`).option("--set <field=value>", 'with --ids, --ids-file or --where: set a field to a value (repeatable), for example --set brand="Acme Home"', collect3).option("--clear <field>", "with --ids, --ids-file or --where: remove the label from a field (repeatable)", collect3).option("--rename <field>", "rename a value: every item or campaign whose <field> equals --from gets --to (with --from and --to)").option("--from <value>", "with --rename: the exact value to replace").option("--to <value>", "with --rename: the new value").option("--scope <scope>", "items: region (every marketplace of the merchant; the default) or all (every account of that merchant type); the service refuses marketplace for items. campaigns: marketplace only (a campaign belongs to one account)").action(async (opts, cmd) => runPreview(opts, cmd.optsWithGlobals()));
   labels.command("commit <change-set-id>").description(
     "Commit a previewed label change. WRITES to your labels, so it is sent ONLY with --commit, and only after the person has seen the preview and confirmed it. Without --commit it shows the change set again and sends nothing. The approval hash is read from the preview made on this machine. Each item or campaign is checked against what the preview saw: one changed since is left as it is and reported stale. Exit 17 when anything was stale, refused or failed. Committing the same change set again is safe. With --json, an already committed change set answers committed: true, already_committed: true and sent: false (this run wrote nothing)."
   ).option("--commit", "actually apply the change set (default: show it and send nothing). Use only after explicit confirmation of the preview").option("--approval-hash <hash>", "the approval hash the preview returned, for a change set previewed on another machine (this machine keeps its own)").action(async (id, opts, cmd) => runCommit(id, opts, cmd.optsWithGlobals()));
@@ -100705,7 +102158,7 @@ function registerLabelsWriteCommands(program3) {
   labels.command("set <change-set-id>").description("One change set: the preview (what would change) or, once committed, what happened to each item or campaign.").action(async (id, _opts, cmd) => runSet(id, cmd.optsWithGlobals()));
   labels.command("cancel <change-set-id>").description("Cancel a preview you no longer want. Nothing was changed by it, and nothing is. Only a preview can be cancelled. Sent ONLY with --commit; without it the change set is shown and nothing is cancelled.").option("--commit", "actually cancel the preview (default: show it and send nothing). Use only after the person confirmed").action(async (id, opts, cmd) => runCancel(id, opts, cmd.optsWithGlobals()));
   labels.command("field-name").description(
-    'Give an account its own name for a label field (for example "Pattern ID" for Item Label 2) that every label read then shows, or remove it. There is no preview for this: it is sent ONLY with --commit, after the person confirms. Without --commit it prints what it would do and sends nothing.'
+    'Give an account its own name for a label field (for example "Collection" for Item Label 2) that every label read then shows, or remove it. There is no preview for this: it is sent ONLY with --commit, after the person confirms. Without --commit it prints what it would do and sends nothing.'
   ).requiredOption("--account <id>", "legacy seller id (digits), from `mixshift amazon merchants`").option("--entity <entity>", "item (default) or campaign").requiredOption("--field <key>", "a field key from `labels fields` (for example label_2)").option("--name <text>", `the display name, plain text on one line, at most ${NAME_MAX} characters`).option("--remove", "remove the custom name so the field shows its standard name again").option("--commit", "actually make the change (default: print it and send nothing). Use only after explicit confirmation").action(async (opts, cmd) => runFieldName(opts, cmd.optsWithGlobals()));
 }
 async function runPreview(opts, root) {
@@ -101283,7 +102736,7 @@ async function fail4(failure3, kind, startedAt, root, base2, extra = {}) {
   const serviceSentence = typeof failure3.body?.friendly === "string" && failure3.body.friendly.includes(" ");
   const friendly = failure3.kind === "insufficient_scope" && !serviceSentence ? "This sign-in cannot change labels. Ask your organization admin for label-editing permission." : failure3.friendly;
   const issues = Array.isArray(failure3.body?.issues) ? failure3.body?.issues : void 0;
-  const issueLines = (issues ?? []).flatMap((i) => isRecord(i) && typeof i.field === "string" && typeof i.message === "string" ? [`  ${i.field}: ${i.message}`] : []);
+  const issueLines = (issues ?? []).flatMap((i) => isRecord2(i) && typeof i.field === "string" && typeof i.message === "string" ? [`  ${i.field}: ${i.message}`] : []);
   const step = nextStep(failure3, kind, extra, base2);
   if (root.json) {
     writeJson8({
@@ -101318,7 +102771,7 @@ async function fail4(failure3, kind, startedAt, root, base2, extra = {}) {
   }
   process.exitCode = exitCodeForLabelsKind(failure3.kind);
 }
-var isRecord = (v) => typeof v === "object" && v !== null;
+var isRecord2 = (v) => typeof v === "object" && v !== null;
 var thing = (entity, n) => entity === "item" ? n === 1 ? "item" : "items" : entity === "campaign" ? n === 1 ? "campaign" : "campaigns" : n === 1 ? "item or campaign" : "items or campaigns";
 function entityOf(v, hint) {
   if (hint) return hint;
@@ -101336,7 +102789,7 @@ function renderChangeSet(v, entityHint) {
   if (isPreview) L.push(`- expires: ${v.expires_at}`);
   else {
     L.push(`- created: ${v.created_at}`);
-    if (v.committed_at) L.push(`- committed: ${v.committed_at}${v.commit_actor ? ` by ${cell3(v.commit_actor)}` : ""}`);
+    if (v.committed_at) L.push(`- committed: ${v.committed_at}${v.commit_actor ? ` by ${cell4(v.commit_actor)}` : ""}`);
   }
   if (v.totals) {
     L.push(`- ${isPreview ? "would change" : "selected"}: ${v.totals.to_change} of ${v.totals.identities} ${thing(entity, v.totals.identities)} (${v.totals.fields_to_change} field${v.totals.fields_to_change === 1 ? "" : "s"}); ${v.totals.unchanged} already ${v.totals.unchanged === 1 ? "has" : "have"} these values`);
@@ -101369,8 +102822,8 @@ function renderChangeSet(v, entityHint) {
     L.push("", `**${isPreview ? "Before and after" : "Sample of changes"}** (first ${v.sample.length})`, "", "| account | id | field | before | after |", "|---|---|---|---|---|");
     for (const s of v.sample) {
       const before = s.before === null ? "(never set)" : blank(s.before);
-      const after = s.after === null || s.after === "" ? "(cleared)" : cell3(s.after);
-      L.push(`| ${s.account} | ${cell3(s.id, 24)} | ${s.field} | ${before} | ${after} |`);
+      const after = s.after === null || s.after === "" ? "(cleared)" : cell4(s.after);
+      L.push(`| ${s.account} | ${cell4(s.id, 24)} | ${s.field} | ${before} | ${after} |`);
     }
   }
   if (!isPreview && v.needs_attention && v.needs_attention.length > 0) {
@@ -101381,7 +102834,7 @@ function renderChangeSet(v, entityHint) {
 function renderNeedsAttention(rows, truncated) {
   const L = ["**Not changed (needs attention)**", "", "| account | id | result | reason | fields changed since |", "|---|---|---|---|---|"];
   for (const r of rows.slice(0, SHOW_ROWS)) {
-    L.push(`| ${r.account} | ${cell3(r.id, 24)} | ${r.result} | ${cell3(r.reason)} | ${r.stale_fields ? r.stale_fields.join(", ") : "-"} |`);
+    L.push(`| ${r.account} | ${cell4(r.id, 24)} | ${r.result} | ${cell4(r.reason)} | ${r.stale_fields ? r.stale_fields.join(", ") : "-"} |`);
   }
   if (rows.length > SHOW_ROWS) L.push("", `...and ${rows.length - SHOW_ROWS} more here (all of them are in --json).`);
   if (truncated) L.push("", "The service lists the first 200 that need attention; there are more. Preview the change again to include the rest.");
@@ -101407,14 +102860,14 @@ function renderSets(rows) {
   for (const r of rows) {
     const commit = r.commit;
     const changed = commit && typeof commit.applied === "number" ? `${commit.applied} of ${commit.identities ?? r.totals?.identities ?? "?"}${(commit.stale ?? 0) + (commit.refused ?? 0) > 0 ? ` (${commit.stale ?? 0} stale, ${commit.refused ?? 0} refused)` : ""}` : r.totals ? `${r.totals.to_change} to change of ${r.totals.identities}` : "-";
-    L.push(`| ${r.change_set_id} | ${r.kind}${r.undoes ? " (undo)" : ""} | ${r.status} | ${r.scope} | ${changed} | ${cell3(r.commit_actor ?? r.preview_actor)} | ${r.created_at} |`);
+    L.push(`| ${r.change_set_id} | ${r.kind}${r.undoes ? " (undo)" : ""} | ${r.status} | ${r.scope} | ${changed} | ${cell4(r.commit_actor ?? r.preview_actor)} | ${r.created_at} |`);
   }
   return L.join("\n");
 }
 
 // src/commands/intelligence.ts
 import { readFile as readFile50, mkdir as mkdir35, writeFile as writeFile32 } from "node:fs/promises";
-import { resolve as resolvePath4, dirname as dirname40 } from "node:path";
+import { resolve as resolvePath4, dirname as dirname41 } from "node:path";
 
 // src/lib/intelligence/client.ts
 init_credentials();
@@ -101762,7 +103215,7 @@ function safeJsonPreview6(json3) {
 // src/lib/intelligence/ledger.ts
 init_resolve();
 import { mkdir as mkdir34, open as open2, readFile as readFile49, rename as rename25, stat as stat5, unlink as unlink9, writeFile as writeFile31 } from "node:fs/promises";
-import { dirname as dirname39 } from "node:path";
+import { dirname as dirname40 } from "node:path";
 var MAX_HANDLES2 = 50;
 async function loadLedger2(path2) {
   try {
@@ -101777,7 +103230,7 @@ async function loadLedger2(path2) {
   }
 }
 async function saveLedger2(path2, handles) {
-  await mkdir34(dirname39(path2), { recursive: true });
+  await mkdir34(dirname40(path2), { recursive: true });
   const tmp = `${path2}.tmp`;
   await writeFile31(tmp, JSON.stringify(handles, null, 2), "utf8");
   await rename25(tmp, path2);
@@ -101824,7 +103277,7 @@ async function acquireLock(lockPath) {
 }
 async function withLedgerLock(ledgerPath, fn) {
   const lockPath = `${ledgerPath}.lock`;
-  await mkdir34(dirname39(lockPath), { recursive: true }).catch(() => {
+  await mkdir34(dirname40(lockPath), { recursive: true }).catch(() => {
   });
   const acquired = await acquireLock(lockPath);
   try {
@@ -102434,7 +103887,7 @@ async function emitInsightResult(id, result, outOverride, startedAt, root, brand
     root.dataDir,
     runIdForTracking
   );
-  await mkdir35(dirname40(artifactPath), { recursive: true });
+  await mkdir35(dirname41(artifactPath), { recursive: true });
   await writeFile32(artifactPath, JSON.stringify(result, null, 2), "utf8");
   await track(
     {
@@ -103042,15 +104495,15 @@ function toSubBrand(d) {
   const scopeId = typeof d.scopeId === "string" ? d.scopeId : typeof d.id === "string" ? canonicalSubBrandId(d.id) : null;
   const key = scopeId ? scopeKeyOf(scopeId) : null;
   if (!scopeId || !key) return null;
-  const strings = (x) => Array.isArray(x) ? x.filter((v) => typeof v === "string") : [];
+  const strings2 = (x) => Array.isArray(x) ? x.filter((v) => typeof v === "string") : [];
   return {
     scopeId,
     scopeKey: key,
     merchantId: typeof d.merchantId === "string" ? d.merchantId : scopeId.slice(0, scopeId.indexOf(":scope:")),
     kind: d.kind === "item_group" ? "item_group" : "sub_brand",
     name: typeof d.name === "string" ? d.name : "",
-    itemValues: strings(d.itemValues),
-    campaignValues: strings(d.campaignValues),
+    itemValues: strings2(d.itemValues),
+    campaignValues: strings2(d.campaignValues),
     version: typeof d.version === "number" ? d.version : null
   };
 }
@@ -103132,7 +104585,7 @@ async function applySubBrandRemoval(plan, opts = {}) {
 }
 
 // src/commands/forecast.ts
-function collect2(value, previous = []) {
+function collect4(value, previous = []) {
   return [...previous, value];
 }
 function registerForecastCommands(program3) {
@@ -103170,7 +104623,7 @@ Sponsored-ads budgets for ${scopeId}:
 `);
     }
   });
-  budget.command("set").description("Enter the sponsored-ads budget for one or more months (one save: all months or none).").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--set <YYYY-MM=amount>", "a month and its sponsored budget; repeat per month", collect2, []).option("--note <text>", "a note on each month that has none (e.g. where the budget came from); an existing note is kept").option("--dry-run", "show what would be saved, without saving").action(async (opts, cmd) => {
+  budget.command("set").description("Enter the sponsored-ads budget for one or more months (one save: all months or none).").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--set <YYYY-MM=amount>", "a month and its sponsored budget; repeat per month", collect4, []).option("--note <text>", "a note on each month that has none (e.g. where the budget came from); an existing note is kept").option("--dry-run", "show what would be saved, without saving").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const scopeId = scopeOrFail(opts.scope, !!root.json);
@@ -103252,7 +104705,7 @@ The existing note was kept on ${r.plan.notesKept.join(", ")}.
 `);
     process.stdout.write("\nThe next computed forecast (FCT-BASELINE-01) uses these months as planned spend, within the horizon it is run for.\n");
   });
-  budget.command("clear").description("Remove the budget for one or more months; the forecast goes back to estimating that month's spend.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--month <YYYY-MM>", "a month to clear; repeat per month", collect2, []).option("--dry-run", "show what would be cleared, without clearing").action(async (opts, cmd) => {
+  budget.command("clear").description("Remove the budget for one or more months; the forecast goes back to estimating that month's spend.").requiredOption("--scope <scope_id>", "the forecast scope, e.g. src:<database>:<seller id>").requiredOption("--month <YYYY-MM>", "a month to clear; repeat per month", collect4, []).option("--dry-run", "show what would be cleared, without clearing").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const scopeId = scopeOrFail(opts.scope, !!root.json);
@@ -103439,7 +104892,7 @@ ${r.skipped} stored definition(s) could not be read and are not listed.
   });
   sub.command("add").description(
     "Define a sub-brand of an account by its labels. If one with exactly these labels exists, it is reused, not duplicated. Labels are compared as the warehouse compares them (case-insensitive)."
-  ).requiredOption("--seller <id>", "the seller id (legacy seller id) of the account the brand sits inside").requiredOption("--name <name>", "what to call it (shown in the forecasting app)").requiredOption("--item-label <label>", "a product label: the brand on Seller Central items, the custom brand on Vendor Central items (or the item group with --item-group); repeat per label", collect2, []).option("--campaign-label <label>", "a campaign label (the brand or item group on campaigns); repeat per label. Without one the sub-brand has no ad spend and cannot be forecast", collect2, []).option("--item-group", "an item group (ItemGroup labels) rather than a sub-brand (Brand labels)").option("--dry-run", "show what would be defined, without defining it").action(async (opts, cmd) => {
+  ).requiredOption("--seller <id>", "the seller id (legacy seller id) of the account the brand sits inside").requiredOption("--name <name>", "what to call it (shown in the forecasting app)").requiredOption("--item-label <label>", "a product label: the brand on Seller Central items, the custom brand on Vendor Central items (or the item group with --item-group); repeat per label", collect4, []).option("--campaign-label <label>", "a campaign label (the brand or item group on campaigns); repeat per label. Without one the sub-brand has no ad spend and cannot be forecast", collect4, []).option("--item-group", "an item group (ItemGroup labels) rather than a sub-brand (Brand labels)").option("--dry-run", "show what would be defined, without defining it").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const startedAt = Date.now();
     const seller = sellerOrFail(opts.seller, !!root.json);
@@ -103630,7 +105083,7 @@ function writeJson10(obj2) {
 
 // src/commands/report.ts
 import { readFile as readFile52, writeFile as writeFile34, mkdir as mkdir38, readdir as readdir8 } from "node:fs/promises";
-import { dirname as dirname43, join as join33, resolve as resolve3 } from "node:path";
+import { dirname as dirname44, join as join34, resolve as resolve4 } from "node:path";
 
 // src/lib/report-contract/validate.ts
 var BLOCKING = "blocking";
@@ -103650,11 +105103,11 @@ function blockingFindings(findings) {
   return findings.filter((f) => (f.severity ?? "error") === "error");
 }
 function quotedIds(figureRefs, claimRefs, claims) {
-  const quoted = new Set(figureRefs ?? []);
+  const quoted2 = new Set(figureRefs ?? []);
   for (const cid of claimRefs ?? []) {
-    for (const rid of claims.get(cid)?.figure_refs ?? []) quoted.add(rid);
+    for (const rid of claims.get(cid)?.figure_refs ?? []) quoted2.add(rid);
   }
-  return quoted;
+  return quoted2;
 }
 function setsEqual(a, b) {
   if (a.size !== b.size) return false;
@@ -103957,8 +105410,8 @@ function validateReportData(doc, served) {
       });
     }
   }
-  const checkCaveatSite = (subjectId, quoted, rendered) => {
-    for (const rid of [...quoted].sort()) {
+  const checkCaveatSite = (subjectId, quoted2, rendered) => {
+    for (const rid of [...quoted2].sort()) {
       const f = allFigs.get(rid);
       if (!f) continue;
       for (const cav of f.caveats ?? []) {
@@ -104066,9 +105519,9 @@ function validateReportData(doc, served) {
       }
     }
   }
-  const checkUnitSite = (subjectId, quoted, text) => {
+  const checkUnitSite = (subjectId, quoted2, text) => {
     if (!text) return;
-    const quotedArr = [...quoted];
+    const quotedArr = [...quoted2];
     const hasItemDays = quotedArr.some((r) => allFigs.get(r)?.unit === "item_days");
     if (hasItemDays && DAYS_TEXT.test(text) && !text.toLowerCase().includes("item-day")) {
       findings.push({
@@ -104662,18 +106115,18 @@ function extractFiguresUnprefixed(response, selection) {
     }
     const DRIVER_FIGURE_CAP = 5;
     const ranked = (asArray(m.topDrivers) ?? []).map((dRaw) => asRecord(dRaw) ?? {}).filter((d2) => d2.includedBy === void 0 || d2.includedBy === "rank");
-    ranked.slice(0, DRIVER_FIGURE_CAP).forEach((d2, rank) => {
+    ranked.slice(0, DRIVER_FIGURE_CAP).forEach((d2, rank2) => {
       const dv = d2.delta;
       if (!hasValue(dv)) return;
-      const name = typeof d2.displayName === "string" && d2.displayName.trim().length > 0 ? d2.displayName : String(d2.entityKey ?? `entity ${rank + 1}`);
+      const name = typeof d2.displayName === "string" && d2.displayName.trim().length > 0 ? d2.displayName : String(d2.entityKey ?? `entity ${rank2 + 1}`);
       figures2.push(
         fig(
-          `${domain2}.${key}.driver.${rank + 1}`,
+          `${domain2}.${key}.driver.${rank2 + 1}`,
           name,
           dv,
           changeSpec,
           basis,
-          `${base2}.topDrivers[${rank}].delta`,
+          `${base2}.topDrivers[${rank2}].delta`,
           { caveats: deltaCaveats }
         )
       );
@@ -105145,7 +106598,7 @@ function extractForecast(response, opts = {}) {
       const p = periodOf(f.id);
       if (!p || varianceClean.get(p) !== true) f.client_safe = false;
     }
-    const safe = new Map(figures2.map((f) => [f.id, f.client_safe]));
+    const safe2 = new Map(figures2.map((f) => [f.id, f.client_safe]));
     const derived = [];
     for (const d of Array.isArray(rd.derived) ? rd.derived : []) {
       if (!isRec2(d)) continue;
@@ -105161,7 +106614,7 @@ function extractForecast(response, opts = {}) {
         inputs,
         why_not_published: str6(d.why_not_published) ?? "",
         forecast_role: role ?? "unclassified",
-        client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe.get(i) === true)
+        client_safe: role !== null && CLIENT_ROLES.has(role) && inputs.length > 0 && inputs.every((i) => safe2.get(i) === true)
       });
     }
     const claims = [];
@@ -105438,8 +106891,8 @@ function notAForecastAnswerEvent(response, ctx) {
 init_telemetry();
 
 // src/lib/report-contract/render-report.ts
-import { readFileSync as readFileSync2 } from "node:fs";
-import { join as join30 } from "node:path";
+import { readFileSync as readFileSync3 } from "node:fs";
+import { join as join31 } from "node:path";
 var MINUS = "\u2212";
 var MIDDOT = "\xB7";
 var MISSING_VALUE = "\u2014";
@@ -105665,7 +107118,7 @@ function renderSectionBody(block, figureIdx, claims, registry2, currencyCode) {
 var LOCAL_FONT_FACE = /^@font-face\s*\{[^}]*url\(['"]?fonts\/[^}]*\}[ \t]*$/gm;
 function loadReportCss() {
   const dsDir = designSystemDir();
-  const raw = readFileSync2(join30(dsDir, "colors_and_type.css"), "utf-8");
+  const raw = readFileSync3(join31(dsDir, "colors_and_type.css"), "utf-8");
   const withoutLocalFonts = raw.replace(LOCAL_FONT_FACE, "").replace(/\n{3,}/g, "\n\n");
   return `${withoutLocalFonts}
 ${REPORT_CSS}`;
@@ -106065,7 +107518,7 @@ function failureFromException3(err) {
 init_resolve();
 import { createHash as createHash6 } from "node:crypto";
 import { mkdir as mkdir36, readdir as readdir7, readFile as readFile51, rename as rename26, rm as rm2, writeFile as writeFile33 } from "node:fs/promises";
-import { dirname as dirname41, join as join31, sep } from "node:path";
+import { dirname as dirname42, join as join32, sep } from "node:path";
 var SKILL_LEDGERS = {
   // The folder keeps the pre-rename id: it holds every brand's existing ledger.
   "mx-max-report": { folder: "mx-monthly-report-max" }
@@ -106090,24 +107543,24 @@ function hashContent2(content) {
 function ledgerDir(brandSlug, skillId, dataDirOverride) {
   const entry = SKILL_LEDGERS[skillId];
   if (!entry) throw new Error(`internal error: no run ledger is defined for skill ${JSON.stringify(skillId)}`);
-  return join31(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
+  return join32(brandDir(brandSlug, dataDirOverride), "runs", entry.folder);
 }
 function statePath(brandSlug, dataDirOverride) {
-  return join31(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
+  return join32(brandDir(brandSlug, dataDirOverride), ".run-ledger-state.json");
 }
 function conflictsDir(brandSlug, skillId, stamp, dataDirOverride) {
-  return join31(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
+  return join32(brandDir(brandSlug, dataDirOverride), "runs", ".run-ledger-conflicts", skillId, stamp);
 }
 async function readLocalLedger(dir) {
   const files = /* @__PURE__ */ new Map();
   const skipped = [];
   let exists = true;
-  async function walk(abs, rel, depth) {
+  async function walk2(abs, rel, depth) {
     let entries;
     try {
       entries = await readdir7(abs, { withFileTypes: true });
     } catch (err) {
-      if (isNotFound(err) && depth === 0) {
+      if (isNotFound2(err) && depth === 0) {
         exists = false;
         return;
       }
@@ -106120,7 +107573,7 @@ async function readLocalLedger(dir) {
           skipped.push({ path: `${relPath}/`, reason: "too_deep" });
           continue;
         }
-        await walk(join31(abs, e.name), [...rel, e.name], depth + 1);
+        await walk2(join32(abs, e.name), [...rel, e.name], depth + 1);
         continue;
       }
       if (!e.isFile()) continue;
@@ -106129,7 +107582,7 @@ async function readLocalLedger(dir) {
         skipped.push({ path: relPath, reason: "unsafe_path" });
         continue;
       }
-      const buf = await readFile51(join31(abs, e.name));
+      const buf = await readFile51(join32(abs, e.name));
       if (buf.length > MAX_FILE_BYTES) {
         skipped.push({ path: relPath, reason: "too_large" });
         continue;
@@ -106142,7 +107595,7 @@ async function readLocalLedger(dir) {
       files.set(relPath, { content, hash: hashContent2(content), bytes: buf.length });
     }
   }
-  await walk(dir, [], 0);
+  await walk2(dir, [], 0);
   return { exists, files, skipped };
 }
 function decodeText(buf) {
@@ -106169,7 +107622,7 @@ function localPathFor(dir, path2) {
   if (!isSafeLedgerPath(path2)) {
     throw new Error(`unsafe run ledger path ${JSON.stringify(path2)}: refusing to resolve a local path`);
   }
-  const abs = join31(dir, ...path2.split("/"));
+  const abs = join32(dir, ...path2.split("/"));
   if (!abs.startsWith(dir + sep)) {
     throw new Error(`run ledger path ${JSON.stringify(path2)} resolves outside the ledger folder`);
   }
@@ -106177,7 +107630,7 @@ function localPathFor(dir, path2) {
 }
 async function writeLedgerFile(dir, path2, content) {
   const abs = localPathFor(dir, path2);
-  await mkdir36(dirname41(abs), { recursive: true });
+  await mkdir36(dirname42(abs), { recursive: true });
   const tmp = `${abs}.tmp-${process.pid}`;
   await writeFile33(tmp, content, "utf8");
   await rename26(tmp, abs);
@@ -106200,7 +107653,7 @@ async function writeSyncState(brandSlug, skillId, state, dataDirOverride) {
   const path2 = statePath(brandSlug, dataDirOverride);
   const all = await readStateFile(brandSlug, dataDirOverride);
   all[skillId] = state;
-  await mkdir36(dirname41(path2), { recursive: true });
+  await mkdir36(dirname42(path2), { recursive: true });
   const tmp = `${path2}.tmp-${process.pid}`;
   await writeFile33(tmp, JSON.stringify(all, null, 2) + "\n", "utf8");
   await rename26(tmp, path2);
@@ -106210,17 +107663,17 @@ async function readStateFile(brandSlug, dataDirOverride) {
     const parsed = JSON.parse(await readFile51(statePath(brandSlug, dataDirOverride), "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch (err) {
-    if (isNotFound(err)) return {};
+    if (isNotFound2(err)) return {};
     return {};
   }
 }
-function isNotFound(err) {
+function isNotFound2(err) {
   return typeof err === "object" && err !== null && "code" in err && (err.code === "ENOENT" || err.code === "ENOTDIR");
 }
 
 // src/lib/run-ledger/sync.ts
 import { copyFile, mkdir as mkdir37 } from "node:fs/promises";
-import { dirname as dirname42, join as join32 } from "node:path";
+import { dirname as dirname43, join as join33 } from "node:path";
 var UNAVAILABLE = /* @__PURE__ */ new Set(["unsupported", "unavailable", "host_unreachable"]);
 function base(opts, dir, state, message) {
   return {
@@ -106469,9 +107922,9 @@ async function applyServer(opts, dir, local, ledger, state, tenant) {
     const stamp = (opts.now ?? (() => /* @__PURE__ */ new Date()))().toISOString().replace(/[:.]/g, "-");
     keptAside = conflictsDir(opts.brand, opts.skill, stamp, opts.dataDirOverride);
     for (const path2 of diverged) {
-      const aside = join32(keptAside, ...path2.split("/"));
+      const aside = join33(keptAside, ...path2.split("/"));
       if (local.files.has(path2) || unreadable.has(path2)) {
-        await mkdir37(dirname42(aside), { recursive: true });
+        await mkdir37(dirname43(aside), { recursive: true });
         await copyFile(localPathFor(dir, path2), aside);
       }
       const s = server.get(path2);
@@ -106884,7 +108337,7 @@ function figuresOpt(v) {
 }
 async function assertFiguresReadable(explicit) {
   if (!explicit || explicit.length === 0) return;
-  for (const path2 of [...new Set(explicit.map((p) => resolve3(p)))]) {
+  for (const path2 of [...new Set(explicit.map((p) => resolve4(p)))]) {
     let raw;
     try {
       raw = await readFile52(path2, "utf8");
@@ -106916,12 +108369,12 @@ async function loadServedContract(docPath, explicit, noFigures) {
   if (noFigures) return { ...none, index: { suppressAll: true } };
   let candidates;
   if (explicit && explicit.length > 0) {
-    candidates = [...new Set(explicit.map((p) => resolve3(p)))];
+    candidates = [...new Set(explicit.map((p) => resolve4(p)))];
   } else {
-    const dir = dirname43(resolve3(docPath));
+    const dir = dirname44(resolve4(docPath));
     try {
       const entries = await readdir8(dir);
-      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join33(dir, e));
+      candidates = entries.filter((e) => /^figures.*\.json$/i.test(e)).sort().map((e) => join34(dir, e));
     } catch {
       return none;
     }
@@ -106997,7 +108450,7 @@ function notesPayload(notes) {
 }
 async function writeReportOutput(out2, body) {
   try {
-    await mkdir38(dirname43(out2), { recursive: true });
+    await mkdir38(dirname44(out2), { recursive: true });
     await writeFile34(out2, body, "utf8");
   } catch (err) {
     throw new UserFacingError(
@@ -107670,8 +109123,8 @@ function batterySummary(out2, doc, requested = []) {
     lines.push(
       `account ${a.seller_id}: reconciliation account ${money3(rec.account_ops)} vs SKU sum ${money3(rec.sku_sum)} (${rec.gap_pct ?? "n/a"}%)`
     );
-    const failed = a.document.sections_failed ?? {};
-    for (const [name, why] of Object.entries(failed)) {
+    const failed2 = a.document.sections_failed ?? {};
+    for (const [name, why] of Object.entries(failed2)) {
       lines.push(`SECTION FAILED (brief runs without it, label the gap): ${a.seller_id}/${name}: ${String(why).slice(0, 140)}`);
     }
     const dark = a.document.dark_days ?? {};
@@ -107820,6 +109273,116 @@ init_surface();
 init_credentials();
 init_consent();
 init_queue();
+init_plugin_root();
+
+// src/lib/cli-shim.ts
+import { lstatSync, readlinkSync, realpathSync as realpathSync2, statSync as statSync3 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { delimiter, dirname as dirname45, isAbsolute, join as join35, resolve as resolve5 } from "node:path";
+function lstatSafe(p) {
+  try {
+    return lstatSync(p);
+  } catch {
+    return null;
+  }
+}
+function targetState(p) {
+  try {
+    statSync3(p);
+    return "present";
+  } catch (err) {
+    const code = err.code;
+    return code === "ENOENT" || code === "ENOTDIR" ? "missing" : "unknown";
+  }
+}
+function launcherNames() {
+  return process.platform === "win32" ? ["mixshift", "mixshift.cmd", "mixshift.ps1"] : ["mixshift"];
+}
+function pluginRootOfLauncher(realPath) {
+  const norm2 = realPath.replace(/\\/g, "/");
+  if (!/\/harness\/(bin\/mixshift|dist\/cli\.js)$/.test(norm2)) return null;
+  return resolve5(dirname45(realPath), "..", "..");
+}
+function scanShims(opts = {}) {
+  const home = opts.home ?? homedir6();
+  const pathEnv = opts.pathEnv ?? process.env.PATH ?? "";
+  const dirs = [
+    ...pathEnv.split(delimiter).filter((d) => d && isAbsolute(d)),
+    join35(home, ".local", "bin"),
+    join35(home, "bin"),
+    "/usr/local/bin",
+    ...opts.extraDirs ?? []
+  ];
+  const out2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const dir of dirs) {
+    for (const name of launcherNames()) {
+      const p = join35(dir, name);
+      if (seen.has(p)) continue;
+      seen.add(p);
+      const st = lstatSafe(p);
+      if (!st) continue;
+      if (!st.isSymbolicLink()) continue;
+      let target = null;
+      try {
+        target = readlinkSync(p);
+      } catch {
+        target = null;
+      }
+      const state = targetState(p);
+      if (state === "unknown") continue;
+      if (state === "missing") {
+        out2.push({ path: p, state: "dangling", target, version: null });
+        continue;
+      }
+      let version2 = null;
+      try {
+        const root = pluginRootOfLauncher(realpathSync2(p));
+        if (root) version2 = readPluginFolderVersion(root);
+      } catch {
+        version2 = null;
+      }
+      const older = version2 !== null && opts.newestVersion != null && compareVersions(version2, opts.newestVersion) < 0;
+      out2.push({ path: p, state: older ? "older_copy" : "ok", target, version: version2 });
+    }
+  }
+  return out2;
+}
+var SAFE_PATH = /^[\w@%+=:,./\\ ~()-]+$/;
+function safe(p) {
+  return SAFE_PATH.test(p);
+}
+function describeShimProblems(findings, newestLauncher, newestVersion = null) {
+  const lines = [];
+  for (const f of findings) {
+    if (f.state === "dangling") {
+      lines.push(
+        `${f.path} is a link to ${f.target ?? "(unreadable)"}, which no longer exists (the plugin folder it pointed at was moved or removed).`
+      );
+      if (safe(f.path)) lines.push(`  Remove it: rm "${f.path}"`);
+      lines.push(
+        "  The plugin does not create this file, so nothing will recreate it; inside Claude Code the plugin puts `mixshift` on PATH for you."
+      );
+      if (newestLauncher && safe(newestLauncher) && safe(f.path)) {
+        lines.push(
+          `  Or point it at the newest copy (this breaks again the next time the plugin folder changes): ln -sf "${newestLauncher}" "${f.path}"`
+        );
+      }
+    } else if (f.state === "older_copy") {
+      lines.push(
+        `${f.path} works, but it runs plugin copy ${f.version}` + (newestVersion ? `, and a newer copy (${newestVersion}) is installed.` : ", not the newest installed copy.")
+      );
+      if (newestLauncher && safe(newestLauncher) && safe(f.path)) {
+        lines.push(`  To use the newest copy: ln -sf "${newestLauncher}" "${f.path}"`);
+        lines.push("  (a link under /usr/local/bin usually needs sudo in front of ln.)");
+      }
+    }
+  }
+  return lines;
+}
+
+// src/commands/doctor.ts
+import { join as join36 } from "node:path";
 
 // src/lib/data/named-pack-check.ts
 init_intent();
@@ -108014,6 +109577,25 @@ async function assembleFullReport(opts) {
     }
   }
   const identity = await readDoctorIdentity(auth, network.health.reachable, opts.timeoutMs, opts.dataDirOverride);
+  let scan = { copies: [], newest: null, running: null, scannedRoots: [], truncated: false };
+  let runningRoot;
+  try {
+    runningRoot = resolvePluginRoot();
+  } catch {
+    runningRoot = void 0;
+  }
+  try {
+    scan = scanCliCopies({ runningPluginRoot: runningRoot });
+  } catch {
+  }
+  let launcherProblems = [];
+  try {
+    launcherProblems = scanShims({ newestVersion: scan.newest?.version ?? null }).filter(
+      (f) => f.state !== "ok"
+    );
+  } catch {
+    launcherProblems = [];
+  }
   const ts = await getTelemetryStatus(opts.dataDirOverride);
   const queuedBytes = await queueSizeBytes(opts.dataDirOverride).catch(() => 0);
   const ok = network.ok && namedPack.ok;
@@ -108031,6 +109613,19 @@ async function assembleFullReport(opts) {
       queuedBytes
     },
     namedPack,
+    cli_copies: {
+      newest: scan.newest?.path ?? null,
+      running: scan.running?.path ?? null,
+      copies: sortCopiesNewestFirst(scan.copies).map((c) => ({
+        path: c.path,
+        version: c.version,
+        running: c.isRunning,
+        newest: c.isNewest
+      })),
+      scanned_roots: scan.scannedRoots
+    },
+    cli_copies_truncated: scan.truncated,
+    launcher_problems: launcherProblems,
     network,
     update,
     ok
@@ -108104,6 +109699,36 @@ function renderDoctorSignedInLines(auth, identity) {
   if (tenant && tenant !== who) lines.push(`    tenant login: ${tenant}`);
   return lines;
 }
+function renderCliCopiesSection(c, runningVersion, truncated = false) {
+  const out2 = ["CLI copies:"];
+  if (c.copies.length === 0) {
+    out2.push("  none found in the host plugin folders (this does not mean the plugin is missing).");
+    if (truncated) out2.push("  Search stopped early; there may be other copies.");
+    return out2;
+  }
+  for (const copy of c.copies) {
+    const tags = [copy.newest ? "newest" : null, copy.running ? "running" : null].filter(Boolean);
+    out2.push(
+      `  ${(copy.version ?? "(unreadable)").padEnd(10)} ${copy.path}` + (tags.length ? `  [${tags.join(", ")}]` : "")
+    );
+  }
+  const newest = c.copies.find((x) => x.newest);
+  if (newest && newest.version && compareVersions(newest.version, runningVersion) > 0) {
+    out2.push(
+      `  This session is running ${runningVersion}; a newer copy (${newest.version}) is installed. Resolve the CLI again with \`mixshift cli locate\` from the newest copy.`
+    );
+  }
+  if (c.copies.length > 1) {
+    out2.push("  Older copies are left by the host on update; `mixshift cli locate` prints the newest.");
+  }
+  if (truncated) out2.push("  Search stopped early; there may be other copies.");
+  return out2;
+}
+function renderLauncherSection(problems, newestCliPath, newestVersion = null) {
+  if (problems.length === 0) return [];
+  const newestLauncher = newestCliPath ? join36(newestCliPath, "..", "..", "bin", "mixshift") : null;
+  return ["Launcher (`mixshift` on PATH):", ...describeShimProblems(problems, newestLauncher, newestVersion).map((l) => `  ${l}`)];
+}
 function renderFull(r) {
   const out2 = [];
   out2.push("mixshift doctor");
@@ -108165,6 +109790,17 @@ function renderFull(r) {
     out2.push(`  not checked (${r.namedPack.reason ?? "unavailable"}).`);
   }
   out2.push("");
+  out2.push(...renderCliCopiesSection(r.cli_copies, r.build.version, r.cli_copies_truncated));
+  out2.push("");
+  const launcherLines = renderLauncherSection(
+    r.launcher_problems,
+    r.cli_copies.newest,
+    r.cli_copies.copies.find((c) => c.newest)?.version ?? null
+  );
+  if (launcherLines.length > 0) {
+    out2.push(...launcherLines);
+    out2.push("");
+  }
   out2.push("Telemetry:");
   out2.push(`  ${r.telemetry.enabled ? "on" : "off"} (${r.telemetry.reason})`);
   if (r.telemetry.queuedBytes > 0) {
@@ -108235,12 +109871,12 @@ init_credentials();
 init_telemetry();
 import { promises as fs3 } from "node:fs";
 import { fileURLToPath as fileURLToPath8 } from "node:url";
-import { dirname as dirname44, join as join35 } from "node:path";
+import { dirname as dirname46, join as join38 } from "node:path";
 
 // src/lib/demos.ts
 var import_yaml25 = __toESM(require_dist(), 1);
 import { promises as fs2 } from "node:fs";
-import { join as join34 } from "node:path";
+import { join as join37 } from "node:path";
 async function loadDemos(skillsDir) {
   if (!skillsDir) return [];
   let entries;
@@ -108253,7 +109889,7 @@ async function loadDemos(skillsDir) {
   for (const skillId of entries) {
     let raw;
     try {
-      raw = await fs2.readFile(join34(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
+      raw = await fs2.readFile(join37(skillsDir, skillId, "skill.manifest.yaml"), "utf-8");
     } catch {
       continue;
     }
@@ -108339,6 +109975,7 @@ var CATALOG = [
     title: "Explore data & pull reports",
     skills: [
       { id: "mx-data-explore", say: "explore my data", what: "query, sample, and export the warehouse to CSV" },
+      { id: "mx-labels", say: "what item label fields do we have", what: "item and campaign labels: see, set, clear and undo them (not sub-brands)" },
       { id: "mx-amazon-report", say: "pull a Brand Analytics report", what: "fetch SP-API reports on demand, any window" },
       { id: "mx-amazon-retail", say: "look up this ASIN", what: "live catalog, inventory, orders, pricing lookups" }
     ]
@@ -108378,7 +110015,7 @@ var CATALOG = [
   {
     title: "Live Walmart surfaces",
     skills: [
-      { id: "mx-walmart-ads", say: "show my Walmart campaigns", what: "Walmart Connect ads: campaigns, reports, previewed changes" },
+      { id: "mx-walmart-ads", say: "show my Walmart campaigns", what: "Walmart Connect: campaigns, reports, previewed changes" },
       { id: "mx-walmart-retail", say: "what should I reorder on Walmart", what: "Walmart Marketplace, read only: per-SKU sales, stock, inbound, days of supply" }
     ]
   },
@@ -108480,17 +110117,17 @@ async function collectUncatalogued() {
 }
 async function findSkillsDir() {
   if (process.env.CLAUDE_PLUGIN_ROOT) {
-    return join35(process.env.CLAUDE_PLUGIN_ROOT, "skills");
+    return join38(process.env.CLAUDE_PLUGIN_ROOT, "skills");
   }
-  let dir = dirname44(fileURLToPath8(import.meta.url));
+  let dir = dirname46(fileURLToPath8(import.meta.url));
   for (let i = 0; i < 6; i++) {
     try {
-      const candidate = join35(dir, "skills");
+      const candidate = join38(dir, "skills");
       const stat7 = await fs3.stat(candidate);
       if (stat7.isDirectory()) return candidate;
     } catch {
     }
-    const parent = dirname44(dir);
+    const parent = dirname46(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -108621,7 +110258,7 @@ function renderDemoSectionChat(demos) {
 init_telemetry();
 import { promises as fs4 } from "node:fs";
 function registerDemoCommand(program3) {
-  program3.command("demo").argument("[skill]", 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart ads")').description(
+  program3.command("demo").argument("[skill]", 'skill id (e.g. mx-walmart-ads) or its demo name (e.g. "walmart connect")').description(
     `Guided skill demos. With no skill: list every skill that has a demo. With a skill: print the opener the agent shows before walking the steps in that skill's SKILL.md "## Demo" section. Output is chat markdown; --json for the structured form.`
   ).option("--finished", "record that the demo ended (telemetry only)").option("--steps-shown <n>", "with --finished: how many steps the user saw").action(async (skill, opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -108706,7 +110343,7 @@ init_surface();
 init_plugin_version();
 init_telemetry();
 import { promises as fs5 } from "node:fs";
-import { resolve as resolve4, join as join36, relative, basename as basename4 } from "node:path";
+import { resolve as resolve6, join as join39, relative, basename as basename4 } from "node:path";
 
 // src/lib/submissions/submit.ts
 init_load3();
@@ -108806,7 +110443,7 @@ var TEXT_EXT = /* @__PURE__ */ new Set([
   ".csv",
   ".toml"
 ]);
-var SKIP_DIRS = /* @__PURE__ */ new Set(["node_modules", ".git", "dist", "__pycache__", ".venv"]);
+var SKIP_DIRS2 = /* @__PURE__ */ new Set(["node_modules", ".git", "dist", "__pycache__", ".venv"]);
 var MAX_FILES = 50;
 var MAX_TOTAL_BYTES = 1e6;
 var MAX_FILE_BYTES2 = 3e5;
@@ -108832,7 +110469,7 @@ function registerShareSkillCommand(program3) {
             `Invalid --kind "${opts.kind}". Must be one of: ${[...VALID_KINDS].join(", ")}`
           );
         }
-        const abs = resolve4(pathArg);
+        const abs = resolve6(pathArg);
         const bundle = await collectBundle(abs);
         if (bundle.files.length === 0) {
           throw new Error(
@@ -109032,26 +110669,26 @@ async function collectBundle(path2) {
   if (stat7.isFile()) {
     await addFile(path2, basename4(path2));
   } else {
-    const walk = async (dir) => {
+    const walk2 = async (dir) => {
       const entries = await fs5.readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const e of entries) {
         if (files.length >= MAX_FILES || totalBytes >= MAX_TOTAL_BYTES) {
           truncated = true;
           return;
         }
-        const abs = join36(dir, e.name);
+        const abs = join39(dir, e.name);
         if (e.isDirectory()) {
-          if (SKIP_DIRS.has(e.name)) {
+          if (SKIP_DIRS2.has(e.name)) {
             skipped.push(`${relative(path2, abs).split("\\").join("/")}/ (skipped dir)`);
             continue;
           }
-          await walk(abs);
+          await walk2(abs);
         } else if (e.isFile()) {
           await addFile(abs, relative(path2, abs).split("\\").join("/"));
         }
       }
     };
-    await walk(path2);
+    await walk2(path2);
   }
   return { files, skipped, totalBytes, truncated };
 }
@@ -109654,8 +111291,8 @@ async function lookup(client, advertiserId) {
   }
   return client.lookupDspAdvertiser(advertiserId);
 }
-function registerDspAdvertiserCommands(context, deps) {
-  const group = context.command("dsp-advertiser").description(
+function registerDspAdvertiserCommands(context2, deps) {
+  const group = context2.command("dsp-advertiser").description(
     "Which brand a DSP advertiser belongs to. The MixShift service files a DSP change on a brand's change log only when exactly one brand declares the advertiser."
   );
   group.command("show").description(
@@ -110593,8 +112230,8 @@ async function lookup2(client, instanceId) {
   }
   return client.lookupAmcInstance(instanceId);
 }
-function registerAmcInstanceCommands(context, deps) {
-  const group = context.command("amc-instance").description(
+function registerAmcInstanceCommands(context2, deps) {
+  const group = context2.command("amc-instance").description(
     "Which brand an AMC instance belongs to. The MixShift service files an AMC change on a brand's change log only when exactly one brand declares the instance."
   );
   group.command("show").description(
@@ -110958,10 +112595,10 @@ init_local();
 init_stake_sync();
 init_telemetry();
 function registerContextCommands(program3) {
-  const context = program3.command("context").description(
+  const context2 = program3.command("context").description(
     "Org-shared brand context sync. The MixShift service is the source of truth; the local files under ~/.mixshift/clients/ are the cache the skills read."
   );
-  context.command("status").description(
+  context2.command("status").description(
     "Compare local brand context docs against the org store: per doc, whether it is in sync, locally edited, moved server-side, or diverged."
   ).option("--brand <slug>", "limit to one brand (default: all local brands)").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -111056,14 +112693,14 @@ function registerContextCommands(program3) {
       return;
     }
   });
-  registerActionSubcommand(context, {
+  registerActionSubcommand(context2, {
     name: "pull",
     description: "Fetch server-side changes into the local cache. Only touches docs the server moved; local edits are skipped (push them instead). --force overwrites diverged docs with the server version.",
     hasForce: true,
     run: (brand, opts) => pull(brand, opts),
     eventName: EventName.ContextPullCompleted
   });
-  registerActionSubcommand(context, {
+  registerActionSubcommand(context2, {
     name: "push",
     description: "Upload local changes to the org store. Only touches docs edited locally; server-side moves are skipped (pull them instead). --force overwrites diverged docs with the local version. Also publishes the brand's structural_events to the timeline as declared stakes (idempotent).",
     hasForce: true,
@@ -111071,7 +112708,7 @@ function registerContextCommands(program3) {
     eventName: EventName.ContextPushCompleted,
     syncStakesAfter: true
   });
-  registerActionSubcommand(context, {
+  registerActionSubcommand(context2, {
     name: "sync",
     description: "Two-way non-destructive sync: pull every non-conflicting server change, push every non-conflicting local change, and list diverged docs as conflicts. Never merges content. --quiet is the machine-friendly post-run form for skill flows (the preflight auto-sync is pull-only; pushing local changes stays an explicit opt-in via this command): silent unless something was pulled, pushed, created, conflicted, or errored, or a structural event was recorded on the timeline or failed to reach it. Conflicts still exit 0 (only per-doc errors are non-zero). Also publishes the brand's structural_events to the timeline as declared stakes (idempotent).",
     hasForce: false,
@@ -111080,10 +112717,10 @@ function registerContextCommands(program3) {
     eventName: EventName.ContextSyncCompleted,
     syncStakesAfter: true
   });
-  registerAutosyncSubcommand(context);
-  registerDspAdvertiserCommands(context, { resolveBrandsAndManifest });
-  registerAmcInstanceCommands(context, { resolveBrandsAndManifest });
-  context.command("migrate").description(
+  registerAutosyncSubcommand(context2);
+  registerDspAdvertiserCommands(context2, { resolveBrandsAndManifest });
+  registerAmcInstanceCommands(context2, { resolveBrandsAndManifest });
+  context2.command("migrate").description(
     "First-push flow: seed the org store from the local brand dirs. Validates context.yaml, uploads every doc (identical server content dedupes as noop; differing content surfaces as a conflict), and writes the sync state so status/pull/push/sync take over."
   ).option("--brand <slug>", "limit to one brand (default: all local brands)").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -111178,8 +112815,8 @@ var QUIET_NOISY_ACTIONS = /* @__PURE__ */ new Set([
   "conflict",
   "error"
 ]);
-function registerActionSubcommand(context, spec) {
-  const sub = context.command(spec.name).description(spec.description).option("--brand <slug>", "limit to one brand (default: all local brands)");
+function registerActionSubcommand(context2, spec) {
+  const sub = context2.command(spec.name).description(spec.description).option("--brand <slug>", "limit to one brand (default: all local brands)");
   if (spec.hasForce) {
     sub.option("--force", "resolve diverged docs in this direction", false);
   }
@@ -111288,8 +112925,8 @@ function registerActionSubcommand(context, spec) {
     }
   });
 }
-function registerAutosyncSubcommand(context) {
-  context.command("autosync <brand>").description(
+function registerAutosyncSubcommand(context2) {
+  context2.command("autosync <brand>").description(
     `Run the throttled preflight auto-sync for one brand (the same code path skills trigger implicitly when they read brand context). Two-way and conservative: pulls conflict-free server-side changes AND pushes conflict-free local changes within a ~2s budget, at most once per brand per ${AUTOSYNC_THROTTLE_MS / 6e4} minutes (--force bypasses the throttle). Serves brands that already exist locally, AND seeds one that does not exist here yet as long as your org's shared store already lists it (creating the local directory and pulling its docs); a slug your org store does not know about stays a no-op. Diverged docs are never touched either direction. Never blocks meaningfully and never fails loud: offline, missing credentials, or any error is a quiet no-op and the read this hook guards proceeds unchanged. Disable the implicit hook entirely with ${AUTOSYNC_ENV}=off.`
   ).option("--force", "bypass the per-brand throttle window", false).action(async (brand, opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -111682,7 +113319,7 @@ function registerAdd(timeline) {
   ).requiredOption("--brand <slug>", "the brand this event belongs to").requiredOption(
     "--kind <kind>",
     "dot-namespaced kind: 'structural.<what>' or 'comment'"
-  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect3, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect3, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
+  ).option("--note <text>", "the annotation text (payload.note)").option("--target <ref>", "target ref the annotation attaches to").option("--ts <iso>", "event time (backdate or schedule); defaults to now server-side").option("--end <iso>", "range close for a ranged stake (>= --ts)").option("--category <enum>", "stake category (makes this a typed stake; requires --interpretation)").option("--affects <ref>", "type-prefixed ref the stake touches (repeatable)", collect5, []).option("--tag <slug>", "freeform lowercase slug tag for the stake (repeatable)", collect5, []).option("--intensity <number>", "optional magnitude scalar for the stake").option("--source <src>", "trust axis: 'declared' | 'system' | 'suggested' (default declared)").option("--interpretation <text>", "what the org read into the stake (required on a stake)").option("--evidence <json>", "initial evidence ref as a JSON object string").action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
     const t0 = Date.now();
     try {
@@ -112043,7 +113680,7 @@ function registerSync(timeline) {
     }
   });
 }
-function collect3(value, prev) {
+function collect5(value, prev) {
   return [...prev, value];
 }
 function parseEvidence(raw) {
@@ -112170,10 +113807,11 @@ init_credentials();
 init_client2();
 init_engine();
 init_resolve();
+init_plugin_version();
 init_service_attribution_cache();
 init_telemetry();
 import { readdir as readdir9, stat as stat6 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname45, join as join37 } from "node:path";
+import { basename as basename5, dirname as dirname47, join as join40 } from "node:path";
 init_deadline();
 var PREFLIGHT_MANIFEST_BUDGET_MS = 1e4;
 var EXIT_CODES = {
@@ -112229,14 +113867,14 @@ async function walkForCredentials(dir, depth, maxDepth, found) {
     if (entry.isDirectory()) {
       if (NEVER_DESCEND.has(entry.name)) continue;
       if (childDepth > maxDepth) continue;
-      await walkForCredentials(join37(dir, entry.name), childDepth, maxDepth, found);
+      await walkForCredentials(join40(dir, entry.name), childDepth, maxDepth, found);
       continue;
     }
     if (!entry.isFile()) continue;
     if (entry.name !== "credentials") continue;
     if (childDepth > maxDepth) continue;
-    if (basename5(dir) !== "auth" || basename5(dirname45(dir)) !== ".mixshift") continue;
-    found.push(join37(dir, entry.name));
+    if (basename5(dir) !== "auth" || basename5(dirname47(dir)) !== ".mixshift") continue;
+    found.push(join40(dir, entry.name));
   }
 }
 async function sortCandidatesByMtime(paths) {
@@ -112251,7 +113889,7 @@ async function sortCandidatesByMtime(paths) {
   return stated.map((s) => s.path);
 }
 function dataDirFromCredentialPath(hitPath) {
-  return dirname45(dirname45(hitPath));
+  return dirname47(dirname47(hitPath));
 }
 async function pathExists(path2) {
   try {
@@ -112268,7 +113906,7 @@ function classifyMintError(err) {
   }
   return "endpoint_unreachable";
 }
-function collect4(value, prev) {
+function collect6(value, prev) {
   return [...prev, value];
 }
 function registerTaskCommands(program3) {
@@ -112280,7 +113918,7 @@ function registerTaskCommands(program3) {
   ).option(
     "--brand <slug>",
     "brand slug to ensure local context.yaml for (repeatable); pulls from the org store when not already present locally",
-    collect4,
+    collect6,
     []
   ).action(async (opts, cmd) => {
     const root = cmd.optsWithGlobals();
@@ -112319,7 +113957,7 @@ async function runPreflight(brandSlugs, root) {
     } else {
       const resolvedFailure = loadFailure;
       const sessionsHits = await discoverCredentialFiles([sessionsRoot()], SESSIONS_MAX_DEPTH);
-      const cwdRoots = [process.cwd(), join37(process.cwd(), "outputs")];
+      const cwdRoots = [process.cwd(), join40(process.cwd(), "outputs")];
       const cwdHits = await discoverCredentialFiles(cwdRoots, CWD_MAX_DEPTH);
       const scanHits = [.../* @__PURE__ */ new Set([...sessionsHits, ...cwdHits])];
       scanState = { sessionsHits, scanHits };
@@ -112358,6 +113996,8 @@ async function runPreflight(brandSlugs, root) {
       )
     );
     for (const c of candidates) lines.push(`          ${c}`);
+    const pluginVersion = getPluginVersion();
+    lines.push(statusLine("ok", `plugin: v${pluginVersion}`));
     if (malformedResolvedWarning) {
       warnings.push(malformedResolvedWarning);
       lines.push(statusLine("warn", malformedResolvedWarning));
@@ -112479,7 +114119,7 @@ async function runPreflight(brandSlugs, root) {
         serviceClientId = current.serviceClientId;
         lines.push(statusLine("ok", "auth verify: minted a fresh access token"));
         if (firstRejection !== null) {
-          const w = `a discovered credential was rejected (revoked or rotated) before this one verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ""}. Delete stale credentials files and revoke unused credentials at /admin so discovery stays unambiguous.`;
+          const w = `a discovered credential was rejected (revoked or rotated) before this one verified${extraRejections > 0 ? `, and ${extraRejections} more also rejected` : ""}. Delete stale credentials files and revoke unused credentials at Machine credentials (https://build.mixshift.ai/credentials; organizations on one shared team login: mcp.mixshift.io/admin) so discovery stays unambiguous.`;
           warnings.push(w);
           lines.push(statusLine("warn", w));
         }
@@ -112601,6 +114241,7 @@ async function runPreflight(brandSlugs, root) {
     const exportLine = kind !== null ? `export MIXSHIFT_DATA_DIR=${shellQuoteSingle(dataDir)}` : null;
     const resultOut = {
       ready,
+      version: pluginVersion,
       data_dir: dataDir,
       export_line: exportLine,
       discovered_via: discoveredVia,
@@ -112720,6 +114361,10 @@ function redactBudgetValue(name, value) {
   return m ? `${m[1]}=${REDACTED}` : REDACTED;
 }
 var BUDGET_VALUE_FLAG = /^(set|note)$/;
+function isCliLocate(argv) {
+  return hasSubcommandLater(argv, "cli", "locate");
+}
+var CLI_ROOT_VALUE_FLAG = /^root$/;
 function isForecastSubBrand(argv) {
   return hasSubcommandLater(argv, "forecast", "sub-brand");
 }
@@ -112738,9 +114383,10 @@ function redactGeneric(argv) {
   const budget = isForecastBudget(argv);
   const subBrand = isForecastSubBrand(argv);
   const labels = isLabelsSearch(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : null;
+  const cliLocate = isCliLocate(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : cliLocate ? CLI_ROOT_VALUE_FLAG : null;
   const redactValue = (name, value) => budget ? redactBudgetValue(name, value) : REDACTED;
-  const strictValue = subBrand || labels;
+  const strictValue = subBrand || labels || cliLocate;
   let budgetFlag = null;
   for (const arg of argv) {
     if (budgetFlag !== null) {
@@ -112821,7 +114467,8 @@ var OTHER_TOP_LEVEL_COMMANDS = /* @__PURE__ */ new Set([
   "context",
   "timeline",
   "task",
-  "help"
+  "help",
+  "cli"
 ]);
 var ROOT_BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["json", "verbose", "help", "version"]);
 var LABELS_BOOLEAN_FLAGS = /* @__PURE__ */ new Set([...ROOT_BOOLEAN_FLAGS, "all", "commit", "remove"]);
@@ -112920,18 +114567,59 @@ function firstPositional(argv) {
   }
   return null;
 }
-var isLabelsToken = (a) => {
-  const l = a.toLowerCase();
-  return l === "labels" || l.endsWith("=labels");
+var TRACKING_SUBCOMMANDS = /* @__PURE__ */ new Set(["list", "show", "create", "add", "remove", "pause", "resume", "delete", "help"]);
+var TRACKING_BOOLEAN_FLAGS = /* @__PURE__ */ new Set([...ROOT_BOOLEAN_FLAGS, "replace", "yes"]);
+var TRACKING_VALUE_SHAPES = {
+  view: /^(desktop|mobile)$/,
+  pages: /^[1-5]$/,
+  country: /^(us|ca|uk|de|fr|it|es|in)$/,
+  surface: SURFACE_SHAPE
 };
-function redactArgs(argv) {
-  const base2 = redactGeneric(argv);
-  const i = argv.findIndex(isLabelsToken);
-  if (i < 0) return base2;
+var TRACKING_CONFIG = {
+  known: /* @__PURE__ */ new Set([...TRACKING_BOOLEAN_FLAGS, ...Object.keys(TRACKING_VALUE_SHAPES), "data-dir", "keyword", "zip", "asin", "note"]),
+  booleans: TRACKING_BOOLEAN_FLAGS,
+  shapes: TRACKING_VALUE_SHAPES,
+  keepPositional: (n, arg) => n === 1 && TRACKING_SUBCOMMANDS.has(arg)
+};
+var TRACKING_TOKENS = /* @__PURE__ */ new Set(["tracking", "track", "trackin", "trackng", "trackign", "trackings"]);
+var OTHER_SHELF_SUBCOMMANDS = /* @__PURE__ */ new Set(["catalog", "zips", "usage", "rank-history", "buybox", "offers", "search", "product", "seller", "featured-offer-check"]);
+var NOT_TRACKING_COMMANDS = /* @__PURE__ */ new Set([...[...OTHER_TOP_LEVEL_COMMANDS].filter((c) => c !== "shelf" && c !== "help"), "labels"]);
+var isShelfToken = (a) => /^shelf$/i.test(a) || /=shelf$/i.test(a);
+var isTrackToken = (a) => /^track/i.test(a);
+function pastRootFlags(argv, i) {
+  let j = i + 1;
+  while (j < argv.length) {
+    const a = argv[j];
+    if (a === "--data-dir" || a === "--surface") j += 2;
+    else if (/^--(data-dir|surface)=/.test(a) || a.startsWith("--") && ROOT_BOOLEAN_FLAGS.has(a.slice(2)) || a === "-h" || a === "-V") j += 1;
+    else break;
+  }
+  return j;
+}
+var HELP_ROOT_CONFIG = { ...ROOT_CONFIG, keepPositional: (n, arg) => n === 1 && /^help$/i.test(arg) };
+function shelfTrackingAllow(argv) {
   const first = firstPositional(argv);
-  if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base2;
-  const trigger = /^labels$/i.test(argv[i]) ? argv[i] : REDACTED;
-  const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
+  if (first !== null && NOT_TRACKING_COMMANDS.has(first.toLowerCase())) return null;
+  const shelf = argv.findIndex(isShelfToken);
+  if (shelf >= 0) {
+    const next = pastRootFlags(argv, shelf);
+    if (next < argv.length && OTHER_SHELF_SUBCOMMANDS.has(argv[next])) return null;
+  }
+  const afterShelf = shelf >= 0 ? argv.findIndex((a, j) => j > shelf && isTrackToken(a)) : -1;
+  const tracking = afterShelf >= 0 ? afterShelf : argv.findIndex(isTrackToken);
+  if (tracking < 0) return null;
+  const trackingToken = TRACKING_TOKENS.has(argv[tracking].toLowerCase()) ? argv[tracking] : REDACTED;
+  const after = allowlist(argv.slice(tracking + 1), TRACKING_CONFIG);
+  if (afterShelf < 0) return [...allowlist(argv.slice(0, tracking), HELP_ROOT_CONFIG), trackingToken, ...after];
+  return [
+    ...allowlist(argv.slice(0, shelf), HELP_ROOT_CONFIG),
+    argv[shelf],
+    ...allowlist(argv.slice(shelf + 1, tracking), ROOT_CONFIG),
+    trackingToken,
+    ...after
+  ];
+}
+function mostRedacted(argv, base2, allow) {
   return argv.map((orig, k) => {
     const b = base2[k];
     const a = allow[k];
@@ -112939,6 +114627,22 @@ function redactArgs(argv) {
     if (a === orig) return b;
     return a === REDACTED || b === REDACTED ? REDACTED : a;
   });
+}
+var isLabelsToken = (a) => {
+  const l = a.toLowerCase();
+  return l === "labels" || l.endsWith("=labels");
+};
+function redactArgs(argv) {
+  const base2 = redactGeneric(argv);
+  const tracking = shelfTrackingAllow(argv);
+  if (tracking) return mostRedacted(argv, base2, tracking);
+  const i = argv.findIndex(isLabelsToken);
+  if (i < 0) return base2;
+  const first = firstPositional(argv);
+  if (first !== null && OTHER_TOP_LEVEL_COMMANDS.has(first)) return base2;
+  const trigger = /^labels$/i.test(argv[i]) ? argv[i] : REDACTED;
+  const allow = [...allowlist(argv.slice(0, i), ROOT_CONFIG), trigger, ...allowlist(argv.slice(i + 1), LABELS_CONFIG)];
+  return mostRedacted(argv, base2, allow);
 }
 
 // src/lib/cli/usage-hints.ts
@@ -113016,7 +114720,7 @@ var OPTION_HINTS = {
   }
 };
 var ROOT_VALUE_OPTIONS = /* @__PURE__ */ new Set(["--data-dir", "--surface"]);
-function resolve5(program3, argv) {
+function resolve7(program3, argv) {
   let cmd = program3;
   const path2 = [];
   for (let i = 0; i < argv.length; i++) {
@@ -113050,7 +114754,7 @@ function listSubcommands(cmd) {
   return cmd.commands.filter((c) => c.name() !== "help").map((c) => c.name()).join(", ");
 }
 function usageHint(code, message, argv, program3) {
-  const r = resolve5(program3, argv);
+  const r = resolve7(program3, argv);
   if (code === "commander.unknownOption") {
     const flag = /unknown option '(--[^'=\s]+)/.exec(message)?.[1];
     if (!flag) return void 0;
@@ -113165,6 +114869,37 @@ function flagName2(arg) {
 init_telemetry();
 init_load();
 init_save();
+
+// src/lib/telemetry/command-names.ts
+var OTHER_TOKEN = "(other)";
+var BARE_FLAG = /^--?[A-Za-z][A-Za-z0-9-]*$/;
+function find(commands, token) {
+  return commands.find((c) => c.name() === token || c.aliases().includes(token));
+}
+function commandToken(program3, token) {
+  if (!token) return "(none)";
+  try {
+    if (BARE_FLAG.test(token) || token === "help" || find(program3.commands, token)) return token;
+  } catch {
+  }
+  return OTHER_TOKEN;
+}
+var BOOLEAN_ROOT_FLAGS = /* @__PURE__ */ new Set(["--json", "--verbose"]);
+function subcommandToken(program3, group, token) {
+  if (!token) return "(none)";
+  try {
+    if (BARE_FLAG.test(token)) return token;
+    const g = group ? find(program3.commands, group) : void 0;
+    const sub = g ? find(g.commands, token) : void 0;
+    if (sub) return sub.name();
+    if (token === "help") return token;
+    if ((group === "help" || group !== void 0 && BOOLEAN_ROOT_FLAGS.has(group)) && find(program3.commands, token)) return token;
+  } catch {
+  }
+  return OTHER_TOKEN;
+}
+
+// src/cli.ts
 await loadDotenvIfPresent();
 installProxyDispatcherIfConfigured();
 var program2 = new Command();
@@ -113189,6 +114924,7 @@ registerDataCommands(program2);
 registerFeedbackCommand(program2);
 registerWelcomeCommand(program2);
 registerVersionCommand(program2);
+registerCliLocateCommand(program2);
 registerWhatsnewCommand(program2);
 registerUpdateActionsCommand(program2);
 registerTelemetryCommands(program2);
@@ -113242,24 +114978,17 @@ async function trackLifecycleEvents() {
     await track({
       event_name: EventName.CliCommandRun,
       payload: {
-        cmd: process.argv[2] ?? "(none)",
-        // Canonical subcommand name: an alias (`data tables`) counts under
-        // the command it runs (`list-tables`), so usage sweeps see one bucket.
-        subcmd: canonicalSubcommand(process.argv[2], process.argv[3]),
+        // Names only (lib/telemetry/command-names.ts): these two skip the
+        // redactor, so a token that is not a registered command, subcommand,
+        // alias or bare flag (a path, a set id, a keyword) is '(other)'. An
+        // alias (`data tables`) counts under the command it runs
+        // (`list-tables`), so usage sweeps see one bucket.
+        cmd: commandToken(program2, process.argv[2]),
+        subcmd: subcommandToken(program2, process.argv[2], process.argv[3]),
         args: redactArgs(process.argv.slice(2))
       }
     });
   } catch {
-  }
-}
-function canonicalSubcommand(group, token) {
-  if (!token) return "(none)";
-  try {
-    const g = group ? program2.commands.find((c) => c.name() === group || c.aliases().includes(group)) : void 0;
-    const sub = g?.commands.find((c) => c.name() === token || c.aliases().includes(token));
-    return sub ? sub.name() : token;
-  } catch {
-    return token;
   }
 }
 async function showFirstRunNoticeIfNeeded() {
