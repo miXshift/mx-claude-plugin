@@ -16,7 +16,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.7"
+  version: "0.2.8"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -720,36 +720,55 @@ type's fields to another is the most common validation failure:
 | --- | --- | --- | --- |
 | `sb.create_brand_video_ads` | brand video | `asins`, `videoAssetIds`, brand logo, `headline` | Store |
 | `sb.create_video_ads` | video | `asins`, `videoAssetIds` only | product detail page |
-| `sb.create_product_collection_ads` | product collection | `asins`, brand logo, `headline`, `customImages` | Store |
+| `sb.create_product_collection_ads` | product collection | at least 3 `asins`, brand logo, `headline` of at most 32 characters, no custom images | Store, or a product list that needs no Store (never the detail page) |
 | `sb.create_store_spotlight_ads` | store spotlight | brand logo, `headline`, `subpages` (no top-level `asins`) | Store |
 
-Three things that decide whether the commit succeeds:
+What decides whether the commit succeeds:
 
-- **Build in order:** campaign, then ad group, then keywords or targets, then the
-  ad. An SB ad group carries no bid of its own; bids live on the keywords and
-  targets inside it.
+- **Build in order:** campaign, then ad group, then the ad, then keywords or
+  targets. Amazon has refused targets sent to an SB ad group that had no ad
+  yet, and accepted the same targets once the ad existed. An SB ad group
+  carries no bid of its own; bids live on the keywords and targets inside it.
 - **Assets must already be in the Creative Asset Library.**
   `videoAssetIds` and `brandLogoAssetID` are Creative Asset Library ids (they
   look like `amzn1.assetlibrary.asset1.<hash>:version_v1`). These operations
   attach existing assets, they do not upload new ones. Find the id with
   `assets.search_by_name` (or `assets.list_recent` for something just added),
   on the merchant whose brand owns the asset; see "Creative Asset Library".
-  A new logo or custom image can be added from an https link where the upload
-  is available; see "Adding a new image" there.
+  A new logo can be added from an https link where the upload is available;
+  see "Adding a new image" there.
   `sb.list_ads` shows the assets already attached to an existing ad, which is
   useful for reusing a creative.
-- **Store landing pages gate the ASINs.** For any type whose landing page is a
+- **Product collection ads are created as Manual Collection ads.** Since
+  August 2026 Amazon turns every product collection create into a Manual
+  Collection ad (`sb.list_ads` lists it as `MANUAL_COLLECTION`). It needs at
+  least 3 ASINs in the creative and a `headline` of at most 32 characters.
+  Leave custom images out: Amazon accepts `customImages` (or
+  `customImageAssetId`) on this create, answers success, and drops the image
+  without saying so. Tell the user a custom image cannot be added to this ad
+  type through the API. Ads created before August 2026 may still show
+  `customImageAssetId` and `customImageCrop` on a read.
+- **A product collection ad lands on a Store or on a product list.** Send
+  `"landingPage": { "pageType": "STORE", "url": "<Store page url>" }`, or
+  `"landingPage": { "pageType": "PRODUCT_LIST", "asins": [<the ad's ASINs, at least 3>] }`
+  with no `url`, which needs no Store. `DETAIL_PAGE` is refused on this ad
+  type.
+- **Store landing pages gate the ASINs.** For an ad whose landing page is a
   Store, every advertised ASIN has to appear on that Store page or Amazon
-  rejects the ad. Check the Store page before committing.
+  rejects the ad. Check the Store page before committing. A product list
+  landing page has no Store to check.
 
-**A dry run does not check any of this.** The preview validates the shape of
-the request and records an audit entry; it never reaches Amazon, so none of the
-creative rules above are tested until you commit. It does now catch a missing
-required field (such as the `adGroupId` on an SB keyword or target update)
-before anything is sent, and `mixshift ads operations` reports those fields per
-operation, so that class of mistake no longer waits for a live commit. Amazon validates per item, so
-commit a single ad first, read the per-item error results, and send the rest of
-the batch only once one has gone through.
+**What a dry run checks, and what it does not.** The preview never reaches
+Amazon, so asset ids and the Store ASIN rule are not tested until you commit.
+It does refuse, before anything is sent, a missing required field (such as the
+`adGroupId` on an SB keyword or target update; `mixshift ads operations`
+reports those fields per operation) and, on `sb.create_product_collection_ads`,
+the four things Amazon is known to refuse or silently drop there: fewer than 3
+ASINs, a headline over 32 characters, a `DETAIL_PAGE` landing page, and a
+custom image. Those come back as `invalid_request` naming the field and the
+fix, on the dry run as well as the commit. Amazon validates per item, so
+commit a single ad first, read the per-item error results, and send the rest
+of the batch only once one has gone through.
 
 `sb.update_targets` is what to route a Sponsored Brands product-target bid
 change to. Before it existed, an account running SB product targeting had no
