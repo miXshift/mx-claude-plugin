@@ -8,6 +8,7 @@ import {
   chooseAcosTarget,
   MIXED_ROW_NOTE,
   NO_PRODUCT_NOTE,
+  NOT_AN_ASIN_REASON,
   PRODUCT_TARGET_RULE,
 } from './product-targets.js';
 
@@ -71,6 +72,54 @@ describe('extractProductAcosTargets', () => {
   it('reads a fraction below 1 as a share of 100', () => {
     const t = extractProductAcosTargets({ thresholds: { acos_target_by_asin: { B0TESTAAA1: 0.25 } } });
     expect(t!.by_asin.B0TESTAAA1).toBe(25);
+  });
+
+  it('reads a value written with a percent sign as a percent, never as a fraction (Q F5)', () => {
+    const t = extractProductAcosTargets({
+      thresholds: {
+        acos_target_by_asin: { B0TESTAAA1: '0.5%', B0TESTAAA2: '1%', B0TESTAAA3: { acos_target_pct: '0.75 %' } },
+        acos_target_by_sku: { 'SKU-A': '0.5%' },
+      },
+    });
+    expect(t!.by_asin).toEqual({ B0TESTAAA1: 0.5, B0TESTAAA2: 1, B0TESTAAA3: 0.75 });
+    expect(t!.by_sku).toEqual({ 'SKU-A': 0.5 });
+    expect(t!.skipped).toEqual([]);
+    // A bare fraction (no percent sign) is still read as a share of 100.
+    const bare = extractProductAcosTargets({ thresholds: { acos_target_by_asin: { B0TESTAAA1: 0.5, B0TESTAAA2: '0.5' } } });
+    expect(bare!.by_asin).toEqual({ B0TESTAAA1: 50, B0TESTAAA2: 50 });
+  });
+
+  it('skips an ASIN key that is not 10 letters and digits, with the reason (Q F4)', () => {
+    const t = extractProductAcosTargets({
+      thresholds: {
+        acos_target_by_asin: { 'B0TESTAAA1:UK': 25, B0TESTAAA2_DE: 30, B0SHORT: 20, B0TESTAAA3: 35 },
+        asin_acos_targets: [{ asin: 'B0TESTAAA4-US', acos_target_pct: 40 }],
+      },
+    });
+    expect(t!.by_asin).toEqual({ B0TESTAAA3: 35 });
+    expect(t!.skipped).toEqual([
+      { path: 'thresholds.acos_target_by_asin', id: 'B0TESTAAA1:UK', reason: NOT_AN_ASIN_REASON },
+      { path: 'thresholds.acos_target_by_asin', id: 'B0TESTAAA2_DE', reason: NOT_AN_ASIN_REASON },
+      { path: 'thresholds.acos_target_by_asin', id: 'B0SHORT', reason: NOT_AN_ASIN_REASON },
+      { path: 'thresholds.asin_acos_targets', id: 'B0TESTAAA4-US', reason: NOT_AN_ASIN_REASON },
+    ]);
+    // An ASIN key with spaces around it or in lower case is still an ASIN.
+    const ok = extractProductAcosTargets({ thresholds: { acos_target_by_asin: { ' b0testaaa1 ': 25 } } });
+    expect(ok!.by_asin).toEqual({ B0TESTAAA1: 25 });
+    expect(ok!.skipped).toEqual([]);
+  });
+
+  it('an empty map counts as no map: null, so no key is added (Q F3)', () => {
+    expect(extractProductAcosTargets({ thresholds: { acos_target_by_asin: {} } })).toBeNull();
+    expect(
+      extractProductAcosTargets({ thresholds: { acos_target_by_asin: {}, acos_target_by_sku: [] } }),
+    ).toBeNull();
+    expect(extractProductAcosTargets({ thresholds: { product_acos_targets: { by_asin: {} } } })).toBeNull();
+    // A map whose only entries were skipped still returns, so the reasons are shown.
+    const t = extractProductAcosTargets({ thresholds: { acos_target_by_asin: { 'B0TESTAAA1:UK': 25 } } });
+    expect(t).not.toBeNull();
+    expect(t!.by_asin).toEqual({});
+    expect(t!.skipped).toHaveLength(1);
   });
 
   it('lists entries it cannot read instead of dropping them silently', () => {

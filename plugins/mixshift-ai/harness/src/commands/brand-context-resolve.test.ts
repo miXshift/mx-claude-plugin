@@ -270,6 +270,41 @@ describe('brand context resolve on a retired brand', () => {
     expect(text).toContain('1 entry could not be read and use the brand target: B0TESTAAA1 (not a number)');
   });
 
+  it('an empty product map resolves with the same keys as no map (Q F3)', async () => {
+    await writeContext(['thresholds:', '  acos_target_by_asin: {}']);
+    const json = JSON.parse((await resolve('--json')).stdout) as Record<string, unknown>;
+    expect(Object.keys(json)).toEqual(['slug', 'fields']);
+    const text = (await resolve()).stdout;
+    expect(text).not.toContain('product_acos_targets');
+  });
+
+  it('a malformed ASIN key is skipped and reported, not matched (Q F4)', async () => {
+    await writeContext([
+      'thresholds:',
+      '  acos_target_by_asin:',
+      '    "B0TESTAAA1:UK": 25',
+      '    B0TESTAAA2_DE: 30',
+      '    B0TESTAAA3: 35',
+    ]);
+    const json = JSON.parse((await resolve('--json')).stdout) as {
+      product_acos_targets: { by_asin: Record<string, number>; skipped: Array<{ id: string; reason: string }> };
+    };
+    expect(json.product_acos_targets.by_asin).toEqual({ B0TESTAAA3: 35 });
+    expect(json.product_acos_targets.skipped.map((s) => s.id)).toEqual(['B0TESTAAA1:UK', 'B0TESTAAA2_DE']);
+    expect(json.product_acos_targets.skipped.every((s) => s.reason.startsWith('not an ASIN'))).toBe(true);
+    const text = (await resolve()).stdout;
+    expect(text).toContain('1 per-ASIN, 0 per-SKU');
+    expect(text).toContain('2 entries could not be read and use the brand target: B0TESTAAA1:UK (not an ASIN');
+  });
+
+  it('"0.5%" resolves as 0.5, not 50 (Q F5)', async () => {
+    await writeContext(['thresholds:', '  acos_target_by_asin:', '    B0TESTAAA1: "0.5%"', '    B0TESTAAA2: 0.5']);
+    const json = JSON.parse((await resolve('--json')).stdout) as {
+      product_acos_targets: { by_asin: Record<string, number> };
+    };
+    expect(json.product_acos_targets.by_asin).toEqual({ B0TESTAAA1: 0.5, B0TESTAAA2: 50 });
+  });
+
   it('an older service (no lifecycle field) prints nothing extra', async () => {
     vi.mocked(getCachedOrgManifest).mockResolvedValue({
       ok: true,

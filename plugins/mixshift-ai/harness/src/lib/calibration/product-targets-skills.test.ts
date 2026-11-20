@@ -58,6 +58,16 @@ const WITH_OTHER_THRESHOLDS = [
   '',
 ].join('\n');
 
+// An empty product map sets no target: the same as no map (mx-ops#291, Q F3).
+const WITH_EMPTY_PRODUCT_MAP = [
+  'management:',
+  '  primary_metric: ACOS',
+  '  acos_target_pct: 20',
+  'thresholds:',
+  '  acos_target_by_asin: {}',
+  '',
+].join('\n');
+
 let testDir: string;
 let brandDir: string;
 
@@ -120,6 +130,7 @@ describe.each(TARGET_DEPENDENT_SKILLS)('%s: product-level ACoS targets', (skillI
   it.each([
     ['no thresholds', BASE_CONTEXT],
     ['other thresholds only', WITH_OTHER_THRESHOLDS],
+    ['an empty product map (Q F3)', WITH_EMPTY_PRODUCT_MAP],
   ])('a brand without product targets is unchanged (%s)', async (_label, contextYaml) => {
     const { payload, result } = await runConfig(skillId, contextYaml);
     expect(payload).not.toHaveProperty('product_acos_targets');
