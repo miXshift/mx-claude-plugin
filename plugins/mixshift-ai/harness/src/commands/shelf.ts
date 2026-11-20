@@ -441,15 +441,55 @@ function movement(first: number | null, latest: number | null): string {
   return d === 0 ? 'same' : d > 0 ? `up ${d}` : `down ${-d}`;
 }
 
+/** Snapshot days the ASIN had no point on, oldest first, each with that day's depth: "2026-11-10 (not in the top 48), ...". */
+function notRankedDays(snapTop: Map<string, number>, ranked: Set<string>): string {
+  return [...snapTop.keys()]
+    .sort()
+    .filter((d) => !ranked.has(d))
+    .map((d) => `${d} (not in the top ${snapTop.get(d)})`)
+    .join(', ');
+}
+
+const nextDay = (d: string): string => new Date(Date.parse(d + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+
 export function renderRankHistory(h: ShelfRankHistory): string {
   const L: string[] = [];
   L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ''}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
-  if (h.points.length === 0) {
+  // The service sends oldest first; sort anyway so first/latest (and the movement sign) never depend on it.
+  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+  // Snapshots (when the service sends them) say which days were observed at all, whether or not an ASIN held a position.
+  // Absent, nothing below changes: a day with no point stays unexplained, as before.
+  const snapTop = new Map<string, number>();
+  for (const sn of h.snapshots ?? []) snapTop.set(day(sn.observed_at), Math.max(snapTop.get(day(sn.observed_at)) ?? 0, sn.positions));
+  // A truncated answer cut its oldest points (by count, so the oldest kept day may be partly cut) but not its snapshots:
+  // days up to and including the oldest kept point's day say nothing about "not ranked".
+  const oldestPoint = points.length > 0 ? day(points[0].observed_at) : null;
+  let trimmed = false;
+  if (h.truncated && oldestPoint !== null) {
+    for (const d of [...snapTop.keys()]) {
+      if (d <= oldestPoint) {
+        snapTop.delete(d);
+        trimmed = true;
+      }
+    }
+  }
+  const observed = snapTop.size > 0;
+  // ASINs the read covered, when the service says (present even with no points); otherwise only those with a point.
+  const covered = [...new Set([...(h.asins ?? []), ...points.map((p) => p.asin)])].sort();
+  if (points.length === 0) {
+    if (observed) {
+      const n = snapTop.size;
+      if ((h.asins ?? []).length === 0) {
+        L.push('', `${n} day(s) observed in this range, and no ASIN you track or asked for held a position on any of them.`);
+      } else {
+        L.push('', `${n} day(s) observed in this range; none of the ASINs read held a position on any of them.`, '', '**Observed, not in the top N** (a snapshot was taken that day and the ASIN held no position in it; not a missed day)', '');
+        for (const asin of covered) L.push(`- ${asin}: ranked on none of ${n} observed day(s): ${notRankedDays(snapTop, new Set())}`);
+      }
+      return L.join('\n');
+    }
     L.push('', '_(no observations in this range: tracking takes one snapshot a day, so the first point lands after the next daily run)_');
     return L.join('\n');
   }
-  // The service sends oldest first; sort anyway so first/latest (and the movement sign) never depend on it.
-  const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
   const first = new Map<string, ShelfRankPoint>();
   const latest = new Map<string, ShelfRankPoint>();
   for (const p of points) {
@@ -458,12 +498,39 @@ export function renderRankHistory(h: ShelfRankHistory): string {
   }
   const days = new Set(points.map((p) => day(p.observed_at))).size;
   L.push('', `${points.length} point(s) over ${days} day(s). Organic and sponsored rank count positions of that kind only; "-" means no position of that kind on the pages tracked.`);
-  L.push('', '**Latest per ASIN**', '', '| asin | as of | absolute | organic | sponsored | organic since first point |', '|---|---|---|---|---|---|');
+  const rankedDays = new Map<string, Set<string>>();
+  for (const p of points) {
+    if (!rankedDays.has(p.asin)) rankedDays.set(p.asin, new Set());
+    rankedDays.get(p.asin)!.add(day(p.observed_at));
+  }
+  // Every day with a snapshot or a point, oldest first.
+  const seenDays = [...new Set([...snapTop.keys(), ...points.map((p) => day(p.observed_at))])].sort();
+  L.push('', '**Latest per ASIN**', '', `| asin | as of | absolute | organic | sponsored | organic since first point |${observed ? ' days ranked / observed |' : ''}`, `|---|---|---|---|---|---|${observed ? '---|' : ''}`);
   for (const asin of [...latest.keys()].sort()) {
     const p = latest.get(asin)!;
     const f = first.get(asin)!;
     const move = f.observed_at === p.observed_at ? '-' : movement(f.organic_rank, p.organic_rank);
-    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |`);
+    L.push(`| ${asin} | ${day(p.observed_at)} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} | ${move} |${observed ? ` ${rankedDays.get(asin)!.size} of ${seenDays.length} |` : ''}`);
+  }
+  if (observed) {
+    // Observed days with no point for an ASIN are "not in the top N" (N = that day's highest stored position), never a missed day.
+    const out: string[] = [];
+    for (const asin of covered) {
+      const ranked = rankedDays.get(asin) ?? new Set<string>();
+      const absent = notRankedDays(snapTop, ranked);
+      if (absent === '') continue;
+      out.push(ranked.size === 0 ? `- ${asin}: ranked on none of ${snapTop.size} observed day(s): ${absent}` : `- ${asin}: ${absent}`);
+    }
+    if (out.length > 0) L.push('', '**Observed, not in the top N** (a snapshot was taken that day and the ASIN held no position in it; not a missed day)', '', ...out);
+    // A calendar day between the first and last observed day with no snapshot and no point is unobserved.
+    const have = new Set(seenDays);
+    const missing: string[] = [];
+    for (let t = Date.parse(seenDays[0] + 'T00:00:00Z'); t <= Date.parse(seenDays[seenDays.length - 1] + 'T00:00:00Z'); t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      if (!have.has(d)) missing.push(d);
+    }
+    if (missing.length > 0) L.push('', `No observation (no snapshot stored): ${missing.join(', ')}`);
+    if (trimmed) L.push('', `Older days were trimmed with the oldest points, so the lines above start at ${nextDay(oldestPoint!)}.`);
   }
   L.push('', '**Every point** (oldest first)', '', '| date | asin | absolute | organic | sponsored |', '|---|---|---|---|---|');
   for (const p of points) L.push(`| ${day(p.observed_at)} | ${p.asin} | ${p.absolute_rank} | ${rankCell(p.organic_rank)} | ${rankCell(p.sponsored_rank)} |`);

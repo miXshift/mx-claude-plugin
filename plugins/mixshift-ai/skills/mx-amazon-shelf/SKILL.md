@@ -15,7 +15,7 @@ description: >
   what-is-this per call. Uses the MixShift plugin sign-in. Does not require
   brand setup. Beta.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   author: "MixShift"
 trigger_phrases:
   - shelf data
@@ -233,6 +233,21 @@ with one point per day and ASIN, oldest first:
 ones; `null` means the ASIN held no position of that kind on the pages
 tracked. `absolute_rank` counts both together. `truncated: true` means the
 oldest points were cut: narrow `--from` and `--to`, or name one `--asin`.
+
+**A day with no point is not a missed day.** Every tracked keyword is observed
+daily, but a point exists only when a tracked ASIN held a position. When the
+envelope carries `snapshots[]` (`{ observed_at, pages, positions }`, one per
+snapshot served, oldest first, whatever the ASIN filter), a day that has a
+snapshot and no point for an ASIN means the ASIN was observed and was **not in
+the top N**, where N is that snapshot's `positions` (the highest position
+stored that day). Only a day missing from `snapshots` too is unobserved. The
+text output lists both ("Observed, not in the top N" and "No observation");
+tell the user that, and never call a blank or dash a skipped or missed
+observation. When `snapshots` is absent (the service has not shipped it yet),
+you cannot tell the two apart: say a day with no point is not explained by the
+data, and do not claim it was missed.
+`asins[]`, when present, lists the ASINs the read covered, even with no points:
+an ASIN there with no point held no position on the observed days in the range.
 
 ## Tracking keywords over time ("track these keywords", "rank history")
 
