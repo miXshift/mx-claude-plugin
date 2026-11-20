@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-update
 display_name: Update & Catch-Up
-version: "0.1.1"
+version: "0.1.2"
 description: >
   Guides the user through updating the plugin on their surface (terminal,
   Claude Code, or Cowork), shows what changed via `mixshift whatsnew`, and
@@ -16,6 +16,9 @@ description: >
 # only reads via the harness CLI (version / whatsnew / update-actions) and,
 # when the user accepts a catch-up action, hands off to that action's OWN
 # named skill, which carries its own confirm flow and writes tier.
+# One exception, always opt-in: after an update it may OFFER `mixshift cli remove-older`
+# (a preview that changes nothing) and runs `--yes` (moves older plugin copies into a
+# .trash folder) only after the user agrees in a later turn.
 run_kind: per_account
 cadence: on_demand
 risk_tier: 1
@@ -30,6 +33,7 @@ harness_commands:
   - mixshift update-actions --json
   - mixshift update-actions record
   - mixshift update-actions catch-up
+  - mixshift cli remove-older
 
 required_context_fields: []
 optional_context_fields: []
