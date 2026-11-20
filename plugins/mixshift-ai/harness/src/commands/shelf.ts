@@ -346,6 +346,7 @@ export function renderUsage(u: ShelfUsage): string {
     `- used: ${u.used} of ${u.allowance} (${u.remaining} left)`,
     `- resets: ${u.resets_at}`,
     `- source: ${u.source === 'discovery_first_month' ? 'first-month discovery allowance' : u.source === 'discovery' ? 'monthly discovery allowance' : u.source === 'entitlement' ? 'your shelf package' : u.source}`,
+    ...(u.warning ? ['', `Heads-up: ${u.warning.message}`] : []),
     '',
     'Every data answer counts one; `shelf zips` and `shelf usage` are free. Unused requests do not roll over.',
   ].join('\n');
