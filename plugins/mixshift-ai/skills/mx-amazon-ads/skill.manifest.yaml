@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-ads
 display_name: Amazon Ads (live account state + audited writes)
-version: "0.2.6"
+version: "0.2.7"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
@@ -87,7 +87,18 @@ notes: >
   assets.search_by_name (body { text }; read nameSearch.coverage, only
   "complete" can show an asset is absent) and assets.list_recent (newest
   page only, NOT a search; body ignored). The asset library is per profile:
-  search the merchant whose brand owns the asset.
+  search the merchant whose brand owns the asset. Adding a PNG or JPEG from
+  an https link (assets.upload_image) is NOT a catalog operation and has no
+  CLI command: it is the MCP tool amazon_ads_asset_upload (REST POST
+  /api/amazon/ads/assets/upload), only for accounts it is turned on for.
+  Without that tool, the user uploads in the Amazon Ads console. Dry run is
+  the default (sourceUrl, name, assetSubType LOGO | PRODUCT_IMAGE |
+  LIFESTYLE_IMAGE | OTHER_IMAGE | AUTHOR_IMAGE; optional asins, tags,
+  brandEntityId) and returns previewId + previewHash; show the preview, get
+  the user's go, then commit with dryRun false, previewId and
+  approvedPreviewHash within 30 minutes. Returns assetId, versionId and
+  failedSpecChecks. Cannot be deleted from MixShift; video stays
+  console-only.
   Exports beat paginated lists for a full-account snapshot (~5x lighter
   throttle): create -> poll exports.get --path exportId= -> fetch the
   COMPLETED url WITHOUT auth headers -> gunzip JSON. sp.budget_usage gives

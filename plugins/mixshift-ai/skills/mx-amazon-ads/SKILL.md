@@ -16,7 +16,7 @@ description: >
   Routes through the same Bearer token as the warehouse. Does not require
   brand setup, only that the user has signed in (`mixshift auth login`).
 metadata:
-  version: "0.2.6"
+  version: "0.2.7"
   author: "MixShift"
 trigger_phrases:
   - live campaign state
@@ -395,6 +395,54 @@ asset-library access; try another merchant on the account before telling
 anyone to re-authorize. `specCheckApprovedPrograms` is null on many image
 assets: null means "no eligibility reported", not "eligible for nothing".
 
+#### Adding a new image: upload by https link
+
+The MixShift service can add a new PNG or JPEG (a brand logo or a custom
+image) to one profile's Creative Asset Library from an https link to the
+image file. The service calls this assets.upload_image. **It is not an
+operation of the catalog**: `mixshift ads operations` does not list it,
+`mixshift ads call` cannot run it, and this plugin's CLI has no command for
+it yet. It is reached through the MixShift MCP tool
+`amazon_ads_asset_upload` (REST: `POST /api/amazon/ads/assets/upload`).
+
+- **If this session has the `amazon_ads_asset_upload` tool**, use it, under
+  the rules below.
+- **If it does not**, say so plainly: the image has to be uploaded in the
+  Amazon Ads console. Then find its id with `assets.search_by_name`. Never
+  pass the upload name to `mixshift ads call`.
+
+The upload keeps the write contract:
+
+- **Dry run first; it is the default.** Send the selector (as for any Ads
+  call), `sourceUrl` (the https URL of the PNG or JPEG file itself, not a
+  page that shows it), `name` (the name the asset gets in the library) and
+  `assetSubType`: `LOGO` for a brand logo, `PRODUCT_IMAGE` or
+  `LIFESTYLE_IMAGE` for a custom image (also `OTHER_IMAGE`, `AUTHOR_IMAGE`;
+  exact case). Optional: `asins` (1 to 100), `tags` (1 to 10), and
+  `brandEntityId`, which Amazon requires from sellers uploading assets for
+  Sponsored Brands. The dry run downloads the image, reads its real type,
+  size and dimensions, looks for assets that already have a similar name,
+  and returns `previewId` and `previewHash`. Nothing is sent to Amazon.
+- **Show the user the preview and get their explicit go:** the image type,
+  size and dimensions, the name, the sub type, and any assets with a similar
+  name (one may already be there; then use it instead). Then call again with
+  `dryRun: false`, `previewId`, and `approvedPreviewHash` set to the
+  `previewHash`, within 30 minutes. The commit uploads exactly the bytes the
+  preview checked, not a new download. Never commit on your own initiative.
+- **It cannot be undone.** The asset joins the shared library of that ad
+  account, where everyone with access to the account sees it, and MixShift
+  cannot delete it.
+- **The result** carries `assetId` and `versionId` for an SB or SD create,
+  and `failedSpecChecks`: when it is not empty, tell the user which programs
+  the image does not meet before using it in an ad. Amazon still moderates
+  the ad.
+- **Images only.** A new video still goes in through the Amazon Ads console.
+- **Only for accounts it is turned on for.** `asset_upload_not_enabled`
+  means uploads are not on for this account yet; `asset_upload_disabled`
+  means they are switched off on the service. Either way nothing was
+  downloaded or sent: upload in the Amazon Ads console instead. It also
+  needs the `ads:write` scope.
+
 ### Exports (prefer these for a full-account snapshot)
 
 For the whole account at once, exports beat paginated lists: lists carry
@@ -686,6 +734,8 @@ Three things that decide whether the commit succeeds:
   attach existing assets, they do not upload new ones. Find the id with
   `assets.search_by_name` (or `assets.list_recent` for something just added),
   on the merchant whose brand owns the asset; see "Creative Asset Library".
+  A new logo or custom image can be added from an https link where the upload
+  is available; see "Adding a new image" there.
   `sb.list_ads` shows the assets already attached to an existing ad, which is
   useful for reusing a creative.
 - **Store landing pages gate the ASINs.** For any type whose landing page is a
