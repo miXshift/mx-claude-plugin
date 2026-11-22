@@ -91855,6 +91855,7 @@ function toReportFailure(json3, httpStatus, surface) {
     ...amazonError !== void 0 ? { amazonError } : {},
     ...strOrUndef(json3.responseText) !== void 0 ? { responseText: strOrUndef(json3.responseText) } : {},
     ...strOrUndef(json3.requestOutcome) !== void 0 ? { requestOutcome: strOrUndef(json3.requestOutcome) } : {},
+    ...cleanProposalToken(json3.outcome) !== void 0 ? { serviceOutcome: cleanProposalToken(json3.outcome) } : {},
     ...typeof json3.automaticRetry === "boolean" ? { automaticRetry: json3.automaticRetry } : {},
     ...json3.concurrencyCap === true ? { concurrencyCap: true } : {}
   };
@@ -94528,12 +94529,6 @@ function buildAssetUploadBody(input) {
   if (input.approvedPreviewHash) body.approvedPreviewHash = input.approvedPreviewHash;
   return body;
 }
-var COMMIT_MAYBE_APPLIED_KINDS = /* @__PURE__ */ new Set([
-  "host_unreachable",
-  "upstream_unavailable",
-  "throttled",
-  "unknown"
-]);
 var ASSET_UPLOAD_PREVIEW_TIMEOUT_MS = 9e4;
 var ASSET_UPLOAD_COMMIT_TIMEOUT_MS = 2e5;
 async function adsAssetUpload(input, opts = {}) {
@@ -94553,7 +94548,7 @@ async function adsAssetUpload(input, opts = {}) {
     }
   );
   if (!r.ok) {
-    if (commit && r.requestOutcome === void 0 && COMMIT_MAYBE_APPLIED_KINDS.has(r.kind)) {
+    if (commit && r.requestOutcome === void 0 && r.serviceOutcome === "unknown") {
       return { ...r, requestOutcome: "unknown" };
     }
     return r;
@@ -95732,10 +95727,11 @@ function registerUploadImage(ads) {
   });
 }
 function hasFailedSpecChecks(v) {
-  if (v === null || v === void 0) return false;
   if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === "object") return Object.keys(v).length > 0;
-  return true;
+  if (v !== null && typeof v === "object") {
+    return Object.values(v).some(hasFailedSpecChecks);
+  }
+  return false;
 }
 function listOrNone(v) {
   return Array.isArray(v) && v.length > 0 ? v.map(String).join(", ") : "none";
@@ -114651,7 +114647,7 @@ function isLabelsSearch(argv) {
 }
 var LABELS_VALUE_FLAG = /^value$/;
 function isAdsUploadImage(argv) {
-  return argv.some((a) => /^upload/i.test(a));
+  return argv.some((a) => /^(upload[-_]?i|image[-_]?upload)/i.test(a));
 }
 var ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
 function redactGeneric(argv) {
@@ -114664,7 +114660,7 @@ function redactGeneric(argv) {
   const assetUpload = isAdsUploadImage(argv);
   const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : cliLocate ? CLI_ROOT_VALUE_FLAG : assetUpload ? ASSET_UPLOAD_VALUE_FLAG : null;
   const redactValue = (name, value) => budget ? redactBudgetValue(name, value) : REDACTED;
-  const strictValue = subBrand || labels || cliLocate || assetUpload;
+  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload);
   let budgetFlag = null;
   for (const arg of argv) {
     if (budgetFlag !== null) {

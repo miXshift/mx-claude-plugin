@@ -534,7 +534,7 @@ describe('adsAssetUpload', () => {
     if (!r.ok) expect(r.requestOutcome).toBeUndefined();
   });
 
-  it('a commit refused with a maybe-applied kind and no requestOutcome is marked unknown', async () => {
+  it('a commit the service calls outcome unknown is marked unknown', async () => {
     for (const [status, kind] of [[429, 'throttled'], [502, 'upstream_unavailable']] as const) {
       const fetchImpl = vi.fn().mockResolvedValueOnce(
         jsonResponse(status, { ok: false, kind, friendly: 'Amazon answered the register step without an asset id.', outcome: 'unknown' }),
@@ -542,6 +542,20 @@ describe('adsAssetUpload', () => {
       const r = await adsAssetUpload(COMMIT, injected(fetchImpl));
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.requestOutcome, kind).toBe('unknown');
+    }
+  });
+
+  it('a commit the service says added nothing, or that never reached Amazon, is not marked unknown', async () => {
+    const bodies = [
+      [502, { ok: false, kind: 'upstream_unavailable', friendly: 'Amazon refused to register the asset, so nothing was added.', outcome: 'not_added' }],
+      [500, { ok: false, kind: 'unknown', friendly: 'The upload was NOT sent: the audit log is unavailable.' }],
+      [403, { ok: false, kind: 'asset_upload_disabled', friendly: 'Uploads are switched off.' }],
+    ] as const;
+    for (const [status, body] of bodies) {
+      const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(status, body));
+      const r = await adsAssetUpload(COMMIT, injected(fetchImpl));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.requestOutcome, body.kind).toBeUndefined();
     }
   });
 

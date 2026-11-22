@@ -892,12 +892,14 @@ function registerUploadImage(ads: Command): void {
     });
 }
 
-/** True when Amazon reported at least one failed spec check. */
+/** True when Amazon reported at least one failed spec check: a non-empty
+ *  list, at the top or under any program key. Empty lists are no failure. */
 function hasFailedSpecChecks(v: unknown): boolean {
-  if (v === null || v === undefined) return false;
   if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === 'object') return Object.keys(v as object).length > 0;
-  return true;
+  if (v !== null && typeof v === 'object') {
+    return Object.values(v as Record<string, unknown>).some(hasFailedSpecChecks);
+  }
+  return false;
 }
 
 function listOrNone(v: unknown): string {

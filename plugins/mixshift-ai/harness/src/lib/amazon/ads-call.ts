@@ -360,18 +360,6 @@ export function buildAssetUploadBody(input: AdsAssetUploadInput): Record<string,
   return body;
 }
 
-/** Failure kinds a commit can end with after the image may have reached
- *  Amazon. The service marks its own maybe-applied register failures
- *  (`outcome: 'unknown'` in the envelope, which this client does not read) with
- *  one of these kinds, so a commit failing with any of them is reported as an
- *  unknown outcome: a new preview and commit could add a second asset. */
-const COMMIT_MAYBE_APPLIED_KINDS: ReadonlySet<string> = new Set([
-  'host_unreachable',
-  'upstream_unavailable',
-  'throttled',
-  'unknown',
-]);
-
 /** The service's commit is a pacer wait plus three Amazon calls (upload slot,
  *  PUT of the bytes, register), each capped at 60 s, so it can take about
  *  180 s. The preview is one download. */
@@ -403,7 +391,12 @@ export async function adsAssetUpload(
     },
   );
   if (!r.ok) {
-    if (commit && r.requestOutcome === undefined && COMMIT_MAYBE_APPLIED_KINDS.has(r.kind)) {
+    // The service says `outcome: 'unknown'` on both of its maybe-added register
+    // paths (a lost or throttled register answer, a 2xx with no asset id) and
+    // `'not_added'` when nothing was added. A lost answer on our side is
+    // already `requestOutcome: 'unknown'` (mayChangeState). So the service's
+    // own word decides; a refusal that never reached Amazon stays a refusal.
+    if (commit && r.requestOutcome === undefined && r.serviceOutcome === 'unknown') {
       return { ...r, requestOutcome: 'unknown' };
     }
     return r;

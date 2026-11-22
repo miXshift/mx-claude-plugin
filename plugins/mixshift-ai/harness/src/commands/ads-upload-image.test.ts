@@ -284,6 +284,7 @@ describe('ads upload-image: redaction of mistyped lines (argv is captured before
     ['upload-image', '--source-url', SIGNED],
     ['ads', 'upload-image', '--url=' + SIGNED],
     ['ads', 'upload-image', '--url', 'https://cdn.example.com/plain-logo.png'],
+    ['ads', 'image-upload', '--url', 'https://cdn.example.com/plain-logo.png'],
   ];
   for (const argv of cases) {
     it('drops the link from ' + argv.slice(0, 3).join(' '), () => {
@@ -301,6 +302,20 @@ describe('ads upload-image: redaction of mistyped lines (argv is captured before
       '--source-url',
       '<redacted>',
     ]);
+    // An unrelated line that merely mentions uploading keeps its values.
+    expect(redactArgs(['ads', 'call', 'x', '--note', 'upload later', '--name', 'keep'])).toEqual([
+      'ads',
+      'call',
+      'x',
+      '--note',
+      'upload later',
+      '--name',
+      'keep',
+    ]);
+    // forecast budget keeps its own rule even with an upload-ish word on the line.
+    expect(
+      redactArgs(['forecast', 'budget', 'set', '--note', '--set', '2026-01=5000', '--x', 'upload-image']),
+    ).toEqual(['forecast', 'budget', 'set', '--note', '--set', '2026-01=<redacted>', '--x', 'upload-image']);
     // A plain link with no query string on another command stays.
     expect(redactArgs(['ads', 'call', 'x', '--note', 'https://example.com/a'])).toEqual([
       'ads',

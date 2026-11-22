@@ -141,7 +141,7 @@ const LABELS_VALUE_FLAG = /^value$/;
 function isAdsUploadImage(argv: readonly string[]): boolean {
   // Typo tolerant on purpose: argv is captured before parsing, so a mistyped
   // `ads upload-imgae ...` or a bare `upload-image ...` still carries the link.
-  return argv.some((a) => /^upload/i.test(a));
+  return argv.some((a) => /^(upload[-_]?i|image[-_]?upload)/i.test(a));
 }
 
 const ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
@@ -176,7 +176,9 @@ function redactGeneric(argv: readonly string[]): string[] {
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels || cliLocate || assetUpload;
+  // Never for `forecast budget`: its flags keep the "looks like a flag" exception even when
+  // the line also carries an upload-ish word.
+  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload);
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
