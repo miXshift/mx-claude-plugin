@@ -258,6 +258,10 @@ export interface ReportFailure {
    *  on it. Absent when the outcome is known. Kept as a string so a new
    *  service value stays visible instead of being dropped. */
   requestOutcome?: string;
+  /** The service's own word on a failed write, where it gives one (the asset
+   *  upload commit: `'unknown'` when the image may have been added,
+   *  `'not_added'` when it was not). Sanitized like an id. */
+  serviceOutcome?: string;
   /** `false` when the service deliberately did NOT retry the call itself. */
   automaticRetry?: boolean;
   /** On `throttled` from report creation: Amazon is capping reports already
@@ -2025,6 +2029,9 @@ export function toReportFailure(
       : {}),
     ...(strOrUndef(json.requestOutcome) !== undefined
       ? { requestOutcome: strOrUndef(json.requestOutcome) }
+      : {}),
+    ...(cleanProposalToken(json.outcome) !== undefined
+      ? { serviceOutcome: cleanProposalToken(json.outcome) }
       : {}),
     ...(typeof json.automaticRetry === 'boolean' ? { automaticRetry: json.automaticRetry } : {}),
     ...(json.concurrencyCap === true ? { concurrencyCap: true } : {}),

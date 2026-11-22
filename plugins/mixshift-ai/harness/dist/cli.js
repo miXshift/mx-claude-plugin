@@ -91855,6 +91855,7 @@ function toReportFailure(json3, httpStatus, surface) {
     ...amazonError !== void 0 ? { amazonError } : {},
     ...strOrUndef(json3.responseText) !== void 0 ? { responseText: strOrUndef(json3.responseText) } : {},
     ...strOrUndef(json3.requestOutcome) !== void 0 ? { requestOutcome: strOrUndef(json3.requestOutcome) } : {},
+    ...cleanProposalToken(json3.outcome) !== void 0 ? { serviceOutcome: cleanProposalToken(json3.outcome) } : {},
     ...typeof json3.automaticRetry === "boolean" ? { automaticRetry: json3.automaticRetry } : {},
     ...json3.concurrencyCap === true ? { concurrencyCap: true } : {}
   };
@@ -94508,6 +94509,70 @@ async function adsCall(input, opts = {}) {
     ...json3.preview !== void 0 ? { preview: json3.preview } : {}
   };
 }
+function buildAssetUploadBody(input) {
+  const body = {};
+  if (input.profileId) body.profileId = input.profileId;
+  if (input.legacySellerId !== void 0 && input.legacySellerId !== null && input.legacySellerId !== "") {
+    const n = typeof input.legacySellerId === "string" ? Number(input.legacySellerId) : input.legacySellerId;
+    body.legacySellerId = typeof n === "number" && Number.isFinite(n) ? n : input.legacySellerId;
+  }
+  if (input.sellerId) body.sellerId = input.sellerId;
+  if (input.marketplace) body.marketplace = input.marketplace;
+  if (input.sourceUrl !== void 0) body.sourceUrl = input.sourceUrl;
+  if (input.name !== void 0) body.name = input.name;
+  if (input.assetSubType !== void 0) body.assetSubType = input.assetSubType;
+  if (input.asins && input.asins.length > 0) body.asins = input.asins;
+  if (input.tags && input.tags.length > 0) body.tags = input.tags;
+  if (input.brandEntityId) body.brandEntityId = input.brandEntityId;
+  if (input.dryRun !== void 0) body.dryRun = input.dryRun;
+  if (input.previewId) body.previewId = input.previewId;
+  if (input.approvedPreviewHash) body.approvedPreviewHash = input.approvedPreviewHash;
+  return body;
+}
+var ASSET_UPLOAD_PREVIEW_TIMEOUT_MS = 9e4;
+var ASSET_UPLOAD_COMMIT_TIMEOUT_MS = 2e5;
+async function adsAssetUpload(input, opts = {}) {
+  const body = buildAssetUploadBody(input);
+  const commit = input.dryRun === false;
+  const r = await amazonRequest(
+    {
+      method: "POST",
+      path: "/api/amazon/ads/assets/upload",
+      body,
+      surface: "ads",
+      mayChangeState: commit
+    },
+    {
+      ...opts,
+      timeoutMs: opts.timeoutMs ?? (commit ? ASSET_UPLOAD_COMMIT_TIMEOUT_MS : ASSET_UPLOAD_PREVIEW_TIMEOUT_MS)
+    }
+  );
+  if (!r.ok) {
+    if (commit && r.requestOutcome === void 0 && r.serviceOutcome === "unknown") {
+      return { ...r, requestOutcome: "unknown" };
+    }
+    return r;
+  }
+  const json3 = r.json ?? {};
+  if (typeof json3.operation !== "string" || typeof json3.dryRun !== "boolean") {
+    return {
+      ok: false,
+      kind: "unknown",
+      friendly: "The service accepted the upload request but returned an unrecognized shape. " + (input.dryRun === false ? "The image may or may not be in the library: search for it by name before trying again." : "Nothing was uploaded. Try the preview again, or contact MixShift ops if it persists."),
+      message: "asset upload response missing operation or dryRun",
+      ...input.dryRun === false ? { requestOutcome: "unknown" } : {}
+    };
+  }
+  return {
+    ok: true,
+    operation: json3.operation,
+    dryRun: json3.dryRun,
+    profileId: String(json3.profileId ?? ""),
+    legacySellerId: Number(json3.legacySellerId ?? 0),
+    marketplaceId: json3.marketplaceId == null ? null : String(json3.marketplaceId),
+    result: json3
+  };
+}
 
 // src/lib/ads/proposals.ts
 var SHORT_TIMEOUT_MS = 3e4;
@@ -95073,6 +95138,7 @@ function registerAdsCommands(program3) {
   registerProfiles(ads);
   registerOperations2(ads);
   registerCall2(ads);
+  registerUploadImage(ads);
   registerProposals(ads);
 }
 function registerProfiles(ads) {
@@ -95515,6 +95581,208 @@ async function recordBuildMapping(input) {
       message: `The order mapping was NOT recorded: ${message}`
     };
   }
+}
+var UPLOAD_OPERATION = "assets.upload_image";
+function collectRepeat(value, previous) {
+  return [...previous, value];
+}
+function uploadImageFlagProblem(opts) {
+  if (opts.commit) {
+    if (!opts.previewId || !opts.approvedHash) {
+      return "--commit needs --preview-id and --approved-hash from the preview of this upload (run it without --commit first and show the user the result).";
+    }
+    const previewOnly = [
+      ["--source-url", opts.sourceUrl !== void 0],
+      ["--name", opts.name !== void 0],
+      ["--sub-type", opts.subType !== void 0],
+      ["--asin", opts.asin.length > 0],
+      ["--tag", opts.tag.length > 0],
+      ["--brand-entity-id", opts.brandEntityId !== void 0]
+    ];
+    const stray = previewOnly.find(([, set2]) => set2);
+    if (stray) {
+      return `${stray[0]} belongs on the preview, not the commit: the commit uploads exactly what the preview checked. Pass only the same profile selector, --preview-id and --approved-hash.`;
+    }
+    return null;
+  }
+  if (opts.previewId !== void 0 || opts.approvedHash !== void 0) {
+    return "--preview-id and --approved-hash only apply with --commit.";
+  }
+  const missing = [
+    ["--source-url", opts.sourceUrl],
+    ["--name", opts.name],
+    ["--sub-type", opts.subType]
+  ].filter(([, v]) => v === void 0 || v.trim() === "");
+  if (missing.length > 0) {
+    return `The preview needs ${missing.map(([f]) => f).join(", ")}.`;
+  }
+  if (!/^https:\/\//i.test(String(opts.sourceUrl).trim())) {
+    return "--source-url must be an https:// link to the PNG or JPEG file itself.";
+  }
+  return null;
+}
+function registerUploadImage(ads) {
+  ads.command("upload-image").description(
+    "Add a new PNG or JPEG (a brand logo or a custom image) to one profile's Creative Asset Library from an https link. Previews by default: downloads and checks the image and sends nothing to Amazon. Pass --commit with the preview's id and hash ONLY after the user confirmed it. An uploaded image is shared with everyone on that ad account and cannot be deleted from MixShift."
+  ).option("--profile-id <id>", "Ads profileId from `ads profiles`").option(
+    "--legacy-seller-id <id>",
+    "exact per-marketplace seller record id (same ids as `amazon merchants`)"
+  ).option("--seller-id <id>", "AmazonSellerID; pair with --marketplace when multi-marketplace").option("--marketplace <m>", "country code (US, UK, ...) or raw marketplaceId").option(
+    "--source-url <url>",
+    "preview: https link to the PNG or JPEG file itself (not a page that shows it)"
+  ).option("--name <name>", "preview: the name the asset gets in the library").option(
+    "--sub-type <type>",
+    "preview: LOGO (brand logo), PRODUCT_IMAGE or LIFESTYLE_IMAGE (custom image), OTHER_IMAGE, AUTHOR_IMAGE"
+  ).option(
+    "--asin <asin>",
+    "preview: an ASIN the image is for (repeatable, up to 100)",
+    collectRepeat,
+    []
+  ).option("--tag <tag>", "preview: a tag for the asset (repeatable, up to 10)", collectRepeat, []).option(
+    "--brand-entity-id <id>",
+    "preview: the brand entity id; Amazon requires it from sellers uploading for Sponsored Brands"
+  ).option(
+    "--commit",
+    "upload the previewed image. Use only after explicit user confirmation of the preview."
+  ).option("--preview-id <id>", "with --commit: the previewId the preview printed").option("--approved-hash <hash>", "with --commit: the previewHash the preview printed").action(async (opts, cmd) => {
+    const root = cmd.optsWithGlobals();
+    const startedAt = Date.now();
+    try {
+      const problem = uploadImageFlagProblem(opts);
+      if (problem) return emitError11(new Error(problem), !!root.json);
+      const selector = {
+        ...opts.profileId ? { profileId: opts.profileId } : {},
+        ...opts.legacySellerId !== void 0 ? { legacySellerId: opts.legacySellerId } : {},
+        ...opts.sellerId ? { sellerId: opts.sellerId } : {},
+        ...opts.marketplace ? { marketplace: opts.marketplace } : {}
+      };
+      const result = await adsAssetUpload(
+        opts.commit ? {
+          ...selector,
+          dryRun: false,
+          previewId: opts.previewId,
+          approvedPreviewHash: opts.approvedHash
+        } : {
+          ...selector,
+          sourceUrl: String(opts.sourceUrl).trim(),
+          name: String(opts.name).trim(),
+          assetSubType: String(opts.subType).trim().toUpperCase(),
+          ...opts.asin.length > 0 ? { asins: opts.asin } : {},
+          ...opts.tag.length > 0 ? { tags: opts.tag } : {},
+          ...opts.brandEntityId ? { brandEntityId: opts.brandEntityId } : {}
+        },
+        { dataDirOverride: root.dataDir }
+      );
+      if (isReportFailure(result)) {
+        await trackAds(EventName.AdsCalled, "failed", startedAt, root.dataDir, {
+          operation: UPLOAD_OPERATION,
+          kind: result.kind,
+          ...opts.profileId ? { profile_id: opts.profileId } : {},
+          ...opts.legacySellerId !== void 0 ? { legacy_seller_id: opts.legacySellerId } : {},
+          ...opts.marketplace ? { marketplace: opts.marketplace } : {},
+          ...opts.commit ? { committed: true } : {},
+          ...result.httpStatus ? { http_status: result.httpStatus } : {},
+          ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
+          ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {},
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
+          ...failureContractTelemetry(result)
+        });
+        const next = opts.commit && result.requestOutcome === "unknown" ? "The upload may have gone through. Do NOT commit again: search the library for the name with `mixshift ads call assets.search_by_name` first." : void 0;
+        return emitFailure5(result, !!root.json, next);
+      }
+      const r = result.result;
+      await trackAds(EventName.AdsCalled, "ok", startedAt, root.dataDir, {
+        operation: UPLOAD_OPERATION,
+        dry_run: result.dryRun,
+        ...result.profileId ? { profile_id: result.profileId } : {},
+        ...result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {},
+        ...result.marketplaceId !== null ? { marketplace_id: result.marketplaceId } : {},
+        ...typeof r.auditId === "string" ? { audit_id: r.auditId } : {}
+      });
+      if (root.json) {
+        writeJson4({
+          status: "ok",
+          operation: result.operation,
+          dry_run: result.dryRun,
+          profile_id: result.profileId,
+          legacy_seller_id: result.legacySellerId,
+          marketplace_id: result.marketplaceId,
+          result: r
+        });
+        return;
+      }
+      if (result.dryRun) {
+        process.stderr.write(renderUploadPreview(result.profileId, r) + "\n");
+      } else {
+        process.stderr.write(
+          `
+\u2713 UPLOADED to the Creative Asset Library (profile ${result.profileId}): asset ${String(r.assetId ?? "?")}` + (r.versionId ? `, version ${String(r.versionId)}` : "") + `. audit: ${String(r.auditId ?? "n/a")}
+` + (hasFailedSpecChecks(r.failedSpecChecks) ? "  Amazon reported failed spec checks (failedSpecChecks below): tell the user which programs the image does not meet before using it in an ad.\n" : "") + "  Amazon still moderates any ad that uses it.\n\n"
+        );
+      }
+      process.stdout.write(JSON.stringify(r, null, 2) + "\n");
+    } catch (err) {
+      emitError11(err, !!root.json);
+    }
+  });
+}
+function hasFailedSpecChecks(v) {
+  if (Array.isArray(v)) return v.length > 0;
+  if (v !== null && typeof v === "object") {
+    return Object.values(v).some(hasFailedSpecChecks);
+  }
+  return false;
+}
+function listOrNone(v) {
+  return Array.isArray(v) && v.length > 0 ? v.map(String).join(", ") : "none";
+}
+function renderUploadPreview(profileId, r) {
+  const d = r.detected ?? {};
+  const w = r.wouldRegister ?? {};
+  const dup = r.duplicateNames ?? {};
+  const src = r.source ?? {};
+  const kb = typeof d.bytes === "number" ? `${Math.max(1, Math.round(d.bytes / 1024))} KB` : "? KB";
+  let host = "?";
+  try {
+    host = new URL(String(src.finalUrl ?? src.url ?? "")).host || "?";
+  } catch {
+  }
+  const redirects = typeof src.redirects === "number" ? src.redirects : 0;
+  const lines = [
+    "",
+    `\u2713 PREVIEW assets.upload_image (profile ${profileId}): nothing was sent to Amazon.`,
+    `  image: ${String(d.format ?? "?")}, ${String(d.width ?? "?")}x${String(d.height ?? "?")}, ${kb}, downloaded from ${host}` + (redirects > 0 ? ` after ${redirects} redirect(s)` : ""),
+    `  name: ${String(w.name ?? "?")} (${String(w.assetSubType ?? "?")})`,
+    `  ASINs: ${listOrNone(w.asins)}`,
+    `  tags: ${listOrNone(w.tags)}`,
+    `  brand entity id: ${w.brandEntityId ? String(w.brandEntityId) : "none"}`
+  ];
+  if (dup.checked === true) {
+    const matched = typeof dup.matched === "number" ? dup.matched : 0;
+    const names = Array.isArray(dup.matches) ? dup.matches.slice(0, 5).map((m) => `"${String(m.name ?? "?")}"`) : [];
+    if (matched > 0) {
+      lines.push(
+        `  ${matched} asset(s) in the library already have a similar name` + (names.length > 0 ? `: ${names.join(", ")}${matched > names.length ? ", ..." : ""}` : "") + ". One may be this image; then use it instead."
+      );
+    } else if (dup.coverage === "complete") {
+      lines.push("  no asset in the library has a similar name.");
+    } else {
+      lines.push(
+        `  no similar name found in the part of the library that was searched (coverage: ${String(dup.coverage ?? "unknown")}).`
+      );
+    }
+  } else {
+    lines.push("  similar names: not checked.");
+  }
+  lines.push(
+    `  preview: ${String(r.previewId ?? "?")}, expires ${String(r.expiresAt ?? "?")}`,
+    "  Uploading cannot be undone: the image is shared with everyone on this ad account.",
+    `  AFTER the user confirms, re-run with the same profile selector and --commit --preview-id ${String(
+      r.previewId ?? "<previewId>"
+    )} --approved-hash ${String(r.previewHash ?? "<previewHash>")}`,
+    ""
+  );
+  return lines.join("\n");
 }
 async function proposalFailed(failure3, action, startedAt, root, proposalId, operation) {
   await trackAds(EventName.AdsProposalFailed, "failed", startedAt, root.dataDir, {
@@ -98891,9 +99159,9 @@ function defaultFriendly4(kind) {
     case "zip_unavailable":
       return "That zip is not one shelf data can observe from. Run `mixshift shelf zips` for the list.";
     case "not_tracked":
-      return 'That keyword, zip and view are not tracked for your organization. An owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
+      return 'That keyword, zip and view are not tracked for your organization. An owner, admin, manager or builder can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking add`), or create a set for it; otherwise say "track these keywords" to ask MixShift.';
     case "forbidden":
-      return "Only an owner, admin or manager of your organization can change rank tracking.";
+      return "Only an owner, admin, manager or builder of your organization can change rank tracking.";
     case "tracking_over_allowance":
       return "That change would take your organization's rank tracking past its monthly shelf allowance, so nothing was changed.";
     case "tracking_set_exists":
@@ -98991,7 +99259,7 @@ var SHELF_CATALOG = [
     id: "tracking",
     tool: "shelf_list_tracking",
     what: "Your organization's rank tracking: the keywords, zips, views and ASINs MixShift searches once a day for rank-history.",
-    explain: "A tracking set is a list of keywords, shopper locations (zips), views (desktop, mobile), how many results pages to read, and the ASINs whose rank you want back. Once a day MixShift takes the results page for every keyword at every zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list and show the sets; an owner, admin or manager, signed in as a person, can create one, add or remove keywords and ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,860 a month (the projection counts 31 days). A change that would take the projected monthly use past the allowance is refused; removing and pausing always go through.",
+    explain: "A tracking set is a list of keywords, shopper locations (zips), views (desktop, mobile), how many results pages to read, and the ASINs whose rank you want back. Once a day MixShift takes the results page for every keyword at every zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list and show the sets; an owner, admin, manager or builder, signed in as a person, can create one, add or remove keywords and ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,860 a month (the projection counts 31 days). A change that would take the projected monthly use past the allowance is refused; removing and pausing always go through.",
     inputs: "list | show <set> | create <set> --keyword K --zip Z [--view desktop|mobile] [--asin A] [--pages N] [--note T] | add <set> / remove <set> [--keyword K] [--asin A] | pause <set> | resume <set> | delete <set> --yes (flags repeat)",
     returns: "sets[] (id, note, keywords, zips, surfaces, asins, pages, enabled, calls_per_day, last_run_at, last_run_summary), projected_calls_per_month, allowance, can_edit, limits",
     cost: "free",
@@ -99897,7 +100165,7 @@ function emitFailure9(failure3, json3) {
         "  Sign in to MixShift as yourself, with your own Google or Microsoft work account (`mixshift auth login`), not a shared team login, then run it again. A machine credential, such as one a scheduled task uses, can never change tracking: make the change in a conversation, signed in as yourself.\n"
       );
     } else if (failure3.kind === "forbidden") {
-      process.stderr.write('  To have it changed: ask an owner, admin or manager in your organization, or say "track these keywords" to ask MixShift.\n');
+      process.stderr.write('  To have it changed: ask an owner, admin, manager or builder in your organization, or say "track these keywords" to ask MixShift.\n');
     }
     if (failure3.kind === "tracking_unavailable") {
       process.stderr.write(
@@ -99906,7 +100174,7 @@ function emitFailure9(failure3, json3) {
     }
     if (failure3.kind === "not_tracked") {
       process.stderr.write(
-        '  To track it: an owner, admin or manager can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking list` shows them) with `mixshift shelf tracking add <set> --keyword "<keyword>"`, or create a set for it; anyone can say "track these keywords" to ask MixShift.\n'
+        '  To track it: an owner, admin, manager or builder can add the keyword to a set that already lists that zip and view (`mixshift shelf tracking list` shows them) with `mixshift shelf tracking add <set> --keyword "<keyword>"`, or create a set for it; anyone can say "track these keywords" to ask MixShift.\n'
       );
     }
     if (failure3.retryable === false && failure3.source === "request") {
@@ -99932,7 +100200,7 @@ function collect2(value, previous) {
 }
 function registerShelfTracking(shelf) {
   const tracking = shelf.command("tracking").description(
-    "Your organization's rank tracking: the keywords MixShift searches once a day at each tracked zip and view, which `shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin or manager, signed in as a person, can create, add, remove, pause, resume and delete (a machine credential never can). Free to read and change, but every running set takes keywords x zips x views x pages shelf requests a day from the monthly allowance. To stop paying for a set and keep its history readable, pause it."
+    "Your organization's rank tracking: the keywords MixShift searches once a day at each tracked zip and view, which `shelf rank-history` reads back. Anyone can list and show the sets; an owner, admin, manager or builder, signed in as a person, can create, add, remove, pause, resume and delete (a machine credential never can). Free to read and change, but every running set takes keywords x zips x views x pages shelf requests a day from the monthly allowance. To stop paying for a set and keep its history readable, pause it."
   );
   tracking.command("list").description(
     "Every tracking set: its note, keyword count, zips, views, pages, calls a day, whether it is enabled and its last run; then the projected monthly use against the allowance, and whether you can change the sets. Free."
@@ -99980,7 +100248,7 @@ function registerShelfTracking(shelf) {
     }
   });
   tracking.command("create <id>").description(
-    "Create a tracking set (owners, admins and managers): the keywords to search once a day at each zip, on each view. The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when that set already has these keywords and zips (and any other values given): a create run again after a lost answer, which answers that nothing changed, or that the set is paused and how to resume it."
+    "Create a tracking set (owners, admins, managers and builders): the keywords to search once a day at each zip, on each view. The id is yours to pick: lower-case letters, digits and hyphens, 2 to 63 characters. The set takes keywords x zips x views x pages shelf requests a day; a set over the per-set limit of calls a day, or one that would push the projected monthly use past the allowance, is refused. An id that is taken is refused unless --replace, except when that set already has these keywords and zips (and any other values given): a create run again after a lost answer, which answers that nothing changed, or that the set is paused and how to resume it."
   ).option("--keyword <keyword>", `a keyword to track (repeatable; 1 to ${TRACKING_MAX_KEYWORDS})`, collect2).option("--zip <zip>", `a shopper location from \`shelf zips\` (repeatable; 1 to ${TRACKING_MAX_ZIPS})`, collect2).option("--view <view>", "desktop or mobile (repeatable; default both)", collect2).option("--asin <asin>", "an ASIN whose rank to read back (repeatable)", collect2).option("--pages <n>", `results pages per search, 1 (default) to ${TRACKING_MAX_PAGES}`).option("--note <text>", "what the set is for, shown by `tracking list`").option("--country <code>", "marketplace country: us (default for a new set), ca, uk, de, fr, it, es, in").option("--replace", "overwrite the set if the id is taken: its keywords and zips become these; views, ASINs, pages and note you leave out keep their values").action(async (rawId, opts, cmd) => {
     const ctx = context(cmd);
     try {
@@ -100049,7 +100317,7 @@ function registerShelfTracking(shelf) {
   });
   for (const mode of ["add", "remove"]) {
     tracking.command(`${mode} <id>`).description(
-      mode === "add" ? "Add keywords or ASINs to a tracking set (owners, admins and managers). Each keyword adds zips x views x pages calls a day; a change that would take the set over the per-set limit of calls a day, or the projected monthly use past the allowance, is refused. ASINs cost nothing." : "Remove keywords or ASINs from a tracking set (owners, admins and managers). The allowance never blocks a removal, and each keyword removed saves zips x views x pages calls a day. `shelf rank-history` stops answering for a removed keyword unless another set lists it. A set keeps at least one keyword: pause or delete the set instead."
+      mode === "add" ? "Add keywords or ASINs to a tracking set (owners, admins, managers and builders). Each keyword adds zips x views x pages calls a day; a change that would take the set over the per-set limit of calls a day, or the projected monthly use past the allowance, is refused. ASINs cost nothing." : "Remove keywords or ASINs from a tracking set (owners, admins, managers and builders). The allowance never blocks a removal, and each keyword removed saves zips x views x pages calls a day. `shelf rank-history` stops answering for a removed keyword unless another set lists it. A set keeps at least one keyword: pause or delete the set instead."
     ).option("--keyword <keyword>", `a keyword to ${mode} (repeatable)`, collect2).option("--asin <asin>", `an ASIN to ${mode} (repeatable)`, collect2).action(async (rawId, opts, cmd) => {
       const ctx = context(cmd);
       try {
@@ -100082,7 +100350,7 @@ function registerShelfTracking(shelf) {
   }
   for (const mode of ["pause", "resume"]) {
     tracking.command(`${mode} <id>`).description(
-      mode === "pause" ? "Pause a tracking set (owners, admins and managers): its daily searches stop and it uses none of the allowance, and its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history." : "Resume a paused tracking set (owners, admins and managers): the next daily run searches it again, and it uses its calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance."
+      mode === "pause" ? "Pause a tracking set (owners, admins, managers and builders): its daily searches stop and it uses none of the allowance, and its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history." : "Resume a paused tracking set (owners, admins, managers and builders): the next daily run searches it again, and it uses its calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance."
     ).action(async (rawId, _opts, cmd) => {
       const ctx = context(cmd);
       try {
@@ -100096,7 +100364,7 @@ function registerShelfTracking(shelf) {
     });
   }
   tracking.command("delete <id>").description(
-    "Delete a tracking set (owners, admins and managers): its daily searches stop, and `shelf rank-history` no longer answers for its keywords unless another set (running or paused) lists them. Needs --yes. To stop paying and keep the history readable, pause it instead."
+    "Delete a tracking set (owners, admins, managers and builders): its daily searches stop, and `shelf rank-history` no longer answers for its keywords unless another set (running or paused) lists them. Needs --yes. To stop paying and keep the history readable, pause it instead."
   ).option("--yes", "confirm the delete (without it nothing is deleted)").action(async (rawId, opts, cmd) => {
     const ctx = context(cmd);
     try {
@@ -100310,7 +100578,7 @@ function projectionText(projected, allowance) {
   return `${base2}. On-demand shelf answers count against the same allowance.`;
 }
 function editHint(canEdit) {
-  return canEdit ? 'You can change these sets (owner, admin or manager): `mixshift shelf tracking add <set> --keyword "<keyword>"`, `remove`, `pause`, `resume`, `create`, `delete`.' : 'Only an owner, admin or manager can change these sets. Ask one of them, or say "track these keywords" to ask MixShift.';
+  return canEdit ? 'You can change these sets (owner, admin, manager or builder): `mixshift shelf tracking add <set> --keyword "<keyword>"`, `remove`, `pause`, `resume`, `create`, `delete`.' : 'Only an owner, admin, manager or builder can change these sets. Ask one of them, or say "track these keywords" to ask MixShift.';
 }
 function renderTrackingList(r) {
   const L = [];
@@ -114341,11 +114609,12 @@ var LABEL_FIELD_KEYS = [
 
 // src/lib/telemetry/redact.ts
 var REDACTED = "<redacted>";
-var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer)$/i;
+var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer|source[-_]?url)$/i;
 function looksLikeSecretToken(s) {
   if (/^[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}$/.test(s)) return true;
   if (/^(sk|pk|rk)_[A-Za-z0-9_-]{12,}$/.test(s)) return true;
   if (/^SVC-[A-Z0-9]{2,}(-[A-Z0-9]{2,})*$/.test(s)) return true;
+  if (/^https?:\/\/[^\s?#]*\?\S/i.test(s)) return true;
   return false;
 }
 function flagName(arg) {
@@ -114377,6 +114646,10 @@ function isLabelsSearch(argv) {
   return hasSubcommandLater(argv, "labels", "search");
 }
 var LABELS_VALUE_FLAG = /^value$/;
+function isAdsUploadImage(argv) {
+  return argv.some((a) => /^(upload[-_]?i|image[-_]?upload)/i.test(a));
+}
+var ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
 function redactGeneric(argv) {
   const out2 = [];
   let redactNextValue = false;
@@ -114384,9 +114657,10 @@ function redactGeneric(argv) {
   const subBrand = isForecastSubBrand(argv);
   const labels = isLabelsSearch(argv);
   const cliLocate = isCliLocate(argv);
-  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : cliLocate ? CLI_ROOT_VALUE_FLAG : null;
+  const assetUpload = isAdsUploadImage(argv);
+  const valueFlag = budget ? BUDGET_VALUE_FLAG : subBrand ? SUB_BRAND_VALUE_FLAG : labels ? LABELS_VALUE_FLAG : cliLocate ? CLI_ROOT_VALUE_FLAG : assetUpload ? ASSET_UPLOAD_VALUE_FLAG : null;
   const redactValue = (name, value) => budget ? redactBudgetValue(name, value) : REDACTED;
-  const strictValue = subBrand || labels || cliLocate;
+  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload);
   let budgetFlag = null;
   for (const arg of argv) {
     if (budgetFlag !== null) {
@@ -114419,7 +114693,10 @@ function redactGeneric(argv) {
     if (arg.startsWith("--") && arg.includes("=")) {
       const eq = arg.indexOf("=");
       const name = flagName(arg.slice(0, eq));
-      out2.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
+      const value = arg.slice(eq + 1);
+      out2.push(
+        SECRET_FLAG.test(name) || looksLikeSecretToken(value) || assetUpload && value.includes("://") ? `${arg.slice(0, eq)}=${REDACTED}` : arg
+      );
       continue;
     }
     if (arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg)) {
@@ -114427,7 +114704,7 @@ function redactGeneric(argv) {
       if (SECRET_FLAG.test(flagName(arg))) redactNextValue = true;
       continue;
     }
-    out2.push(looksLikeSecretToken(arg) ? REDACTED : arg);
+    out2.push(looksLikeSecretToken(arg) || assetUpload && arg.includes("://") ? REDACTED : arg);
   }
   return out2;
 }

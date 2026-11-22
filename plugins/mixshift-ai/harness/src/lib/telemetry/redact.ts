@@ -46,7 +46,7 @@ const REDACTED = '<redacted>';
  * only a flag that IS `key` / `client-secret` / `setup-code` / etc.
  */
 const SECRET_FLAG =
-  /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer)$/i;
+  /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer|source[-_]?url)$/i;
 
 /** High-confidence secret token shapes (exact structure, not entropy). */
 function looksLikeSecretToken(s: string): boolean {
@@ -58,6 +58,9 @@ function looksLikeSecretToken(s: string): boolean {
   // hyphenated, so it never collides with the lowercase underscore `svc_`
   // client_id, which is PUBLIC and must be preserved.
   if (/^SVC-[A-Z0-9]{2,}(-[A-Z0-9]{2,})*$/.test(s)) return true;
+  // A web link with a query string: a signed (presigned) link carries its
+  // credential there (X-Amz-Signature, sig=, token=), on any command.
+  if (/^https?:\/\/[^\s?#]*\?\S/i.test(s)) return true;
   return false;
 }
 
@@ -128,6 +131,22 @@ function isLabelsSearch(argv: readonly string[]): boolean {
 const LABELS_VALUE_FLAG = /^value$/;
 
 /**
+ * And for `ads upload-image ...`: the VALUE of `--source-url` is a link to the customer's
+ * image (it can be a presigned link whose query string is itself a credential), and `--name`
+ * and `--tag` are the names the customer gives the asset in their library. None of them is
+ * collected (docs/privacy.md); the selector ids, the sub type and the preview id stay. On
+ * such a line every link is dropped too, wherever it sits, and `--source-url` is a secret
+ * flag on every line.
+ */
+function isAdsUploadImage(argv: readonly string[]): boolean {
+  // Typo tolerant on purpose: argv is captured before parsing, so a mistyped
+  // `ads upload-imgae ...` or a bare `upload-image ...` still carries the link.
+  return argv.some((a) => /^(upload[-_]?i|image[-_]?upload)/i.test(a));
+}
+
+const ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -141,6 +160,7 @@ function redactGeneric(argv: readonly string[]): string[] {
   // The business-value flags of this command, and how a value is redacted.
   const labels = isLabelsSearch(argv);
   const cliLocate = isCliLocate(argv);
+  const assetUpload = isAdsUploadImage(argv);
   const valueFlag = budget
     ? BUDGET_VALUE_FLAG
     : subBrand
@@ -149,12 +169,16 @@ function redactGeneric(argv: readonly string[]): string[] {
         ? LABELS_VALUE_FLAG
         : cliLocate
           ? CLI_ROOT_VALUE_FLAG
-          : null;
+          : assetUpload
+            ? ASSET_UPLOAD_VALUE_FLAG
+            : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels || cliLocate;
+  // Never for `forecast budget`: its flags keep the "looks like a flag" exception even when
+  // the line also carries an upload-ish word.
+  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload);
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;
@@ -198,7 +222,12 @@ function redactGeneric(argv: readonly string[]): string[] {
     if (arg.startsWith('--') && arg.includes('=')) {
       const eq = arg.indexOf('=');
       const name = flagName(arg.slice(0, eq));
-      out.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
+      const value = arg.slice(eq + 1);
+      out.push(
+        SECRET_FLAG.test(name) || looksLikeSecretToken(value) || (assetUpload && value.includes('://'))
+          ? `${arg.slice(0, eq)}=${REDACTED}`
+          : arg,
+      );
       continue;
     }
 
@@ -212,8 +241,10 @@ function redactGeneric(argv: readonly string[]): string[] {
       continue;
     }
 
-    // Positional: redact only if it matches a known secret shape.
-    out.push(looksLikeSecretToken(arg) ? REDACTED : arg);
+    // Positional: redact only if it matches a known secret shape, or, on an
+    // upload line, if it is any link (a mistyped flag leaves the image link
+    // here as a positional).
+    out.push(looksLikeSecretToken(arg) || (assetUpload && arg.includes('://')) ? REDACTED : arg);
   }
 
   return out;

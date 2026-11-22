@@ -12,6 +12,9 @@
  *   ads call <write-op> ... --propose [--title --rationale --evidence-file
  *                         --expires-hours]   write a proposal, not a change
  *   ads proposals list|show|approve|reject|commit   approve-later flow
+ *   ads upload-image [selectors] --source-url <https> --name <n> --sub-type <t>
+ *                         [--commit --preview-id <id> --approved-hash <h>]
+ *                         add a PNG or JPEG to the Creative Asset Library
  *
  * WRITE CONTRACT: operations marked write: true (bid updates, negatives,
  * campaign creation) run as a DRY RUN by default: the service validates,
@@ -42,6 +45,7 @@ import {
   listAdsProfiles,
   listAdsOperations,
   adsCall,
+  adsAssetUpload,
   type AdsCallInput,
   type AdsOperationView,
   type AdsProfileView,
@@ -97,6 +101,7 @@ export function registerAdsCommands(program: Command): void {
   registerProfiles(ads);
   registerOperations(ads);
   registerCall(ads);
+  registerUploadImage(ads);
   registerProposals(ads);
 }
 
@@ -673,6 +678,295 @@ export async function recordBuildMapping(input: {
       message: `The order mapping was NOT recorded: ${message}`,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// ads upload-image
+// ---------------------------------------------------------------------------
+
+interface UploadImageCliOptions {
+  profileId?: string;
+  legacySellerId?: string;
+  sellerId?: string;
+  marketplace?: string;
+  sourceUrl?: string;
+  name?: string;
+  subType?: string;
+  asin: string[];
+  tag: string[];
+  brandEntityId?: string;
+  commit?: boolean;
+  previewId?: string;
+  approvedHash?: string;
+}
+
+const UPLOAD_OPERATION = 'assets.upload_image';
+
+function collectRepeat(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+/** Client-side checks before anything is sent. The service re-checks all of
+ *  them; these only turn a wasted round-trip into a plain message. Returns the
+ *  problem, or null when the flags make a valid preview or commit. */
+export function uploadImageFlagProblem(opts: UploadImageCliOptions): string | null {
+  if (opts.commit) {
+    if (!opts.previewId || !opts.approvedHash) {
+      return (
+        '--commit needs --preview-id and --approved-hash from the preview of this upload ' +
+        '(run it without --commit first and show the user the result).'
+      );
+    }
+    const previewOnly: Array<[string, boolean]> = [
+      ['--source-url', opts.sourceUrl !== undefined],
+      ['--name', opts.name !== undefined],
+      ['--sub-type', opts.subType !== undefined],
+      ['--asin', opts.asin.length > 0],
+      ['--tag', opts.tag.length > 0],
+      ['--brand-entity-id', opts.brandEntityId !== undefined],
+    ];
+    const stray = previewOnly.find(([, set]) => set);
+    if (stray) {
+      return (
+        `${stray[0]} belongs on the preview, not the commit: the commit uploads exactly what the ` +
+        'preview checked. Pass only the same profile selector, --preview-id and --approved-hash.'
+      );
+    }
+    return null;
+  }
+  if (opts.previewId !== undefined || opts.approvedHash !== undefined) {
+    return '--preview-id and --approved-hash only apply with --commit.';
+  }
+  const missing = (
+    [
+      ['--source-url', opts.sourceUrl],
+      ['--name', opts.name],
+      ['--sub-type', opts.subType],
+    ] as Array<[string, string | undefined]>
+  ).filter(([, v]) => v === undefined || v.trim() === '');
+  if (missing.length > 0) {
+    return `The preview needs ${missing.map(([f]) => f).join(', ')}.`;
+  }
+  if (!/^https:\/\//i.test(String(opts.sourceUrl).trim())) {
+    return '--source-url must be an https:// link to the PNG or JPEG file itself.';
+  }
+  return null;
+}
+
+function registerUploadImage(ads: Command): void {
+  ads
+    .command('upload-image')
+    .description(
+      "Add a new PNG or JPEG (a brand logo or a custom image) to one profile's Creative Asset " +
+        'Library from an https link. Previews by default: downloads and checks the image and sends ' +
+        "nothing to Amazon. Pass --commit with the preview's id and hash ONLY after the user " +
+        'confirmed it. An uploaded image is shared with everyone on that ad account and cannot be ' +
+        'deleted from MixShift.',
+    )
+    .option('--profile-id <id>', 'Ads profileId from `ads profiles`')
+    .option(
+      '--legacy-seller-id <id>',
+      'exact per-marketplace seller record id (same ids as `amazon merchants`)',
+    )
+    .option('--seller-id <id>', 'AmazonSellerID; pair with --marketplace when multi-marketplace')
+    .option('--marketplace <m>', 'country code (US, UK, ...) or raw marketplaceId')
+    .option(
+      '--source-url <url>',
+      'preview: https link to the PNG or JPEG file itself (not a page that shows it)',
+    )
+    .option('--name <name>', 'preview: the name the asset gets in the library')
+    .option(
+      '--sub-type <type>',
+      'preview: LOGO (brand logo), PRODUCT_IMAGE or LIFESTYLE_IMAGE (custom image), OTHER_IMAGE, AUTHOR_IMAGE',
+    )
+    .option(
+      '--asin <asin>',
+      'preview: an ASIN the image is for (repeatable, up to 100)',
+      collectRepeat,
+      [],
+    )
+    .option('--tag <tag>', 'preview: a tag for the asset (repeatable, up to 10)', collectRepeat, [])
+    .option(
+      '--brand-entity-id <id>',
+      'preview: the brand entity id; Amazon requires it from sellers uploading for Sponsored Brands',
+    )
+    .option(
+      '--commit',
+      'upload the previewed image. Use only after explicit user confirmation of the preview.',
+    )
+    .option('--preview-id <id>', 'with --commit: the previewId the preview printed')
+    .option('--approved-hash <hash>', 'with --commit: the previewHash the preview printed')
+    .action(async (opts: UploadImageCliOptions, cmd: Command) => {
+      const root = cmd.optsWithGlobals<RootOptions>();
+      const startedAt = Date.now();
+      try {
+        const problem = uploadImageFlagProblem(opts);
+        if (problem) return emitError(new Error(problem), !!root.json);
+        const selector = {
+          ...(opts.profileId ? { profileId: opts.profileId } : {}),
+          ...(opts.legacySellerId !== undefined ? { legacySellerId: opts.legacySellerId } : {}),
+          ...(opts.sellerId ? { sellerId: opts.sellerId } : {}),
+          ...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
+        };
+        const result = await adsAssetUpload(
+          opts.commit
+            ? {
+                ...selector,
+                dryRun: false,
+                previewId: opts.previewId,
+                approvedPreviewHash: opts.approvedHash,
+              }
+            : {
+                ...selector,
+                sourceUrl: String(opts.sourceUrl).trim(),
+                name: String(opts.name).trim(),
+                assetSubType: String(opts.subType).trim().toUpperCase(),
+                ...(opts.asin.length > 0 ? { asins: opts.asin } : {}),
+                ...(opts.tag.length > 0 ? { tags: opts.tag } : {}),
+                ...(opts.brandEntityId ? { brandEntityId: opts.brandEntityId } : {}),
+              },
+          { dataDirOverride: root.dataDir },
+        );
+        if (isReportFailure(result)) {
+          // Ids the caller supplied and enums only: never the link, the name or the tags.
+          await trackAds(EventName.AdsCalled, 'failed', startedAt, root.dataDir, {
+            operation: UPLOAD_OPERATION,
+            kind: result.kind,
+            ...(opts.profileId ? { profile_id: opts.profileId } : {}),
+            ...(opts.legacySellerId !== undefined ? { legacy_seller_id: opts.legacySellerId } : {}),
+            ...(opts.marketplace ? { marketplace: opts.marketplace } : {}),
+            ...(opts.commit ? { committed: true } : {}),
+            ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
+            ...(result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {}),
+            ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
+            ...(result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}),
+            ...failureContractTelemetry(result),
+          });
+          const next =
+            opts.commit && result.requestOutcome === 'unknown'
+              ? 'The upload may have gone through. Do NOT commit again: search the library for the ' +
+                'name with `mixshift ads call assets.search_by_name` first.'
+              : undefined;
+          return emitFailure(result, !!root.json, next);
+        }
+        const r = result.result;
+        await trackAds(EventName.AdsCalled, 'ok', startedAt, root.dataDir, {
+          operation: UPLOAD_OPERATION,
+          dry_run: result.dryRun,
+          ...(result.profileId ? { profile_id: result.profileId } : {}),
+          ...(result.legacySellerId ? { legacy_seller_id: result.legacySellerId } : {}),
+          ...(result.marketplaceId !== null ? { marketplace_id: result.marketplaceId } : {}),
+          ...(typeof r.auditId === 'string' ? { audit_id: r.auditId } : {}),
+        });
+        if (root.json) {
+          writeJson({
+            status: 'ok',
+            operation: result.operation,
+            dry_run: result.dryRun,
+            profile_id: result.profileId,
+            legacy_seller_id: result.legacySellerId,
+            marketplace_id: result.marketplaceId,
+            result: r,
+          });
+          return;
+        }
+        if (result.dryRun) {
+          process.stderr.write(renderUploadPreview(result.profileId, r) + '\n');
+        } else {
+          process.stderr.write(
+            `\n✓ UPLOADED to the Creative Asset Library (profile ${result.profileId}): ` +
+              `asset ${String(r.assetId ?? '?')}` +
+              (r.versionId ? `, version ${String(r.versionId)}` : '') +
+              `. audit: ${String(r.auditId ?? 'n/a')}\n` +
+              (hasFailedSpecChecks(r.failedSpecChecks)
+                ? '  Amazon reported failed spec checks (failedSpecChecks below): tell the user which ' +
+                  'programs the image does not meet before using it in an ad.\n'
+                : '') +
+              '  Amazon still moderates any ad that uses it.\n\n',
+          );
+        }
+        process.stdout.write(JSON.stringify(r, null, 2) + '\n');
+      } catch (err) {
+        emitError(err, !!root.json);
+      }
+    });
+}
+
+/** True when Amazon reported at least one failed spec check: a non-empty
+ *  list, at the top or under any program key. Empty lists are no failure. */
+function hasFailedSpecChecks(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0;
+  if (v !== null && typeof v === 'object') {
+    return Object.values(v as Record<string, unknown>).some(hasFailedSpecChecks);
+  }
+  return false;
+}
+
+function listOrNone(v: unknown): string {
+  return Array.isArray(v) && v.length > 0 ? v.map(String).join(', ') : 'none';
+}
+
+/** The human summary of an upload preview: what the user is asked to approve.
+ *  It names everything the commit will register, because the commit cannot
+ *  change any of it. */
+export function renderUploadPreview(profileId: string, r: Record<string, unknown>): string {
+  const d = (r.detected ?? {}) as Record<string, unknown>;
+  const w = (r.wouldRegister ?? {}) as Record<string, unknown>;
+  const dup = (r.duplicateNames ?? {}) as Record<string, unknown>;
+  const src = (r.source ?? {}) as Record<string, unknown>;
+  const kb =
+    typeof d.bytes === 'number' ? `${Math.max(1, Math.round(d.bytes / 1024))} KB` : '? KB';
+  let host = '?';
+  try {
+    host = new URL(String(src.finalUrl ?? src.url ?? '')).host || '?';
+  } catch {
+    /* keep '?' */
+  }
+  const redirects = typeof src.redirects === 'number' ? src.redirects : 0;
+  const lines = [
+    '',
+    `✓ PREVIEW assets.upload_image (profile ${profileId}): nothing was sent to Amazon.`,
+    `  image: ${String(d.format ?? '?')}, ${String(d.width ?? '?')}x${String(d.height ?? '?')}, ${kb}, ` +
+      `downloaded from ${host}` +
+      (redirects > 0 ? ` after ${redirects} redirect(s)` : ''),
+    `  name: ${String(w.name ?? '?')} (${String(w.assetSubType ?? '?')})`,
+    `  ASINs: ${listOrNone(w.asins)}`,
+    `  tags: ${listOrNone(w.tags)}`,
+    `  brand entity id: ${w.brandEntityId ? String(w.brandEntityId) : 'none'}`,
+  ];
+  if (dup.checked === true) {
+    const matched = typeof dup.matched === 'number' ? dup.matched : 0;
+    const names = Array.isArray(dup.matches)
+      ? (dup.matches as Array<Record<string, unknown>>)
+          .slice(0, 5)
+          .map((m) => `"${String(m.name ?? '?')}"`)
+      : [];
+    if (matched > 0) {
+      lines.push(
+        `  ${matched} asset(s) in the library already have a similar name` +
+          (names.length > 0 ? `: ${names.join(', ')}${matched > names.length ? ', ...' : ''}` : '') +
+          '. One may be this image; then use it instead.',
+      );
+    } else if (dup.coverage === 'complete') {
+      lines.push('  no asset in the library has a similar name.');
+    } else {
+      lines.push(
+        '  no similar name found in the part of the library that was searched' +
+          ` (coverage: ${String(dup.coverage ?? 'unknown')}).`,
+      );
+    }
+  } else {
+    lines.push('  similar names: not checked.');
+  }
+  lines.push(
+    `  preview: ${String(r.previewId ?? '?')}, expires ${String(r.expiresAt ?? '?')}`,
+    '  Uploading cannot be undone: the image is shared with everyone on this ad account.',
+    `  AFTER the user confirms, re-run with the same profile selector and --commit --preview-id ${String(
+      r.previewId ?? '<previewId>',
+    )} --approved-hash ${String(r.previewHash ?? '<previewHash>')}`,
+    '',
+  );
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
