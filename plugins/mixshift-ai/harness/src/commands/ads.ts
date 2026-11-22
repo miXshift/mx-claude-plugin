@@ -839,6 +839,7 @@ function registerUploadImage(ads: Command): void {
             ...(result.httpStatus ? { http_status: result.httpStatus } : {}),
             ...(result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {}),
             ...(result.requestOutcome ? { request_outcome: result.requestOutcome } : {}),
+            ...(result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {}),
             ...failureContractTelemetry(result),
           });
           const next =
@@ -877,7 +878,11 @@ function registerUploadImage(ads: Command): void {
               `asset ${String(r.assetId ?? '?')}` +
               (r.versionId ? `, version ${String(r.versionId)}` : '') +
               `. audit: ${String(r.auditId ?? 'n/a')}\n` +
-              '  Check failedSpecChecks below before using it in an ad; Amazon still moderates the ad.\n\n',
+              (hasFailedSpecChecks(r.failedSpecChecks)
+                ? '  Amazon reported failed spec checks (failedSpecChecks below): tell the user which ' +
+                  'programs the image does not meet before using it in an ad.\n'
+                : '') +
+              '  Amazon still moderates any ad that uses it.\n\n',
           );
         }
         process.stdout.write(JSON.stringify(r, null, 2) + '\n');
@@ -887,30 +892,67 @@ function registerUploadImage(ads: Command): void {
     });
 }
 
-/** The human summary of an upload preview: what the user is asked to approve. */
+/** True when Amazon reported at least one failed spec check. */
+function hasFailedSpecChecks(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as object).length > 0;
+  return true;
+}
+
+function listOrNone(v: unknown): string {
+  return Array.isArray(v) && v.length > 0 ? v.map(String).join(', ') : 'none';
+}
+
+/** The human summary of an upload preview: what the user is asked to approve.
+ *  It names everything the commit will register, because the commit cannot
+ *  change any of it. */
 export function renderUploadPreview(profileId: string, r: Record<string, unknown>): string {
   const d = (r.detected ?? {}) as Record<string, unknown>;
   const w = (r.wouldRegister ?? {}) as Record<string, unknown>;
   const dup = (r.duplicateNames ?? {}) as Record<string, unknown>;
+  const src = (r.source ?? {}) as Record<string, unknown>;
   const kb =
     typeof d.bytes === 'number' ? `${Math.max(1, Math.round(d.bytes / 1024))} KB` : '? KB';
+  let host = '?';
+  try {
+    host = new URL(String(src.finalUrl ?? src.url ?? '')).host || '?';
+  } catch {
+    /* keep '?' */
+  }
+  const redirects = typeof src.redirects === 'number' ? src.redirects : 0;
   const lines = [
     '',
     `✓ PREVIEW assets.upload_image (profile ${profileId}): nothing was sent to Amazon.`,
-    `  image: ${String(d.format ?? '?')}, ${String(d.width ?? '?')}x${String(d.height ?? '?')}, ${kb}`,
+    `  image: ${String(d.format ?? '?')}, ${String(d.width ?? '?')}x${String(d.height ?? '?')}, ${kb}, ` +
+      `downloaded from ${host}` +
+      (redirects > 0 ? ` after ${redirects} redirect(s)` : ''),
     `  name: ${String(w.name ?? '?')} (${String(w.assetSubType ?? '?')})`,
+    `  ASINs: ${listOrNone(w.asins)}`,
+    `  tags: ${listOrNone(w.tags)}`,
+    `  brand entity id: ${w.brandEntityId ? String(w.brandEntityId) : 'none'}`,
   ];
   if (dup.checked === true) {
     const matched = typeof dup.matched === 'number' ? dup.matched : 0;
-    lines.push(
-      matched > 0
-        ? `  ${matched} asset(s) in the library already have a similar name: one may be this image; use it instead.`
-        : '  no asset in the library has a similar name' +
-            (dup.coverage && dup.coverage !== 'complete'
-              ? ` (search coverage: ${String(dup.coverage)})`
-              : '') +
-            '.',
-    );
+    const names = Array.isArray(dup.matches)
+      ? (dup.matches as Array<Record<string, unknown>>)
+          .slice(0, 5)
+          .map((m) => `"${String(m.name ?? '?')}"`)
+      : [];
+    if (matched > 0) {
+      lines.push(
+        `  ${matched} asset(s) in the library already have a similar name` +
+          (names.length > 0 ? `: ${names.join(', ')}${matched > names.length ? ', ...' : ''}` : '') +
+          '. One may be this image; then use it instead.',
+      );
+    } else if (dup.coverage === 'complete') {
+      lines.push('  no asset in the library has a similar name.');
+    } else {
+      lines.push(
+        '  no similar name found in the part of the library that was searched' +
+          ` (coverage: ${String(dup.coverage ?? 'unknown')}).`,
+      );
+    }
   } else {
     lines.push('  similar names: not checked.');
   }

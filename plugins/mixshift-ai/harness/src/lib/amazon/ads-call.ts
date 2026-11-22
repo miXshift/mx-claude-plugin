@@ -360,6 +360,24 @@ export function buildAssetUploadBody(input: AdsAssetUploadInput): Record<string,
   return body;
 }
 
+/** Failure kinds a commit can end with after the image may have reached
+ *  Amazon. The service marks its own maybe-applied register failures
+ *  (`outcome: 'unknown'` in the envelope, which this client does not read) with
+ *  one of these kinds, so a commit failing with any of them is reported as an
+ *  unknown outcome: a new preview and commit could add a second asset. */
+const COMMIT_MAYBE_APPLIED_KINDS: ReadonlySet<string> = new Set([
+  'host_unreachable',
+  'upstream_unavailable',
+  'throttled',
+  'unknown',
+]);
+
+/** The service's commit is a pacer wait plus three Amazon calls (upload slot,
+ *  PUT of the bytes, register), each capped at 60 s, so it can take about
+ *  180 s. The preview is one download. */
+export const ASSET_UPLOAD_PREVIEW_TIMEOUT_MS = 90_000;
+export const ASSET_UPLOAD_COMMIT_TIMEOUT_MS = 200_000;
+
 /** Preview (default) or commit one image upload into a profile's Creative
  *  Asset Library. A commit is sent once: a lost answer is an unknown outcome
  *  (the asset may be in the library), never retried here. */
@@ -368,19 +386,28 @@ export async function adsAssetUpload(
   opts: ReportClientOptions = {},
 ): Promise<AdsAssetUploadSuccess | ReportFailure> {
   const body = buildAssetUploadBody(input);
-  // The preview downloads the image; the commit uploads it to Amazon and
-  // registers it. Both get the same 90 s as an Ads call.
+  const commit = input.dryRun === false;
   const r = await amazonRequest(
     {
       method: 'POST',
       path: '/api/amazon/ads/assets/upload',
       body,
       surface: 'ads',
-      mayChangeState: input.dryRun === false,
+      mayChangeState: commit,
     },
-    { ...opts, timeoutMs: opts.timeoutMs ?? 90_000 },
+    {
+      ...opts,
+      timeoutMs:
+        opts.timeoutMs ??
+        (commit ? ASSET_UPLOAD_COMMIT_TIMEOUT_MS : ASSET_UPLOAD_PREVIEW_TIMEOUT_MS),
+    },
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    if (commit && r.requestOutcome === undefined && COMMIT_MAYBE_APPLIED_KINDS.has(r.kind)) {
+      return { ...r, requestOutcome: 'unknown' };
+    }
+    return r;
+  }
   const json = (r.json ?? {}) as Record<string, unknown>;
   if (typeof json.operation !== 'string' || typeof json.dryRun !== 'boolean') {
     return {
@@ -392,6 +419,7 @@ export async function adsAssetUpload(
           ? 'The image may or may not be in the library: search for it by name before trying again.'
           : 'Nothing was uploaded. Try the preview again, or contact MixShift ops if it persists.'),
       message: 'asset upload response missing operation or dryRun',
+      ...(input.dryRun === false ? { requestOutcome: 'unknown' } : {}),
     };
   }
   return {

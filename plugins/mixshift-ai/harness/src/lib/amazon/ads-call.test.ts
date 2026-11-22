@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { listAdsProfiles, listAdsOperations, adsCall } from './ads-call.js';
+import { listAdsProfiles, listAdsOperations, adsCall, adsAssetUpload } from './ads-call.js';
 import { exitCodeForKind, type ReportClientOptions } from './reports.js';
 
 // Inject api_base + token + fetch so the suite never touches disk (mirrors
@@ -497,5 +497,63 @@ describe('adsCall unknown outcomes', () => {
     if (r.ok) return;
     expect(r.kind).toBe('host_unreachable');
     expect(r.requestOutcome).toBeUndefined();
+  });
+});
+
+describe('adsAssetUpload', () => {
+  const COMMIT = {
+    profileId: 'p1',
+    dryRun: false as const,
+    previewId: '0b5f1c2e-1111-4222-8333-944455556666',
+    approvedPreviewHash: 'a'.repeat(64),
+  };
+  const PREVIEW = { profileId: 'p1', sourceUrl: 'https://cdn.example.com/a.png', name: 'n', assetSubType: 'LOGO' };
+  const timedOut = () =>
+    vi.fn().mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+
+  it('posts to the upload route and sends dryRun only when set', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, operation: 'assets.upload_image', dryRun: true, profileId: 'p1', legacySellerId: 574, marketplaceId: null, previewId: 'x' }),
+    );
+    const r = await adsAssetUpload(PREVIEW, injected(fetchImpl));
+    expect(r.ok).toBe(true);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('https://svc.test/api/amazon/ads/assets/upload');
+    expect(JSON.parse(String((init as RequestInit).body))).not.toHaveProperty('dryRun');
+  });
+
+  it('a commit whose answer is lost to our own deadline is an unknown outcome', async () => {
+    const r = await adsAssetUpload(COMMIT, injected(timedOut()));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.requestOutcome).toBe('unknown');
+  });
+
+  it('a preview that times out is not an unknown outcome (nothing could be uploaded)', async () => {
+    const r = await adsAssetUpload(PREVIEW, injected(timedOut()));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.requestOutcome).toBeUndefined();
+  });
+
+  it('a commit refused with a maybe-applied kind and no requestOutcome is marked unknown', async () => {
+    for (const [status, kind] of [[429, 'throttled'], [502, 'upstream_unavailable']] as const) {
+      const fetchImpl = vi.fn().mockResolvedValueOnce(
+        jsonResponse(status, { ok: false, kind, friendly: 'Amazon answered the register step without an asset id.', outcome: 'unknown' }),
+      );
+      const r = await adsAssetUpload(COMMIT, injected(fetchImpl));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.requestOutcome, kind).toBe('unknown');
+    }
+  });
+
+  it('a commit refused before anything was sent keeps its kind and no unknown outcome', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(400, { ok: false, kind: 'preview_required', friendly: 'Run the dry run first.' }),
+    );
+    const r = await adsAssetUpload(COMMIT, injected(fetchImpl));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('preview_required');
+      expect(r.requestOutcome).toBeUndefined();
+    }
   });
 });

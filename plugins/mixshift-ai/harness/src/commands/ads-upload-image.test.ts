@@ -272,3 +272,79 @@ describe('buildAssetUploadBody and renderUploadPreview', () => {
     ).toBeNull();
   });
 });
+
+describe('ads upload-image: redaction of mistyped lines (argv is captured before parsing)', () => {
+  const SIGNED =
+    'https://bucket.s3.amazonaws.com/logo.png?X-Amz-Credential=AKIAEXAMPLE&X-Amz-Signature=deadbeef';
+  const cases: string[][] = [
+    ['ads', 'upload-imgae', '--source-url', SIGNED],
+    ['ads', 'upload-image', '--url', SIGNED],
+    ['ads', 'upload-image', '--source', SIGNED],
+    ['ads', 'upload-image', '--name', 'Logo', SIGNED],
+    ['upload-image', '--source-url', SIGNED],
+    ['ads', 'upload-image', '--url=' + SIGNED],
+    ['ads', 'upload-image', '--url', 'https://cdn.example.com/plain-logo.png'],
+  ];
+  for (const argv of cases) {
+    it('drops the link from ' + argv.slice(0, 3).join(' '), () => {
+      const out = redactArgs(argv).join(' ');
+      expect(out).not.toContain('amazonaws.com');
+      expect(out).not.toContain('cdn.example.com');
+      expect(out).toContain('<redacted>');
+    });
+  }
+
+  it('drops a signed link and a --source-url value on any command line', () => {
+    expect(redactArgs(['ads', 'call', 'x', '--note', SIGNED])).toEqual(['ads', 'call', 'x', '--note', '<redacted>']);
+    expect(redactArgs(['doctor', '--source-url', 'https://cdn.example.com/a.png'])).toEqual([
+      'doctor',
+      '--source-url',
+      '<redacted>',
+    ]);
+    // A plain link with no query string on another command stays.
+    expect(redactArgs(['ads', 'call', 'x', '--note', 'https://example.com/a'])).toEqual([
+      'ads',
+      'call',
+      'x',
+      '--note',
+      'https://example.com/a',
+    ]);
+  });
+});
+
+describe('renderUploadPreview: everything the commit will register', () => {
+  it('names the ASINs, tags, brand entity, download host and similar names', () => {
+    const text = renderUploadPreview('p1', {
+      ...PREVIEW_RESULT.result,
+      source: { url: URL, finalUrl: 'https://img.example.net/final.png', redirects: 1 },
+      wouldRegister: {
+        name: 'Acme logo',
+        assetType: 'IMAGE',
+        assetSubType: 'LOGO',
+        asins: ['B000000001'],
+        tags: ['holiday'],
+        brandEntityId: 'ENTITY1',
+      },
+      duplicateNames: {
+        checked: true,
+        matched: 1,
+        coverage: 'complete',
+        matches: [{ assetId: 'a1', name: 'Acme logo v1', assetType: 'IMAGE' }],
+        note: '',
+      },
+    });
+    expect(text).toContain('downloaded from img.example.net after 1 redirect(s)');
+    expect(text).toContain('ASINs: B000000001');
+    expect(text).toContain('tags: holiday');
+    expect(text).toContain('brand entity id: ENTITY1');
+    expect(text).toContain('"Acme logo v1"');
+  });
+
+  it('does not claim absence the search could not prove', () => {
+    const text = renderUploadPreview('p1', PREVIEW_RESULT.result);
+    expect(text).toContain(
+      'no similar name found in the part of the library that was searched (coverage: partial)',
+    );
+    expect(text).not.toContain('no asset in the library has a similar name');
+  });
+});

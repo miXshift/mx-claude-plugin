@@ -94528,26 +94528,44 @@ function buildAssetUploadBody(input) {
   if (input.approvedPreviewHash) body.approvedPreviewHash = input.approvedPreviewHash;
   return body;
 }
+var COMMIT_MAYBE_APPLIED_KINDS = /* @__PURE__ */ new Set([
+  "host_unreachable",
+  "upstream_unavailable",
+  "throttled",
+  "unknown"
+]);
+var ASSET_UPLOAD_PREVIEW_TIMEOUT_MS = 9e4;
+var ASSET_UPLOAD_COMMIT_TIMEOUT_MS = 2e5;
 async function adsAssetUpload(input, opts = {}) {
   const body = buildAssetUploadBody(input);
+  const commit = input.dryRun === false;
   const r = await amazonRequest(
     {
       method: "POST",
       path: "/api/amazon/ads/assets/upload",
       body,
       surface: "ads",
-      mayChangeState: input.dryRun === false
+      mayChangeState: commit
     },
-    { ...opts, timeoutMs: opts.timeoutMs ?? 9e4 }
+    {
+      ...opts,
+      timeoutMs: opts.timeoutMs ?? (commit ? ASSET_UPLOAD_COMMIT_TIMEOUT_MS : ASSET_UPLOAD_PREVIEW_TIMEOUT_MS)
+    }
   );
-  if (!r.ok) return r;
+  if (!r.ok) {
+    if (commit && r.requestOutcome === void 0 && COMMIT_MAYBE_APPLIED_KINDS.has(r.kind)) {
+      return { ...r, requestOutcome: "unknown" };
+    }
+    return r;
+  }
   const json3 = r.json ?? {};
   if (typeof json3.operation !== "string" || typeof json3.dryRun !== "boolean") {
     return {
       ok: false,
       kind: "unknown",
       friendly: "The service accepted the upload request but returned an unrecognized shape. " + (input.dryRun === false ? "The image may or may not be in the library: search for it by name before trying again." : "Nothing was uploaded. Try the preview again, or contact MixShift ops if it persists."),
-      message: "asset upload response missing operation or dryRun"
+      message: "asset upload response missing operation or dryRun",
+      ...input.dryRun === false ? { requestOutcome: "unknown" } : {}
     };
   }
   return {
@@ -95671,6 +95689,7 @@ function registerUploadImage(ads) {
           ...result.httpStatus ? { http_status: result.httpStatus } : {},
           ...result.amazonErrorCode ? { amazon_error_code: result.amazonErrorCode } : {},
           ...result.requestOutcome ? { request_outcome: result.requestOutcome } : {},
+          ...result.unrecognizedKind ? { unrecognized_kind: result.unrecognizedKind } : {},
           ...failureContractTelemetry(result)
         });
         const next = opts.commit && result.requestOutcome === "unknown" ? "The upload may have gone through. Do NOT commit again: search the library for the name with `mixshift ads call assets.search_by_name` first." : void 0;
@@ -95703,9 +95722,7 @@ function registerUploadImage(ads) {
         process.stderr.write(
           `
 \u2713 UPLOADED to the Creative Asset Library (profile ${result.profileId}): asset ${String(r.assetId ?? "?")}` + (r.versionId ? `, version ${String(r.versionId)}` : "") + `. audit: ${String(r.auditId ?? "n/a")}
-  Check failedSpecChecks below before using it in an ad; Amazon still moderates the ad.
-
-`
+` + (hasFailedSpecChecks(r.failedSpecChecks) ? "  Amazon reported failed spec checks (failedSpecChecks below): tell the user which programs the image does not meet before using it in an ad.\n" : "") + "  Amazon still moderates any ad that uses it.\n\n"
         );
       }
       process.stdout.write(JSON.stringify(r, null, 2) + "\n");
@@ -95714,22 +95731,50 @@ function registerUploadImage(ads) {
     }
   });
 }
+function hasFailedSpecChecks(v) {
+  if (v === null || v === void 0) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v).length > 0;
+  return true;
+}
+function listOrNone(v) {
+  return Array.isArray(v) && v.length > 0 ? v.map(String).join(", ") : "none";
+}
 function renderUploadPreview(profileId, r) {
   const d = r.detected ?? {};
   const w = r.wouldRegister ?? {};
   const dup = r.duplicateNames ?? {};
+  const src = r.source ?? {};
   const kb = typeof d.bytes === "number" ? `${Math.max(1, Math.round(d.bytes / 1024))} KB` : "? KB";
+  let host = "?";
+  try {
+    host = new URL(String(src.finalUrl ?? src.url ?? "")).host || "?";
+  } catch {
+  }
+  const redirects = typeof src.redirects === "number" ? src.redirects : 0;
   const lines = [
     "",
     `\u2713 PREVIEW assets.upload_image (profile ${profileId}): nothing was sent to Amazon.`,
-    `  image: ${String(d.format ?? "?")}, ${String(d.width ?? "?")}x${String(d.height ?? "?")}, ${kb}`,
-    `  name: ${String(w.name ?? "?")} (${String(w.assetSubType ?? "?")})`
+    `  image: ${String(d.format ?? "?")}, ${String(d.width ?? "?")}x${String(d.height ?? "?")}, ${kb}, downloaded from ${host}` + (redirects > 0 ? ` after ${redirects} redirect(s)` : ""),
+    `  name: ${String(w.name ?? "?")} (${String(w.assetSubType ?? "?")})`,
+    `  ASINs: ${listOrNone(w.asins)}`,
+    `  tags: ${listOrNone(w.tags)}`,
+    `  brand entity id: ${w.brandEntityId ? String(w.brandEntityId) : "none"}`
   ];
   if (dup.checked === true) {
     const matched = typeof dup.matched === "number" ? dup.matched : 0;
-    lines.push(
-      matched > 0 ? `  ${matched} asset(s) in the library already have a similar name: one may be this image; use it instead.` : "  no asset in the library has a similar name" + (dup.coverage && dup.coverage !== "complete" ? ` (search coverage: ${String(dup.coverage)})` : "") + "."
-    );
+    const names = Array.isArray(dup.matches) ? dup.matches.slice(0, 5).map((m) => `"${String(m.name ?? "?")}"`) : [];
+    if (matched > 0) {
+      lines.push(
+        `  ${matched} asset(s) in the library already have a similar name` + (names.length > 0 ? `: ${names.join(", ")}${matched > names.length ? ", ..." : ""}` : "") + ". One may be this image; then use it instead."
+      );
+    } else if (dup.coverage === "complete") {
+      lines.push("  no asset in the library has a similar name.");
+    } else {
+      lines.push(
+        `  no similar name found in the part of the library that was searched (coverage: ${String(dup.coverage ?? "unknown")}).`
+      );
+    }
   } else {
     lines.push("  similar names: not checked.");
   }
@@ -114568,11 +114613,12 @@ var LABEL_FIELD_KEYS = [
 
 // src/lib/telemetry/redact.ts
 var REDACTED = "<redacted>";
-var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer)$/i;
+var SECRET_FLAG = /^(secret|client[-_]?secret|password|passwd|pwd|token|access[-_]?token|refresh[-_]?token|api[-_]?key|apikey|key|credential|credentials|setup[-_]?code|auth[-_]?token|bearer|source[-_]?url)$/i;
 function looksLikeSecretToken(s) {
   if (/^[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}$/.test(s)) return true;
   if (/^(sk|pk|rk)_[A-Za-z0-9_-]{12,}$/.test(s)) return true;
   if (/^SVC-[A-Z0-9]{2,}(-[A-Z0-9]{2,})*$/.test(s)) return true;
+  if (/^https?:\/\/[^\s?#]*\?\S/i.test(s)) return true;
   return false;
 }
 function flagName(arg) {
@@ -114605,7 +114651,7 @@ function isLabelsSearch(argv) {
 }
 var LABELS_VALUE_FLAG = /^value$/;
 function isAdsUploadImage(argv) {
-  return hasSubcommandLater(argv, "ads", "upload-image");
+  return argv.some((a) => /^upload/i.test(a));
 }
 var ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
 function redactGeneric(argv) {
@@ -114651,7 +114697,10 @@ function redactGeneric(argv) {
     if (arg.startsWith("--") && arg.includes("=")) {
       const eq = arg.indexOf("=");
       const name = flagName(arg.slice(0, eq));
-      out2.push(SECRET_FLAG.test(name) ? `${arg.slice(0, eq)}=${REDACTED}` : arg);
+      const value = arg.slice(eq + 1);
+      out2.push(
+        SECRET_FLAG.test(name) || looksLikeSecretToken(value) || assetUpload && value.includes("://") ? `${arg.slice(0, eq)}=${REDACTED}` : arg
+      );
       continue;
     }
     if (arg.startsWith("-") && arg.length > 1 && !isNumericLike(arg)) {
@@ -114659,7 +114708,7 @@ function redactGeneric(argv) {
       if (SECRET_FLAG.test(flagName(arg))) redactNextValue = true;
       continue;
     }
-    out2.push(looksLikeSecretToken(arg) ? REDACTED : arg);
+    out2.push(looksLikeSecretToken(arg) || assetUpload && arg.includes("://") ? REDACTED : arg);
   }
   return out2;
 }
