@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-ads
 display_name: Amazon Ads (live account state + audited writes)
-version: "0.2.8"
+version: "0.2.9"
 description: >
   Read and write the live Amazon Ads API for any advertiser the signed-in
   MixShift tenant is connected to, through the bundled harness CLI. The Ads
@@ -88,15 +88,16 @@ notes: >
   "complete" can show an asset is absent) and assets.list_recent (newest
   page only, NOT a search; body ignored). The asset library is per profile:
   search the merchant whose brand owns the asset. Adding a PNG or JPEG from
-  an https link (assets.upload_image) is NOT a catalog operation and has no
-  CLI command: it is the MCP tool amazon_ads_asset_upload (REST POST
-  /api/amazon/ads/assets/upload), only for accounts it is turned on for.
-  Without that tool, the user uploads in the Amazon Ads console. Dry run is
-  the default (sourceUrl, name, assetSubType LOGO | PRODUCT_IMAGE |
-  LIFESTYLE_IMAGE | OTHER_IMAGE | AUTHOR_IMAGE; optional asins, tags,
-  brandEntityId) and returns previewId + previewHash; show the preview, get
-  the user's go, then commit with dryRun false, previewId and
-  approvedPreviewHash within 30 minutes. Returns assetId, versionId and
+  an https link (assets.upload_image) is NOT a catalog operation: it has its
+  own command, mixshift ads upload-image (REST POST
+  /api/amazon/ads/assets/upload). Use the command even when a MixShift
+  connector is present; its tool amazon_ads_asset_upload is for a session
+  with no shell. Dry run is the default (--source-url, --name, --sub-type
+  LOGO | PRODUCT_IMAGE | LIFESTYLE_IMAGE | OTHER_IMAGE | AUTHOR_IMAGE;
+  optional --asin, --tag, --brand-entity-id) and prints previewId +
+  previewHash; show the preview, get the user's go, then re-run with the same
+  selector and --commit --preview-id --approved-hash within 30 minutes. A
+  lost commit answer is never re-sent: search the name first. Returns assetId, versionId and
   failedSpecChecks. Cannot be deleted from MixShift; video stays
   console-only.
   Exports beat paginated lists for a full-account snapshot (~5x lighter

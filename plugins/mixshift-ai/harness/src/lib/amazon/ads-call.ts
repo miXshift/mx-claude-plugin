@@ -9,6 +9,8 @@
  *   listAdsProfiles   → GET  /api/amazon/ads/profiles
  *   listAdsOperations → GET  /api/amazon/ads/operations[?family=...]
  *   adsCall           → POST /api/amazon/ads/call
+ *   adsAssetUpload    → POST /api/amazon/ads/assets/upload (assets.upload_image;
+ *                       not a catalog operation, so it has its own route)
  *
  * WRITE SAFETY (service-enforced, mirrored here): write operations default
  * to dryRun=true. A dry-run call validates, snapshots current state, logs an
@@ -282,5 +284,123 @@ export async function adsCall(
     ...(typeof json.auditId === 'string' ? { auditId: json.auditId } : {}),
     ...(json.beforeState !== undefined ? { beforeState: json.beforeState } : {}),
     ...(json.preview !== undefined ? { preview: json.preview } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Creative Asset Library upload (assets.upload_image)
+// ---------------------------------------------------------------------------
+
+/** Input for adsAssetUpload. The preview (default) needs sourceUrl, name and
+ *  assetSubType; the commit needs previewId + approvedPreviewHash and the same
+ *  profile selector, and uploads the bytes the preview checked. */
+export interface AdsAssetUploadInput {
+  profileId?: string;
+  legacySellerId?: number | string;
+  sellerId?: string;
+  marketplace?: string;
+  /** Preview only: the https URL of the PNG or JPEG file itself. */
+  sourceUrl?: string;
+  /** Preview only: the name the asset gets in the library. */
+  name?: string;
+  /** Preview only: LOGO, PRODUCT_IMAGE, LIFESTYLE_IMAGE, OTHER_IMAGE, AUTHOR_IMAGE. */
+  assetSubType?: string;
+  asins?: string[];
+  tags?: string[];
+  brandEntityId?: string;
+  /** The service defaults to TRUE (preview). Only false uploads. */
+  dryRun?: boolean;
+  previewId?: string;
+  approvedPreviewHash?: string;
+}
+
+/** The service's preview or commit result. */
+export interface AdsAssetUploadSuccess {
+  ok: true;
+  operation: string;
+  dryRun: boolean;
+  profileId: string;
+  legacySellerId: number;
+  marketplaceId: string | null;
+  /** The full response body (preview: previewId, previewHash, expiresAt,
+   *  detected, wouldRegister, duplicateNames, note; commit: assetId,
+   *  versionId, failedSpecChecks, auditId, note). */
+  result: Record<string, unknown>;
+}
+
+/** The wire body for POST /api/amazon/ads/assets/upload. Only fields the
+ *  caller set are sent: the route is strict, and dryRun is left to the
+ *  service's own default (TRUE) unless the caller set it. */
+export function buildAssetUploadBody(input: AdsAssetUploadInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.profileId) body.profileId = input.profileId;
+  if (
+    input.legacySellerId !== undefined &&
+    input.legacySellerId !== null &&
+    input.legacySellerId !== ''
+  ) {
+    const n =
+      typeof input.legacySellerId === 'string'
+        ? Number(input.legacySellerId)
+        : input.legacySellerId;
+    body.legacySellerId =
+      typeof n === 'number' && Number.isFinite(n) ? n : input.legacySellerId;
+  }
+  if (input.sellerId) body.sellerId = input.sellerId;
+  if (input.marketplace) body.marketplace = input.marketplace;
+  if (input.sourceUrl !== undefined) body.sourceUrl = input.sourceUrl;
+  if (input.name !== undefined) body.name = input.name;
+  if (input.assetSubType !== undefined) body.assetSubType = input.assetSubType;
+  if (input.asins && input.asins.length > 0) body.asins = input.asins;
+  if (input.tags && input.tags.length > 0) body.tags = input.tags;
+  if (input.brandEntityId) body.brandEntityId = input.brandEntityId;
+  if (input.dryRun !== undefined) body.dryRun = input.dryRun;
+  if (input.previewId) body.previewId = input.previewId;
+  if (input.approvedPreviewHash) body.approvedPreviewHash = input.approvedPreviewHash;
+  return body;
+}
+
+/** Preview (default) or commit one image upload into a profile's Creative
+ *  Asset Library. A commit is sent once: a lost answer is an unknown outcome
+ *  (the asset may be in the library), never retried here. */
+export async function adsAssetUpload(
+  input: AdsAssetUploadInput,
+  opts: ReportClientOptions = {},
+): Promise<AdsAssetUploadSuccess | ReportFailure> {
+  const body = buildAssetUploadBody(input);
+  // The preview downloads the image; the commit uploads it to Amazon and
+  // registers it. Both get the same 90 s as an Ads call.
+  const r = await amazonRequest(
+    {
+      method: 'POST',
+      path: '/api/amazon/ads/assets/upload',
+      body,
+      surface: 'ads',
+      mayChangeState: input.dryRun === false,
+    },
+    { ...opts, timeoutMs: opts.timeoutMs ?? 90_000 },
+  );
+  if (!r.ok) return r;
+  const json = (r.json ?? {}) as Record<string, unknown>;
+  if (typeof json.operation !== 'string' || typeof json.dryRun !== 'boolean') {
+    return {
+      ok: false,
+      kind: 'unknown',
+      friendly:
+        'The service accepted the upload request but returned an unrecognized shape. ' +
+        (input.dryRun === false
+          ? 'The image may or may not be in the library: search for it by name before trying again.'
+          : 'Nothing was uploaded. Try the preview again, or contact MixShift ops if it persists.'),
+      message: 'asset upload response missing operation or dryRun',
+    };
+  }
+  return {
+    ok: true,
+    operation: json.operation,
+    dryRun: json.dryRun,
+    profileId: String(json.profileId ?? ''),
+    legacySellerId: Number(json.legacySellerId ?? 0),
+    marketplaceId: json.marketplaceId == null ? null : String(json.marketplaceId),
+    result: json,
   };
 }

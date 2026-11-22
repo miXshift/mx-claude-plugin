@@ -128,6 +128,18 @@ function isLabelsSearch(argv: readonly string[]): boolean {
 const LABELS_VALUE_FLAG = /^value$/;
 
 /**
+ * And for `ads upload-image ...`: the VALUE of `--source-url` is a link to the customer's
+ * image (it can be a presigned link whose query string is itself a credential), and `--name`
+ * and `--tag` are the names the customer gives the asset in their library. None of them is
+ * collected (docs/privacy.md); the selector ids, the sub type and the preview id stay.
+ */
+function isAdsUploadImage(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'ads', 'upload-image');
+}
+
+const ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -141,6 +153,7 @@ function redactGeneric(argv: readonly string[]): string[] {
   // The business-value flags of this command, and how a value is redacted.
   const labels = isLabelsSearch(argv);
   const cliLocate = isCliLocate(argv);
+  const assetUpload = isAdsUploadImage(argv);
   const valueFlag = budget
     ? BUDGET_VALUE_FLAG
     : subBrand
@@ -149,12 +162,14 @@ function redactGeneric(argv: readonly string[]): string[] {
         ? LABELS_VALUE_FLAG
         : cliLocate
           ? CLI_ROOT_VALUE_FLAG
-          : null;
+          : assetUpload
+            ? ASSET_UPLOAD_VALUE_FLAG
+            : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
-  const strictValue = subBrand || labels || cliLocate;
+  const strictValue = subBrand || labels || cliLocate || assetUpload;
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;

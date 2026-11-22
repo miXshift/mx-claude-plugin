@@ -73,9 +73,9 @@ describe('mx-amazon-ads Sponsored Display and Creative Assets copy', () => {
   });
 
   // assets.upload_image (mx-gateway#526, mx-ops#284 slice 3) is its own service,
-  // reached through the MCP tool amazon_ads_asset_upload or POST
-  // /api/amazon/ads/assets/upload. It is NOT a catalog operation, so
-  // `mixshift ads call` cannot run it and the plugin CLI has no command for it.
+  // reached through `mixshift ads upload-image`, the MCP tool
+  // amazon_ads_asset_upload or POST /api/amazon/ads/assets/upload. It is NOT a
+  // catalog operation, so `mixshift ads call` cannot run it.
   describe('asset upload by https link (assets.upload_image)', () => {
     it('describes the upload in the skill and the manifest', () => {
       for (const text of [skill, manifest]) {
@@ -83,7 +83,18 @@ describe('mx-amazon-ads Sponsored Display and Creative Assets copy', () => {
         expect(text).toContain('amazon_ads_asset_upload');
         expect(text).toContain('/api/amazon/ads/assets/upload');
         expect(flat(text)).toMatch(/NOT (an operation of the catalog|a catalog operation)/i);
+        expect(text).toContain('mixshift ads upload-image');
       }
+    });
+
+    it('sends the plugin user to the command, not the connector tool', () => {
+      // Sam 2026-11-22: a session with both the plugin and the connector would
+      // reach for the connector; the command is the plugin's path.
+      expect(flat(skill)).toMatch(/Use the command, even when this session also has a MixShift connector/);
+      expect(flat(skill)).toMatch(/use it only in a session with no shell/);
+      expect(flat(manifest)).toMatch(/Use the command even when a MixShift connector is present/);
+      expect(skill).toContain('--commit --preview-id <previewId> --approved-hash <previewHash>');
+      expect(flat(skill)).not.toMatch(/has no command for it yet/);
     });
 
     it('states the write contract: dry run, user go, previewId + approvedPreviewHash, 30 minutes', () => {
@@ -120,7 +131,7 @@ describe('mx-amazon-ads Sponsored Display and Creative Assets copy', () => {
   it('keeps the skill and manifest versions in step', () => {
     const skillVersion = skill.match(/^\s+version: "([^"]+)"/m)?.[1];
     const manifestVersion = manifest.match(/^version: "([^"]+)"/m)?.[1];
-    expect(skillVersion).toBe('0.2.8');
+    expect(skillVersion).toBe('0.2.9');
     expect(manifestVersion).toBe(skillVersion);
   });
 });
