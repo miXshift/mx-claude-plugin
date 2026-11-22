@@ -314,6 +314,12 @@ export const EventName = {
   // or the answer.
   LabelsCalled: 'labels.called',
 
+  // Dayparting reads (lib/dayparting/client.ts + `mixshift dayparting`). One event per call:
+  // kind (diagnose or hours), outcome, duration, how many windows were proposed or rows came
+  // back, and the refusal kind on a failure. Never an account, profile or campaign id, a number
+  // from the answer, or the answer.
+  DaypartingCalled: 'dayparting.called',
+
   // MixShift Intelligence service consumption (lib/intelligence/ +
   // `mixshift intelligence`). Privacy: capture insight id + run id + duration
   // + outcome + cache hit/miss + limitation COUNT only — never the insight
