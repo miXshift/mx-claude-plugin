@@ -139,8 +139,10 @@ notes: >
   per day and ASIN, for any set that lists the keyword, running or paused;
   anything not tracked answers not_tracked (exit 12). By default it covers
   the ASINs of the running sets only; `--set <set id>` reads one set's ASINs,
-  running or paused (not_found, exit 7, for no such set), and `--asin` one
-  ASIN, which is how a paused set's history is read.
+  running or paused (not_tracked, exit 12, for no such set or a set that does
+  not list the search), and `--asin` one ASIN, which is how a paused set's
+  history is read. Points carry `sets` and the answer `source_sets`
+  ({ id, paused }), naming the set each ASIN came from.
   `mixshift shelf tracking list|show` shows the sets, each set's calls a day
   and the projected monthly use against the allowance, and whether the person
   can change them (can_edit); an owner, admin, manager or builder signed in as a

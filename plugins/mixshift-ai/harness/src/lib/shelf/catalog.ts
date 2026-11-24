@@ -87,7 +87,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'By default it reads the ASINs of your running tracking sets; a paused set\'s history is read by naming the set ' +
       '(--set) or the ASIN (--asin). The daily observations count against the allowance; reading them back is free.',
     inputs: 'a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your running sets), --set (one tracking set id: the ASINs it lists, running or paused), --country',
-    returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated',
+    returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank, sets), query, zip, from, to, truncated, source_sets (id, paused)',
     cost: 'free',
     say: 'how has our rank for "backpacking meals" in New York moved this month?',
     example: 'mixshift shelf rank-history "backpacking meals" --zip 10001 --view mobile --json',

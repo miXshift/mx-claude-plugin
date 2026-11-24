@@ -112,6 +112,30 @@ describe('free calls', () => {
     expect(new URL(String(fetchImpl.mock.calls[1][0])).searchParams.has('set')).toBe(false);
   });
 
+  it('rank-history: keeps each point\'s sets and the answer\'s source_sets; absent stays absent', async () => {
+    const base = { ok: true, retailer: 'amazon', country: 'us', surface: 'desktop', query: 'trail mix', zip: '10001', from: '2026-10-14', to: '2026-11-13' };
+    const point = { observed_at: '2026-11-13T10:00:00Z', asin: 'B0EXAMPL01', absolute_rank: 3, organic_rank: 2, sponsored_rank: null };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ...base,
+          points: [{ ...point, sets: ['old-snacks', 7] }],
+          source_sets: [{ id: 'old-snacks', paused: true }, { id: 'trail-snacks', paused: false }, { paused: true }],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ...base, points: [point] }));
+    const r = await shelfRankHistory({ query: 'trail mix', zip: '10001', set: 'old-snacks' }, injected(fetchImpl));
+    expect(r).toMatchObject({
+      ok: true,
+      points: [{ asin: 'B0EXAMPL01', sets: ['old-snacks'] }],
+      source_sets: [{ id: 'old-snacks', paused: true }, { id: 'trail-snacks', paused: false }],
+    });
+    const old = await shelfRankHistory({ query: 'trail mix', zip: '10001' }, injected(fetchImpl));
+    expect(old).not.toHaveProperty('source_sets');
+    expect((old as { points: object[] }).points[0]).not.toHaveProperty('sets');
+  });
+
   it('usage: warning kept when well formed, dropped when null, absent or malformed', async () => {
     const base = { ok: true, period: '2026-10', allowance: 2000, used: 1700, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery' };
     const warning = { threshold: 80, message: 'You have 300 checks left this month.' };

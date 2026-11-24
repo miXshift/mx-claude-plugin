@@ -231,9 +231,13 @@ A success envelope is
 quote it with every number you report ("as of 23:01 UTC today").
 
 A rank-history envelope is
-`{ status: "ok", retailer, country, surface, query, zip, from, to, points[], truncated? }`
+`{ status: "ok", retailer, country, surface, query, zip, from, to, points[], truncated?, source_sets? }`
 with one point per day and ASIN, oldest first:
-`{ observed_at, asin, absolute_rank, organic_rank, sponsored_rank }`.
+`{ observed_at, asin, absolute_rank, organic_rank, sponsored_rank, sets? }`.
+`sets` names the tracking sets the read used that list that point's ASIN,
+and `source_sets` (`{ id, paused }`) lists every set the read used: say
+which set an ASIN came from when the user tracks it in more than one, and
+that a set is paused when it is.
 `organic_rank` counts organic positions only and `sponsored_rank` sponsored
 ones; `null` means the ASIN held no position of that kind on the pages
 tracked. `absolute_rank` counts both together. `truncated: true` means the
@@ -281,8 +285,11 @@ one set lists, whether it is running or paused: use it when the user asks
 about one set, or about a paused set's history. `--asin` reads one ASIN,
 whichever set listed it. When the ASINs the user expects are missing from a
 default read, check `shelf tracking list` for a paused set that lists them
-and read it with `--set`. A set that lists no ASINs answers `bad_request`
-("Name an ASIN"), so pass `--asin` then.
+and read it with `--set`. When only paused sets list ASINs for that search,
+the default read answers `bad_request` and names those sets: read one with
+`--set`. A set that lists no ASINs answers `bad_request` ("Name an ASIN"),
+so pass `--asin` then. With `--set`, a set id that does not exist, or a set
+that does not list that keyword, zip and view, answers `not_tracked`.
 
 **What tracking costs.** Every running set uses keywords x zips x views x
 pages of the monthly shelf allowance, every day: ten keywords at three zips
@@ -623,16 +630,16 @@ and a delete that went through answers `not_found`.
 | `shelf_not_enabled` | 6 | The organization is not on the shelf beta. Ask MixShift to turn it on. |
 | `shelf_not_enrolled` | 6 | The account has no organization set up yet. Ask MixShift to enroll it. |
 | `tracking_unavailable` | 6 | `shelf tracking` only: the MixShift service does not offer rank tracking yet (its tracking routes answer "no such shelf endpoint"). Say so; offer the MixShift request ("Tracking keywords over time"). |
-| `not_found` | 7 | `shelf tracking`, and `shelf rank-history --set`: no tracking set with that id. Run `shelf tracking list`. |
+| `not_found` | 7 | `shelf tracking` only: no tracking set with that id. Run `shelf tracking list`. |
 | `throttled` | 8 | Shelf data is busy. Wait `retry_after_ms`, then retry. |
 | `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `tracking_over_allowance` | 10 | `shelf tracking` only: the change would take the projected monthly use past the allowance, so nothing changed; carries `projected_calls_per_month`, `allowance` and `request_more`. Give both numbers and the options ("Manage what's tracked"). |
 | `insufficient_scope` | 11 | The credential lacks `shelf:read`. Sign in again, or mint a service credential that includes it. |
 | `forbidden` | 11 | `shelf tracking` only. `reason: role`: a verified person who is not an owner, admin, manager or builder; say so and offer the MixShift request ("Tracking keywords over time"). `reason: identity_not_verified`: the shared team login, an unverified session, or a machine credential such as a scheduled task's; the user signs in to MixShift as themselves (`mixshift auth login`) and runs it again in the conversation. |
 | `zip_unavailable` | 12 | That zip is not on the list for the country (`available_count` says how many are; on a tracking change `unavailable` names the zips). Run `shelf zips` and pick one. |
-| `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking. Do not resend; offer to track it ("Tracking keywords over time"). |
+| `not_tracked` | 12 | `shelf rank-history` only: that keyword, zip and view are not in the organization's tracking; with `--set`, also no set with that id, or that set does not list that keyword, zip and view (check `shelf tracking list`). Do not resend; offer to track it ("Tracking keywords over time"). |
 | `tracking_set_exists` | 12 | `shelf tracking create` only: the id is taken by a set that differs from the request, and nothing changed. Use `add` or `remove`, or `create ... --replace`. |
-| `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace; for `rank-history` also a range over a year, `--from` after `--to`, or a tracking set with no ASINs (name one `--asin`). Check the inputs; do not resend as-is. |
+| `bad_request` | 12 | Refused as sent, for example no such ASIN or seller on this marketplace; for `rank-history` also a range over a year, `--from` after `--to`, a tracking set with no ASINs (name one `--asin`), or a default read where only paused sets list ASINs for that search (the message names the sets; read one with `--set`). Check the inputs; do not resend as-is. |
 | `invalid_request` | 15 | MixShift refused it before sending anything (a schema miss; `invalid_params` names the fields; on a tracking change `detail` says why, and a set over the per-set limit carries `calls_per_day` and `max_calls_per_day_per_set`). Change the request. |
 | `upstream_unavailable` | 1 | Shelf data is temporarily unavailable. Try again in a minute. |
 | `host_unreachable`, `unknown` | 1 | Could not reach MixShift, or an unrecognized reply. Retry once; then report. |

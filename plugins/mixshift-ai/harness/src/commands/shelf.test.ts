@@ -259,17 +259,19 @@ describe('shelf rank-history', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('--set naming no set: a bare not_found says there is no such set, exit 7', async () => {
-    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_found', friendly: 'MixShift has no such shelf endpoint. Update the plugin.', httpStatus: 404 });
+  it('--set naming no set, or a set that does not list the search: the service answers not_tracked, exit 12, id kept off telemetry', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_tracked', friendly: 'No tracking set no-such-set lists that keyword, zip and view.', httpStatus: 400, source: 'request', retryable: false });
     await run('shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'no-such-set');
-    expect(stderr).toContain('There is no tracking set "no-such-set" in your organization');
-    expect(process.exitCode).toBe(7);
+    expect(stderr).toContain('No tracking set no-such-set lists that keyword, zip and view.');
+    expect(process.exitCode).toBe(12);
+    expect(lastTrack().payload).toMatchObject({ kind_failed: 'not_tracked', has_set: true });
     expect(JSON.stringify(lastTrack())).not.toContain('no-such-set');
+  });
 
-    // The service's own line wins, and without --set a not_found keeps its line.
-    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_found', friendly: 'That set does not track this keyword.', httpStatus: 404 });
-    await run('shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'trail-snacks');
-    expect(stderr).toContain('That set does not track this keyword.');
+  it('names the tracking sets the read used, paused ones marked, when the service sends source_sets', () => {
+    const md = renderRankHistory({ ...HISTORY, source_sets: [{ id: 'trail-snacks', paused: false }, { id: 'old-snacks', paused: true }] });
+    expect(md).toContain('Tracking sets read: trail-snacks, old-snacks (paused)');
+    expect(renderRankHistory(HISTORY)).not.toContain('Tracking sets read');
   });
 
   it('defaults to desktop with no range and no ASIN; --zip is required (tracked history has no default location)', async () => {

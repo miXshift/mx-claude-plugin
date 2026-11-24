@@ -57,7 +57,7 @@ import {
   type ShelfUsage,
 } from '../lib/shelf/client.js';
 import { SHELF_CATALOG, renderShelfCatalogChat } from '../lib/shelf/catalog.js';
-import { TRACKING_ID_RE, trackingFailure } from '../lib/shelf/tracking.js';
+import { TRACKING_ID_RE } from '../lib/shelf/tracking.js';
 import { registerFeaturedOfferCheck } from './shelf-featured-offer-check.js';
 import { registerShelfTracking } from './shelf-tracking.js';
 import { emitError, emitFailure, failurePayload, trackShelf, writeJson } from './_shelf-output.js';
@@ -203,9 +203,7 @@ export function registerShelfCommands(program: Command): void {
         // Telemetry names the shape of the read, never the keyword, zip, ASIN or ranks.
         // Never the set id either (a set id is the organization's own name for its research): only whether one was given.
         const telemetry = { country, surface: surface ?? 'desktop', has_zip: !!zip, has_asin: !!asin, has_set: !!set, has_range: !!(from || to) };
-        const answer = await shelfRankHistory({ query, zip, surface, from, to, asin, set, country }, { dataDirOverride: root.dataDir });
-        // A not_found with no line of its own, on a read that named a set, is "no such set" (as on the tracking routes).
-        const result = isShelfFailure(answer) && set !== undefined ? trackingFailure(answer, { setId: set, write: false }) : answer;
+        const result = await shelfRankHistory({ query, zip, surface, from, to, asin, set, country }, { dataDirOverride: root.dataDir });
         if (isShelfFailure(result)) {
           await trackShelf(EventName.ShelfRankHistoryRead, 'failed', startedAt, root.dataDir, failurePayload(result, telemetry));
           return emitFailure(result, !!root.json);
@@ -466,6 +464,10 @@ const nextDay = (d: string): string => new Date(Date.parse(d + 'T00:00:00Z') + 8
 export function renderRankHistory(h: ShelfRankHistory): string {
   const L: string[] = [];
   L.push(`**Rank history for "${h.query}"${h.zip ? ` at ${h.zip}` : ''}, ${h.surface}, ${day(h.from)} to ${day(h.to)}**`);
+  // Which tracking sets the read used, when the service says (the running ones by default, or the one named with --set).
+  if (h.source_sets && h.source_sets.length > 0) {
+    L.push('', `Tracking sets read: ${h.source_sets.map((s) => `${s.id}${s.paused ? ' (paused)' : ''}`).join(', ')}`);
+  }
   // The service sends oldest first; sort anyway so first/latest (and the movement sign) never depend on it.
   const points = [...h.points].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
   // Snapshots (when the service sends them) say which days were observed at all, whether or not an ASIN held a position.

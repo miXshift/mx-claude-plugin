@@ -224,6 +224,14 @@ export interface ShelfRankPoint {
   organic_rank: number | null;
   /** Position among sponsored results; null likewise. */
   sponsored_rank: number | null;
+  /** The ids of the tracking sets this read used that list the ASIN. Absent from a service that does not send it. */
+  sets?: string[];
+}
+
+/** A tracking set a rank-history read used, and whether it is paused. */
+export interface ShelfRankSourceSet {
+  id: string;
+  paused: boolean;
 }
 
 /** One snapshot served for the query, zip and view in range, whether or not a tracked ASIN held a position in it. */
@@ -255,6 +263,8 @@ export interface ShelfRankHistory {
   asins?: string[];
   /** Present only when the series was longer than one answer carries and its oldest points were cut. */
   truncated?: true;
+  /** The tracking sets the read used (the running ones by default; the one named with `set`). Absent from a service that does not send it. */
+  source_sets?: ShelfRankSourceSet[];
 }
 
 /** Kinds the service emits (ShelfErrorKind in mx-gateway src/shelf/errors.ts,
@@ -497,14 +507,21 @@ export async function shelfRankHistory(input: ShelfRankHistoryInput, opts: Shelf
   const points: ShelfRankPoint[] = [];
   for (const raw of j.points as Array<Partial<ShelfRankPoint>>) {
     if (typeof raw?.asin !== 'string' || typeof raw.observed_at !== 'string' || typeof raw.absolute_rank !== 'number') continue;
+    const sets = Array.isArray(raw.sets) ? raw.sets.filter((s): s is string => typeof s === 'string') : undefined;
     points.push({
       observed_at: raw.observed_at,
       asin: raw.asin,
       absolute_rank: raw.absolute_rank,
       organic_rank: typeof raw.organic_rank === 'number' ? raw.organic_rank : null,
       sponsored_rank: typeof raw.sponsored_rank === 'number' ? raw.sponsored_rank : null,
+      ...(sets !== undefined ? { sets } : {}),
     });
   }
+  const sourceSets = Array.isArray(j.source_sets)
+    ? (j.source_sets as Array<Partial<ShelfRankSourceSet>>)
+        .filter((s) => typeof s?.id === 'string')
+        .map((s) => ({ id: s.id as string, paused: s.paused === true }))
+    : undefined;
   return {
     ok: true,
     retailer: String(j.retailer ?? 'amazon'),
@@ -516,6 +533,7 @@ export async function shelfRankHistory(input: ShelfRankHistoryInput, opts: Shelf
     to: String(j.to ?? ''),
     points,
     ...(j.truncated === true ? { truncated: true as const } : {}),
+    ...(sourceSets !== undefined ? { source_sets: sourceSets } : {}),
   };
 }
 
