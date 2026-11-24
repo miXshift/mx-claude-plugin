@@ -297,7 +297,8 @@ export function registerShelfTracking(shelf: Command): void {
       .description(
         mode === 'pause'
           ? 'Pause a tracking set (owners, admins, managers and builders): its daily searches stop and it uses none of the allowance, and ' +
-              'its rank history stays readable with `shelf rank-history`. The way to stop paying for a set and keep its history.'
+              'its rank history stays readable with `shelf rank-history --set <id>` (the default read covers running sets only). The way to ' +
+              'stop paying for a set and keep its history.'
           : 'Resume a paused tracking set (owners, admins, managers and builders): the next daily run searches it again, and it uses its ' +
               'calls a day from the allowance again. Refused if that would push the projected monthly use past the allowance.',
       )
@@ -604,7 +605,11 @@ export function renderTrackingList(r: ShelfTrackingList): string {
         `| ${s.id} | ${cell(s.note)} | ${s.keywords.length} | ${cell(s.zips.join(', '))} | ${cell(s.surfaces.join(', '))} | ${s.pages} | ${s.calls_per_day} | ${enabledText(s)} | ${cell(lastRunText(s))} |`,
       );
     }
-    L.push('', 'A paused set uses none of the allowance and its rank history stays readable. `mixshift shelf tracking show <set>` lists its keywords and ASINs.');
+    L.push(
+      '',
+      'A paused set uses none of the allowance and its rank history stays readable with `mixshift shelf rank-history "<keyword>" --zip <zip> --set <set>` ' +
+        '(the default read covers running sets only). `mixshift shelf tracking show <set>` lists its keywords and ASINs.',
+    );
   }
   L.push('', projectionText(r.projected_calls_per_month, r.allowance));
   if (r.warning) L.push('', `Heads-up: ${r.warning.message}`);
@@ -647,7 +652,7 @@ export function renderWritten(action: TrackingAction, r: ShelfTrackingWritten, c
     L.push('- the first snapshot lands with the next daily run; `shelf rank-history` has points for these keywords from then on');
   } else if (action === 'pause') {
     L.push('- paused: no daily searches until you resume it, so it uses none of the allowance');
-    L.push('- its rank history stays readable with `shelf rank-history`; days while paused have no new points');
+    L.push(`- its rank history stays readable with \`shelf rank-history --set ${s.id}\` (the default read covers running sets only); days while paused have no new points`);
   } else if (action === 'resume') {
     L.push('- resumed: the next daily run searches it again and adds new points to its rank history');
   } else if (changes) {

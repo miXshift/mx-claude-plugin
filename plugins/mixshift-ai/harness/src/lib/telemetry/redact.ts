@@ -147,6 +147,17 @@ function isAdsUploadImage(argv: readonly string[]): boolean {
 const ASSET_UPLOAD_VALUE_FLAG = /^(source-url|name|tag)$/;
 
 /**
+ * And for `shelf rank-history ... --set <id>` (mx-ops#373): the VALUE of `--set` is a tracking set's name, which the
+ * privacy page says is never collected (on a `shelf tracking` line the allowlist drops it already). The keyword, the
+ * zip and the other options of a rank-history line stay as they did.
+ */
+function isShelfRankHistory(argv: readonly string[]): boolean {
+  return hasSubcommandLater(argv, 'shelf', 'rank-history');
+}
+
+const RANK_HISTORY_VALUE_FLAG = /^set$/;
+
+/**
  * Return a copy of `argv` with credential material replaced by `<redacted>`.
  * Pure and cheap (single pass over a small array); safe to call on every
  * invocation and cannot throw.
@@ -161,6 +172,7 @@ function redactGeneric(argv: readonly string[]): string[] {
   const labels = isLabelsSearch(argv);
   const cliLocate = isCliLocate(argv);
   const assetUpload = isAdsUploadImage(argv);
+  const rankHistory = isShelfRankHistory(argv);
   const valueFlag = budget
     ? BUDGET_VALUE_FLAG
     : subBrand
@@ -171,14 +183,16 @@ function redactGeneric(argv: readonly string[]): string[] {
           ? CLI_ROOT_VALUE_FLAG
           : assetUpload
             ? ASSET_UPLOAD_VALUE_FLAG
-            : null;
+            : rankHistory
+              ? RANK_HISTORY_VALUE_FLAG
+              : null;
   const redactValue = (name: string, value: string) => (budget ? redactBudgetValue(name, value) : REDACTED);
   // Under `labels search` and `forecast sub-brand` the token after a bare value flag IS its value
   // whatever it starts with (commander takes `--value -Spring` and `--value --promo` as the value),
   // so it is redacted without the "looks like a flag" exception the budget flags keep.
   // Never for `forecast budget`: its flags keep the "looks like a flag" exception even when
   // the line also carries an upload-ish word.
-  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload);
+  const strictValue = !budget && (subBrand || labels || cliLocate || assetUpload || rankHistory);
   // Set by a business-value flag (`--set` / `--note` under `forecast budget`,
   // `--name` / `--item-label` / `--campaign-label` under `forecast sub-brand`, `--value` under `labels search`).
   let budgetFlag: string | null = null;

@@ -4,6 +4,7 @@ import {
   shelfBuybox,
   shelfOffers,
   shelfProduct,
+  shelfRankHistory,
   shelfSearch,
   shelfSeller,
   shelfUsage,
@@ -95,6 +96,20 @@ describe('free calls', () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(200, { ok: true, period: '2026-10', allowance: 2000, used: 27, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery_first_month' }));
     const r = await shelfUsage(injected(fetchImpl));
     expect(r).toEqual({ ok: true, period: '2026-10', allowance: 2000, used: 27, remaining: 1973, resets_at: '2026-11-01T00:00:00.000Z', source: 'discovery_first_month' });
+  });
+
+  it('rank-history: sends set as a query parameter only when given (mx-ops#373)', async () => {
+    const body = { ok: true, retailer: 'amazon', country: 'us', surface: 'desktop', query: 'trail mix', zip: '10001', from: '2026-10-14', to: '2026-11-13', points: [] };
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(200, body)).mockResolvedValueOnce(jsonResponse(200, body));
+    const r = await shelfRankHistory({ query: ' trail mix ', zip: '10001', asin: 'b0exampl01', set: ' trail-snacks ' }, injected(fetchImpl));
+    expect(r).toMatchObject({ ok: true, query: 'trail mix', points: [] });
+    const url = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/shelf/rank-history');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ query: 'trail mix', zip: '10001', asin: 'B0EXAMPL01', set: 'trail-snacks' });
+    expect((fetchImpl.mock.calls[0][1] as RequestInit).method).toBe('GET');
+
+    await shelfRankHistory({ query: 'trail mix', zip: '10001', set: '  ' }, injected(fetchImpl));
+    expect(new URL(String(fetchImpl.mock.calls[1][0])).searchParams.has('set')).toBe(false);
   });
 
   it('usage: warning kept when well formed, dropped when null, absent or malformed', async () => {

@@ -11,8 +11,9 @@
  *   shelfSeller   -> POST /api/shelf/seller   { seller_id, country?, fresh? }
  *   shelfZips     -> GET  /api/shelf/zips?country=
  *   shelfUsage    -> GET  /api/shelf/usage
- *   shelfRankHistory -> GET /api/shelf/rank-history?query=&zip=&surface=&from=&to=&asin=&country=
- *                    (free; only a keyword, zip and view the organization's tracking lists, else not_tracked)
+ *   shelfRankHistory -> GET /api/shelf/rank-history?query=&zip=&surface=&from=&to=&asin=&set=&country=
+ *                    (free; only a keyword, zip and view the organization's tracking lists, else not_tracked;
+ *                    `set` reads one tracking set's ASINs, paused or not)
  *
  * The organization's rank tracking sets (list, show, create, change, delete)
  * live in lib/shelf/tracking.ts on this file's transport.
@@ -469,6 +470,12 @@ export interface ShelfRankHistoryInput {
   to?: string;
   /** One ASIN; the service defaults to the ASINs the tracking lists. */
   asin?: string;
+  /**
+   * One tracking set's id: read the ASINs that set lists, whether the set is running or paused. Without it the
+   * service reads the ASINs of the organization's running (enabled) sets only, so a paused set's history is read by
+   * naming the set here or the ASIN in `asin` (mx-ops#373).
+   */
+  set?: string;
   country?: ShelfCountry;
 }
 
@@ -481,6 +488,7 @@ export async function shelfRankHistory(input: ShelfRankHistoryInput, opts: Shelf
   if (input.from?.trim()) params.set('from', input.from.trim());
   if (input.to?.trim()) params.set('to', input.to.trim());
   if (input.asin?.trim()) params.set('asin', input.asin.trim().toUpperCase());
+  if (input.set?.trim()) params.set('set', input.set.trim());
   if (input.country) params.set('country', input.country);
   const r = await shelfRequest({ method: 'GET', path: `/api/shelf/rank-history?${params.toString()}` }, { ...opts, timeoutMs: opts.timeoutMs ?? FREE_TIMEOUT_MS });
   if (!r.ok) return r;

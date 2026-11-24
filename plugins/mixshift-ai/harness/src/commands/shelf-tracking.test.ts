@@ -513,7 +513,7 @@ describe('shelf tracking pause / resume', () => {
     expect(shelfTrackingPatch).toHaveBeenCalledWith('trail-snacks', { enabled: false }, { dataDirOverride: undefined });
     expect(stdout).toContain('**Paused tracking set `trail-snacks`**');
     expect(stdout).toContain('uses none of the allowance');
-    expect(stdout).toContain('its rank history stays readable');
+    expect(stdout).toContain('its rank history stays readable with `shelf rank-history --set trail-snacks` (the default read covers running sets only)');
     expect(stdout).not.toContain('does not answer');
     expect(stdout).toContain('Calls a day for this set: 8 (2 keywords x 2 zips x 2 views x 1 page), none while paused.');
     expect(stdout).toContain('Projected monthly use: 0 of 2000');

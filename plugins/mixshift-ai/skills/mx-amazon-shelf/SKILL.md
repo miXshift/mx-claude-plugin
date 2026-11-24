@@ -15,7 +15,7 @@ description: >
   what-is-this per call. Uses the MixShift plugin sign-in. Does not require
   brand setup. Beta.
 metadata:
-  version: "0.3.3"
+  version: "0.3.4"
   author: "MixShift"
 trigger_phrases:
   - shelf data
@@ -102,7 +102,9 @@ When characterizing this capability to the user, use these facts:
   `mixshift shelf rank-history` reads that history back, free, as the
   absolute, organic and sponsored rank per day and ASIN. Only keywords, zips
   and views a set lists answer, whether the set is running or paused
-  (anything else is `not_tracked`). An owner, admin, manager or builder, signed in as
+  (anything else is `not_tracked`). By default the read covers the ASINs of
+  the running sets; a paused set's ASINs are read by naming the set
+  (`--set`) or the ASIN (`--asin`). An owner, admin, manager or builder, signed in as
   a person, changes the sets from the plugin ("Manage what's tracked"
   below); anyone else asks one of them, or MixShift. A machine credential,
   such as one a scheduled task uses, can never change them. Every running set
@@ -264,15 +266,23 @@ Reading it back is free:
 ```bash
 mixshift shelf rank-history "<keyword>" --zip <zip> --view desktop --json
 mixshift shelf rank-history "<keyword>" --zip <zip> --view mobile --from 2026-10-01 --to 2026-10-31 --json
+mixshift shelf rank-history "<keyword>" --zip <zip> --set <set id> --json
 ```
 
 Each call is one keyword at one zip on one view; run one per combination the
 user asks about. Without `--from` and `--to` the answer covers the last 30
 days; the range may be up to a year (`bad_request` beyond that, or with
 `--from` after `--to`). `--zip` is required: the tracked location, since
-tracked history has no default location. Without `--asin` the points cover
-the ASINs on the organization's tracking; a set that lists no ASINs answers
-`bad_request` ("Name an ASIN"), so pass `--asin` then.
+tracked history has no default location. Without `--asin` or `--set` the
+points cover the ASINs of the organization's **running** sets that list that
+keyword, zip and view; a paused set's ASINs are left out of that default
+view. `--set <set id>` (the ids `shelf tracking list` shows) reads the ASINs
+one set lists, whether it is running or paused: use it when the user asks
+about one set, or about a paused set's history. `--asin` reads one ASIN,
+whichever set listed it. When the ASINs the user expects are missing from a
+default read, check `shelf tracking list` for a paused set that lists them
+and read it with `--set`. A set that lists no ASINs answers `bad_request`
+("Name an ASIN"), so pass `--asin` then.
 
 **What tracking costs.** Every running set uses keywords x zips x views x
 pages of the monthly shelf allowance, every day: ten keywords at three zips
@@ -281,7 +291,9 @@ counts 31 days). `shelf tracking
 list` shows each set's calls a day and the projected monthly use against the
 allowance. Reading the history back stays free, and so does listing and
 changing the sets. A paused set uses nothing, and its history stays
-readable: pausing is the way to stop paying for a set and keep its history.
+readable by naming the set (`rank-history --set <set id>`) or an ASIN
+(`--asin`); it no longer shows in the default read. Pausing is the way to
+stop paying for a set and keep its history.
 One set may make at most a fixed number of calls a day (`limits` in the
 `list` answer); a bigger set is refused, so split it.
 
@@ -348,8 +360,10 @@ How to run them:
   in one or two sentences. A new keyword's first point lands with the next
   daily run.
 - **Pause, remove or delete.** Pausing stops the daily searches and their
-  cost, keeps the set to resume later, and keeps its rank history readable:
-  recommend it whenever the user wants to stop paying for a set. Deleting a
+  cost, keeps the set to resume later, and keeps its rank history readable
+  with `rank-history --set <set id>` or `--asin` (the default read leaves a
+  paused set's ASINs out; say so when pausing): recommend it whenever the
+  user wants to stop paying for a set. Deleting a
   set, or removing a keyword from one, stops `rank-history` answering for
   those keywords unless another set (running or paused) lists them; say so
   before running it. When the user says "stop tracking" a whole set, offer
@@ -609,7 +623,7 @@ and a delete that went through answers `not_found`.
 | `shelf_not_enabled` | 6 | The organization is not on the shelf beta. Ask MixShift to turn it on. |
 | `shelf_not_enrolled` | 6 | The account has no organization set up yet. Ask MixShift to enroll it. |
 | `tracking_unavailable` | 6 | `shelf tracking` only: the MixShift service does not offer rank tracking yet (its tracking routes answer "no such shelf endpoint"). Say so; offer the MixShift request ("Tracking keywords over time"). |
-| `not_found` | 7 | `shelf tracking` only: no tracking set with that id. Run `shelf tracking list`. |
+| `not_found` | 7 | `shelf tracking`, and `shelf rank-history --set`: no tracking set with that id. Run `shelf tracking list`. |
 | `throttled` | 8 | Shelf data is busy. Wait `retry_after_ms`, then retry. |
 | `shelf_allowance_exhausted` | 10 | The month's included requests are used; carries `period`, `allowance`, `used`, `resets_at` and `request_more`. Say when it resets and offer to ask for more ("Requesting more" above). |
 | `tracking_over_allowance` | 10 | `shelf tracking` only: the change would take the projected monthly use past the allowance, so nothing changed; carries `projected_calls_per_month`, `allowance` and `request_more`. Give both numbers and the options ("Manage what's tracked"). |
@@ -672,8 +686,8 @@ You do **not** need to emit per-call events. The harness fires `shelf.called`
 `shelf.rank_history_read`, `shelf.tracking_read` and `shelf.tracking_changed`)
 on each `shelf` command, with the call kind, country, whether a zip was given,
 surface and page, fresh, the observation's age and the outcome; for a
-rank-history read, the range in days and how many points, days and ASINs came
-back; for `shelf tracking`, the action, how many keywords and ASINs were asked
+rank-history read, whether an ASIN or a set was named, the range in days and
+how many points, days and ASINs came back; for `shelf tracking`, the action, how many keywords and ASINs were asked
 for, added or removed, the set's sizes and calls a day, and the projected
 monthly use and allowance. It never records the ASIN, the keyword, the zip,
 the seller id, a tracking set's id or note, the ranks or the answer.

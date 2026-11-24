@@ -359,6 +359,21 @@ describe('shelf tracking lines: the set, keywords, zips, ASINs and note never re
     expect(redactArgs(['shelf', 'rank-history', 'trail mix', '--zip', '10001'])).toEqual(['shelf', 'rank-history', 'trail mix', '--zip', '10001']);
     expect(redactArgs(['shelf', 'search', 'tracking'])).toEqual(['shelf', 'search', 'tracking']);
   });
+
+  it('drops the tracking set name a rank-history line names with --set, in both flag forms (mx-ops#373)', () => {
+    expect(redactArgs(['shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'trail-snacks'])).toEqual([
+      'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', R,
+    ]);
+    expect(redactArgs(['--json', 'shelf', 'rank-history', 'trail mix', '--set=trail-snacks', '--view', 'mobile'])).toEqual([
+      '--json', 'shelf', 'rank-history', 'trail mix', `--set=${R}`, '--view', 'mobile',
+    ]);
+    // commander takes the next token as the value whatever it starts with, so it goes too.
+    expect(redactArgs(['shelf', 'rank-history', 'trail mix', '--set', '-odd-name', '--zip', '10001'])).toEqual([
+      'shelf', 'rank-history', 'trail mix', '--set', R, '--zip', '10001',
+    ]);
+    // A --set on another shelf line is not a set name and keeps the baseline.
+    expect(redactArgs(['shelf', 'search', 'trail mix', '--set', 'x'])).toEqual(['shelf', 'search', 'trail mix', '--set', 'x']);
+  });
 });
 
 describe('shelf tracking lines: a malformed or misordered line still triggers the allowlist', () => {

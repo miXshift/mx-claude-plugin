@@ -9,7 +9,7 @@
  *   shelf buybox <asin> [--zip Z]             the Buy Box at a zip
  *   shelf offers <asin> [--zip Z]             every offer at a zip
  *   shelf search <query> [--view desktop|mobile] [--page N] [--zip Z]
- *   shelf rank-history <query> [--zip Z] [--view desktop|mobile] [--from D] [--to D] [--asin A]
+ *   shelf rank-history <query> [--zip Z] [--view desktop|mobile] [--from D] [--to D] [--asin A] [--set S]
  *                                             where tracked ASINs ranked, day by day (free)
  *   shelf tracking list|show|create|add|remove|pause|resume|delete
  *                                             the organization's rank tracking sets (shelf-tracking.ts)
@@ -57,6 +57,7 @@ import {
   type ShelfUsage,
 } from '../lib/shelf/client.js';
 import { SHELF_CATALOG, renderShelfCatalogChat } from '../lib/shelf/catalog.js';
+import { TRACKING_ID_RE, trackingFailure } from '../lib/shelf/tracking.js';
 import { registerFeaturedOfferCheck } from './shelf-featured-offer-check.js';
 import { registerShelfTracking } from './shelf-tracking.js';
 import { emitError, emitFailure, failurePayload, trackShelf, writeJson } from './_shelf-output.js';
@@ -82,6 +83,7 @@ interface RankHistoryOptions {
   from?: string;
   to?: string;
   asin?: string;
+  set?: string;
   country?: string;
 }
 
@@ -166,7 +168,8 @@ export function registerShelfCommands(program: Command): void {
     .option('--view <view>', 'desktop (default) or mobile')
     .option('--from <date>', 'start, an ISO date (YYYY-MM-DD) or time; default 30 days before --to')
     .option('--to <date>', 'end, an ISO date or time (a date means the end of that day); default now')
-    .option('--asin <asin>', 'one ASIN; default the ASINs on your tracking')
+    .option('--asin <asin>', 'one ASIN; default the ASINs on your running tracking sets')
+    .option('--set <set>', 'one tracking set id: the ASINs that set lists, running or paused (`shelf tracking list` shows the ids)')
     .option('--country <code>', 'marketplace country: us (default), ca, uk, de, fr, it, es, in')
     .action(async (query: string, opts: RankHistoryOptions, cmd: Command) => {
       const root = cmd.optsWithGlobals<RootOptions>();
@@ -183,6 +186,10 @@ export function registerShelfCommands(program: Command): void {
         }
         const asin = opts.asin?.trim() || undefined;
         if (asin !== undefined && !ASIN_RE.test(asin)) return emitError(new Error('--asin must be a 10-character ASIN.'), !!root.json);
+        const set = opts.set?.trim() || undefined;
+        if (set !== undefined && !TRACKING_ID_RE.test(set)) {
+          return emitError(new Error('--set must be a tracking set id: 2 to 63 lower-case letters, digits or hyphens (`mixshift shelf tracking list` shows them).'), !!root.json);
+        }
         const from = opts.from?.trim() || undefined;
         const to = opts.to?.trim() || undefined;
         for (const [flag, v] of [
@@ -194,8 +201,11 @@ export function registerShelfCommands(program: Command): void {
         const zip = opts.zip?.trim() || undefined;
         if (!zip) return emitError(new Error('--zip is required: a tracked shopper location from your tracking set.'), !!root.json);
         // Telemetry names the shape of the read, never the keyword, zip, ASIN or ranks.
-        const telemetry = { country, surface: surface ?? 'desktop', has_zip: !!zip, has_asin: !!asin, has_range: !!(from || to) };
-        const result = await shelfRankHistory({ query, zip, surface, from, to, asin, country }, { dataDirOverride: root.dataDir });
+        // Never the set id either (a set id is the organization's own name for its research): only whether one was given.
+        const telemetry = { country, surface: surface ?? 'desktop', has_zip: !!zip, has_asin: !!asin, has_set: !!set, has_range: !!(from || to) };
+        const answer = await shelfRankHistory({ query, zip, surface, from, to, asin, set, country }, { dataDirOverride: root.dataDir });
+        // A not_found with no line of its own, on a read that named a set, is "no such set" (as on the tracking routes).
+        const result = isShelfFailure(answer) && set !== undefined ? trackingFailure(answer, { setId: set, write: false }) : answer;
         if (isShelfFailure(result)) {
           await trackShelf(EventName.ShelfRankHistoryRead, 'failed', startedAt, root.dataDir, failurePayload(result, telemetry));
           return emitFailure(result, !!root.json);

@@ -230,8 +230,46 @@ describe('shelf rank-history', () => {
     const t = lastTrack();
     expect(t.event_name).toBe('shelf.rank_history_read');
     expect(t.outcome).toBe('ok');
-    expect(t.payload).toMatchObject({ country: 'us', surface: 'mobile', has_zip: true, has_asin: true, has_range: true, range_days: 31, points: 4, days: 2, asins: 2, truncated: false });
+    expect(t.payload).toMatchObject({ country: 'us', surface: 'mobile', has_zip: true, has_asin: true, has_set: false, has_range: true, range_days: 31, points: 4, days: 2, asins: 2, truncated: false });
     expect(JSON.stringify(t)).not.toMatch(/trail mix|B0EXAMPL|10001/i);
+  });
+
+  it('--set reads one tracking set (paused or running): passed to the client, has_set in telemetry, never the set id (mx-ops#373)', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce(HISTORY);
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', ' trail-snacks ');
+    expect(vi.mocked(shelfRankHistory).mock.calls[0][0]).toEqual({ query: 'trail mix', zip: '10001', surface: undefined, from: undefined, to: undefined, asin: undefined, set: 'trail-snacks', country: 'us' });
+    expect(JSON.parse(stdout)).toMatchObject({ status: 'ok', query: 'trail mix' });
+    const t = lastTrack();
+    expect(t.payload).toMatchObject({ has_set: true, has_asin: false });
+    expect(JSON.stringify(t)).not.toContain('trail-snacks');
+
+    // --set and --asin together: both reach the client; the service decides what the pair reads.
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce(HISTORY);
+    await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'trail-snacks', '--asin', 'B0EXAMPL01');
+    expect(vi.mocked(shelfRankHistory).mock.calls[1][0]).toMatchObject({ set: 'trail-snacks', asin: 'B0EXAMPL01' });
+  });
+
+  it('--set that is not a set id is refused before any call', async () => {
+    for (const bad of ['Trail Snacks', 'x', '-x', 'a/b', 'a'.repeat(64)]) {
+      await run('--json', 'shelf', 'rank-history', 'trail mix', '--zip', '10001', `--set=${bad}`);
+    }
+    expect(shelfRankHistory).not.toHaveBeenCalled();
+    expect(stdout.match(/--set must be a tracking set id/g)).toHaveLength(5);
+    expect(stdout).toContain('"status": "error"');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('--set naming no set: a bare not_found says there is no such set, exit 7', async () => {
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_found', friendly: 'MixShift has no such shelf endpoint. Update the plugin.', httpStatus: 404 });
+    await run('shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'no-such-set');
+    expect(stderr).toContain('There is no tracking set "no-such-set" in your organization');
+    expect(process.exitCode).toBe(7);
+    expect(JSON.stringify(lastTrack())).not.toContain('no-such-set');
+
+    // The service's own line wins, and without --set a not_found keeps its line.
+    vi.mocked(shelfRankHistory).mockResolvedValueOnce({ ok: false, kind: 'not_found', friendly: 'That set does not track this keyword.', httpStatus: 404 });
+    await run('shelf', 'rank-history', 'trail mix', '--zip', '10001', '--set', 'trail-snacks');
+    expect(stderr).toContain('That set does not track this keyword.');
   });
 
   it('defaults to desktop with no range and no ASIN; --zip is required (tracked history has no default location)', async () => {

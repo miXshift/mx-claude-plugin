@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-amazon-shelf
 display_name: "Amazon Shelf (what the shopper sees: Buy Box, offers, keyword rank, product page)"
-version: "0.3.3"
+version: "0.3.4"
 description: >
   See the Amazon shelf the way a shopper at a given zip sees it, on demand,
   through the bundled harness CLI: who holds the Buy Box for an ASIN and with
@@ -41,7 +41,7 @@ harness_commands:
   - mixshift shelf buybox <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf offers <asin> [--zip <zip>] [--country <code>] [--fresh]
   - mixshift shelf search <query> [--view desktop|mobile] [--page <n>] [--zip <zip>] [--country <code>] [--fresh]
-  - mixshift shelf rank-history <query> [--zip <zip>] [--view desktop|mobile] [--from <date>] [--to <date>] [--asin <asin>] [--country <code>]
+  - mixshift shelf rank-history <query> [--zip <zip>] [--view desktop|mobile] [--from <date>] [--to <date>] [--asin <asin>] [--set <set>] [--country <code>]
   - mixshift shelf tracking list
   - mixshift shelf tracking show <id>
   - mixshift shelf tracking create <id> --keyword <keyword> --zip <zip> [--view desktop|mobile] [--asin <asin>] [--pages <n>] [--note <text>] [--country <code>] [--replace]
@@ -134,10 +134,13 @@ notes: >
   Keyword rank is the half no account report gives: emphasize it. An
   organization tracks keywords in tracking sets (keywords, zips, views, pages
   and ASINs, observed once a day); `mixshift shelf rank-history <query> --zip
-  <zip> [--view] [--from] [--to] [--asin]` reads the history back free, one
+  <zip> [--view] [--from] [--to] [--asin] [--set]` reads the history back free, one
   keyword x zip x view per call, as the absolute, organic and sponsored rank
   per day and ASIN, for any set that lists the keyword, running or paused;
-  anything not tracked answers not_tracked (exit 12).
+  anything not tracked answers not_tracked (exit 12). By default it covers
+  the ASINs of the running sets only; `--set <set id>` reads one set's ASINs,
+  running or paused (not_found, exit 7, for no such set), and `--asin` one
+  ASIN, which is how a paused set's history is read.
   `mixshift shelf tracking list|show` shows the sets, each set's calls a day
   and the projected monthly use against the allowance, and whether the person
   can change them (can_edit); an owner, admin, manager or builder signed in as a
@@ -151,7 +154,7 @@ notes: >
   calls_per_day and max_calls_per_day_per_set for a set over the per-set
   limit). Every running set uses keywords x zips x views x pages of the
   allowance each day; reading and changing the sets is free. Pausing a set
-  stops its cost and keeps its history readable; deleting a set or removing a
+  stops its cost and keeps its history readable with `--set` or `--asin`; deleting a set or removing a
   keyword stops rank-history answering for it unless another set lists it. Someone who cannot change tracking sends the request with `mixshift
   feedback "Track keyword rank ..." --category feature_request --skill
   mx-amazon-shelf` (keywords, locations, devices, ASINs); MixShift sets it

@@ -84,8 +84,9 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'back: per day and ASIN the absolute rank (sponsored and organic counted together), the organic rank and the sponsored ' +
       'rank, so a rank change shows as a dated series instead of a one-off search. Only keywords, locations and views ' +
       'your organization tracks answer (anything else is not_tracked); `shelf tracking` shows and changes what is tracked. ' +
-      'The daily observations count against the allowance; reading them back is free.',
-    inputs: 'a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your tracking), --country',
+      'By default it reads the ASINs of your running tracking sets; a paused set\'s history is read by naming the set ' +
+      '(--set) or the ASIN (--asin). The daily observations count against the allowance; reading them back is free.',
+    inputs: 'a tracked keyword and --zip (a tracked location; no default here); optional --view desktop|mobile, --from and --to (ISO dates; default the last 30 days), --asin (one ASIN; default the ASINs on your running sets), --set (one tracking set id: the ASINs it lists, running or paused), --country',
     returns: 'points[] (observed_at, asin, absolute_rank, organic_rank, sponsored_rank), query, zip, from, to, truncated',
     cost: 'free',
     say: 'how has our rank for "backpacking meals" in New York moved this month?',
@@ -101,7 +102,7 @@ export const SHELF_CATALOG: readonly ShelfCatalogEntry[] = [
       'zip on every view of each running set, and `shelf rank-history` reads that back. Anyone in the organization can list ' +
       'and show the sets; an owner, admin, manager or builder, signed in as a person, can create one, add or remove keywords and ' +
       'ASINs, pause, resume or delete it (a machine credential never can). Pausing stops the daily cost and keeps the history ' +
-      'readable; deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. ' +
+      'readable with `shelf rank-history --set <set>` (the default read covers running sets only); deleting a set, or removing a keyword, stops rank-history answering for it unless another set lists it. ' +
       'Reading and changing the sets is free, but each running set uses keywords x zips x views x pages of the ' +
       'monthly allowance every day: 10 keywords at 3 zips on both views is 60 a day, about 1,860 a month (the projection counts 31 days). A change that ' +
       'would take the projected monthly use past the allowance is refused; removing and pausing always go through.',
