@@ -157,7 +157,7 @@ Never block on this step — confirm-as-is is always available.
 
 Determine the account type from brand context:
 - **Seller Central (SC):** Use `business_reports_dpst_date` for Total Sales and TACOS windows. SC has a 1-day data lag.
-- **Vendor Central (VC):** Use `vendor_sales_manufacturing_asin` for Ordered Revenue. VC has a 2-day data lag.
+- **Vendor Central (VC):** Use `vendor_sales_manufacturing_asin` for Ordered Revenue. The VC lag varies (2 days is common, longer happens), so VC windows end at the latest loaded VC date, not at a fixed lag. DHC-03 finds that date and returns it as `vc_window_end`.
 
 Do not mix sources or discover the path mid-run. If account type is missing, stop and update brand context first.
 
@@ -176,7 +176,7 @@ Fallback to `.data.json` only if the `.md` file is absent.
 This file contains pre-executed results for all queries, keyed by query ID:
 - `DHC-01` — Campaign-level metrics (T-1, T-7, T-30, MTD, TACOS window): `spend, adsales, orders, acos` across all time windows
 - `DHC-02` — Total Sales / SC accounts (business_reports_dpst_date): `total_sales` for T-1, T-7, T-30, MTD windows
-- `DHC-03` — Ordered Revenue / VC accounts (vendor_sales_manufacturing_asin): `ordered_revenue` for T-1, T-7, T-30, MTD windows
+- `DHC-03` — Ordered Revenue / VC accounts (vendor_sales_manufacturing_asin): `ordered_rev_t1, ordered_rev_t7_total, ordered_rev_t30_total, ordered_rev_mtd`, the ad spend over the same days (`spend_t1_vc_window, spend_t7_vc_window, spend_t30_vc_window, spend_mtd_vc_window`), and `vc_window_end`, the latest loaded VC date every window ends on. MTD columns are null when no VC day of this month has loaded yet.
 - `DHC-04` — Anomaly Detection Settings: `UpperSensitivityLimit, LowerSensitivityLimit` by SellerID
 - `DHC-05` — T-30 Daily Actuals (anomaly_detection_MV): daily `spend, adsales, acos, total_sales, tacos` for CI computation
 - `DHC-06` — Campaign Type Performance (T-1, T-7, T-30): `campaign_type, spend, adsales, acos`
@@ -228,7 +228,7 @@ From Batch D daily actuals:
 - `acos_mtd` = spend_mtd / adsales_mtd × 100
 
 **From Batch B (Total Sales):**
-- `total_sales_t1` = T-1 total sales (T-2 date for SC accounts; latest available for VC)
+- `total_sales_t1` = T-1 total sales (T-2 date for SC accounts; `vc_window_end` for VC)
 - `total_sales_t7_avg` = T-7 total sales / 7 (or active days, see pacing rule below)
 - `total_sales_t30_avg` = T-30 total sales / 30
 - `total_sales_mtd` = MTD total sales
@@ -238,18 +238,20 @@ From Batch D daily actuals:
 - `tacos_t7` = spend_t7_window / total_sales_t7_window × 100
 - `tacos_t30` = spend_t30_window / total_sales_t30_window × 100
 - `tacos_mtd` = spend_mtd_window / total_sales_mtd_window × 100
+- **SC:** spend from DHC-01's `spend_t2` / `*_tacos_window` columns, sales from DHC-02 (both end at T-2).
+- **VC:** spend and revenue both from DHC-03, which ends every window at `vc_window_end`: `tacos_t1 = spend_t1_vc_window / ordered_rev_t1`, `tacos_t7 = spend_t7_vc_window / ordered_rev_t7_total`, `tacos_t30 = spend_t30_vc_window / ordered_rev_t30_total`, `tacos_mtd = spend_mtd_vc_window / ordered_rev_mtd`. Never divide DHC-01's `*_tacos_window` spend by VC revenue: those end at T-2 whatever the VC lag is, so the two sides would cover different days. If the MTD columns are null, MTD TACoS is `--`.
 
 **Pacing projection (universal rule for SC and VC):**
 - `days_remaining` = (month_end_day - last_available_data_date_day) — NOT (month_end_day - run_date_day)
 - Always project from the last date with actual data, not today's run date
-- SC typically ends at T-2; VC typically ends at T-2. Account for the lag explicitly.
+- SC ends at T-2. VC ends at `vc_window_end` (DHC-03): use that as the last available data date for VC.
 - `pacing_total_sales` = total_sales_mtd + (total_sales_t7_avg × days_remaining)
 - `pacing_ad_sales` = adsales_mtd + (adsales_t7_avg × days_remaining)
 - `pacing_spend` = spend_mtd + (spend_t7_avg × days_remaining)
 - `pacing_acos` = pacing_spend / pacing_ad_sales × 100
 
 **T-7 Active Days Correction (for lag accounts):**
-- VC accounts with 2-day lag typically have only 5-6 active days in a T-7 window (not 7)
+- VC revenue windows from DHC-03 end at `vc_window_end`, so they hold loaded days only; still count active days, since a day can load with no revenue
 - SC accounts with 1-day lag typically have 6 active days
 - Do NOT divide T-7 sum by 7 automatically; count actual days with non-zero data
 - `t7_avg = t7_total / active_days` (not `t7_total / 7`)

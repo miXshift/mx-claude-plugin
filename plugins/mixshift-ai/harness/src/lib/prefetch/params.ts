@@ -35,7 +35,11 @@
  *                                context.negation.asin_negation.pre_check_lifetime_orders_threshold
  *                                when present
  *   :utilization_threshold       default 0.9 (90% budget utilization)
- *   :vc_lag                      default 2 if VC primary, 1 if SC primary
+ *   :vc_lag                      default 2 if VC primary, 1 if SC primary.
+ *                                A FALLBACK only: DHC-03 ends its VC windows
+ *                                at the latest loaded VC date and uses
+ *                                run_date - vc_lag only when no VC row has
+ *                                loaded at all (mx-ops#408).
  *
  * Skill-specific or per-query overrides are merged in via `paramOverrides`.
  *
@@ -117,7 +121,9 @@ export function buildStandardParams(opts: BuildParamsOptions): ParamMap {
     3,
   );
 
-  // SC = 1-day lag, VC = 2-day lag (per data-source convention)
+  // Typical lag: SC = 1 day, VC = 2 days. Not the truth for any run: the real
+  // VC lag varies, so DHC-03 anchors its windows on the latest VC date that
+  // has loaded and falls back to run_date - vc_lag only when none has.
   const vcLag = primary.account_type === 'VC' ? 2 : 1;
 
   const standard: ParamMap = {

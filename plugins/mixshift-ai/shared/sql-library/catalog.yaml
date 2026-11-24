@@ -18,7 +18,7 @@ queries:
 
   - id: DHC-03
     file: DHC-03.sql
-    purpose: VC ordered revenue windows (T-1/T-7/T-30/MTD) from vendor_sales_manufacturing_asin.
+    purpose: VC ordered revenue windows (T-1/T-7/T-30/MTD) from vendor_sales_manufacturing_asin, plus ad spend over the same days, all ending at the latest loaded VC date.
     consumers: [mx-daily-health-check]
     tier: 1
 

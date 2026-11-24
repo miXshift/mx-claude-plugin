@@ -126,4 +126,12 @@ Review this file before every run. Add new entries immediately after any correct
 - **Day-of-week:** No assumptions without supporting data in brand context or T-30 history
 - **Pacing:** Always project from last available data date, not run date
 - **Structural events:** Cross-reference brand context before citing T-30 baseline as clean
-- **TACOS windows:** Both spend and sales must end on same date (T-2 for SC accounts)
+- **TACOS windows:** Both spend and sales must end on same date (T-2 for SC accounts; `vc_window_end` from DHC-03 for VC accounts)
+
+---
+
+## 2026-11-24 — VC: a fixed 2-day lag made TACOS read high (mx-ops#408)
+
+**What happened:** DHC-03 ended the VC revenue windows at yesterday minus a fixed 2 days, while the TACOS spend windows from DHC-01 ended at T-2 and the VC MTD revenue window had no upper bound. Spend and revenue never covered the same days, and when VC data ran later than usual the newest revenue days were empty while spend was full, so VC TACOS read high.
+
+**The rule:** VC windows end at the latest loaded VC date. DHC-03 returns it as `vc_window_end` together with revenue and spend over the same days; VC TACOS divides DHC-03 spend by DHC-03 revenue. The fixed lag (`:vc_lag`) is only the fallback when no VC row has loaded.
