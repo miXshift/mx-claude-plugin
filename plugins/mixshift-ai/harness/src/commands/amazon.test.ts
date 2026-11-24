@@ -939,28 +939,99 @@ describe('report get — inline context ceiling', () => {
 });
 
 // ---------------------------------------------------------------------------
-// report run — a throttled START is absorbed, not fatal (mx-ops#52)
+// report run — stops on the FIRST throttled start (D-391, mx-ops#399)
 //
-// A 429 on the request that CREATES the report is transient in exactly the way
-// a throttled poll is. Until this shipped, a throttled start was TERMINAL while
-// a throttled poll was ridden out, so a caller got a hard failure for a
-// transient condition and re-invoked on its own schedule. That is what produced
-// the flat ~53s retry cadence observed on an SQP automation: the pacing was
-// never ours, we just never let the run wait.
+// A 429 on the request that CREATES the report means Amazon is limiting report
+// creates for the account. Sending the start again within the run's deadline
+// is only refused again and keeps the account at its limit (mx-ops#366), so
+// `report run` makes exactly one start and returns the throttle to the caller.
+// This replaces the back-off-and-resend of mx-ops#52. Throttled POLLS are
+// still ridden out (a poll reads a report that already exists); that is
+// pinned by the poll-throttle tests, not here.
 // ---------------------------------------------------------------------------
 
 describe('report run — throttled start', () => {
   const asins = makeAsins(3); // one chunk, so this is the simple single-report path
 
-  it('backs off and retries a 429 on report creation instead of failing the run', async () => {
+  it('stops on the first 429 on report creation: one start, no poll, exit 8', async () => {
     let starts = 0;
     vi.mocked(startReport).mockImplementation(async () => {
       starts += 1;
-      // Throttled twice, then Amazon accepts it.
-      if (starts <= 2) {
-        return { ok: false, kind: 'throttled', friendly: 'rate limited', retryAfterMs: 1 } as any;
+      // Amazon would accept a second try; the run must not make one.
+      if (starts === 1) {
+        return {
+          ok: false,
+          kind: 'throttled',
+          friendly: 'Amazon is limiting report requests for this account.',
+          retryAfterMs: 1,
+          httpStatus: 429,
+        } as any;
       }
       return { ok: true, runId: 'run-ok', status: 'IN_QUEUE' } as any;
+    });
+    vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' } as any);
+
+    await runCli(
+      'amazon', 'report', 'run',
+      '--type', SQP_TYPE,
+      '--option', `asin=${asins.join(' ')}`,
+      '--out', join(tmpDir, 'sqp-throttle-stop.json'),
+      '--interval-ms', '1',
+      // A long budget: the old code would have spent it resending the start.
+      '--max-wait-ms', '60000',
+      '--json',
+    );
+
+    expect(starts).toBe(1);
+    expect(vi.mocked(pollReport)).not.toHaveBeenCalled();
+    const out = lastJson();
+    expect(out.status).toBe('error');
+    expect(out.failure_kind).toBe('throttled');
+    expect(out.message).toBe('Amazon is limiting report requests for this account.');
+    expect(out.retry_after_ms).toBe(1);
+    expect(process.exitCode).toBe(8);
+
+    // Recorded as one failed pull, and no "throttle absorbed" event.
+    const failed = reportFailedPayloads();
+    expect(failed).toHaveLength(1);
+    expect(failed[0].kind).toBe('throttled');
+    const startThrottled = vi
+      .mocked(track)
+      .mock.calls.filter((c) => (c[0] as any)?.event_name === EventName.ReportStartThrottled);
+    expect(startThrottled).toHaveLength(0);
+    expect(reportStartedPayloads()).toHaveLength(0);
+  });
+
+  it('text mode: prints the throttle once and no back-off line', async () => {
+    let starts = 0;
+    vi.mocked(startReport).mockImplementation(async () => {
+      starts += 1;
+      return { ok: false, kind: 'throttled', friendly: 'rate limited', httpStatus: 429 } as any;
+    });
+
+    await runCli(
+      'amazon', 'report', 'run',
+      '--type', SQP_TYPE,
+      '--option', `asin=${asins.join(' ')}`,
+      '--out', join(tmpDir, 'sqp-throttle-text.json'),
+      '--interval-ms', '1',
+      '--max-wait-ms', '60000',
+    );
+
+    expect(starts).toBe(1);
+    const err = stderrChunks.join('');
+    expect(err).toContain('✗ rate limited');
+    expect(err).not.toMatch(/backing off/);
+    expect(process.exitCode).toBe(8);
+  });
+
+  it('SQP auto-batch: a throttled chunk start stops the batch; later chunks are not started', async () => {
+    const many = makeAsins(40); // over the 200-char cap: three chunks
+    let starts = 0;
+    vi.mocked(startReport).mockImplementation(async () => {
+      starts += 1;
+      if (starts === 1) return { ok: true, runId: 'run-chunk-1', status: 'IN_QUEUE' } as any;
+      return { ok: false, kind: 'throttled', friendly: 'rate limited', httpStatus: 429 } as any;
     });
     vi.mocked(pollReport).mockResolvedValue({ ok: true, ready: true, status: 'DONE' } as any);
     vi.mocked(getReportDocument).mockResolvedValue({
@@ -970,35 +1041,30 @@ describe('report run — throttled start', () => {
       document: JSON.stringify({ reportSpecification: {}, dataByAsin: [] }),
       bytes: 2,
     } as any);
-    // `report run --out` fetches the document metadata and streams it to the
-    // file; set both here instead of inheriting whatever an earlier test left
-    // behind (vi.clearAllMocks keeps implementations).
-    vi.mocked(getReportDocumentMeta).mockResolvedValue({
-      ok: true,
-      ready: true,
-      status: 'DONE',
-      document: { url: 'https://example.invalid/x', compressionAlgorithm: null },
-    } as any);
-    vi.mocked(streamReportDocumentToFile).mockResolvedValue({ ok: true, bytes: 2 } as any);
 
     await runCli(
       'amazon', 'report', 'run',
       '--type', SQP_TYPE,
-      '--option', `asin=${asins.join(' ')}`,
-      '--out', join(tmpDir, 'sqp-throttle-ok.json'),
+      '--option', `asin=${many.join(' ')}`,
+      '--out', join(tmpDir, 'sqp-throttle-chunks.json'),
       '--interval-ms', '1',
+      '--max-wait-ms', '60000',
       '--json',
     );
 
-    // The run rode out both throttles and reached a real report.
-    expect(starts).toBe(3);
-    expect(lastJson().status).toBe('ok');
+    // Chunk 1 started and finished, chunk 2's one start was throttled, chunk 3
+    // was never asked for.
+    expect(starts).toBe(2);
+    const out = lastJson();
+    expect(out.status).toBe('error');
+    expect(out.failure_kind).toBe('throttled');
+    expect(out.chunk).toBe(2);
+    expect(out.chunks).toBeGreaterThanOrEqual(3);
+    expect(out.run_ids).toEqual(['run-chunk-1']);
+    expect(process.exitCode).toBe(8);
   });
 
   it('still fails terminally on a NON-throttled start failure, with no retry', async () => {
-    // The guard that keeps the change narrow: only `throttled` is absorbed. A
-    // bad_request must still fail on the first attempt, or a malformed request
-    // would be retried against Amazon until the deadline.
     let starts = 0;
     vi.mocked(startReport).mockImplementation(async () => {
       starts += 1;
@@ -1018,27 +1084,39 @@ describe('report run — throttled start', () => {
     expect(lastJson().status).toBe('error');
   });
 
-  it('gives up when the deadline passes mid-throttle rather than retrying forever', async () => {
+  it('a throttled POLL after a good start is still ridden out (only the start stops)', async () => {
     let starts = 0;
     vi.mocked(startReport).mockImplementation(async () => {
       starts += 1;
-      return { ok: false, kind: 'throttled', friendly: 'rate limited' } as any;
+      return { ok: true, runId: 'run-poll-throttle', status: 'IN_QUEUE' } as any;
     });
+    let polls = 0;
+    vi.mocked(pollReport).mockImplementation(async () => {
+      polls += 1;
+      if (polls === 1) return { ok: false, kind: 'throttled', friendly: 'rate limited', retryAfterMs: 1 } as any;
+      return { ok: true, ready: true, status: 'DONE' } as any;
+    });
+    vi.mocked(getReportDocumentMeta).mockResolvedValue({
+      ok: true,
+      ready: true,
+      status: 'DONE',
+      document: { url: 'https://example.invalid/x', compressionAlgorithm: null },
+    } as any);
+    vi.mocked(streamReportDocumentToFile).mockResolvedValue({ ok: true, bytes: 2 } as any);
 
     await runCli(
       'amazon', 'report', 'run',
       '--type', SQP_TYPE,
       '--option', `asin=${asins.join(' ')}`,
-      '--out', join(tmpDir, 'sqp-throttle-timeout.json'),
+      '--out', join(tmpDir, 'sqp-poll-throttle.json'),
       '--interval-ms', '1',
-      '--max-wait-ms', '1',
+      '--max-wait-ms', '60000',
       '--json',
     );
 
-    // Bounded: a 1ms budget must not permit a long retry loop, and the throttle
-    // that outlives the deadline still surfaces as a failure rather than a hang.
-    expect(starts).toBeLessThan(10);
-    expect(lastJson().status).toBe('error');
+    expect(starts).toBe(1);
+    expect(polls).toBe(2);
+    expect(lastJson().status).toBe('ok');
   });
 });
 
