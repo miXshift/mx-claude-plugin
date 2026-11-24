@@ -44,6 +44,10 @@ import {
   type CalibrationField,
   formatFieldValue,
 } from './manifest-schema.js';
+import {
+  BID_THRESHOLD_ACK_KEY,
+  type ThresholdCheck,
+} from './bid-threshold-check.js';
 
 // ---------------------------------------------------------------------------
 // Top-level: full confirmation card
@@ -79,6 +83,7 @@ export function renderConfirmationCard(
   fields: string;
   extras_note: string | null;
   blocking_note: string | null;
+  threshold_note: string | null;
   action_prompt: string;
 } {
   const skillName = options.skill_display_name ?? payload.skill_id;
@@ -108,14 +113,21 @@ export function renderConfirmationCard(
   }
   const fields = lines.join('\n');
 
+  // The kept-thresholds record is ours, not a user-added key: keep it out of
+  // the "user-added fields" note.
+  const userExtras = Object.fromEntries(
+    Object.entries(payload.extras).filter(([k]) => k !== BID_THRESHOLD_ACK_KEY),
+  );
   const extras_note =
-    Object.keys(payload.extras).length > 0
-      ? renderExtrasNote(payload.extras)
-      : null;
+    Object.keys(userExtras).length > 0 ? renderExtrasNote(userExtras) : null;
 
   const blocking_note = payload.blocking.has_missing_required
     ? renderBlockingNote(payload.blocking.missing_keys)
     : null;
+
+  // mx-ops#409: bid thresholds that read like offsets from target.
+  const tc = payload.threshold_check;
+  const threshold_note = tc ? renderThresholdNote(tc) : null;
 
   // First-run capture nudge: surface the top few unset-but-valuable fields so
   // the user can sharpen the skill now or defer ("run" on defaults). Only on
@@ -130,9 +142,11 @@ export function renderConfirmationCard(
 
   const action_prompt = payload.blocking.has_missing_required
     ? `Some required fields are unset. Choose a number above to set, or "cancel".`
-    : payload.is_first_run
-      ? `Confirm and run, or edit a field?  [number to edit / "run" / "cancel"]`
-      : `Confirm and run, or edit?  [Enter / number to edit / "cancel"]`;
+    : tc?.reconfirm_required
+      ? `Fix the bid thresholds, or keep them as they are?  [number to edit / "keep" / "cancel"]`
+      : payload.is_first_run
+        ? `Confirm and run, or edit a field?  [number to edit / "run" / "cancel"]`
+        : `Confirm and run, or edit?  [Enter / number to edit / "cancel"]`;
 
   return {
     header,
@@ -140,8 +154,26 @@ export function renderConfirmationCard(
     fields,
     extras_note,
     blocking_note,
+    threshold_note,
     action_prompt,
   };
+}
+
+/**
+ * The bid threshold warning (mx-ops#409). Asks once; after the user kept the
+ * values it stays as a one-line reminder. Plain text, no em dashes.
+ */
+function renderThresholdNote(check: ThresholdCheck): string {
+  const lines = check.reconfirm_required
+    ? [
+        'Check your bid thresholds before this run (asked once):',
+        ...check.warnings.map((w) => `  - ${w.message}`),
+      ]
+    : [
+        'You chose to keep these bid thresholds earlier, even though:',
+        ...check.warnings.map((w) => `  - ${w.message}`),
+      ];
+  return lines.join('\n');
 }
 
 /**
@@ -157,6 +189,7 @@ export function joinCard(
   blocks.push('', parts.fields);
   if (parts.extras_note) blocks.push('', parts.extras_note);
   if (parts.blocking_note) blocks.push('', parts.blocking_note);
+  if (parts.threshold_note) blocks.push('', parts.threshold_note);
   blocks.push('', parts.action_prompt);
   return blocks.join('\n');
 }
@@ -422,7 +455,16 @@ export function renderPersistenceFooter(
   if (result.status !== 'ok') return '';
   if (!result.did_persist) return ''; // confirm-as-is / use-once — no footer.
 
-  const lines = [`Saved your edits to ${brandName}'s ${skillDisplayName} config.`];
+  // mx-ops#409: a confirm that only recorded "keep these thresholds" saved no
+  // edits; say what it did record.
+  const kept =
+    `Kept your bid thresholds for ${brandName}'s ${skillDisplayName} as they are. ` +
+    `You won't be asked about these values again.`;
+  const lines =
+    result.threshold_ack_saved === 'confirm'
+      ? [kept]
+      : [`Saved your edits to ${brandName}'s ${skillDisplayName} config.`];
+  if (result.threshold_ack_saved === 'edit') lines.push(kept);
   const learned = result.captured ?? [];
   if (learned.length > 0) {
     const items = learned.map((c) => `${c.label} = ${c.value}`).join(', ');
