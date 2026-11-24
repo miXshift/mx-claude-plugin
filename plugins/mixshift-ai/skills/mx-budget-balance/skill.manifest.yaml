@@ -1,7 +1,7 @@
 schema_version: 1
 skill_id: mx-budget-balance
 display_name: Budget Balance (weekly budget-mix pass)
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Weekly budget-mix pass for Sponsored Products. Sorts every campaign into
   three buckets, each with a stated reason: RAISE (budget-capped campaigns
@@ -69,7 +69,9 @@ notes: >
   campaignmetric (one row per campaign per day, so Cost compares directly with that
   day's CampaignBudget). BB-02 pulls the latest settings row per enabled campaign
   (DailyBudget, Amazon's PercentTimeInBudget and suggestedBudget, Amazon's campaign id).
-  PercentTimeInBudget is a fraction and -1 means no recommendation. Live
+  PercentTimeInBudget is the share of the last 7 days in budget, so a LOW value is the
+  capped signal (counted only at 0 or above and below 0.5); -1 and NULL mean no
+  recommendation, and a run holding 0-100 values is divided by 100 first. Live
   sp.budget_usage and sp.budget_recommendations are optional reads that never block.
   v1 writes Sponsored Products budgets only, through sp.update_campaigns; Sponsored
   Brands and Display are advisory. A session whose credential can only propose (a

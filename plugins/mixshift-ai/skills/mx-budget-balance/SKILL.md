@@ -10,7 +10,7 @@ description: >
   performers), each with a reason, and previews budget changes within a
   per-change limit. Nothing is applied until the user confirms the exact set.
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: "MixShift"
 trigger_phrases:
   - budget balance
@@ -127,7 +127,12 @@ Read `data.md`. If a query failed (exit code 2), surface the failing id and its 
 
 Join BB-01 to BB-02 on `CampaignID`. A campaign in BB-01 but not in BB-02 is not enabled now: leave it out and say how many were left out. A campaign in BB-02 with no BB-01 row had no spend in the window: count it as HOLD (no data).
 
-Data quirks to respect: `PercentTimeInBudget` is a fraction (0.84 is 84 percent of the last 7 days in budget) and `-1` or NULL means Amazon returned no recommendation: treat as unknown, never as zero. `suggestedBudget` may be below, equal to, or above the current budget; only above is a raise ceiling. Cost can exceed a day's budget, so utilization above 100 percent is valid.
+Data quirks to respect: `PercentTimeInBudget` is the share of the last 7 days the campaign stayed IN budget (0.84 is 84 percent of the last 7 days in budget). A high value means the campaign had budget left most of the time; a low value means it ran out of budget most of the time. Normalize it once, before Step 3, into `in_budget`:
+- `-1`, NULL, or any other negative value means Amazon returned no recommendation: `in_budget` is unknown, never zero.
+- The warehouse stores the value as Amazon returns it, so it may be a 0-100 percent instead of a fraction. If any known value in this run's BB-02 rows is above 1, the run holds percents: divide every known value by 100. Say in the Bottom Line that the values were percents and were converted.
+- A value still above 1 after that is unknown.
+
+`suggestedBudget` may be below, equal to, or above the current budget; only above is a raise ceiling. Cost can exceed a day's budget, so utilization above 100 percent is valid.
 
 ### Step 2b - Live refresh (optional, requires Ads API access)
 
@@ -146,7 +151,7 @@ Let `target` be the confirmed `acos_target`, `cap_days` the `capped_days_thresho
 ```
 efficient  = acos_14d is not null AND acos_14d <= target AND orders_14d >= 3
 capped     = days_at_cap >= cap_days
-             OR (PercentTimeInBudget >= 0.5; a value of -1 or NULL does not count)
+             OR (in_budget is known AND 0 <= in_budget < 0.5)
 poor       = spend_14d >= min_spend
              AND (sales_14d = 0 OR acos_14d > target * multiple)
 
@@ -156,8 +161,10 @@ WIDEN  : efficient AND NOT capped AND budget_utilization_pct < 50
 HOLD   : everything else
 ```
 
+Direction of Amazon's signal: `in_budget` is time IN budget, so a LOW value is the capped signal. A campaign in budget 0.84 of the week had budget left over and is not capped by this signal; one in budget 0.30 of the week ran out of budget 70 percent of the time and is. An unknown `in_budget` (-1, NULL) never makes a campaign capped; it leaves the decision to `days_at_cap`.
+
 Reason (one sentence from the campaign's own numbers, required for every row):
-- RAISE: "ACoS 18.4 percent against a 25 percent target, at 90+ percent of budget on 9 of 14 days; Amazon suggests 350." Name which capped signal fired (days at cap, or Amazon's time-in-budget).
+- RAISE: "ACoS 18.4 percent against a 25 percent target, at 90+ percent of budget on 9 of 14 days; Amazon suggests 350." Name which capped signal fired (days at cap, or Amazon's time-in-budget). When Amazon's signal fired, state its direction with the number: "ACoS 18.4 percent against a 25 percent target, in budget only 30 percent of the last 7 days (Amazon); Amazon suggests 350." Never write a time-in-budget value as time at cap or as time out of budget.
 - WIDEN: "ACoS 19.1 percent against a 25 percent target but only 36 percent of budget used: budget is not the limit, reach is."
 - CAP: "ACoS 61 percent against a 25 percent target (2.4 times) on 212 spent in 14 days with 3 orders." If `sales_14d = 0`, say "no sales on N spent in 14 days".
 - HOLD reasons worth listing: efficient and capped but Amazon suggests no increase; ACoS between the target and the cut multiple; spend under the minimum.
@@ -215,7 +222,7 @@ Add up to two sentences: the posture and the monthly sales target when set, any 
 - [ ] Every row in every bucket has a reason built from its own numbers
 - [ ] No proposed change exceeds `max_change_pct`; no raise exceeds an existing suggested budget; no proposed budget is under 1.00
 - [ ] WIDEN rows carry no budget change; SB and SD campaigns appear in no change set
-- [ ] Capped signals read correctly (-1 and NULL are unknown, not zero)
+- [ ] Capped signals read in the right direction: low time in budget means capped, high means budget was left over. Amazon's signal counted only where `in_budget` is at least 0 and below 0.5; -1 and NULL are unknown, not zero; 0-100 values were divided by 100 first; every RAISE reason that cites it says "in budget only X percent"
 - [ ] Defaults and the ACoS target's source are labeled; observational when the target is unconfirmed
 - [ ] Net daily budget effect stated
 - [ ] No em dashes in output
