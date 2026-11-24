@@ -16,7 +16,7 @@ description: >
   dry-run first and `--commit` only after the user confirms. No brand setup
   needed, only sign-in (`mixshift auth login`).
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
   author: "MixShift"
 trigger_phrases:
   - run an amc query
@@ -779,12 +779,26 @@ every audience write, same headers and path params as `amc.create_audience`.
 |---|---|---|
 | "most similar", "a bit broader", "as broad as possible" | `lookalikeAudienceExpectedReach` | One of `MOST_SIMILAR` (smallest, closest match to the seed), `SIMILAR`, `BALANCED`, `BROAD`, `MOST_BROAD` (largest reach, loosest match). These are the five choices the AMC console shows. The service converts "Most similar" and similar spellings. Ask which one; for a first prospecting test `MOST_SIMILAR` or `SIMILAR` keeps it close to the seed. |
 | "from my high-value buyers" | `query` (the seed) | Same SQL and table rules as a rule-based audience (above): `SELECT user_id`, the `_for_audiences` tables, no date arithmetic, paid tables checked first. Amazon's guide asks for a seed of 500 to 500,000 shoppers, known only once it runs. |
-| "last 90 days", "keep it current" | `timeWindowStart` / `timeWindowEnd`, `timeWindowRelative: 'TRUE'` | **At most 90 days** (the limit in the AMC console); a longer window is refused before Amazon, not shortened. The window is still the lookback, so a seed written for 365 days has to be cut to the last 90, and "high-value buyers over the year" becomes "high-value buyers over the last 90 days": tell the user that before you shorten it. `timeWindowRelative: 'TRUE'` moves the window forward on each refresh, like the console's date auto-adjust (sent as the same string form as for rule-based audiences; not yet confirmed on a lookalike). |
+| "last 90 days", "keep it current" | `timeWindowStart` / `timeWindowEnd`, `timeWindowRelative: 'TRUE'` | **At most 90 days** (the limit in the AMC console); a longer window is refused before Amazon, not shortened. The window is still the lookback, so a seed written for 365 days has to be cut to the last 90, and "high-value buyers over the year" becomes "high-value buyers over the last 90 days": tell the user that before you shorten it. `timeWindowRelative: 'TRUE'` moves the window forward on each refresh, like the console's date auto-adjust. Send it as the same string form as for rule-based audiences: Amazon accepted `"TRUE"` on a lookalike in production. |
 | "push it to DSP" | `advertiserId` | **A DSP advertiser only**, as a string (`"123456789012345678"`, never a JSON number: 18 digits lose their last digits as a number). Amazon activates lookalikes in DSP only, so a sponsored-ads `ENTITY...` id is refused. |
 | a global DSP advertiser | `countryCode` | As for rule-based audiences. |
 
 `refreshRateDays` does not apply: Amazon refreshes lookalikes itself and
-ignores the field, so leave it out.
+ignores the field, so leave it out. A lookalike made without it still reads
+back with `refreshRateDays: 7`, because Amazon sets 7 by default. That is the
+value Amazon sets, not one that was sent, so do not report it as a setting
+the user chose.
+
+Amazon stores the name with `AMC ` in front: `"audienceName": "High-value
+buyers lookalike"` reads back from `amc.get_audience` and `amc.list_audiences`
+as `"AMC High-value buyers lookalike"`. So do not start the name with "AMC"
+yourself (it would show as "AMC AMC ..."), and when you look an audience up by
+name, match the stored name with the prefix, or match by
+`audienceExecutionId`.
+
+These three (the `"TRUE"` form accepted, refresh 7 by default, the `AMC `
+prefix) were observed on the first lookalike created in production through
+MixShift, not taken from Amazon's spec.
 
 Body file `lookalike.json`:
 
