@@ -199,6 +199,9 @@ export const EventName = {
   // report exists and we are waiting on it, a throttled start means it does not
   // exist yet. payload: {report_type, throttled_starts, via}. Internal
   // diagnostic only — not in the Discord fanout.
+  // No longer emitted: since D-391 (mx-ops#399) `report run` stops on the first
+  // throttled start, which is recorded as report.failed with kind `throttled`.
+  // The name stays so rows already recorded under it still read.
   ReportStartThrottled: 'report.start_throttled',
 
   // Service-credential setup (`mixshift auth service-setup`). Fired after

@@ -65488,6 +65488,9 @@ var init_events = __esm({
       // report exists and we are waiting on it, a throttled start means it does not
       // exist yet. payload: {report_type, throttled_starts, via}. Internal
       // diagnostic only — not in the Discord fanout.
+      // No longer emitted: since D-391 (mx-ops#399) `report run` stops on the first
+      // throttled start, which is recorded as report.failed with kind `throttled`.
+      // The name stays so rows already recorded under it still read.
       ReportStartThrottled: "report.start_throttled",
       // Service-credential setup (`mixshift auth service-setup`). Fired after
       // the service block is persisted so a fresh data dir's synthetic
@@ -93951,40 +93954,7 @@ function registerReportRun(report) {
 }
 async function startAndPollUntilReady(input, ctx) {
   const { root, clientOpts, stepStartedAt, deadline, intervalMs, reportType } = ctx;
-  let started = await startReport(input, clientOpts);
-  let throttledStarts = 0;
-  let startThrottleStreak = 0;
-  while (isReportFailure(started) && started.kind === "throttled") {
-    throttledStarts += 1;
-    startThrottleStreak += 1;
-    const backoff = throttleBackoffMs(
-      started.retryAfterMs,
-      intervalMs,
-      startThrottleStreak,
-      Date.now(),
-      deadline
-    );
-    if (backoff <= 0) break;
-    if (!root.json) {
-      process.stderr.write(
-        `  ... Amazon rate-limited the report request; backing off ${(backoff / 1e3).toFixed(1)}s (throttle ${throttledStarts})
-`
-      );
-    }
-    await sleep(backoff);
-    started = await startReport(input, clientOpts);
-  }
-  if (throttledStarts > 0) {
-    await track(
-      {
-        event_name: EventName.ReportStartThrottled,
-        outcome: "ok",
-        duration_ms: Date.now() - stepStartedAt,
-        payload: { report_type: reportType, throttled_starts: throttledStarts, via: "run" }
-      },
-      root.dataDir
-    );
-  }
+  const started = await startReport(input, clientOpts);
   if (isReportFailure(started)) {
     await trackFailure2(EventName.ReportFailed, started, stepStartedAt, root.dataDir, reportType);
     return { outcome: "start_failed", failure: started };
