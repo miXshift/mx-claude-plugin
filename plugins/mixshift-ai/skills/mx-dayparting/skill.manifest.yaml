@@ -1,0 +1,63 @@
+schema_version: 1
+skill_id: mx-dayparting
+display_name: "Dayparting (when in the day your ads earn less or more: diagnose, read only)"
+version: "0.1.0"
+description: >
+  Find the times of day and days of the week when an Amazon Ads profile earns
+  clearly less or more than its own average, through the bundled harness CLI:
+  one sentence per window with its ACOS against the brand's target, the weekly
+  spend it touches, the sales a cut could cost and the confidence. Reads
+  matured hourly data only, never proposes on less than eight weeks, leaves
+  event days out, and needs the brand's target ACOS for a cut. Read only:
+  nothing is applied or scheduled in this release. Not budget moves
+  (mx-budget-balance) or keyword bids (mx-keyword-bid-health).
+
+# Tier 1: reads and computes only. Modeled per_account because every call targets one
+# seller's Ads profile. The target ACOS comes from the brand context when one exists, or the user.
+run_kind: per_account
+cadence: on_demand
+risk_tier: 1
+allowed_tools: [file_read]
+side_effect_policy: recommendation_only   # proposes windows, applies none
+review_required: never
+sql_ids: []   # hourly data is read through the service, not the warehouse
+
+harness_commands:
+  - mixshift amazon merchants
+  - mixshift ads profiles
+  - mixshift brand context resolve <brand-slug> --json
+  - mixshift dayparting diagnose --seller-id <id> [--profile-id <id>] [--lookback-days <n>] [--target-acos <n>] [--exclude-dates <list>] [--campaign-ids <list>] [--verbose]
+  - mixshift dayparting hours --seller-id <id> [--profile-id <id>] --from <date> --to <date>
+  - mixshift feedback
+  - mixshift telemetry emit
+
+required_context_fields: []
+optional_context_fields: []
+artifacts: []
+verdict_range: [OBSERVATIONAL]   # surface skill: proposes windows but applies none
+pricing_tier: free
+trigger_phrases:
+  - dayparting
+  - day parting
+  - when in the day are we wasting ad spend
+  - should we turn bids down overnight
+  - bids by time of day
+  - hour of day performance
+  - which hours convert best
+  - which hours should we bid down
+  - weekday and hour performance
+  - show me the dayparting heat map
+  - ask to turn on marketing stream for our account
+notes: >
+  Diagnosis only in this release: approving and scheduling windows arrives later.
+  Hourly data comes from Amazon Marketing Stream, which is turned on account by
+  account; until it is on for a profile each command says so in one sentence
+  (exit 6) and changes nothing. `--seller-id` is the legacy seller id from
+  `mixshift amazon merchants`; a seller with several Ads profiles needs
+  `--profile-id`. Orders, sales and ROAS read matured days only, no window is
+  proposed on less than eight weeks, and event days can be left out with
+  --exclude-dates. A cut needs a target ACOS.
+
+  Required state (not modeled in schema fields):
+    - ~/.mixshift/auth/credentials must exist (run `mixshift auth login`)
+    - hourly Ads data turned on for the profile

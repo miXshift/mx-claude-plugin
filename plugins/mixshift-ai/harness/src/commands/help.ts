@@ -71,6 +71,7 @@ const CATALOG: HubGroup[] = [
     title: 'Explore data & pull reports',
     skills: [
       { id: 'mx-data-explore', say: 'explore my data', what: 'query, sample, and export the warehouse to CSV' },
+      { id: 'mx-dayparting', say: 'when in the day are we wasting ad spend', what: 'which hours and weekdays earn less or more, and what a bid change would touch (read only)' },
       { id: 'mx-labels', say: 'what item label fields do we have', what: 'item and campaign labels: see, set, clear and undo them (not sub-brands)' },
       { id: 'mx-amazon-report', say: 'pull a Brand Analytics report', what: 'fetch SP-API reports on demand, any window' },
       { id: 'mx-amazon-retail', say: 'look up this ASIN', what: 'live catalog, inventory, orders, pricing lookups' },
