@@ -310,6 +310,15 @@ As of 0.8.3 the `mixshift` command is added to the session PATH by the plugin's 
 - Claude Code (terminal or desktop app): the hook runs at session start. If `mixshift` is not found, start a new session after installing or updating, or invoke via the hook-exported variable: `node "$MIXSHIFT_CLI" <command>`.
 - Cowork: plugin session hooks do not run there, so `mixshift` is never on PATH. This is expected; the skills locate the harness automatically and run `node "<plugin root>/harness/dist/cli.js" <command>` for you.
 
+### Claude says MixShift (the plugin, its CLI or the connector) is not installed in Cowork, but it is
+
+This is a misreading, not a broken install. Two things look like "not installed" in Cowork and are not:
+
+- **`mixshift` is not on PATH.** Cowork does not run plugin session hooks, so the short `mixshift` command is never registered there. The plugin's CLI is still inside the plugin folder, and the skills find it with a file scan. The scan can take a while on a large disk; if it was stopped early, Claude has not looked everywhere yet.
+- **You are not signed in.** Every new Cowork conversation starts in a fresh sandbox with no saved sign-in, so the first MixShift command answers "No credentials found" (`not_authenticated`). That means the plugin ran and needs you to sign in.
+
+What to do: say **"sign in to MixShift"** in the same conversation. Claude finds the plugin's CLI, sends you a sign-in link and code, and continues. If it still says MixShift is missing after that, say "run welcome", which runs the same scan and shows what it found. You do not need to add the remote MCP connector in Cowork; that is for claude.ai web, where there is no shell. Claude Code works the same way if you would rather use it.
+
 ### Browser didn't open during sign-in
 
 PKCE tries to open your default browser via the OS-native handler. If that fails (rare — headless environment, container, SSH session), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat or that you see in the terminal. Open that URL on any device with a browser. To force device-code up front: `mixshift auth login --mode device --person-label you@yourcompany.com`.

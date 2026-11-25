@@ -14,7 +14,7 @@ description: >
   raw-MySQL path; the CLI `mixshift auth setup` command exists only
   for backward compatibility and should not be recommended.
 metadata:
-  version: "0.2.4"
+  version: "0.2.5"
   author: "MixShift"
 trigger_phrases:
   - sign in to mixshift
@@ -43,8 +43,11 @@ Ask yourself one question: **will a human be present every time this credential 
 |---|---|
 | User wants to query data now, says "sign in", first-run welcome | **Path A** (interactive, device-code) — the default |
 | "scheduled task", "cron", "runs at 9am", "automation", "CI", "when I'm not around", "service credential", auth failing inside a scheduled Cowork task | **Invoke the `mx-auth-service-setup` skill** — it orchestrates the whole machine-credential flow |
-| claude.ai web / no Bash tool available | **Path D** (direct mode, paste token) |
+| A MixShift command returned `not_authenticated`, "No credentials found", or "Run `mixshift auth login`" | **Path A**. The CLI ran, so the plugin is installed; the user just is not signed in (normal in every fresh Cowork sandbox) |
+| claude.ai web, or any surface with no Bash tool at all | **Path D** (direct mode, paste token). Never for Cowork: Cowork has a Bash tool |
 | "I don't have a MixShift account", brand-new to MixShift, no login yet | **No-account handoff** (see "No MixShift account yet" below); registration lives on the web platform, not in the plugin |
+
+**Cowork with a Bash tool is never Path D.** If `mixshift` is not on PATH there, that is expected (Cowork runs no plugin session hook): resolve the CLI as in Path A's note below and sign in with Path A. Do not send a Cowork user to the remote MCP connector or a paste-token page because the CLI was off PATH, and do not tell them the plugin, its CLI or the connector is not installed. Say the CLI could not be found only after the resolver scan has run to the end and printed no path (a scan that timed out or was stopped has not finished; run it again).
 
 When in doubt, ask: *"Is this for you to use right now, or for something that runs on its own (a schedule, automation, CI)?"* One question, then route. A user setting up a scheduled skill usually needs BOTH: their own interactive sign-in for building it, and a service credential so the schedule survives without them.
 
@@ -97,7 +100,7 @@ The CLI returns JSON immediately and exits:
 
 Capture `device_code` and `login_url`. The other fields don't need to be passed again; `device-poll` only needs `device_code` + `person_label`.
 
-(If `mixshift` isn't found, e.g. it isn't on PATH inside this sandbox, run the same command via `node "$MIXSHIFT_CLI" auth device-init ...`. If `$MIXSHIFT_CLI` is also empty (normal in Cowork, which does not run the session hook that sets it), scan for the CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then use `node "$MIXSHIFT_CLI" ...`. Both being absent does not mean the plugin is missing; its CLI is in the plugin directory the scan finds. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.)
+(If `mixshift` isn't found, e.g. it isn't on PATH inside this sandbox, run the same command via `node "$MIXSHIFT_CLI" auth device-init ...`. If `$MIXSHIFT_CLI` is also empty (normal in Cowork, which does not run the session hook that sets it), scan for the CLI with `find / -maxdepth 9 -type f -path '*/harness/dist/cli.js' 2>/dev/null`. **If that returns more than one path, take the highest version, not the first line.** A machine keeps every version it has ever installed. Skip any path under a `.trash` folder, and read each remaining copy's version from `.claude-plugin/plugin.json` in its plugin folder (the path minus `/harness/dist/cli.js`), not from the path text and not by running it: many paths carry no version, and text order is not version order (as text, `0.8.10` sorts before both `0.8.9` and `0.9.0`). Set `MIXSHIFT_CLI` to the path you picked, then use `node "$MIXSHIFT_CLI" ...`. Both being absent does not mean the plugin is missing; its CLI is in the plugin directory the scan finds. Say the CLI could not be found only after the scan has run to the end and printed no path; a scan that timed out or was stopped has not finished, so run it again before concluding anything. **In a resumed conversation, resolve the CLI again this way; never reuse an absolute `cli.js` path from earlier turns.** The plugin may have updated since, and an old path keeps running the old version.)
 
 **If device-init returns `{ "ok": false, "error": "<message>" }`** instead of the JSON above, the request to `mcp.mixshift.io` never completed, almost always the Cowork / Claude Code sandbox egress allowlist. Do NOT send a link or retry in a loop. Surface the message and go to **"If the sandbox is blocking sign-in"** below.
 
@@ -136,6 +139,8 @@ Machine credentials for scheduled Cowork tasks, crons, CI, and cloud automations
 One precedence fact worth knowing on THIS path: if a human sign-in (`datahub` block) and a service credential both exist in the same data dir, the human session wins and the service credential is the fallback.
 
 ## Path D — claude.ai web (no Bash, MCP connector)
+
+Use this path only on a surface with no Bash tool at all. **Cowork with a Bash tool is never Path D**, even when `mixshift` is off PATH or `$MIXSHIFT_CLI` is empty: resolve the CLI as in Path A's note and use Path A.
 
 There is no shell and no local disk, so the plugin cannot store tokens for the user. The user mints tokens themselves and pastes the access token into the connector configuration:
 

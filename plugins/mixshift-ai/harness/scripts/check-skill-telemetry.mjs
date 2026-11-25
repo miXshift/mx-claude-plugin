@@ -98,6 +98,27 @@ async function checkSkill(skillId) {
     );
   }
 
+  // 4b. "Not installed" only after the scan, and sign-in is not install
+  //     (mx-ops#320). In Cowork an agent read an off-PATH CLI, a cut-off scan,
+  //     or a not_authenticated "No credentials found" answer as "the plugin /
+  //     connector is not installed". Every skill must say the CLI is missing
+  //     only after the scan ran to the end, and route not_authenticated to
+  //     sign-in (mx-auth-login), never to "not installed".
+  if (!/only after (?:the|that) (?:resolver )?scan has run to the end/.test(raw)) {
+    result.errors.push(
+      'Missing the "not installed only after the scan" rule. The CLI-invocation guidance must say ' +
+        'the CLI could not be found only after the scan has run to the end and printed no path ' +
+        '(a timed-out scan has not finished). See mx-ops#320.',
+    );
+  }
+  if (!raw.includes('not_authenticated') || !raw.includes('mx-auth-login')) {
+    result.errors.push(
+      'Missing the sign-in routing for `not_authenticated` / "No credentials found": it means the ' +
+        'CLI ran and the user is not signed in, so route to mx-auth-login, never "not installed". ' +
+        'See mx-ops#320.',
+    );
+  }
+
   // 5. (optional sanity) trigger_phrase_matched mentioned at least conditionally
   // Not required — many skills are explicit /<command> triggers only — so just warn.
   if (

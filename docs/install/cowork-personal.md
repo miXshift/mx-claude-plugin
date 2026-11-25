@@ -114,6 +114,9 @@ Almost always a temporary failure on the Claude side, not something wrong with y
 **"command not found: mixshift" when Claude tries to run the welcome.**
 This is expected on Cowork: Cowork does not run plugin session hooks, so the `mixshift` shorthand is never on PATH there. It is not an error. The skills handle it automatically by locating the plugin's install directory and running `node "<plugin root>/harness/dist/cli.js" welcome` — just ask Claude to continue, or say "run welcome" again.
 
+**Claude says MixShift (the plugin, its CLI or the connector) is not installed, but you installed it.**
+Usually Claude read an off-PATH `mixshift`, or a "No credentials found" answer, as a missing install. Each new Cowork conversation starts signed out, so say "sign in to MixShift": Claude finds the CLI, sends you a sign-in link, and carries on. You do not need the remote MCP connector in Cowork. More detail in the [FAQ](../faq.md#claude-says-mixshift-the-plugin-its-cli-or-the-connector-is-not-installed-in-cowork-but-it-is).
+
 **Browser didn't open during sign-in.**
 The PKCE flow tries to open your default browser via the OS-native handler. If that fails (rare), the harness auto-falls-back to a device-code flow and prints a URL Claude surfaces in chat — open that URL in any browser. If the chat skill never showed a URL at all, the harness may not be on PATH inside Cowork's Bash tool — say "run welcome" again, and if the issue persists open a feedback ticket.
 
