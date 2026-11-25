@@ -81,10 +81,12 @@ brand_terms:
     - north grove coffee
     - northgrove roasters
 
-# bid_health — scale / pullback thresholds (recommended).
+# bid_health — scale / pullback thresholds (recommended). ACoS levels in whole
+# percents, not offsets from target (mx-ops#409): with the 18% ACoS target,
+# scale below 13% ACoS and cut above 27% (about target x 0.7 and x 1.5).
 bid_health:
-  scale_threshold_pct: 55
-  pullback_threshold_pct: 40
+  scale_threshold_pct: 13
+  pullback_threshold_pct: 27
   re_entry_rule: "re-enable a pulled-back keyword once trailing-14d TACOS contribution returns below the reference line for 5 consecutive days"
 
 # posture — bid-adjustment magnitude (recommended). 1P brand in scale mode.

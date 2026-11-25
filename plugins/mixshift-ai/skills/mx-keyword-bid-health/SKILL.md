@@ -98,6 +98,11 @@ Show the user the card — it lists every field with its source, and on a brand'
 - **confirm / defer** → run on the shown values: `mixshift skill config mx-keyword-bid-health --brand <brand-slug> --apply '{"action":"confirm"}' --json`
 - **edit** → e.g. `... --apply '{"action":"edit","edits":{"pullback_threshold_pct":"50"},"save":true}' --json`. A shared field (`acos_target`) is proposed for brand-wide promotion (recorded for review); the bid thresholds persist to this skill.
 
+**Both thresholds are ACoS levels, not offsets from the target.** `scale_threshold_pct: 21` means "keyword ACoS below 21%", and `pullback_threshold_pct: 45` means "keyword ACoS above 45%". Older brand templates described them as "% above/below target" and shipped 50/50, so some brands saved offsets (mx-ops#409). When the values read like offsets (scale at or above pullback, or pullback below the ACoS target), the show response carries `confirmation.threshold_check` with `warnings[]`, and the card shows them. If `threshold_check.reconfirm_required` is true, a plain `confirm` returns `validation_failed` with those warnings. Show the user each `warnings[].message` and ask once:
+- **fix** → edit the thresholds to the ACoS levels they meant (the message suggests target × 0.7 / × 1.5), with `"save":true`;
+- **keep** → run on the values as they are: `--apply '{"action":"confirm","acknowledge_warnings":true}'`. That records the kept values, so the card does not ask again for the same values.
+Never pick for the user and never rewrite their values yourself. When the user kept flagged values, say so in the Bottom Line (for example "pullback 20% is below the 30% target: kept by you").
+
 **Resolve the working thresholds (whole-number percents) from `effective_config` (the `--apply` response):**
 - `pullback_threshold_pct`: if present, use it; else `acos_target × 1.5`; else (no target) `45` (45%). Label any default in the Bottom Line ("default, set to sharpen").
 - `scale_threshold_pct`: if present, use it; else `acos_target × 0.7`; else `30` (30%). Label any default.
@@ -105,7 +110,7 @@ Show the user the card — it lists every field with its source, and on a brand'
 
 **Product-level ACoS targets.** When the `--apply` response also carries `product_acos_targets` (only when the brand set per-ASIN or per-SKU targets in Brand Context; `mixshift brand context resolve <brand-slug> --json` shows the same map), judge each keyword against its own product's target: `by_asin[ASIN]`, else `by_sku[SKU]`, else `acos_target`. Every value is a whole-number percent, like `acos_target`. A keyword's products are the brand's ASINs or SKUs advertised in its ad group, where this skill's data names them. If every product on the keyword lands on the same target, use it in the Excess Spend formula and the buckets. If they differ (a mixed campaign or ad group), or the data does not name the keyword's products, use `acos_target` and mark that keyword "brand target used" with the reason; do not split its spend and sales between products. Where `pullback_threshold_pct` or `scale_threshold_pct` is derived from the target (the brand did not set it), derive it from the keyword's own target; a threshold the brand set stays as set. Label each verdict with the target it used (for example "25%, ASIN target" or "20%, brand target"). A product target is the brand's own number even when `acos_target` is absent or only a placeholder, so judge those products against it and run the rest as `acos_target` says above. Name any entries in `product_acos_targets.skipped` once in the Bottom Line: they could not be read, so those products used the brand target. When `product_acos_targets` is absent, run on `acos_target` exactly as described above.
 
-Never block on this step — confirm-as-is is always available.
+Never block on this step — confirm-as-is is always available (after the one-time threshold answer above, when the card asks for it).
 
 ### Step 2 — Run prefetch
 

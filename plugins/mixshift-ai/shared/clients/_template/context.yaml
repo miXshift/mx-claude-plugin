@@ -83,11 +83,15 @@ campaign_structure:
     - DEFEND
     - SCALE
 
-# bid_health
-#   Thresholds for mx-keyword-bid-health.
-bid_health:
-  scale_threshold_pct: 50                 # ACOS below target by this % → scale bid up
-  pullback_threshold_pct: 50              # ACOS above target by this % → reduce bid
+# bid_health (optional)
+#   Thresholds for mx-keyword-bid-health. Each is an ACoS LEVEL in whole
+#   percents (21 = 21% ACoS), not an offset from your ACoS target. Leave
+#   them unset to use your target x 0.7 (scale) and x 1.5 (pullback); with
+#   a 30% target that is 21 and 45. Scale must sit below pullback, and
+#   pullback at or above your target.
+# bid_health:
+#   scale_threshold_pct: 21               # keyword ACoS below 21% → scale-up candidate
+#   pullback_threshold_pct: 45            # keyword ACoS above 45% → bid-cut candidate
 
 # sub_brands (optional)
 #   Used when the parent brand has distinguishable sub-brands.

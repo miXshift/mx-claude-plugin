@@ -77,6 +77,12 @@ import {
   type ProductAcosTargets,
 } from '../context/product-targets.js';
 import { pushAfterWrite } from '../context-sync/push-after-write.js';
+import {
+  BID_THRESHOLD_ACK_KEY,
+  buildAck,
+  checkBidThresholds,
+  type ThresholdCheck,
+} from './bid-threshold-check.js';
 
 // ---------------------------------------------------------------------------
 // Payload + decision shapes (the two-phase contract)
@@ -139,6 +145,14 @@ export interface ConfirmationPayload {
    * effective ACoS target (see `rule`).
    */
   product_acos_targets?: ProductAcosTargets;
+  /**
+   * mx-ops#409: present only when the bid thresholds look like offsets from
+   * the target rather than ACoS levels (scale at or above pullback, or
+   * pullback below target). When `reconfirm_required`, a plain confirm is
+   * refused until the user edits the values or keeps them once with
+   * `acknowledge_warnings: true`. Absent for every other payload.
+   */
+  threshold_check?: ThresholdCheck;
 }
 
 /**
@@ -147,9 +161,14 @@ export interface ConfirmationPayload {
  *   - `edit`: apply the provided edits (keyed by field.id), then decide
  *      whether to persist (save: true) or use for this run only (save: false).
  *   - `cancel`: don't run. No write.
+ *
+ * `acknowledge_warnings: true` answers the one-time bid threshold re-confirm
+ * (mx-ops#409): the user saw the threshold warning and keeps the values. On
+ * `confirm` (and on `edit` with `save: true`) that is recorded so the same
+ * values never ask again. It changes no value.
  */
 export type ConfirmationDecision =
-  | { action: 'confirm' }
+  | { action: 'confirm'; acknowledge_warnings?: boolean }
   | {
       action: 'edit';
       // `--apply` delivers this as parsed JSON, so a value can arrive as any
@@ -158,6 +177,7 @@ export type ConfirmationDecision =
       // is where the narrowing to parseFieldInput's string contract happens.
       edits: Record<string, unknown>;
       save: boolean; // true = persist to config.yaml; false = use once
+      acknowledge_warnings?: boolean;
     }
   | { action: 'cancel' };
 
@@ -193,6 +213,16 @@ export interface ApplyResult {
    * target, in the same whole-percent unit. Absent when the payload had none.
    */
   product_acos_targets?: ProductAcosTargets;
+  /**
+   * mx-ops#409: the bid threshold check for the values this result carries
+   * (after any edits). On 'validation_failed' it is why the run was refused;
+   * on 'ok' the user kept the values (or they were kept before). Absent when
+   * nothing trips.
+   */
+  threshold_check?: ThresholdCheck;
+  /** Set when this call recorded the user keeping flagged thresholds: on a
+   *  plain confirm ('confirm', nothing else saved) or with saved edits ('edit'). */
+  threshold_ack_saved?: 'confirm' | 'edit';
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +333,17 @@ export async function prepareConfirmation(
   );
   const productTargets = seedsBrandTarget ? extractProductAcosTargets(ctx) : null;
 
+  // mx-ops#409: warn when the bid thresholds read like offsets from target.
+  const effectiveById: Record<string, unknown> = {};
+  for (const e of entries) {
+    if (e.effective_value !== undefined) effectiveById[e.field.id] = e.effective_value;
+  }
+  const thresholdCheck = checkBidThresholds(
+    entries.map((e) => e.field),
+    effectiveById,
+    view.extras,
+  );
+
   return {
     skill_id: skillId,
     brand_slug: brandSlug,
@@ -315,6 +356,7 @@ export async function prepareConfirmation(
       missing_keys,
     },
     ...(productTargets ? { product_acos_targets: productTargets } : {}),
+    ...(thresholdCheck ? { threshold_check: thresholdCheck } : {}),
   };
 }
 
@@ -379,14 +421,30 @@ export async function applyConfirmation(
         })),
       };
     }
+    const ackIssue = acknowledgeTypeIssue(decision);
+    if (ackIssue) return failed([ackIssue]);
+    const check = payload.threshold_check;
+    let ackPath: string | null = null;
+    if (check?.reconfirm_required) {
+      if (!acknowledged(decision)) {
+        return { ...failed(thresholdIssues(check)), threshold_check: check };
+      }
+      // The user saw the warning and keeps the values: record that once, on
+      // the skill block exactly as stored. No value changes; seeds stay seeds.
+      ackPath = await saveThresholdAck(payload, check, opts.dataDirOverride);
+    }
     return {
       status: 'ok',
       effective_config: toConsumableConfig(payload.fields, effective),
-      did_persist: false,
-      saved_to: null,
+      did_persist: ackPath !== null,
+      saved_to: ackPath,
       validation_issues: [],
       ...accountWideFieldsResult(payload, decision),
       ...productTargetsResult(payload),
+      ...(check
+        ? { threshold_check: ackPath ? settled(check) : check }
+        : {}),
+      ...(ackPath ? { threshold_ack_saved: 'confirm' as const } : {}),
     };
   }
 
@@ -512,6 +570,8 @@ export async function applyConfirmation(
   for (const issue of sanity.issues) {
     if (!issues.find((i) => i.field === issue.field)) issues.push(issue);
   }
+  const ackTypeIssue = acknowledgeTypeIssue(decision);
+  if (ackTypeIssue) issues.push(ackTypeIssue);
 
   if (issues.length > 0) {
     return {
@@ -523,6 +583,18 @@ export async function applyConfirmation(
     };
   }
 
+  // mx-ops#409: judge the thresholds the run would actually use (after the
+  // edits). Values that still read like offsets need the one-time answer.
+  const editCheck = checkBidThresholds(
+    payload.fields.map((e) => e.field),
+    effective,
+    payload.extras,
+  );
+  if (editCheck?.reconfirm_required && !acknowledged(decision)) {
+    return { ...failed(thresholdIssues(editCheck)), threshold_check: editCheck };
+  }
+  const recordAck = !!editCheck?.reconfirm_required && !!decision.save;
+
   // Persist (or not).
   if (!decision.save) {
     return {
@@ -533,6 +605,7 @@ export async function applyConfirmation(
       validation_issues: [],
       ...accountWideFieldsResult(payload, decision),
       ...productTargetsResult(payload),
+      ...(editCheck ? { threshold_check: editCheck } : {}),
     };
   }
 
@@ -547,11 +620,15 @@ export async function applyConfirmation(
   // unknown keys, so this travels with the config and is still readable on
   // the next `--show` or review, long after the session is gone.
   const accountWideSaved = accountWideFieldsResult(payload, decision).account_wide_fields;
+  const extrasToSave =
+    recordAck && editCheck
+      ? { ...payload.extras, [BID_THRESHOLD_ACK_KEY]: buildAck(editCheck.values) }
+      : payload.extras;
   const blockToSave = composeSkillBlock(
     effective,
     accountWideSaved && accountWideSaved.length > 0
       ? {
-          ...payload.extras,
+          ...extrasToSave,
           account_wide_at_save: {
             fields: accountWideSaved,
             note:
@@ -560,7 +637,7 @@ export async function applyConfirmation(
               'label-scoped numbers when the sub-brand data lens can serve them.',
           },
         }
-      : payload.extras,
+      : extrasToSave,
   );
   const { path } = await saveSkillConfig(
     payload.brand_slug,
@@ -609,7 +686,82 @@ export async function applyConfirmation(
     })),
     ...accountWideFieldsResult(payload, decision),
     ...productTargetsResult(payload),
+    ...(editCheck
+      ? { threshold_check: recordAck ? settled(editCheck) : editCheck }
+      : {}),
+    ...(recordAck ? { threshold_ack_saved: 'edit' as const } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Bid threshold re-confirm helpers (mx-ops#409)
+// ---------------------------------------------------------------------------
+
+function failed(
+  issues: Array<{ field: string; message: string }>,
+): ApplyResult {
+  return {
+    status: 'validation_failed',
+    effective_config: {},
+    did_persist: false,
+    saved_to: null,
+    validation_issues: issues,
+  };
+}
+
+function acknowledged(decision: ConfirmationDecision): boolean {
+  return (decision as { acknowledge_warnings?: unknown }).acknowledge_warnings === true;
+}
+
+/** `acknowledge_warnings` arrives from JSON; only a boolean is accepted. */
+function acknowledgeTypeIssue(
+  decision: ConfirmationDecision,
+): { field: string; message: string } | null {
+  const raw = (decision as { acknowledge_warnings?: unknown }).acknowledge_warnings;
+  if (raw === undefined || typeof raw === 'boolean') return null;
+  return {
+    field: 'acknowledge_warnings',
+    message: `Expected true or false, got ${describeJsonType(raw)}.`,
+  };
+}
+
+/** One issue per warning, on its first field, plus how to answer. */
+function thresholdIssues(
+  check: ThresholdCheck,
+): Array<{ field: string; message: string }> {
+  return check.warnings.map((w) => ({
+    field: w.fields[0] ?? 'bid_thresholds',
+    message:
+      `${w.message} Edit the value, or keep it as it is with ` +
+      `{"action":"confirm","acknowledge_warnings":true} (asked once).`,
+  }));
+}
+
+/** The check as it stands after the user kept the values. */
+function settled(check: ThresholdCheck): ThresholdCheck {
+  return { ...check, acknowledged: true, reconfirm_required: false };
+}
+
+/**
+ * Record that the user kept flagged thresholds, on the skill block exactly as
+ * stored on disk (read fresh, so no seed becomes a stored value). Returns the
+ * config.yaml path.
+ */
+async function saveThresholdAck(
+  payload: ConfirmationPayload,
+  check: ThresholdCheck,
+  dataDirOverride?: string,
+): Promise<string> {
+  const { config } = await readBrandConfig(payload.brand_slug, dataDirOverride);
+  const block = config[payload.skill_id] ?? {};
+  const { path } = await saveSkillConfig(
+    payload.brand_slug,
+    payload.skill_id,
+    { ...block, [BID_THRESHOLD_ACK_KEY]: buildAck(check.values) },
+    dataDirOverride,
+  );
+  await pushAfterWrite(payload.brand_slug, { dataDirOverride });
+  return path;
 }
 
 /**

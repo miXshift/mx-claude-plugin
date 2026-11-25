@@ -490,6 +490,16 @@ async function runApplyDecision(args: {
           ...(result.product_acos_targets
             ? { product_acos_targets: result.product_acos_targets }
             : {}),
+          // mx-ops#409: the bid threshold check (only when a threshold reads
+          // like an offset from target). On validation_failed with
+          // reconfirm_required, show the warnings and ask the user once:
+          // edit, or keep with acknowledge_warnings: true.
+          ...(result.threshold_check
+            ? { threshold_check: result.threshold_check }
+            : {}),
+          ...(result.threshold_ack_saved
+            ? { threshold_ack_saved: result.threshold_ack_saved }
+            : {}),
         },
         null,
         2,

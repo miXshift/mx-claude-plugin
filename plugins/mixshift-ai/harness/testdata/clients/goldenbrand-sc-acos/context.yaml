@@ -73,10 +73,12 @@ brand_terms:
     - tidewel
     - tidewell co
 
-# bid_health — scale / pullback thresholds (recommended).
+# bid_health — scale / pullback thresholds (recommended). ACoS levels in whole
+# percents, not offsets from target (mx-ops#409): with the 22% target, scale
+# below 15% ACoS and cut above 33% (about target x 0.7 and x 1.5).
 bid_health:
-  scale_threshold_pct: 50
-  pullback_threshold_pct: 45
+  scale_threshold_pct: 15
+  pullback_threshold_pct: 33
   re_entry_rule: "re-enable a pulled-back keyword once trailing-14d ACOS returns below target for 3 consecutive days"
 
 # posture — bid-adjustment magnitude (recommended).
