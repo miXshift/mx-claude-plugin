@@ -40,16 +40,24 @@ Parameters:
 ## Batch B (VC Alternative) — vendor_sales_manufacturing_asin: Ordered Revenue Windows
 
 For Vendor Central accounts, use this instead of business_reports_dpst_date.
+It returns the VC revenue windows and the ad spend over the same days, so VC
+TACOS divides DHC-03 spend by DHC-03 revenue (not DHC-01's `*_tacos_window`
+spend, which ends at T-2).
 
 [SQL-LIBRARY: DHC-03]
 
+Every window ends at `vc_window_end`: the latest date loaded in
+`vendor_sales_manufacturing_asin` for the seller, no later than `:yesterday`.
+T-1 is that date, T-7 and T-30 are the 7 and 30 days ending on it, and MTD is
+`:month_start` through it (null when no VC day of this month has loaded).
+
 Parameters:
 - `:seller_id` from `context.yaml::accounts[0].seller_id`
-- `:yesterday` from runtime
+- `:yesterday` and `:run_date` from runtime
 - `:month_start` from runtime
-- `:vc_lag` from `context.yaml::accounts[0].vc_lag_days` (typically 2)
-
-Note: `:vc_lag` is typically 2 days; confirm from brand context or last available date check.
+- `:vc_lag` from the standard params (2 for a VC primary). A fallback only:
+  the windows end at `:run_date` minus `:vc_lag` days when no VC row has
+  loaded for the seller at all.
 
 ---
 
@@ -194,7 +202,7 @@ Source: `business_reports_dpst_sku` (total ordered product sales = organic + ad 
 | `campaignmetric` | Campaign-level daily metrics | CampaignID, CampaignType, Cost, Sales, Orders, DateTime, SellerID |
 | `campaign` | Campaign metadata | ID, CampaignType, Objective, ItemGroup, Brand |
 | `business_reports_dpst_date` | SC total sales (1-day lag) | SalesAmount, DateTime, SellerID |
-| `vendor_sales_manufacturing_asin` | VC ordered revenue (2-day lag) | OrderedRevenueAmount, DateTime, SellerID |
+| `vendor_sales_manufacturing_asin` | VC ordered revenue (lag varies; windows end at the latest loaded date) | OrderedRevenueAmount, DateTime, SellerID |
 | `anomaly_detection_MV` | Pre-computed T-30 daily actuals | Spend, AdSale, ACOS, Sales, TACOS, Date, SellerID |
 | `anomaly_detection_settings` | CI thresholds | Metric, UpperSensitivityLimit, LowerSensitivityLimit, SellerID |
 | `keywordtargetingmetric` | Keyword-level data (lag varies) | Cost, Sales, DateTime, SellerID |
@@ -207,7 +215,7 @@ Source: `business_reports_dpst_sku` (total ordered product sales = organic + ad 
 
 - All queries are parameterized via the canonical SQL library — never hardcode `:seller_id`, `:yesterday`, or `:month_start`
 - SC accounts: `business_reports_dpst_date` ends at T-2 (1-day lag)
-- VC accounts: `vendor_sales_manufacturing_asin` ends at T-2 (2-day lag typically)
+- VC accounts: `vendor_sales_manufacturing_asin` ends at its latest loaded date (`vc_window_end` from DHC-03); the lag varies, so never assume T-2
 - TACOS requires matched windows (both sides lagged to same date)
 - Price test analysis: use `business_reports_dpst_sku` total sales, never ad sales alone
 - No ASIN-level sessions or CVR — only use on zero-conversion-inclusive days

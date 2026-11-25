@@ -204,7 +204,9 @@ describe('buildStandardParams', () => {
     expect(params.lifetime_orders_threshold).toBe(3);
   });
 
-  it('sets vc_lag=2 when primary is VC, vc_lag=1 when primary is SC', () => {
+  // vc_lag is only DHC-03's fallback for when no VC row has loaded; the VC
+  // windows end at the latest loaded VC date (dhc-03-vc-window.test.ts).
+  it('sets the fallback vc_lag=2 when primary is VC, vc_lag=1 when primary is SC', () => {
     const sc = buildStandardParams({
       context: makeContext(),
       runDate: '2026-04-25',
