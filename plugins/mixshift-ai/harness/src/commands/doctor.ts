@@ -521,6 +521,9 @@ export function renderCliCopiesSection(
   }
   if (c.copies.length > 1) {
     out.push('  Older copies are left by the host on update; `mixshift cli locate` prints the newest.');
+    if (newest?.version && c.copies.some((x) => x.version !== null && compareVersions(x.version, newest.version as string) < 0)) {
+      out.push('  Optional next step: `mixshift cli remove-older` previews moving the older copies out of use (it changes nothing until you add --yes).');
+    }
   }
   if (truncated) out.push('  Search stopped early; there may be other copies.');
   return out;

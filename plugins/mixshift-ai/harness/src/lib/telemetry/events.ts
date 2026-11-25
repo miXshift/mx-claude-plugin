@@ -83,6 +83,10 @@ export const EventName = {
   PluginUpdated: 'plugin.updated',
   PluginCrashed: 'plugin.crashed',
   CliCommandRun: 'cli.command_run',
+  // `mixshift cli remove-older` (mx-ops#274): one event per run, preview or apply.
+  // COUNTS and version strings only (copies found, would move, moved, failed,
+  // skipped, truncated, the versions involved). Never a path.
+  CliRemoveOlder: 'cli.remove_older',
 
   // Onboarding
   WelcomeViewed: 'welcome.viewed',

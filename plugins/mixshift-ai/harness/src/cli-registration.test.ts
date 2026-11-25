@@ -100,4 +100,9 @@ describe('cli.ts registration - version surfaces (feedback 3070884)', () => {
     const source = await readFile(cliPath, 'utf-8');
     expect(source).toMatch(/^registerCliLocateCommand\(program\);/m);
   });
+
+  it('registers `cli remove-older` (opt-in removal of older copies)', async () => {
+    const source = await readFile(cliPath, 'utf-8');
+    expect(source).toMatch(/^registerCliRemoveOlderCommand\(program\);/m);
+  });
 });
